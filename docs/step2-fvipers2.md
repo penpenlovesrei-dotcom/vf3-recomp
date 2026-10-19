@@ -318,6 +318,44 @@ tracks the two of them and the timer runs from 29 down.
 So the whole chain is working together on a Step 2.0 board: the gzip boot, the MPC106, the security chip, the
 Step 2.x culling nodes, the tile generator over the Real3D, and the inputs.
 
+## 13. The recompiler: an address map of its own
+
+The recompiler walks the program from an address map -- the places code is entered at -- and compiles everything
+the walk reaches; anything it has no code for falls back to the interpreter, so an incomplete map costs speed,
+not correctness. Virtua Fighter 3's map (`src/rec/vf3_map.cpp`) was made by `tools/recomp/mkmap.py` from runs of
+an instrumented Supermodel, and it reads the program straight out of the CROM. Neither helps here: Fighting
+Vipers 2's program is the gzip the boot stub unpacks, and there is no instrumented reference build on this
+machine.
+
+It does not need one. A map only has to hold the words the program is **entered at other than by falling through
+from the word before** -- call targets, the targets of indirect jumps and returns, interrupt entries. Everything
+else runs in a straight line from one of those, and a straight line is exactly what the recompiler's `analyse()`
+walks. That set is trivially collected by this port's own interpreter: in `Cpu::execute`, when the next word to
+run is not the last one plus four, mark it. Nothing about the CPU's behaviour changes, and the collection is off
+unless asked for.
+
+- `vf3run --coverage FILE` turns it on and writes the addresses (the recompiler would hide most of them behind
+  its native code, so it refuses to run with `--rec`).
+- `tools/recomp/mkmap_run.py fv2 src/rec/fv2_map.cpp <coverage files...>` merges any number of runs into the
+  map, so a later run can only add to it.
+- `ppcrec::map_for(set)` picks a game's map, and `Rec::build` takes it; `vf3run`, `vf3lock` and the windowed
+  host all pass it.
+
+One coverage run of `tools/scripts/fv2-fight.txt` -- the attract, a coin, the fighter select and a round --
+gave **7196 entry points**, between 0x100 and 0x74B70. From those the recompiler builds **69,716 instructions,
+68,771 of them native**, in about 120 ms, and reports **nothing "without code"**: the map covers everything it
+was asked to run.
+
+**The lockstep passes.** `vf3lock` runs two boards side by side, one interpreting and one on the native code,
+and compares the CPU state, RAM, backup RAM and the Real3D's and tile generator's memories after every frame:
+
+| Script | Result |
+| --- | --- |
+| `fv2-match.txt` (attract, coin, select, random play) | **2231 frames identical** |
+| `fv2-fight.txt` (the above, plus a fighter picked and a whole round against the CPU) | **4201 frames identical** |
+
+That is the brief's criterion for this phase met on both the attract and a match.
+
 ## What is still missing
 - **Nothing is compared frame for frame with the reference.** The pictures above are this port's alone. Until a
   reference run exists for Fighting Vipers 2, "it draws the scene" is all that can be claimed, not "it draws the
@@ -352,5 +390,5 @@ The three warnings the build prints (`px`/`py` possibly uninitialized in `r3d_sc
 | 2 — the Step 2.0 machine layer | **done.** Clocks, MPC106, the map, the JTAG chain, the Real3D IDs, and the 315-5881. Its criterion, "no more mapping or basic hardware crashes", holds for 1800 frames, and the security chip's output is verified text |
 | 3 — a stable interpreter (attract, menus, inputs) | **done.** Boot, WARNING, title, the attract demo, a coin, the fighter select, and a whole round fought against the CPU: 4201 scripted frames, no fault |
 | 4 — Real3D and tiles | **started.** The Step 2.x culling nodes and formats are in and the 3D draws (section 9); the colours hold up across the demo, the one white frame being a flash the game asks for (section 10). Nothing is compared with a reference yet |
-| 5 — coverage and the recompiler | not started. `program_image()` already hands it the right image |
+| 5 — coverage and the recompiler | **done.** Its own address map from this port's own coverage, 69,716 instructions recompiled, and the lockstep identical over both scripts — 2231 frames on the attract and menus, 4201 through a match (section 13) |
 | 6 — polish | not started |

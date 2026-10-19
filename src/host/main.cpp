@@ -667,7 +667,8 @@ struct Game
 		if (!interp) {
 			ppcrec::Stats st;
 			built_image = board.program_image();
-			recompiled = rec.build(board.cpu, built_image, &st);
+			seed_map = ppcrec::map_for(board.set, seed_count);
+			recompiled = rec.build(board.cpu, built_image, &st, seed_map, seed_count);
 			if (recompiled) {
 				board.cpu.rec = &rec;
 				fprintf(stderr, "recompiled %zu instructions (%zu native) to %zu KB of native code in %.0f ms\n",
@@ -686,6 +687,9 @@ struct Game
 	// CROM the boot copies from): made again, or the copied program wouldn't match it and the interpreter would run
 	// everything
 	std::vector<uint32_t> built_image;
+	// the loaded game's address map (src/rec), kept for a rebuild
+	const uint32_t *seed_map = nullptr;
+	size_t seed_count = 0;
 	void program_changed()
 	{
 		if (!recompiled) return;
@@ -693,7 +697,7 @@ struct Game
 		if (img == built_image) return;
 		built_image = std::move(img);
 		ppcrec::Stats st;
-		if (rec.build(board.cpu, built_image, &st))
+		if (rec.build(board.cpu, built_image, &st, seed_map, seed_count))
 			fprintf(stderr, "recompiled again (the program changed): %zu instructions in %.0f ms\n", st.instructions, st.ms);
 		else fprintf(stderr, "couldn't recompile the changed program: the interpreter runs it\n");
 	}

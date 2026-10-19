@@ -119,7 +119,11 @@ int main(int argc, char **argv)
 	}
 	ppcrec::Rec rec;
 	ppcrec::Stats st;
-	if (!rec.build(B.cpu, B.program_image(), &st)) {
+	size_t seed_count = 0;
+	const uint32_t *seed_map = ppcrec::map_for(B.set, seed_count);
+	if (!seed_count)
+		fprintf(stderr, "vf3lock: no address map for \"%s\": there is nothing to check\n", B.set.c_str());
+	if (!rec.build(B.cpu, B.program_image(), &st, seed_map, seed_count)) {
 		fprintf(stderr, "vf3lock: the recompile failed\n");
 		return 1;
 	}
@@ -146,7 +150,7 @@ int main(int argc, char **argv)
 		a2.load(rom, error);
 		b2.load(rom, error);
 		ppcrec::Rec rec2;
-		rec2.build(b2.cpu, b2.program_image());
+		rec2.build(b2.cpu, b2.program_image(), nullptr, seed_map, seed_count);
 		b2.cpu.rec = &rec2;
 		a2.reset();
 		b2.reset();

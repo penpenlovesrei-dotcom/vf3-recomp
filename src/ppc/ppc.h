@@ -7,6 +7,7 @@
 // such place (search for "Reference:").
 #pragma once
 #include <cstdint>
+#include <vector>
 
 namespace ppc {
 
@@ -114,11 +115,20 @@ public:
 	// The state in the form the reference build dumps each frame (128 words; see tools/ref)
 	void dump_state(uint32_t *out) const;
 
+	// Coverage, for building a game's address map (tools/recomp): the words reached other than by falling
+	// through from the word before -- call targets, the targets of indirect jumps and returns, interrupt
+	// entries. Everything else that runs follows one of them in a straight line, which is exactly what the
+	// recompiler's analyse() walks, so these alone are the map. Off until cover_seeds is given a size, and
+	// nothing about the CPU's behaviour changes either way.
+	std::vector<uint8_t> cover_seeds;   // one byte per word of the program
+	uint32_t cover_limit = 0;           // bytes; 0 means not collecting
+
 private:
 	Bus *bus = nullptr;
 	uint8_t *ram = nullptr;
 	const uint8_t *crom = nullptr;
 	int bus_mult_x2 = 2, cps = 66000000;
+	uint32_t cover_prev = 0xFFFFFFFF;   // the word run before this one (coverage)
 
 	void step(uint32_t op);
 	void op19(uint32_t op);

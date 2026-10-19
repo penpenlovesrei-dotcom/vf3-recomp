@@ -24,7 +24,7 @@
 
 int main(int argc, char **argv)
 {
-	std::string rom, script_path, state_path, shots, wav_path;
+	std::string rom, script_path, state_path, shots, wav_path, coverage_path;
 	long frames = -1, ram_at = -1;
 	uint32_t watch = 0xFFFFFFFF, trace_pc = 0xFFFFFFFF;
 	bool quiet = false, rec = false;
@@ -35,6 +35,7 @@ int main(int argc, char **argv)
 		else if (a == "--state" && i + 1 < argc) state_path = argv[++i];
 		else if (a == "--shots" && i + 1 < argc) shots = argv[++i];
 		else if (a == "--wav" && i + 1 < argc) wav_path = argv[++i];
+		else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
 		else if (a == "--quiet") quiet = true;
 		else if (a == "--rec") rec = true;
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
@@ -69,14 +70,28 @@ int main(int argc, char **argv)
 		fprintf(stderr, "vf3run: can't write %s\n", state_path.c_str());
 		return 1;
 	}
+	// --coverage: collect the addresses the program is entered at, for tools/recomp/mkmap_run.py. The
+	// recompiler would hide most of them behind its native code, so it stays off for a coverage run.
+	if (!coverage_path.empty()) {
+		if (rec) {
+			fprintf(stderr, "vf3run: --coverage needs the interpreter, not --rec\n");
+			return 2;
+		}
+		board.cpu.cover_limit = uint32_t(board.program_image().size() * 4);
+		board.cpu.cover_seeds.assign(board.cpu.cover_limit / 4, 0);
+	}
 	static ppcrec::Rec recompiler;
 	if (rec) {
 		if (watch != 0xFFFFFFFF || trace_pc != 0xFFFFFFFF) {
 			fprintf(stderr, "vf3run: --watch needs the interpreter\n");
 			return 2;
 		}
+		size_t seed_count = 0;
+		const uint32_t *seed_map = ppcrec::map_for(board.set, seed_count);
+		if (!seed_count && !quiet)
+			fprintf(stderr, "vf3run: no address map for \"%s\": the interpreter runs everything\n", board.set.c_str());
 		ppcrec::Stats st;
-		if (!recompiler.build(board.cpu, board.program_image(), &st)) {
+		if (!recompiler.build(board.cpu, board.program_image(), &st, seed_map, seed_count)) {
 			fprintf(stderr, "vf3run: the recompile failed\n");
 			return 1;
 		}
@@ -641,6 +656,21 @@ int main(int argc, char **argv)
 			fwrite(audio.data(), 2, audio.size(), wf);
 			fclose(wf);
 		}
+	}
+	if (!coverage_path.empty()) {
+		FILE *cf = fopen(coverage_path.c_str(), "w");
+		if (!cf) {
+			fprintf(stderr, "vf3run: can't write %s\n", coverage_path.c_str());
+			return 1;
+		}
+		size_t n = 0;
+		fprintf(cf, "# %s: the words the program was entered at, from %llu frames\n", board.set.c_str(),
+		        (unsigned long long)board.frame);
+		for (size_t i = 0; i < board.cpu.cover_seeds.size(); i++)
+			if (board.cpu.cover_seeds[i]) { fprintf(cf, "%X\n", unsigned(i * 4)); n++; }
+		fclose(cf);
+		if (!quiet)
+			printf("coverage: %zu entry points of %zu words, to %s\n", n, board.cpu.cover_seeds.size(), coverage_path.c_str());
 	}
 	double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 	if (!quiet) {

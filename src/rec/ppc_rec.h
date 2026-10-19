@@ -31,9 +31,15 @@ struct Stats
 	double ms = 0;
 };
 
-// The address map this build ships with (src/rec/vf3_map.cpp)
+// The address maps this build ships with, one per game: Virtua Fighter 3's (src/rec/vf3_map.cpp) and Fighting
+// Vipers 2's (src/rec/fv2_map.cpp). Each was made from coverage runs of its own game, and holds only addresses.
 extern const uint32_t vf3_map[];
 extern const size_t vf3_map_count;
+extern const uint32_t fv2_map[];
+extern const size_t fv2_map_count;
+// The map for a ROM set ("vf3", "fvipers2"), or nullptr with count 0 if this build ships none for it (the
+// recompiler then has nothing to walk from, and the interpreter runs everything)
+const uint32_t *map_for(const std::string &set, size_t &count);
 
 // Which instructions to compile: walked from the seeds through the direct flow, within [lo, hi)
 std::vector<uint32_t> analyse(const std::vector<uint32_t> &image, uint32_t lo, uint32_t hi, const std::vector<uint32_t> &seeds);
@@ -45,7 +51,9 @@ public:
 	~Rec() override;
 	// image: the program as RAM holds it after the boot copy, words from 0 (host order). False if no code
 	// could be made (the interpreter then runs everything).
-	bool build(ppc::Cpu &cpu, const std::vector<uint32_t> &image, Stats *stats = nullptr);
+	// seeds: the game's address map (map_for); the default is Virtua Fighter 3's, as it was before there were two
+	bool build(ppc::Cpu &cpu, const std::vector<uint32_t> &image, Stats *stats = nullptr,
+	           const uint32_t *seeds = nullptr, size_t seed_count = 0);
 	bool run(ppc::Cpu &cpu) override;
 	void code_written(uint32_t addr) override;
 	void recount() override;

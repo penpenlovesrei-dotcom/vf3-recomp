@@ -457,6 +457,11 @@ int Cpu::execute(int cycles)
 		if (rec && rec->run(*this))
 			continue;
 		s.pc = s.npc;
+		if (cover_limit) {   // (see cover_seeds in ppc.h; off in an ordinary run)
+			if (s.pc < cover_limit && s.pc != cover_prev + 4)
+				cover_seeds[s.pc >> 2] = 1;
+			cover_prev = s.pc;
+		}
 		uint32_t op = fetch(s.pc);
 		s.npc = s.pc + 4;
 		step(op);
