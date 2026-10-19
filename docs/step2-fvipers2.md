@@ -525,6 +525,36 @@ map built from this port's coverage (section 13): 7196 entry points between 0x10
 Nothing from the reference build is in this port. The patch is GPL and lives in `tools/ref` for making
 measurements with; Supermodel's source was read as documentation of the hardware and nothing was copied from it.
 
+## 18. A package that stands on its own
+
+The last piece of phase 6. Two things were in the way.
+
+**The program only ever looked for `vf3.zip`.** Its first-launch search, the ROM folder it reads, the copy it
+keeps for the next update and the file picker all named that one file, so a package for the other game could
+never find it. The loader already knows its sets, so it now says which file names they go under
+(`romset::known_zip_names()`), and the host tries them in that order -- Virtua Fighter 3's first, which leaves a
+folder holding `vf3.zip` behaving exactly as it did. A set the player picks is filed under its own set's name,
+and the dialogs name both games. Measured: with nothing but `fvipers2.zip` in its ROM folder and no argument on
+the command line, the program starts Fighting Vipers 2.
+
+**There was no way to build a package here.** `tools/win/build.sh` cross-compiles from a Mac and rebuilds SDL3,
+FreeType and zlib from tarballs; this machine has MSYS2, which has them already.
+`tools/win/package-msys.sh` is the native equivalent: it builds, copies the program, then copies every DLL the
+program loads from `/mingw64/bin` and everything those need in turn until nothing new turns up, adds the assets,
+a README naming both games, the licences and a `portable.txt`, and zips it.
+
+**It was tried the only way that proves anything:** unzipped into a folder that had never seen it, with
+`fvipers2.zip` dropped in its `roms`, and started in an **empty environment** -- `env -i`, nothing on PATH but
+Windows' own system32, no MSYS2 anywhere. It ran: portable mode, the ROM folder found, 69,716 instructions
+recompiled, Direct3D 12 on the GPU, first picture 1.06 s after the start, 1300 frames and a clean quit.
+
+The package is 24 MB unzipped, 9.3 MB zipped: the program (9.9 MB), SDL3 and fifteen support DLLs, the assets,
+README.txt, LICENSES.txt.
+
+One thing it does not do: the banner in `log.txt` still says "Virtua Fighter 3 Recomp", the name of the project
+this is a fork of. Renaming the project is not this work's to do, so the package is called Model3Recomp and its
+README says which two games it runs.
+
 ## What is still missing
 
 - **The pictures are still not compared with the reference.** The CPU's state and RAM now are, over 6432 frames
@@ -540,8 +570,8 @@ measurements with; Supermodel's source was read as documentation of the hardware
   own boot, not slow emulation -- 960 frames at 57.5 Hz is 16.7 s, and this port does it in 15.2 -- but it is a
   long wait, and the recompiler does not cover it: the stub runs in the CROM, and only the program in RAM is
   recompiled.
-- **The release packaging has not been touched.** `tools/release`, `tools/win`, `tools/mac` and `tools/deck`
-  still name and ship one game.
+- **Only the Windows package is done** (section 18). `tools/mac`, `tools/deck` and the cross-built
+  `tools/win/build.sh` still name and ship one game.
 
 ## Building and running here
 
@@ -569,4 +599,4 @@ The three warnings the build prints (`px`/`py` possibly uninitialized in `r3d_sc
 | 3 — a stable interpreter (attract, menus, inputs) | **done.** Boot, WARNING, title, the attract demo, a coin, the fighter select, and a whole round fought against the CPU: 4201 scripted frames, no fault |
 | 4 — Real3D and tiles | **started.** The Step 2.x culling nodes and formats are in and the 3D draws (section 9); the colours hold up across the demo, the one white frame being a flash the game asks for (section 10). The board behind them matches the reference exactly over 6432 frames (section 17); the pictures themselves still have no reference to be compared with |
 | 5 — coverage and the recompiler | **done.** Its own address map from this port's own coverage, 69,716 instructions recompiled, and the lockstep identical over both scripts — 2231 frames on the attract and menus, 4201 through a match (section 13) |
-| 6 — polish | **started.** The windowed host runs the game with sound, inputs, the menu, upscaling and the 3D on the GPU (Direct3D 12, tried on real hardware at last); per-game NVRAM, window name and play style; widescreen in the attract and in a fight, and two Step 2.x things the GPU renderer was not doing (sections 14 and 15) |
+| 6 — polish | **started.** The windowed host runs the game with sound, inputs, the menu, upscaling and the 3D on the GPU (Direct3D 12, tried on real hardware at last); per-game NVRAM, window name and play style; widescreen in the attract and in a fight, two Step 2.x things the GPU renderer was not doing, and a Windows package that stands on its own (sections 14, 15 and 18) |
