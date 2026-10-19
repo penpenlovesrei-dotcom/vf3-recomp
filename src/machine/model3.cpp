@@ -569,6 +569,14 @@ std::vector<uint32_t> Model3::program_image() const
 	return img;
 }
 
+std::vector<uint32_t> Model3::ram_program_image(size_t words) const
+{
+	words = std::min(words, ram.size() / 4);
+	std::vector<uint32_t> img(words);
+	memcpy(img.data(), ram.data(), words * 4);
+	return img;
+}
+
 uint64_t Model3::ram_hash() const
 {
 	uint64_t h = 1469598103934665603ull;

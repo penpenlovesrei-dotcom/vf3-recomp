@@ -58,6 +58,17 @@ public:
 	void code_written(uint32_t addr) override;
 	void recount() override;
 	bool enabled() const { return built && mismatched == 0; }
+	// Why it is off, when it is: how many compiled words RAM no longer agrees with, and where the first few of
+	// them are. One is enough to turn the whole thing off, so this is what to look at when a game runs on the
+	// interpreter for no apparent reason.
+	size_t mismatch_count() const { return mismatched; }
+	std::vector<uint32_t> mismatch_addresses(size_t most) const
+	{
+		std::vector<uint32_t> at;
+		for (size_t w = 0; w < bad.size() && at.size() < most; w++)
+			if (bad[w]) at.push_back(uint32_t(w * 4));
+		return at;
+	}
 
 	// for the native code's helpers
 	ppc::Cpu *cpu = nullptr;

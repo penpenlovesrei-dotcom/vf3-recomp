@@ -225,6 +225,13 @@ public:
 	uint16_t peek16(uint32_t addr) const;
 	uint32_t peek32(uint32_t addr) const;
 	std::vector<uint32_t> program_image() const;  // the program the boot puts in RAM 0, host-order words
+	// The same stretch of RAM as it stands now. The recompiler is built from program_image() before the game
+	// runs, and a game that patches its own program afterwards -- Fighting Vipers 2 writes its own handlers into
+	// three of the PowerPC's exception vectors once the boot has unpacked it -- no longer agrees with it. One
+	// word of disagreement turns the recompiler off entirely (there is no per-word fallback: the native code is
+	// a straight-line translation and an instruction can be reached by falling into it), so once the boot is
+	// over the recompiler is built again from this.
+	std::vector<uint32_t> ram_program_image(size_t words) const;
 
 	// How often the board reckons the CPU runs, for the frame's pacing: 66 MHz on Step 1.0, 166 MHz on Step 2.0.
 	// The reference build paces a frame by this while the core counts its cycles at the bus multiplier's exact

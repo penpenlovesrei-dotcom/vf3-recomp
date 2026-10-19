@@ -555,6 +555,43 @@ One thing it does not do: the banner in `log.txt` still says "Virtua Fighter 3 R
 this is a fork of. Renaming the project is not this work's to do, so the package is called Model3Recomp and its
 README says which two games it runs.
 
+## 19. Why it ran slowly: three words
+
+Played from the package, the game was slow. The log said why, once the right number was looked at: a game frame
+took 18.9 to 20.9 ms against the 17.4 a 57.5 Hz frame allows, while a picture took 3 to 4 ms. The GPU was not
+the problem; the emulation was.
+
+`vf3run --rec` put it beyond doubt:
+
+| | Virtua Fighter 3 | Fighting Vipers 2 |
+| --- | --- | --- |
+| 1500 frames | 1.6 s (913 a second) | **24.7 s (61 a second)** |
+| instructions the interpreter ran "before the boot copy" | 67 million | **4,284 million** |
+
+The recompiler was never running. It is turned off whenever a word it compiled no longer matches RAM, and
+`enabled()` is all-or-nothing on purpose: the native code is a straight-line translation, so an instruction can
+be reached by falling into it from the one before, and refusing just that one word would not stop it running.
+
+A counter added to the recompiler (`mismatch_count`, `mismatch_addresses`) named the words: **three of them,
+at 0x1000, 0x1100 and 0x1200** -- the 603e's three TLB-miss exception vectors, which this game fills with its
+own handlers once the boot has unpacked it. `analyse()` seeds every exception vector, so those words were
+compiled from the gzip image, which is the program as it is *before* the game patches it.
+
+So once the boot is over, the recompiler is built again from **RAM as it stands**
+(`Model3::ram_program_image`), which does agree with it. Virtua Fighter 3 patches nothing and never reaches
+that line.
+
+| Fighting Vipers 2, `vf3run --rec` | Before | After |
+| --- | --- | --- |
+| 1500 frames, in all | 24.7 s | 17.4 s |
+| frames 2000 to 3000, after the boot | about 62 a second | **about 385 a second** |
+
+The boot itself is unchanged and still takes about 15 s: it unpacks the gzip before any of its program is in
+RAM to be recompiled, so it is interpreted, and 960 frames at 57.5 Hz is 16.7 s of the game's own time anyway.
+
+Checked after the change: Virtua Fighter 3 still identical on all five counts, and Fighting Vipers 2 still
+identical to the reference over the whole fight script's 4201 frames.
+
 ## What is still missing
 
 - **The pictures are still not compared with the reference.** The CPU's state and RAM now are, over 6432 frames

@@ -81,6 +81,9 @@ int main(int argc, char **argv)
 		board.cpu.cover_seeds.assign(board.cpu.cover_limit / 4, 0);
 	}
 	static ppcrec::Rec recompiler;
+	static const uint32_t *seed_map_used = nullptr;
+	static size_t seed_count_used = 0;
+	bool rebuilt_after_boot = false;
 	if (rec) {
 		if (watch != 0xFFFFFFFF || trace_pc != 0xFFFFFFFF) {
 			fprintf(stderr, "vf3run: --watch needs the interpreter\n");
@@ -88,6 +91,7 @@ int main(int argc, char **argv)
 		}
 		size_t seed_count = 0;
 		const uint32_t *seed_map = ppcrec::map_for(board.set, seed_count);
+		seed_map_used = seed_map; seed_count_used = seed_count;
 		if (!seed_count && !quiet)
 			fprintf(stderr, "vf3run: no address map for \"%s\": the interpreter runs everything\n", board.set.c_str());
 		ppcrec::Stats st;
@@ -174,6 +178,23 @@ int main(int argc, char **argv)
 		}
 		auto tp0 = std::chrono::steady_clock::now();
 		board.run_frame();
+		// Once the boot is over: a game that patched its own program (Fighting Vipers 2 writes its own handlers
+		// into three exception vectors) no longer agrees with what the native code was made from, and one word
+		// of that turns the recompiler off. Built again from RAM as it stands, it agrees. The host does the same
+		// (src/host/main.cpp, rebuild_from_ram_if_stale).
+		if (rec && !rebuilt_after_boot && board.frame >= 960) {
+			rebuilt_after_boot = true;
+			if (const size_t n = recompiler.mismatch_count()) {
+				ppcrec::Stats st2;
+				std::vector<uint32_t> img = board.ram_program_image(board.program_image().size());
+				if (recompiler.build(board.cpu, img, &st2, seed_map_used, seed_count_used) && recompiler.mismatch_count() == 0) {
+					if (!quiet) printf("recompiled from RAM after the boot (%zu words the game had patched): %zu instructions in %.0f ms\n",
+					                   n, st2.instructions, st2.ms);
+				} else if (!quiet) {
+					printf("the game patched %zu words of its own program and the rebuild didn't settle it\n", n);
+				}
+			}
+		}
 		auto tp1 = std::chrono::steady_clock::now();
 		t_board += std::chrono::duration<double, std::milli>(tp1 - tp0).count();
 		if (prof) {
@@ -689,6 +710,12 @@ int main(int argc, char **argv)
 		       (unsigned long long)recompiler.interp_unmapped);
 		for (size_t i = 0; i < recompiler.unmapped.size() && i < 8; i++) printf(i ? " %05X" : " (%05X", recompiler.unmapped[i]);
 		printf(recompiler.unmapped.empty() ? "\n" : ")\n");
+		// One compiled word RAM disagrees with turns the whole recompiler off, so say how many and where
+		if (const size_t n = recompiler.mismatch_count()) {
+			printf("the recompiler is OFF: %zu compiled words differ from RAM, at", n);
+			for (uint32_t a : recompiler.mismatch_addresses(10)) printf(" %06X", a);
+			printf("%s\n", n > 10 ? " ..." : "");
+		}
 	}
 	return board.cpu.s.fatal ? 1 : 0;
 }

@@ -727,6 +727,26 @@ struct Game
 			fprintf(stderr, "recompiled again (the program changed): %zu instructions in %.0f ms\n", st.instructions, st.ms);
 		else fprintf(stderr, "couldn't recompile the changed program: the interpreter runs it\n");
 	}
+	// Once the boot has run: a game that patched its own program is now disagreeing with what the native code
+	// was made from, and one word of that turns the whole recompiler off (model3.h, ram_program_image). Built
+	// again from RAM as it stands, it agrees and runs natively. A game that patched nothing has nothing to do
+	// here -- Virtua Fighter 3 never comes past the first line.
+	bool rebuilt_after_boot = false;   // (the check below is made once, when the boot is over)
+	void rebuild_from_ram_if_stale()
+	{
+		if (!recompiled || rec.mismatch_count() == 0) return;
+		const size_t n = rec.mismatch_count();
+		std::vector<uint32_t> img = board.ram_program_image(built_image.size());
+		ppcrec::Stats st;
+		if (rec.build(board.cpu, img, &st, seed_map, seed_count) && rec.mismatch_count() == 0) {
+			built_image = std::move(img);
+			fprintf(stderr, "recompiled from RAM after the boot (%zu words the game had patched): %zu instructions in %.0f ms\n",
+			        n, st.instructions, st.ms);
+		} else {
+			fprintf(stderr, "the game patched %zu words of its own program and the rebuild didn't settle it: "
+			        "the interpreter runs everything\n", n);
+		}
+	}
 	// The sound board runs on a thread of its own, a frame behind the game (its ~3 ms a frame alongside the next
 	// frame's work, not in a picture's time): it hears only the game's bytes, and its sound is queued a frame later
 	// (the queue kept a frame shorter for it: QUEUED)
@@ -1121,6 +1141,8 @@ int main(int argc, char **argv)
 			game_frame++;
 		}
 		game.tiles_on = true;
+		game.rebuilt_after_boot = true;
+		game.rebuild_from_ram_if_stale();
 		fprintf(stderr, "boot: %llu frames in %.2f s, unseen\n", (unsigned long long)game_frame,
 				std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
 	};
@@ -2530,6 +2552,8 @@ int main(int argc, char **argv)
 			} else { game.run_frame(!ff, true); pass_kind = 3; }
 			game.publish();
 			game_frame++;
+			// a boot the player watches: the same check, once it is over
+			if (!game.rebuilt_after_boot && game_frame >= BOOT_FRAMES) { game.rebuilt_after_boot = true; game.rebuild_from_ram_if_stale(); }
 			pace.frames++;
 			pace.emu_ms += double(SDL_GetTicksNS() - te) / 1e6;
 			t9.frames++;
