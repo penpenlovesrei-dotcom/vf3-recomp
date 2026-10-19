@@ -232,6 +232,10 @@ the reference's.
 
 The whole story, with how the AI-assisted work was organised and checked: [docs/HOW-IT-WAS-MADE.md](docs/HOW-IT-WAS-MADE.md).
 
+On the `fv2` branch, the same binary also runs **Fighting Vipers 2** (Model 3 Step 2.0), from your own `fvipers2`
+set: every difference between the two boards, and what has and hasn't been checked, is in
+[docs/step2-fvipers2.md](docs/step2-fvipers2.md).
+
 ## Credits
 
 Built on MAME's work: the 68000 core (Olivier Galibert), the SCSP and its DSP (ElSemi, R. Belmont) and the Model 3

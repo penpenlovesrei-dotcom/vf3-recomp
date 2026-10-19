@@ -1,6 +1,8 @@
 // The Model 3 Step 1.0 board. See model3.h.
 #include "model3.h"
 #include "romset.h"
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 
@@ -15,7 +17,8 @@ inline uint16_t &half(std::vector<uint8_t> &v, size_t at) { return *reinterpret_
 
 const uint32_t IRQ_SCSI = 0x100;     // the 53C810's interrupt, not maskable (as the reference wires it)
 const uint32_t IRQ_R3D_DMA = 0x100;
-const uint32_t PCI_ID_REAL3D = 0x16C311DB;  // Step 1.x
+const uint32_t PCI_ID_REAL3D = 0x16C311DB;        // Mercury, in Step 1.x config space and at the DMA port always
+const uint32_t PCI_ID_REAL3D_STEP2 = 0x178611DB;  // the DMA device, in Step 2.x config space
 const uint32_t PCI_ID_53C810 = 0x00011000;
 
 } // namespace
@@ -134,20 +137,36 @@ const int FSM[16][2] = {
 };
 }
 
-Jtag::Jtag()
+Jtag::Jtag() { configure(0x10); }
+
+// The chain, in the order the ASICs and 3D-RAMs sit on it, with the ID codes of the board's stepping (the
+// reference build's; only the first ASIC of each kind gives the renderer its modeword, so the second Earth and
+// the three further Mars are on the chain as ASICs with no kind of their own).
+void Jtag::configure(int stepping)
 {
-	// The Step 1.x chain: Jupiter, Mercury, Venus, Earth, a 3D-RAM, two Mars, three 3D-RAMs
-	struct { bool asic; int kind; uint32_t id; } chain[10] = {
+	struct Device_spec { bool asic; int kind; uint32_t id; };
+	const Device_spec step1[10] = {
+		// Jupiter, Mercury, Venus, Earth, a 3D-RAM, two Mars, three 3D-RAMs
 		{ true, 4, 0x116c7057 }, { true, 0, 0x216c3057 }, { true, 1, 0x116c4057 }, { true, 2, 0x216c5057 },
 		{ false, -1, 0 }, { true, 3, 0x116c6057 }, { true, -1, 0x116c6057 }, { false, -1, 0 }, { false, -1, 0 },
 		{ false, -1, 0 },
 	};
-	for (int i = 0; i < 10; i++) {
+	const Device_spec step2[17] = {
+		// as Step 1.x to the fourth 3D-RAM, then the second Earth, a 3D-RAM, two more Mars and three 3D-RAMs
+		{ true, 4, 0x416c7057 }, { true, 0, 0x416c3057 }, { true, 1, 0x316c4057 }, { true, 2, 0x416c5057 },
+		{ false, -1, 0 }, { true, 3, 0x316c6057 }, { true, -1, 0x316c6057 }, { false, -1, 0 }, { false, -1, 0 },
+		{ false, -1, 0 }, { true, -1, 0x416c5057 }, { false, -1, 0 }, { true, -1, 0x316c6057 },
+		{ true, -1, 0x316c6057 }, { false, -1, 0 }, { false, -1, 0 }, { false, -1, 0 },
+	};
+	const Device_spec *chain = stepping >= 0x20 ? step2 : step1;
+	n_dev = stepping >= 0x20 ? 17 : 10;
+	for (int i = 0; i < n_dev; i++) {
 		dev[i].asic = chain[i].asic;
 		dev[i].kind = chain[i].kind;
 		dev[i].id = chain[i].id;
 		dev_reset(dev[i]);
 	}
+	state = TLR;
 }
 
 void Jtag::dev_reset(Device &d)
@@ -188,13 +207,13 @@ void Jtag::update_dr(Device &d)
 void Jtag::reset()
 {
 	state = TLR;
-	for (auto &d : dev) dev_reset(d);
+	for (int i = 0; i < n_dev; i++) dev_reset(dev[i]);
 }
 
 void Jtag::write(bool tck, bool tms, bool tdi, bool trst)
 {
 	if (!trst) {
-		for (auto &d : dev) dev_reset(d);
+		for (int i = 0; i < n_dev; i++) dev_reset(dev[i]);
 		return;
 	}
 	if (last_tck == tck)
@@ -202,11 +221,12 @@ void Jtag::write(bool tck, bool tms, bool tdi, bool trst)
 	last_tck = tck;
 	if (tck) {
 		switch (state) {
-		case TLR: for (auto &d : dev) dev_reset(d); break;
-		case CAP_DR: for (auto &d : dev) capture_dr(d); break;
-		case CAP_IR: for (auto &d : dev) capture_ir(d); break;
+		case TLR: for (int i = 0; i < n_dev; i++) dev_reset(dev[i]); break;
+		case CAP_DR: for (int i = 0; i < n_dev; i++) capture_dr(dev[i]); break;
+		case CAP_IR: for (int i = 0; i < n_dev; i++) capture_ir(dev[i]); break;
 		case SH_DR: case SH_IR:
-			for (auto &d : dev) {
+			for (int i = 0; i < n_dev; i++) {
+				Device &d = dev[i];
 				bool out = d.shift & 1;
 				d.shift >>= 1;
 				if (tdi) d.shift |= uint64_t(1) << (d.size - 1);
@@ -219,9 +239,9 @@ void Jtag::write(bool tck, bool tms, bool tdi, bool trst)
 		state = FSM[state][tms];
 	} else {
 		switch (state) {
-		case SH_DR: case SH_IR: tdo = dev[9].shift & 1; break;
-		case UPD_DR: for (auto &d : dev) update_dr(d); break;
-		case UPD_IR: for (auto &d : dev) d.ir = uint8_t(d.shift); break;
+		case SH_DR: case SH_IR: tdo = dev[n_dev - 1].shift & 1; break;
+		case UPD_DR: for (int i = 0; i < n_dev; i++) update_dr(dev[i]); break;
+		case UPD_IR: for (int i = 0; i < n_dev; i++) dev[i].ir = uint8_t(dev[i].shift); break;
 		default: break;
 		}
 	}
@@ -369,6 +389,16 @@ bool Model3::load(const std::string &zip, std::string &error)
 	vrom = std::move(r.vrom);
 	sound_rom = std::move(r.sound);
 	samples = std::move(r.samples);
+	unpacked_program = std::move(r.program);
+	set = r.set;
+	title = r.title;
+	stepping = r.stepping;
+	crypto_key = r.crypto_key;
+	pci_model = step2() ? 0x106 : 0x105;
+	jtag.configure(stepping);
+	// the security chip, on a board that has one: what it decrypts is that board's own RAM
+	if (crypto_key)
+		crypt.init(crypto_key, [this](uint32_t at) { return read_security_ram(at); });
 	ram.assign(0x800000, 0);
 	backup.assign(0x20000, 0);
 	security.assign(0x20000, 0);
@@ -381,8 +411,22 @@ bool Model3::load(const std::string &zip, std::string &error)
 	tex_fifo.reserve(0x100000 / 4);
 	tex_ram.assign(2048 * 2048, 0);
 	cpu.attach(this, ram.data(), crom.data());
-	// Step 1.0: a 66 MHz 603e on a 66 MHz bus (multiplier 1.0); the reference's PVR and HID1 for it
-	cpu.configure(0x00071202, 2, 66000000, 0xF0000000);
+	// The CPU, as the reference build configures it for each stepping. Both are a 603R (the same PVR); what
+	// differs is the bus multiplier, and from it the core's clock and the PLL configuration HID1 reports:
+	//  - Step 1.0: multiplier 1.0 on a 66 MHz bus, so a 66 MHz core. The 603R's PLL table (MPC603E7TEC page 23,
+	//    as the reference reads it) has no entry for 1.0 at 66 MHz, and the reference puts -1 in HID1's top
+	//    nibble for that: 0xF0000000.
+	//  - Step 2.0: multiplier 2.5 on the same bus, so a 165 MHz core, with PLL configuration 0x6 for 2.5:1 at
+	//    66 MHz: 0x60000000. The frame is paced at 166 MHz (ppc_hz) as the reference paces it, which is where
+	//    the decrementer's ratio of 10 rather than 10.06 comes from.
+	// The multiplier is passed doubled, as the reference keeps it (1.0 -> 2, 2.5 -> 5).
+	if (step2()) {
+		cpu.configure(0x00071202, 5, 165000000, 0x60000000);
+		ppc_hz = 166000000;
+	} else {
+		cpu.configure(0x00071202, 2, 66000000, 0xF0000000);
+		ppc_hz = 66000000;
+	}
 	irq.cpu = &cpu;
 	scsi.board = this;
 	set_crom_bank(0xFF);
@@ -402,6 +446,10 @@ void Model3::reset()
 	pci_reset();
 	scsi.reset();
 	eeprom.reset();
+	security_first_read = true;
+	security_reads = security_writes = 0;
+	if (crypto_key)
+		crypt.reset();
 	std::fill(tile_ram.begin(), tile_ram.end(), 0);
 	memset(tile_regs, 0, sizeof(tile_regs));
 	std::fill(cull_lo.begin(), cull_lo.end(), 0);
@@ -442,7 +490,7 @@ void Model3::run_frame()
 
 void Model3::run_lines(unsigned from, unsigned to)
 {
-	const unsigned cycles = unsigned(cpu.cycles_per_second());
+	const unsigned cycles = unsigned(ppc_hz);
 	const unsigned line_cycles = unsigned(float(cycles) / 57.524160f) / 424;
 	const uint32_t flip_line = flip_line_;
 	for (unsigned i = from; i < to; i++) {
@@ -464,7 +512,7 @@ void Model3::run_frame_start()
 		cpu.execute(n);
 		if (after_slice) after_slice();
 	};
-	const unsigned cycles = unsigned(cpu.cycles_per_second());
+	const unsigned cycles = unsigned(ppc_hz);
 	const unsigned frame_cycles = unsigned(float(cycles) / 57.524160f);
 	const unsigned line_cycles = frame_cycles / 424;
 	unsigned vblank_cycles = line_cycles * 40;
@@ -508,7 +556,14 @@ void Model3::run_frame_end()
 
 std::vector<uint32_t> Model3::program_image() const
 {
-	// The boot copies 0xA0000 bytes from the fixed CROM's offset 0x710000 to RAM 0 (docs/step1-measure.md)
+	// Where the set carries its program compressed, the image is what the loader unpacked (Fighting Vipers 2: a
+	// gzip at the fixed CROM's offset 0, 2,701,982 bytes of program, which the game's own boot stub unpacks into
+	// RAM at 0 with zlib's inflate; see romset.cpp). Nothing here is needed for the board to run -- the stub does
+	// the work -- only for the recompiler to know what code to build.
+	if (!unpacked_program.empty())
+		return unpacked_program;
+	// Virtua Fighter 3: the boot copies 0xA0000 bytes from the fixed CROM's offset 0x710000 to RAM 0
+	// (docs/step1-measure.md)
 	std::vector<uint32_t> img(0xA0000 / 4);
 	memcpy(img.data(), &crom[0x710000], 0xA0000);
 	return img;
@@ -523,7 +578,7 @@ uint64_t Model3::ram_hash() const
 	return h;
 }
 
-// ---- PCI bridge (MPC105) ----
+// ---- PCI bridge (MPC105 on Step 1.x, MPC106 on Step 2.x) ----
 
 void Model3::pci_reset()
 {
@@ -531,15 +586,25 @@ void Model3::pci_reset()
 	// The reference stores these as little-endian words and reads them back big-endian; kept as it does
 	auto le = [this](unsigned at, uint32_t v) { for (int i = 0; i < 4; i++) pci_regs[at + i] = uint8_t(v >> (8 * i)); };
 	pci_regs[0] = 0x57; pci_regs[1] = 0x10;  // vendor 0x1057 (Motorola)
-	pci_regs[2] = 0x01; pci_regs[3] = 0x00;  // device 0x0001 (MPC105)
-	le(0x04, 0x00800006);
-	le(0x08, 0x00060000);
-	le(0xA8, 0x0010FF00);
-	le(0xAC, 0x060C000C);
+	// device 0x0001 (MPC105) or 0x0002 (MPC106): this is how the game's boot tells the two bridges apart
+	pci_regs[2] = uint8_t(pci_model == 0x106 ? 0x02 : 0x01); pci_regs[3] = 0x00;
+	le(0x04, 0x00800006);   // PCI command and status
+	le(0x08, 0x00060000);   // class code and revision
+	if (pci_model == 0x106) {
+		le(0x0C, 0x00000800);   // cache line size
+		le(0x70, 0x00CD0000);   // output driver control
+	}
+	le(0xA8, 0x0010FF00);   // processor interface configuration 1
+	le(0xAC, 0x060C000C);   // processor interface configuration 2
 	le(0xB8, 0x04000000);
-	le(0xF0, 0x0000FF02);
-	le(0xF4, 0x00030000);
-	le(0xFC, 0x00000010);
+	if (pci_model == 0x106) {
+		le(0xC0, 0x00000100);   // error enabling 1
+		le(0xE0, 0x00420FFF);   // emulation support configuration 1
+		le(0xE8, 0x00200000);   // emulation support configuration 2
+	}
+	le(0xF0, 0x0000FF02);   // memory control configuration 1
+	le(0xF4, 0x00030000);   // memory control configuration 2
+	le(0xFC, 0x00000010);   // memory control configuration 4
 	pci_bus = pci_device = pci_function = pci_reg = 0;
 }
 
@@ -567,7 +632,10 @@ uint32_t Model3::pci_config_read(unsigned bits, unsigned offset)
 		return 0;
 	uint32_t id;
 	switch (pci_device) {
-	case 13: id = PCI_ID_REAL3D; break;
+	// The Real3D: Mercury's ID on Step 1.x, the DMA device's on Step 2.x. (The DMA port itself answers with
+	// Mercury's on every stepping, which is what r3d_dma_write32 sends; the reference notes that games ask it
+	// there and expect the Step 1.x value even on a Step 2.x board.)
+	case 13: id = step2() ? PCI_ID_REAL3D_STEP2 : PCI_ID_REAL3D; break;
 	case 14: id = PCI_ID_53C810; break;
 	case 16: return bits == 32 && reg == 0 ? 0x182711DB : 0;
 	default: return 0;
@@ -702,17 +770,73 @@ uint8_t Model3::read_rtc(unsigned reg)
 	}
 }
 
+// What the 315-5881 decrypts is the security board's RAM, which the game fills itself: its 32-bit words as the
+// PowerPC wrote them, the chip taking the top half of the word at each counter value.
+uint16_t Model3::read_security_ram(uint32_t addr) const
+{
+	if (addr >= 0x8000)
+		return 0;
+	return uint16_t(*reinterpret_cast<const uint32_t *>(&security[addr * 4]) >> 16);
+}
+
 uint32_t Model3::read_security(unsigned reg)
 {
-	// VF3 has no security board; the reference's answers for an unkeyed one
+	// The security board's registers. Virtua Fighter 3's board has no security chip, and the reference's answers
+	// for an unkeyed one are what this gives: status 0, and 0xFFFF0000 for the data register.
+	//
+	// Fighting Vipers 2's board carries a 315-5881 keyed 0x29260E96. The first data read after an address write
+	// answers with a dummy word -- the RAM-based scheme expects one before the stream starts, and the reference
+	// gives 0xFFFF0000 there -- and every read after it takes the next word from the chip.
 	switch (reg) {
-	case 0x00: return 0;
-	case 0x1C: return 0xFFFF0000;
+	case 0x00: return 0;   // status: ready
+	case 0x1C:
+		if (security_first_read) {
+			security_first_read = false;
+			return 0xFFFF0000;
+		}
+		security_reads++;
+		if (!crypto_key)
+			return 0xFFFF0000;
+		{
+			const uint16_t w = crypt.decrypt();
+			// VF3_SECURITY_LOG=1: the stream the chip gives back, to check it against what the game does with it
+			if (getenv("VF3_SECURITY_LOG"))
+				fprintf(stderr, "security: word %3llu = %04X\n", (unsigned long long)security_reads - 1, w);
+			return uint32_t(w) << 16;
+		}
 	default: return 0xFFFFFFFF;
 	}
 }
 
-bool Model3::scsi_mapped(uint32_t) const { return scsi.base == 0xC0; }
+void Model3::write_security(unsigned reg, uint32_t data)
+{
+	security_writes++;
+	if (!crypto_key)
+		return;
+	switch (reg) {
+	case 0x10: case 0x14:
+		// where in the security board's RAM to decrypt from. The Model 3 only ever points the chip at 0, as the
+		// reference has it: the game writes its block to the start of that RAM and reads the whole stream back.
+		// The high half goes last, because setting it is what restarts the chip's bit counters.
+		crypt.set_addr_low(0);
+		crypt.set_addr_high(0);
+		security_first_read = true;
+		break;
+	case 0x18:
+		// the sub-key, byte-swapped: the PowerPC is big-endian and the chip takes it the other way round
+		crypt.set_subkey(uint16_t(bswap16(uint16_t(data >> 16))));
+		break;
+	default: break;
+	}
+	if (getenv("VF3_SECURITY_LOG"))
+		fprintf(stderr, "security: register %02X = %08X%s\n", reg, data,
+		        reg == 0x18 ? " (sub-key)" : reg == 0x10 || reg == 0x14 ? " (restart)" : "");
+}
+
+// The 53C810 answers at 0xC0000000 only where the board has one and its base register points there: Step 2.x
+// has no SCSI controller at all, and leaves 0xC0000000 to the net board (which this port doesn't carry). Its
+// other two windows, 0xF9000000 and 0xC1000000, stay as the reference leaves them on every stepping.
+bool Model3::scsi_mapped(uint32_t) const { return stepping <= 0x15 && scsi.base == 0xC0; }
 
 // ---- Real3D and tile generator ----
 
@@ -827,15 +951,39 @@ void Model3::r3d_upload(uint32_t header, const uint16_t *data, size_t avail)
 	}
 }
 
+// The VROM texture port, 0x90000000-0x9000000B. The two steppings use it in entirely different ways.
 void Model3::r3d_texture_port(unsigned, uint32_t data)
 {
-	// Step 1.0: the data is a VROM word address; the words there go into the texture FIFO
 	const uint32_t *v = reinterpret_cast<const uint32_t *>(vrom.data());
-	uint32_t addr = data & 0xFFFFFF;
-	uint32_t n = (2 + v[addr] / 2) / 4;
-	for (uint32_t i = 0; i < n; i++)
-		if (tex_fifo.size() < 0x100000 / 4)
-			tex_fifo.push_back(v[(addr + i) & 0xFFFFFF]);
+	if (!step2()) {
+		// Step 1.0: the data is a VROM word address, and the length is the first word there; the words go into
+		// the texture FIFO, which is unpacked at the frame's start
+		uint32_t addr = data & 0xFFFFFF;
+		uint32_t n = (2 + v[addr] / 2) / 4;
+		for (uint32_t i = 0; i < n; i++)
+			if (tex_fifo.size() < 0x100000 / 4)
+				tex_fifo.push_back(v[(addr + i) & 0xFFFFFF]);
+		return;
+	}
+	// Step 1.5 and later: the three words of the port are an address, then the texture's header, then a write
+	// that sends it (whatever that one carries). Nothing goes through the FIFO: the Real3D fetches the texture
+	// itself, from polygon RAM for the first 4 MB of the space and from the VROM above it. Addresses are in
+	// 32-bit words. (The reference build does the same, and the first 4 MB mapping to polygon RAM is its note.)
+	if (vrom_fifo_n < 2) {
+		vrom_fifo[vrom_fifo_n++] = data;
+		return;
+	}
+	const uint32_t addr = vrom_fifo[0], header = vrom_fifo[1];
+	vrom_fifo_n = 0;
+	if (addr < 0x100000) {
+		const size_t at = addr & 0xFFFFFF;
+		if (at < poly_ram.size())
+			r3d_upload(header, reinterpret_cast<const uint16_t *>(&poly_ram[at]), (poly_ram.size() - at) * 2);
+	} else {
+		const size_t words = vrom.size() / 4, at = addr & 0xFFFFFF;
+		if (at < words)
+			r3d_upload(header, reinterpret_cast<const uint16_t *>(&v[at]), (words - at) * 2);
+	}
 }
 
 uint32_t Model3::r3d_dma_read32(unsigned reg) const { return reg == 0x14 ? dma_data : 0; }
@@ -943,7 +1091,14 @@ uint16_t Model3::read16(uint32_t a)
 	case 0xF0: case 0xFE:
 		switch ((a >> 16) & 0xFF) {
 		case 0x0C: case 0x0D: return half(backup, (a & 0x1FFFF) ^ 2);
-		case 0xC0: return uint16_t(pci_config_read(16, a & 3));
+		case 0xC0:   // 0xF0C00CF8: the MPC105's CONFIG_DATA, on Step 1.x
+			if (pci_model == 0x105) return uint16_t(pci_config_read(16, a & 3));
+			break;
+		// 0xFEE00000-0xFEFFFFFF: the MPC106's CONFIG_DATA, on Step 2.x
+		case 0xE0: case 0xE1: case 0xE2: case 0xE3: case 0xE4: case 0xE5: case 0xE6: case 0xE7:
+		case 0xE8: case 0xE9: case 0xEA: case 0xEB: case 0xEC: case 0xED: case 0xEE: case 0xEF:
+			if (pci_model == 0x106) return uint16_t(pci_config_read(16, a & 3));
+			break;
 		default: break;
 		}
 		break;
@@ -974,7 +1129,14 @@ uint32_t Model3::read32(uint32_t a)
 		case 0x10:
 			return uint32_t(read_sysreg((a & 0x3F) + 0)) << 24 | uint32_t(read_sysreg((a & 0x3F) + 1)) << 16 |
 			       uint32_t(read_sysreg((a & 0x3F) + 2)) << 8 | read_sysreg((a & 0x3F) + 3);
-		case 0xC0: return pci_config_read(32, 0);
+		case 0xC0:   // 0xF0C00CF8: the MPC105's CONFIG_DATA, on Step 1.x
+			if (pci_model == 0x105) return pci_config_read(32, 0);
+			break;
+		// 0xFEE00000-0xFEFFFFFF: the MPC106's CONFIG_DATA, on Step 2.x
+		case 0xE0: case 0xE1: case 0xE2: case 0xE3: case 0xE4: case 0xE5: case 0xE6: case 0xE7:
+		case 0xE8: case 0xE9: case 0xEA: case 0xEB: case 0xEC: case 0xED: case 0xEE: case 0xEF:
+			if (pci_model == 0x106) return pci_config_read(32, 0);
+			break;
 		case 0x14: return uint32_t(read_rtc((a >> 2) & 0xF)) << 24 | 0x00030000;
 		case 0x18: case 0x19: return word(security, a & 0x1FFFF);
 		case 0x1A: return read_security(a & 0x3F);
@@ -1043,7 +1205,9 @@ void Model3::write8(uint32_t a, uint8_t d)
 			tile_ram_write32(at & ~3u, (w & ~(0xFFu << sh)) | (uint32_t(d) << sh));
 		}
 		break;
-	case 0xF8: pci_regs[a & 0xFF] = d; break;
+	// 0xF8FFF000-0xF8FFF0FF: the bridge's own window. The reference build lets the MPC105 be written here and
+	// leaves the MPC106 alone, on every access width; kept as it does.
+	case 0xF8: if (pci_model == 0x105) pci_regs[a & 0xFF] = d; break;
 	case 0xC0:
 		if (!scsi_mapped(a)) break;
 		[[fallthrough]];
@@ -1082,8 +1246,10 @@ void Model3::write16(uint32_t a, uint16_t d)
 		}
 		break;
 	case 0xF8:
-		pci_regs[a & 0xFF] = uint8_t(d >> 8);
-		pci_regs[(a + 1) & 0xFF] = uint8_t(d);
+		if (pci_model == 0x105) {
+			pci_regs[a & 0xFF] = uint8_t(d >> 8);
+			pci_regs[(a + 1) & 0xFF] = uint8_t(d);
+		}
 		break;
 	default: break;
 	}
@@ -1123,14 +1289,25 @@ void Model3::write32(uint32_t a, uint32_t d)
 			for (int i = 0; i < 4; i++) write_inputs((a & 0x3F) + i, uint8_t(d >> (24 - 8 * i)));
 			break;
 		case 0x0C: case 0x0D: word(backup, a & 0x1FFFF) = d; break;
-		case 0x80: pci_config_address(d); break;
+		case 0x80:   // 0xF0800CF8: the MPC105's CONFIG_ADDR, on Step 1.x
+			if (pci_model == 0x105) pci_config_address(d);
+			break;
 		case 0x10:
 			for (int i = 0; i < 4; i++) write_sysreg((a & 0x3F) + i, uint8_t(d >> (24 - 8 * i)));
 			break;
 		case 0x18: case 0x19: word(security, a & 0x1FFFF) = d; break;
+		case 0x1A: write_security(a & 0x3F, d); break;
 		default:
-			if (sub >= 0xC0 && sub <= 0xEF && a >= 0xF0C00CF8 && a < 0xF0C00D00)
-				pci_config_write(32, 0, d);
+			// The PCI bridge's config ports: on Step 1.x the MPC105's CONFIG_DATA at 0xF0C00CF8, on Step 2.x the
+			// MPC106's CONFIG_ADDR at 0xFEC00000-0xFEDFFFFF and its CONFIG_DATA at 0xFEE00000-0xFEEFFFFF
+			if (sub >= 0xC0 && sub <= 0xEF) {
+				if (pci_model == 0x105 && a >= 0xF0C00CF8 && a < 0xF0C00D00)
+					pci_config_write(32, 0, d);
+				else if (pci_model == 0x106 && a >= 0xFEC00000 && a < 0xFEE00000)
+					pci_config_address(d);
+				else if (pci_model == 0x106 && a >= 0xFEE00000 && a < 0xFEF00000)
+					pci_config_write(32, 0, d);
+			}
 			break;
 		}
 		break;
@@ -1142,7 +1319,8 @@ void Model3::write32(uint32_t a, uint32_t d)
 			tile_reg_write(a & 0xFF, bswap32(d));
 		break;
 	case 0xF8:
-		for (int i = 0; i < 4; i++) pci_regs[((a & 0xFF) + i) & 0xFF] = uint8_t(d >> (24 - 8 * i));
+		if (pci_model == 0x105)
+			for (int i = 0; i < 4; i++) pci_regs[((a & 0xFF) + i) & 0xFF] = uint8_t(d >> (24 - 8 * i));
 		break;
 	case 0xC0:
 		if (!scsi_mapped(a)) break;
@@ -1168,6 +1346,7 @@ void Model3::write64(uint32_t a, uint64_t d)
 //   (bl 0x33300, the routine that draws a picture into a text window): a no-op instead.
 int Model3::hide_free_play_text()
 {
+	if (set != "vf3") return 0;   // the addresses below are Virtua Fighter 3's own
 	if (!free_play_text.empty()) return int(free_play_text.size());   // (hidden already)
 	constexpr size_t CROM_AT = 0x710000;
 	auto at = [&](size_t a) -> uint8_t & { return crom[(a + CROM_AT) ^ 3]; };

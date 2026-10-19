@@ -68,6 +68,7 @@ struct Model
 	Mat4 matrix;           // model to view
 	float alpha = 1, scale = 1;
 	int page = 0;          // the texture sheet flip from the nodes
+	int tex_x = 0, tex_y = 0;   // the texture offset from the nodes (Step 1.5 and later; 0 on Step 1.0)
 	uint32_t node_path = 0;   // a hash of the culling nodes above it (for matching between frames)
 };
 
@@ -84,6 +85,9 @@ struct Viewport
 	float fog_colour[3] = {}, fog_density = 0, fog_start = 0, fog_attenuation = 0, fog_ambient = 0;
 	float scroll_fog = 0, scroll_att = 0;
 	bool full_screen = false;
+	// Step 1.0 clamps the light that reaches a surface at full; Step 1.5 and later let a game drive it past
+	// that, and some do. Set from the board's stepping (r3d_scene.cpp, build).
+	bool intensity_clamp = true;
 	Mat4 root = Mat4::identity();   // the matrix of the first node with one (the camera's, where the game puts it there)
 	int root_matrix = -1;            // its index in the matrix table (-1: none)
 	std::vector<Model> models;
@@ -127,8 +131,18 @@ private:
 	const float *matrix_base = nullptr;
 	const float *lod_table = nullptr;
 	uint32_t colour_table = 0;
-	struct Attribs { float alpha = 1, scale = 1; int page = 0; bool no_cull = false; };
+	// tex_x, tex_y: the texture offset a Step 1.5+ culling node can set for everything below it (Step 1.0 has no
+	// such word and leaves them 0)
+	struct Attribs { float alpha = 1, scale = 1; int page = 0, tex_x = 0, tex_y = 0; bool no_cull = false; };
 	Attribs attr;
+	// The culling nodes' layout and the fixed-point formats go with the board's stepping, and build() sets these
+	// from it. Step 1.0: 8-word nodes, vertices 17.7, texture NP 12.12. Step 1.5 and later: 10-word nodes, with
+	// two more words at the start (a model scale and a texture offset, which Step 1.0 has nowhere), vertices
+	// 13.11 and texture NP 10.14. Everything after the first word is at an index two higher on those boards,
+	// which is what node_shift is.
+	int node_shift = 0;
+	float vertex_scale = 1.0f / 128.0f;
+	float np_scale = 1.0f / 4096.0f;
 	int depth = 0;
 	std::vector<Mat4> stack;
 	Mat4 cur;

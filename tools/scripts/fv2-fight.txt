@@ -1,0 +1,27 @@
+# Fighting Vipers 2: coin, start, pick a fighter, and a round against the CPU, with pictures through it.
+# The select screen is confirmed with an attack button, not start.
+1900 press p1.coin
+1930 press p1.coin
+1960 press p1.start
+2050 shot 1_select
+2100 press p1.right
+2140 press p1.right
+2180 shot 2_moved
+2220 press p1.punch
+2280 shot 3_picked
+2360 shot 4_after
+2500 shot 5_load
+2650 shot 6_intro
+2800 shot 7_intro2
+2950 shot 8_round
+3000 random p1 20261019
+3100 shot 9_fight
+3250 shot 10_fight
+3400 shot 11_fight
+3550 shot 12_fight
+3700 shot 13_fight
+3850 shot 14_fight
+4000 shot 15_fight
+4100 random p1 off
+4150 shot 16_end
+4200 quit

@@ -56,6 +56,9 @@ int main(int argc, char **argv)
 		fprintf(stderr, "vf3run: %s\n", error.c_str());
 		return 1;
 	}
+	if (!quiet)
+		printf("%s (\"%s\"): Model 3 Step %d.%d, the PowerPC paced at %d MHz\n", board.title.c_str(),
+		       board.set.c_str(), board.stepping >> 4, board.stepping & 0xF, board.ppc_hz / 1000000);
 	InputScript script;
 	if (!script_path.empty() && !script.load(script_path, error)) {
 		fprintf(stderr, "vf3run: %s\n", error.c_str());
@@ -640,8 +643,14 @@ int main(int argc, char **argv)
 		}
 	}
 	double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-	if (!quiet)
+	if (!quiet) {
 		printf("%llu frames in %.1f s (%.0f frames a second)\n", (unsigned long long)board.frame, secs, board.frame / secs);
+		printf("PC %08X, last RAM hash %016llX\n", board.cpu.pc(), (unsigned long long)board.ram_hash());
+		// the 315-5881 isn't written yet: a keyed set that asks it for data needs it before that data is right
+		if (board.crypto_key)
+			printf("security board (key %08X): %llu data reads, %llu register writes\n", board.crypto_key,
+			       (unsigned long long)board.security_reads, (unsigned long long)board.security_writes);
+	}
 	if (rec && !quiet) {
 		printf("interpreter instead: %llu before the boot copy, %llu outside the program, %llu without code",
 		       (unsigned long long)recompiler.interp_disabled, (unsigned long long)recompiler.interp_outside,

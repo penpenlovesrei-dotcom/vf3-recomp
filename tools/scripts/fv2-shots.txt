@@ -1,0 +1,30 @@
+# Fighting Vipers 2: a picture every so often through the boot and the attract, then a coin,
+# the fighter select and a fight. For looking at what the game is actually putting on screen.
+#   vf3run fvipers2.zip --script tools/scripts/fv2-shots.txt --shots <dir>
+30 shot 0030
+60 shot 0060
+90 shot 0090
+120 shot 0120
+180 shot 0180
+240 shot 0240
+300 shot 0300
+400 shot 0400
+500 shot 0500
+600 shot 0600
+750 shot 0750
+900 shot 0900
+1050 shot 1050
+1200 shot 1200
+1400 shot 1400
+1600 shot 1600
+1800 shot 1800
+1900 press p1.coin
+1930 press p1.coin
+1960 press p1.start
+2000 shot 2000
+2060 shot 2060
+2120 press p1.start
+2180 shot 2180
+2300 shot 2300
+2400 shot 2400
+2420 quit

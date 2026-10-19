@@ -1,0 +1,14 @@
+# Fighting Vipers 2: the boot, the attract, a coin, the fighter select and a round of random play.
+# Same shape as vf3-match.txt; the frames have not been checked against what the game is showing yet.
+0 mark boot
+300 mark attract
+600 press p1.coin
++30 press p1.coin
++30 press p1.start
++90 mark select
++30 press p1.start
++150 mark fight
++60 random p1 20261019
++1200 random p1 off
++30 mark done
++10 quit

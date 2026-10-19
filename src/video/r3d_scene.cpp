@@ -130,6 +130,11 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 	cull_hi = board.cull_hi.data();
 	poly = board.poly_ram.data();
 	vrom = reinterpret_cast<const uint32_t *>(board.vrom.data());
+	// Step 1.5 and later put two more words at the start of every culling node and hold vertices and texture NP
+	// with more fraction bits (r3d_scene.h)
+	node_shift = board.stepping > 0x10 ? 2 : 0;
+	vertex_scale = board.stepping > 0x10 ? 1.0f / 2048.0f : 1.0f / 128.0f;
+	np_scale = board.stepping > 0x10 ? 1.0f / 16384.0f : 1.0f / 4096.0f;
 	scene.viewports.clear();
 	scene.blank = false;
 	static std::atomic<uint64_t> next_id{ 1 };
@@ -140,6 +145,35 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 	if (dyn_cache.size() > 20000)
 		dyn_cache.clear();
 	viewport(0x800000, scene, 0);
+	// VF3_TRANS_AUDIT=1: every translucent mesh in the scene, with where it came from and how big it is in the
+	// camera's space, for finding the one that covers the picture (debugging)
+	if (getenv("VF3_TRANS_AUDIT")) {
+		for (size_t iv = 0; iv < scene.viewports.size(); iv++) {
+			const Viewport &p = scene.viewports[iv];
+			for (const Model &m : p.models)
+				for (size_t im = 0; im < m.meshes->size(); im++) {
+					const Mesh &me = (*m.meshes)[im];
+					if (!me.poly_alpha && !me.texture_alpha && m.alpha >= 1.0f)
+						continue;
+					float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+					for (const Vertex &v : me.verts) {
+						const float *M = m.matrix.m;
+						const float t[3] = {
+							M[0] * v.pos[0] + M[4] * v.pos[1] + M[8] * v.pos[2] + M[12],
+							M[1] * v.pos[0] + M[5] * v.pos[1] + M[9] * v.pos[2] + M[13],
+							M[2] * v.pos[0] + M[6] * v.pos[1] + M[10] * v.pos[2] + M[14],
+						};
+						for (int k = 0; k < 3; k++) { lo[k] = std::min(lo[k], t[k]); hi[k] = std::max(hi[k], t[k]); }
+					}
+					const uint8_t *c = me.verts.empty() ? nullptr : me.verts[0].colour;
+					fprintf(stderr, "trans vp%zu model %06X mesh %zu  verts %zu  tex %d fmt %d  rgba %02X%02X%02X%02X"
+					        "  node_alpha %.2f  view x %.0f..%.0f y %.0f..%.0f z %.0f..%.0f\n",
+					        iv, m.addr, im, me.verts.size(), int(me.textured), me.format,
+					        c ? c[0] : 0, c ? c[1] : 0, c ? c[2] : 0, c ? c[3] : 0, m.alpha,
+					        lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]);
+				}
+		}
+	}
 }
 
 void SceneBuilder::mult_matrix(uint32_t index)
@@ -172,6 +206,7 @@ void SceneBuilder::viewport(uint32_t addr, Scene &scene, int guard)
 		p.vp_w = (v[0x14] & 0xFFFF) / 4.0f;
 		p.vp_h = (v[0x14] >> 16) / 4.0f;
 		p.full_screen = p.vp_x == 0 && p.vp_w >= 495 && p.vp_y == 0 && p.vp_h >= 383;
+		p.intensity_clamp = !node_shift;   // Step 1.0 only (r3d_scene.h)
 		matrix_base = reinterpret_cast<const float *>(culling(v[0x16] & 0xFFFFFF));
 		lod_table = reinterpret_cast<const float *>(culling(v[0x17] & 0xFFFFFF));
 		float cv = as_float(v[8]), cw = as_float(v[9]), io = as_float(v[10]), jo = as_float(v[11]);
@@ -194,6 +229,9 @@ void SceneBuilder::viewport(uint32_t addr, Scene &scene, int guard)
 		p.sun_intensity = std::clamp(as_float(v[7]), 0.0f, 1.0f);
 		if (std::isnan(p.sun_intensity)) p.sun_intensity = 0;
 		p.ambient = ((v[0x24] >> 8) & 0xFF) / 255.0f;
+		// VF3_AMBIENT=<n>: force the ambient light, for telling a scene that is lit too brightly from one whose
+		// ambient is read wrongly (debugging; the game's own value is used when it isn't set)
+		if (const char *a = getenv("VF3_AMBIENT")) p.ambient = float(atof(a));
 		int spot = (v[0x20] >> 11) & 7, spot_fog = (v[0x20] >> 8) & 7;
 		p.spot_ellipse[0] = int16_t(v[0x1E] & 0xFFFF) / 8.0f;
 		p.spot_ellipse[1] = int16_t(v[0x1D] & 0xFFFF) / 8.0f;
@@ -272,7 +310,7 @@ void SceneBuilder::node(uint32_t addr)
 		if (!n)
 			break;
 		chain.push_back(a);
-		const uint32_t w0 = n[0], sibling = n[6] & 0x1FFFFFF;
+		const uint32_t w0 = n[0], sibling = n[6 + node_shift] & 0x1FFFFFF;
 		if ((w0 & 3) == 0 || (w0 & 0x300) == 0x300 || (w0 & 7) == 6 || (sibling & 0x1000000) || !sibling)
 			break;
 		a = sibling;
@@ -293,7 +331,8 @@ void SceneBuilder::node_one(uint32_t addr)
 	const uint32_t *n = culling(addr);
 	if (!n)
 		return;
-	const uint32_t w0 = n[0], w1 = n[1], w5 = n[5], w6 = n[6], w7 = n[7];
+	const int s = node_shift;
+	const uint32_t w0 = n[0], w1 = n[1 + s], w5 = n[5 + s], w6 = n[6 + s], w7 = n[7 + s];
 	if ((w0 & 3) == 0)
 		return;                 // a viewport: not drawn from here
 	if ((w0 & 0x300) == 0x300)
@@ -307,11 +346,24 @@ void SceneBuilder::node_one(uint32_t addr)
 	uint32_t saved_path = path;
 	path = path * 31 + addr;
 	depth++;
+	// The two words Step 1.5 and later have that Step 1.0 hasn't: a scale for the model below this node, a flag
+	// that turns its culling off, and a texture offset with the sheet to take it from.
+	if (s) {
+		if (n[1] & 1)
+			attr.scale = as_float(n[1] & ~3u);
+		if (n[1] & 2)
+			attr.no_cull = true;
+		if (n[2] & 0x8000) {
+			attr.tex_x = 32 * int((n[2] >> 7) & 0x3F);
+			attr.tex_y = 32 * int(n[2] & 0x1F);
+			attr.page = int((n[2] & 0x4000) >> 14);
+		}
+	}
 	if (w0 & 0x10) {
 		Mat4 t = Mat4::identity();
-		t.m[12] = as_float(n[2]);
-		t.m[13] = as_float(n[3]);
-		t.m[14] = as_float(n[4]);
+		t.m[12] = as_float(n[2 + s]);
+		t.m[13] = as_float(n[3 + s]);
+		t.m[14] = as_float(n[4 + s]);
 		cur = cur * t;
 	} else if (w1 & 0xFFF) {
 		mult_matrix(w1 & 0xFFF);
@@ -388,6 +440,8 @@ void SceneBuilder::draw_model(uint32_t addr)
 	m.alpha = attr.alpha;
 	m.scale = attr.scale;
 	m.page = attr.page;
+	m.tex_x = attr.tex_x;
+	m.tex_y = attr.tex_y;
 	m.node_path = path;
 	// ROM models without colour table indexes are the same every frame
 	bool dynamic = addr < 0x100000;
@@ -573,13 +627,13 @@ Meshes SceneBuilder::parse(const uint32_t *h, bool dynamic)
 		const bool smooth = (h[1] & 8) != 0, fixed = (h[1] & 0x20) != 0, spec = (h[0] & 0x80) != 0;
 		if (!smooth)
 			for (int i = 0; i < count; i++) memcpy(v[i].normal, face, sizeof(face));
-		const float np = float(h[5] >> 8) / 4096.0f;
+		const float np = float(h[5] >> 8) * np_scale;
 		const uint32_t *d = h + 7;
 		for (; j < count; j++, d += 4) {
 			if (d + 4 > limit) break;
-			v[j].pos[0] = float(int32_t(d[0]) >> 8) / 128.0f;
-			v[j].pos[1] = float(int32_t(d[1]) >> 8) / 128.0f;
-			v[j].pos[2] = float(int32_t(d[2]) >> 8) / 128.0f;
+			v[j].pos[0] = float(int32_t(d[0]) >> 8) * vertex_scale;
+			v[j].pos[1] = float(int32_t(d[1]) >> 8) * vertex_scale;
+			v[j].pos[2] = float(int32_t(d[2]) >> 8) * vertex_scale;
 			if (smooth) {
 				v[j].normal[0] = byte_to_float(int8_t(d[0]));
 				v[j].normal[1] = byte_to_float(int8_t(d[1]));

@@ -42,7 +42,8 @@ CORE = src/ppc/ppc.cpp src/machine/model3.cpp src/machine/romset.cpp src/host/in
 	src/rec/ppc_rec.cpp src/rec/vf3_map.cpp src/video/tilegen.cpp src/video/r3d_scene.cpp src/video/r3d_raster.cpp \
 	src/sound/soundboard.cpp src/sound/scsp.cpp src/sound/scspdsp.cpp src/core/mame_shim.cpp \
 	third_party/mame/m68000/m68000.cpp third_party/mame/m68000/m68000-decode.cpp \
-	third_party/mame/m68000/m68000-sdf.cpp third_party/mame/m68000/m68000-sdp.cpp
+	third_party/mame/m68000/m68000-sdf.cpp third_party/mame/m68000/m68000-sdp.cpp \
+	third_party/mame/315-5881/crypt_315_5881.cpp
 
 # SLJIT (BSD-2): the native code made at start-up. C, built by the C++ compiler's driver (-x c)
 SLJIT_OBJ = $(OBJ)/third_party/sljit/sljitLir.o

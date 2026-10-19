@@ -7,6 +7,11 @@
 - `mame/m68000/`: MAME's 68000 (BSD-3-Clause, Olivier Galibert), as VF2 has it: the generated instruction handlers
   and decode table unchanged, the device reduced to the core on a bus interface (see mame/README.md). It compiles
   against `src/core/shim_include/emu.h` and `src/core/mame_shim.*`, VF2's stand-in for MAME's device framework.
+- `mame/315-5881/`: MAME's Sega 315-5881 (BSD-3-Clause, Andreas Naive, Olivier Galibert, David Haywood), from
+  `sega/315-5881_crypt.cpp`: the security chip on Fighting Vipers 2's board, which decrypts a stream out of the
+  security board's RAM (src/machine/model3.cpp). The tables and the algorithm are MAME's, unchanged; the frame
+  around them is not — MAME's `device_t`, its save state and its memory maps are gone, the read delegate is a
+  `std::function`, and the chip is set up by `init()` rather than a device parameter. It needs no shim.
 
 Code ported from MAME (BSD-3-Clause) in `src/`, each file starting with the licence and copyright-holders lines
 of the MAME files it comes from:

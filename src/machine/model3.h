@@ -7,6 +7,7 @@
 // here can be compared with it frame by frame; the comments say where the reference's behaviour is followed
 // rather than known hardware behaviour.
 #pragma once
+#include "../../third_party/mame/315-5881/crypt_315_5881.h"
 #include "../ppc/ppc.h"
 #include <cstdint>
 #include <deque>
@@ -54,13 +55,15 @@ private:
 	bool locked = true;
 };
 
-// The JTAG chain to the Real3D's ASICs and 3D-RAMs (the game reads the ID codes)
+// The JTAG chain to the Real3D's ASICs and 3D-RAMs (the game reads the ID codes). Step 1.x has ten devices on
+// the chain, Step 2.x seventeen (a second Earth, two more Mars, four more 3D-RAMs), with their own ID codes.
 class Jtag
 {
 public:
 	void write(bool tck, bool tms, bool tdi, bool trst);
 	bool read() const { return tdo; }
 	void reset();
+	void configure(int stepping);   // which chain: 0x10 Step 1.0, 0x15 Step 1.5, 0x20 Step 2.0, 0x21 Step 2.1
 	uint32_t modeword[5] = {};  // per ASIC kind, for the renderer
 private:
 	struct Device
@@ -73,7 +76,8 @@ private:
 		uint8_t ir = 0;
 		uint32_t mode = 0;
 	};
-	Device dev[10];
+	Device dev[17];
+	int n_dev = 10;             // how many of them are on this board's chain
 	int state = 0;
 	bool last_tck = false, tdo = false;
 	void dev_reset(Device &d);
@@ -115,6 +119,18 @@ public:
 	Scsi scsi;
 	Controls controls;
 
+	// Which board and which game the loaded set is. Step 1.0 (Virtua Fighter 3) and Step 2.0 (Fighting Vipers 2)
+	// differ in the CPU's clock, the PCI bridge (MPC105 or MPC106, at different addresses), the SCSI controller
+	// (Step 1.x only) and the Real3D's DMA port and JTAG chain; everything the two share is one piece of code.
+	int stepping = 0x10;             // 0x10 Step 1.0, 0x20 Step 2.0
+	std::string set, title;          // MAME's name for the set, and the game's title
+	uint32_t crypto_key = 0;         // the 315-5881 security chip's key (0: the board has no security board)
+	bool step2() const { return stepping >= 0x20; }
+	// The 315-5881 on a keyed board (Fighting Vipers 2), and how often the game has asked it for a word and
+	// programmed it. A set with no key never builds one and never comes here.
+	mame::Crypt5881 crypt;
+	uint64_t security_reads = 0, security_writes = 0;
+
 	std::vector<uint8_t> ram;        // 8 MB, host-order words
 	std::vector<uint8_t> crom;       // fixed CROM, 8 MB, host-order words
 	std::vector<uint8_t> banked;     // banked CROM, 128 MB, host-order words
@@ -126,9 +142,12 @@ public:
 	// leaving it, and comparing): the setting's number (1-27) at 0x1E033; for #1-#26 the same at 0x1E037 and 0 at
 	// 0x1E03B; #27, FREE PLAY, sets 0x1E03B to 1 and leaves 0x1E037. No checksum. A board that has never run has 0
 	// there until the game writes its settings (by frame 120): -1, not written yet.
+	// (the addresses are Virtua Fighter 3's own, found in its test menu, so the coin settings and the FREE PLAY
+	// notices below are only touched for that set: another game keeps its settings where this port doesn't know)
 	static constexpr int COIN_FACTORY = 1, COIN_FREE_PLAY = 27;
 	int coin_setting() const
 	{
+		if (set != "vf3") return -1;
 		const int v = backup.size() > 0x1E03B ? backup[0x1E033] : 0;
 		return v >= 1 && v <= COIN_FREE_PLAY ? v : -1;
 	}
@@ -205,18 +224,30 @@ public:
 	// RAM or CROM as the CPU reads it, without its side effects (0 elsewhere)
 	uint16_t peek16(uint32_t addr) const;
 	uint32_t peek32(uint32_t addr) const;
-	std::vector<uint32_t> program_image() const;  // the program the boot copies to RAM 0, host-order words
+	std::vector<uint32_t> program_image() const;  // the program the boot puts in RAM 0, host-order words
+
+	// How often the board reckons the CPU runs, for the frame's pacing: 66 MHz on Step 1.0, 166 MHz on Step 2.0.
+	// The reference build paces a frame by this while the core counts its cycles at the bus multiplier's exact
+	// rate (2.5 x 66 = 165 MHz on Step 2.0), and the decrementer's ratio comes from the two together; kept as it
+	// does, so a frame here is the reference's frame.
+	int ppc_hz = 66000000;
 
 private:
+	// The program image the boot unpacks, for sets that carry it compressed (Fighting Vipers 2: a gzip in the
+	// CROM). Empty for a set whose program the boot copies from the CROM as it stands (Virtua Fighter 3).
+	std::vector<uint32_t> unpacked_program;
 	uint8_t crom_bank_reg = 0xFF;
 	const uint8_t *crom_bank = nullptr;
 	uint8_t input_bank = 0, serial1 = 0, serial2 = 0, adc_channel = 0, gun_reg = 0;
 	uint8_t outputs[2] = {};
 	bool gpus_ready = false;
 
-	// MPC105
+	// The PCI bridge: an MPC105 on Step 1.x, an MPC106 on Step 2.x. Same registers, a different device ID, a
+	// different set of reset values, and its CONFIG_ADDR and CONFIG_DATA ports at different addresses.
+	int pci_model = 0x105;
 	uint8_t pci_regs[256];
 	uint32_t pci_bus = 0, pci_device = 0, pci_function = 0, pci_reg = 0;
+	bool security_first_read = true;   // the security board answers its first data read with 0xFFFF0000
 	void pci_reset();
 	void pci_config_address(uint32_t data);
 	uint32_t pci_config_read(unsigned bits, unsigned offset);
@@ -229,6 +260,8 @@ private:
 	void write_sysreg(unsigned reg, uint8_t data);
 	uint8_t read_rtc(unsigned reg);
 	uint32_t read_security(unsigned reg);
+	void write_security(unsigned reg, uint32_t data);
+	uint16_t read_security_ram(uint32_t addr) const;   // what the 315-5881 reads: the security board's RAM
 	bool scsi_mapped(uint32_t addr) const;
 
 	uint32_t r3d_register(unsigned reg) const;

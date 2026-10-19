@@ -11,6 +11,7 @@
 // transparent bit, 1-4 4-bit grey + 4-bit alpha in one of the four nibble pairs, 5-6 8-bit grey (low or high
 // byte; 255 transparent with contour), 7 RGBA4, 8-11 a 4-bit grey nibble (15 transparent; formats 1-4 with
 // contour).
+#include <cstdlib>
 #include "r3d_raster.h"
 #include "parallel.h"
 #include <algorithm>
@@ -436,8 +437,11 @@ void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 	const Vertex &pv = mesh.verts[0];
 	C4 poly = { pv.colour[0] / 255.0f, pv.colour[1] / 255.0f, pv.colour[2] / 255.0f, pv.colour[3] / 255.0f * model.alpha };
 	if (mesh.translator_map) { poly.r *= 16; poly.g *= 16; poly.b *= 16; }
-	const Sampler smp = { tex, &mesh, mesh.page ^ model.page, mesh.x, mesh.y };
-	const Sampler smp_flip = { tex, &mesh, mesh.page ^ model.page, mesh.flip_x, mesh.flip_y };
+	// the nodes' texture offset moves where on the sheet the mesh reads from (Step 1.5 and later; 0 on Step 1.0,
+	// which has no such word, so the two lines below are then exactly what they were)
+	const int tx = model.tex_x, ty = model.tex_y;
+	const Sampler smp = { tex, &mesh, mesh.page ^ model.page, (mesh.x + tx) & 2047, (mesh.y + ty) & 2047 };
+	const Sampler smp_flip = { tex, &mesh, mesh.page ^ model.page, (mesh.flip_x + tx) & 2047, (mesh.flip_y + ty) & 2047 };
 	const float num_levels = mesh.textured ? std::floor(std::log2(float(std::min(mesh.width, mesh.height)))) - 1.0f : 0.0f;
 	static const float exp_index[4] = { 8, 16, 32, 64 }, mult_index[4] = { 1.6f, 1.6f, 2.4f, 3.2f };
 	const int shin = std::clamp(int(mesh.shininess), 0, 3);
@@ -549,8 +553,10 @@ void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 					else sun = vp.sun[0] * a[3] + vp.sun[1] * a[4] + vp.sun[2] * a[5];
 					sun = std::clamp(sun, -1.0f, 1.0f);
 					if (sun_clamp || c.a < 0.999f) sun = std::max(sun, 0.0f);
-					// the sun and ambient light up to full, the spotlight's colour on top
-					float li = std::min(sun * vp.sun_intensity + vp.ambient, 1.0f);
+					// the sun and ambient light, up to full on Step 1.0 and past it on the later steppings (which
+					// some games drive beyond 100%), with the spotlight's colour on top
+					float li = sun * vp.sun_intensity + vp.ambient;
+					if (vp.intensity_clamp) li = std::min(li, 1.0f);
 					float lr = li + vp.spot_colour[0] * lobe;
 					float lg = li + vp.spot_colour[1] * lobe;
 					float lb = li + vp.spot_colour[2] * lobe;
@@ -603,8 +609,15 @@ void Raster::compose(const uint32_t *under, uint32_t *out) const
 		if (p.a > 0) {
 			r += (p.r - r) * p.a; g += (p.g - g) * p.a; b += (p.b - b) * p.a;
 		}
+		// VF3_NO_TRANS=1: leave the translucent layers out, for telling a scene washed out by its own translucent
+		// polygons from one lit or fogged wrongly (debugging)
+		static const bool no_trans = getenv("VF3_NO_TRANS") != nullptr;
+		// VF3_ONLY_TRANS=1: the translucent layers alone, over what is under the 3D (debugging)
+		static const bool only_trans = getenv("VF3_ONLY_TRANS") != nullptr;
+		if (only_trans) { r = g = b = 0; }
 		// the two translucent layers: where both have a pixel, mixed and opaque
-		const Px &x = t1[i], &y = t2[i];
+		static const Px none = { 0, 0, 0, 0 };
+		const Px &x = no_trans ? none : t1[i], &y = no_trans ? none : t2[i];
 		Px tr;
 		if (x.a * y.a > 0) {
 			float k = (y.a + (1.0f - x.a)) / 2.0f;

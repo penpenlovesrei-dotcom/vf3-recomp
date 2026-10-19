@@ -12,16 +12,17 @@ mkdir -p "$(dirname "$OUT")"
 sec() { printf '\n\n==============================================================================\n%s\n==============================================================================\n\n' "$1"; }
 {
 echo "Third-party software in Virtua Fighter 3 Recomp, and its licences."
-sec "MAME (BSD-3-Clause): the Motorola 68000 core and the Yamaha SCSP and its DSP, as Virtua Fighter 2 Recomp has them, and the Model 3 sound board's map"
+sec "MAME (BSD-3-Clause): the Motorola 68000 core and the Yamaha SCSP and its DSP, as Virtua Fighter 2 Recomp has them, the Model 3 sound board's map, and the Sega 315-5881 security chip"
 cat <<'BSD'
 From MAME (https://github.com/mamedev/mame):
   cpu/m68000 (68000 core and its generated handlers): Olivier Galibert
   sound/scsp.cpp, sound/scspdsp.cpp (SCSP and its DSP): ElSemi, R. Belmont; thanks to kingshriek
   emu/diserial.cpp (serial link): Carl, Miodrag Milanovic
   sega/model3.cpp (the sound board's map): R. Belmont, Ville Linde
+  sega/315-5881_crypt.cpp (the security chip): Andreas Naive, Olivier Galibert, David Haywood
 
-Copyright-holders: Olivier Galibert, ElSemi, R. Belmont, Carl, Miodrag Milanovic, Ville Linde, and the
-MAME team.
+Copyright-holders: Olivier Galibert, ElSemi, R. Belmont, Carl, Miodrag Milanovic, Ville Linde, Andreas
+Naive, David Haywood, and the MAME team.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted
 provided that the following conditions are met:
