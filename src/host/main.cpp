@@ -657,6 +657,7 @@ struct Game
 	bool bg_moved = false;                // the layer below the 3D scrolled this frame by bg_dx, bg_dy
 	float bg_dx = 0, bg_dy = 0;   // the newest frame's 3D drawn full width (a stage)
 	video::SkyLead sky;           // how far the stage's sky is behind the 3D camera (sky_lead.h)
+	bool sky_lead_known = true;   // whether that was measured for the loaded game (Virtua Fighter 3's was)
 	std::vector<int16_t> audio;
 	uint64_t frame = 0;
 	bool tiles_on = true;   // (off for the boot run unseen: the 2D layers drawn a line at a time for nothing)
@@ -664,6 +665,7 @@ struct Game
 	bool load(const std::string &zip, std::string &error, bool interp)
 	{
 		if (!board.load(zip, error)) return false;
+		sky_lead_known = board.set == "vf3";   // (sky_lead.h was measured on that game's stages)
 		if (!interp) {
 			ppcrec::Stats st;
 			built_image = board.program_image();
@@ -797,7 +799,10 @@ struct Game
 		prev_scroll = tiles.scroll;
 		prev_below = below;
 		static const bool sky_lag = getenv("VF3_SKY_LAG") != nullptr;   // (tests: the game's own backdrop, 3 frames behind)
-		if (have_prev && !sky_lag) sky.frame(prev(), cur(), bg_moved, bg_dx, bg_dy);
+		// The lead is how far Virtua Fighter 3's backdrop trails its camera, measured on that game's stages
+		// (sky_lead.h: 3 frames, 1.11 across and 1.08 up). Another game scrolls its own way, so it is left alone
+		// until the same thing has been measured for it -- its backdrop then simply moves as the game moves it.
+		if (have_prev && !sky_lag && sky_lead_known) sky.frame(prev(), cur(), bg_moved, bg_dx, bg_dy);
 		else sky.reset();
 		bool full = false;   // (the 3D drawn full width: a stage; a close-up's or a title's 3D isn't)
 		for (auto &v : scene[newest].viewports) full |= v.full_screen && !v.models.empty();
@@ -1019,7 +1024,11 @@ int main(int argc, char **argv)
 		if (!game.load(zip, err, arg_interp)) return fail(err);
 	}
 	m3::Model3 &board = game.board;
-	const std::string backup_path = data + "/backup", eeprom_path = data + "/eeprom";
+	// The board's NVRAM, per game: Virtua Fighter 3 keeps the names it has always had, so saves made before this
+	// port took a second game still load, and another game gets its own -- otherwise Fighting Vipers 2 would read
+	// Virtua Fighter 3's settings at the start and write over them at the end.
+	const std::string nv_suffix = board.set == "vf3" ? std::string() : "-" + board.set;
+	const std::string backup_path = data + "/backup" + nv_suffix, eeprom_path = data + "/eeprom" + nv_suffix;
 	load_blob(backup_path, board.backup.data(), board.backup.size());
 	load_blob(eeprom_path, board.eeprom.regs, sizeof(board.eeprom.regs));
 	auto nvram_hash = [&] { return fnv(board.eeprom.regs, sizeof(board.eeprom.regs), fnv(board.backup.data(), board.backup.size())); };
@@ -1039,8 +1048,12 @@ int main(int argc, char **argv)
 	// Boot: the PC way runs it unseen up to the SEGA logo
 	auto skip_boot = [&] { return g_pc_mode && !show_boot && !scripted; };
 	uint64_t game_frame = 0;   // frames since the boot (the script's frame numbers)
-	// The PC way: the FREE PLAY notices hidden (always free play: nothing to say); the arcade way: shown
+	// The PC way: the FREE PLAY notices hidden (always free play: nothing to say); the arcade way: shown. Both
+	// the notices and the coin settings are at addresses found in Virtua Fighter 3's own test menu, so for
+	// another game there is nothing to hide and nothing to say about it (model3.h).
+	const bool play_style_known = board.set == "vf3";
 	auto apply_play_style = [&] {
+		if (!play_style_known) return;
 		if (game.emu_thread.joinable()) game.job_wait();   // (not while a frame runs alongside)
 		if (!g_pc_mode) board.show_free_play_text();
 		else if (board.hide_free_play_text() != 2) fprintf(stderr, "not the data known: the FREE PLAY notices stay\n");
@@ -1053,7 +1066,10 @@ int main(int argc, char **argv)
 		// replaces it, and the arcade way gives it back (as VF1's and VF2's). A board that has never run writes its
 		// settings in its first frames, so those run first. FREE PLAY the player chose in the test menu, with none
 		// kept, stays.
-		for (int i = 0; i < 300 && board.coin_setting() < 0; i++) board.run_frame();
+		// (a game whose coin settings this port doesn't know has nothing to look for here, and its board is left
+		// where it is rather than run 300 frames for nothing)
+		if (play_style_known)
+			for (int i = 0; i < 300 && board.coin_setting() < 0; i++) board.run_frame();
 		if (const int coin = board.coin_setting(); coin >= 0) {
 			int keep = cfg.arcade_coin;
 			if (g_pc_mode) {
@@ -1067,6 +1083,9 @@ int main(int argc, char **argv)
 			if (keep != cfg.arcade_coin) { cfg.arcade_coin = keep; cfg_dirty = true; }
 			if (g_pc_mode && !board.free_play()) fprintf(stderr, "the PC way: couldn't set FREE PLAY in the game's settings (coin setting %d)\n", board.coin_setting());
 			game.reset();
+		} else if (!play_style_known && g_pc_mode) {
+			static bool said = false;
+			if (!said) { said = true; fprintf(stderr, "the PC way: where this game keeps its coin settings isn't known, so it takes coins as the arcade does\n"); }
 		}
 		game_frame = 0;
 		if (!skip_boot()) return;
@@ -1098,7 +1117,9 @@ int main(int argc, char **argv)
 			win_w = int(win_w * k); win_h = int(win_h * k);
 		}
 	}
-	SDL_Window *win = SDL_CreateWindow("Virtua Fighter 3", win_w, win_h,
+	// the window's name is the game's (board.title), so a second game doesn't say it is the first
+	const std::string game_name = board.title.empty() ? std::string("Virtua Fighter 3") : board.title;
+	SDL_Window *win = SDL_CreateWindow(game_name.c_str(), win_w, win_h,
 		SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | (cfg.fullscreen ? SDL_WINDOW_FULLSCREEN : 0) | SDL_WINDOW_HIDDEN);
 	if (!win) return fail(std::string("Couldn't open the window: ") + SDL_GetError());
 	SDL_HideCursor();
@@ -2699,7 +2720,7 @@ int main(int argc, char **argv)
 		if (cfg.timings && SDL_GetTicksNS() - t9.t0 >= 2000000000ull) {
 			const double secs = double(SDL_GetTicksNS() - t9.t0) / 1e9;
 			char t[200];
-			snprintf(t, sizeof t, "Virtua Fighter 3  %dx  %.1f frames/s  %.1f pictures/s  game %.2f ms/frame  picture %.2f ms", scale, t9.frames / secs,
+			snprintf(t, sizeof t, "%s  %dx  %.1f frames/s  %.1f pictures/s  game %.2f ms/frame  picture %.2f ms", game_name.c_str(), scale, t9.frames / secs,
 					 t9.pictures / secs, t9.frames ? t9.emu_ms / t9.frames : 0.0, t9.pictures ? t9.draw_ms / t9.pictures : 0.0);
 			SDL_SetWindowTitle(win, t);
 			fprintf(stderr, "%s\n", t);
@@ -2707,8 +2728,8 @@ int main(int argc, char **argv)
 			t9.t0 = SDL_GetTicksNS();
 		} else if (!cfg.timings) {
 			char t[96];
-			if (cfg.aspect) snprintf(t, sizeof t, "Virtua Fighter 3  %dx  %s", scale, ASPECT_NAMES[cfg.aspect]);
-			else snprintf(t, sizeof t, "Virtua Fighter 3  %dx  fit (%.2f:1)", scale, picture_aspect());
+			if (cfg.aspect) snprintf(t, sizeof t, "%s  %dx  %s", game_name.c_str(), scale, ASPECT_NAMES[cfg.aspect]);
+			else snprintf(t, sizeof t, "%s  %dx  fit (%.2f:1)", game_name.c_str(), scale, picture_aspect());
 			if (title_now != t) { title_now = t; SDL_SetWindowTitle(win, t); }
 		}
 		if (SDL_GetTicksNS() - pace.t0 > (pace_log ? 2000000000ull : 10000000000ull)) {

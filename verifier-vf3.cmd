@@ -46,6 +46,61 @@ echo ---- etat du PowerPC, image par image ----
 fc /b "%CMP%\up\s.state" "%CMP%\fv2\s.state" > nul && echo   IDENTIQUE || echo   *** DIFFERENT ***
 echo ---- les 8 Mo de RAM ----
 fc /b "%CMP%\up\ram_%IMAGES%.bin" "%CMP%\fv2\ram_%IMAGES%.bin" > nul && echo   IDENTIQUE || echo   *** DIFFERENT ***
+
+echo.
+echo ---- images rendues (vf3run --shots) ----
+if exist "%CMP%\shup" rmdir /s /q "%CMP%\shup"
+if exist "%CMP%\shnew" rmdir /s /q "%CMP%\shnew"
+mkdir "%CMP%\shup" & mkdir "%CMP%\shnew"
+"%UP%\build\bin\vf3run.exe" "%ROM%" --script "%~dp0tools\scripts\vf3-shots.txt" --shots "%CMP%\shup" --quiet > nul
+"%~dp0build\bin\vf3run.exe" "%ROM%" --script "%~dp0tools\scripts\vf3-shots.txt" --shots "%CMP%\shnew" --quiet > nul
+set SHOTS_OK=1
+if not exist "%CMP%\shup\*.png" set SHOTS_OK=0
+for %%F in ("%CMP%\shup\*.png") do fc /b "%%F" "%CMP%\shnew\%%~nxF" > nul || set SHOTS_OK=0
+if "%SHOTS_OK%"=="1" (echo   IDENTIQUE) else (echo   *** DIFFERENT ***)
+
+rem L'hote complet : l'image du jeu que la fenetre affiche. Elle est reproductible
+rem (host_last.png), contrairement a host_window.png qui depend du rythme reel.
+rem Sans SDL 3 installe, la cible build/bin/vf3 n'existe pas et on saute l'essai.
+if not exist "build\bin\vf3.exe" goto :pashote
+if not exist "%UP%\build\bin\vf3.exe" (
+  echo ---- construction de l'hote d'origine ----
+  pushd "%UP%"
+  "%MAKE%" CXX=g++ TMP=%SCRATCH% TEMP=%SCRATCH% TMPDIR=%SCRATCH% build/bin/vf3 -j8
+  popd
+)
+if not exist "%UP%\build\bin\vf3.exe" goto :pashote
+echo.
+echo ---- l'hote complet, image du jeu ----
+if exist "%CMP%\hup" rmdir /s /q "%CMP%\hup"
+if exist "%CMP%\hnew" rmdir /s /q "%CMP%\hnew"
+mkdir "%CMP%\hup" & mkdir "%CMP%\hnew"
+> "%CMP%\hup\settings.ini" echo settings_version = 3
+>> "%CMP%\hup\settings.ini" echo picture_shape = 3
+copy /y "%CMP%\hup\settings.ini" "%CMP%\hnew\settings.ini" > nul
+set VF3_HIDDEN=1
+set VF3_QUIT_AFTER=1500
+set VF3_WINDOW=1280x720
+set VF3_3D=cpu
+set VF3_SCRIPT=%~dp0tools\scripts\vf3-match.txt
+pushd "%UP%"
+set VF3_DATA=%CMP%\hup
+del /q build\host_last.png 2> nul
+"%UP%\build\bin\vf3.exe" "%ROM%" > nul 2>&1
+copy /y build\host_last.png "%CMP%\hup\last.png" > nul
+popd
+set VF3_DATA=%CMP%\hnew
+del /q build\host_last.png 2> nul
+"%~dp0build\bin\vf3.exe" "%ROM%" > nul 2>&1
+copy /y build\host_last.png "%CMP%\hnew\last.png" > nul
+fc /b "%CMP%\hup\last.png" "%CMP%\hnew\last.png" > nul && echo   IDENTIQUE || echo   *** DIFFERENT ***
+set VF3_HIDDEN=
+set VF3_QUIT_AFTER=
+set VF3_SCRIPT=
+set VF3_DATA=
+set VF3_3D=
+:pashote
+
 echo.
 echo ---- pas a pas interpreteur contre code recompile (vf3lock) ----
 "build\bin\vf3lock.exe" "%ROM%" --script tools\scripts\vf3-match.txt

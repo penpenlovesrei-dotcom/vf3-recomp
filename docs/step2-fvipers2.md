@@ -356,6 +356,72 @@ and compares the CPU state, RAM, backup RAM and the Real3D's and tile generator'
 
 That is the brief's criterion for this phase met on both the attract and a match.
 
+## 14. The windowed host: the game as it is played
+
+Everything above was measured with the headless tools. The windowed build (`build/bin/vf3`) had never run here
+at all, SDL 3 not being installed; `pacman -S mingw-w64-x86_64-sdl3` in MSYS2 is all it needed. With it,
+Fighting Vipers 2 runs in the real app: the window, the RmlUi menu, the sound board, the inputs, the upscaling,
+the picture shapes and the 3D on the GPU.
+
+**Direct3D 12 has now been tried on real Windows hardware**, which this project's README said it had not been.
+On a GeForce RTX 3070 Laptop, SDL_GPU picks `direct3d12` and the host's own start-up check -- its GPU picture
+against its CPU one, before the GPU is trusted -- keeps the GPU's for both games. For Virtua Fighter 3 it passes
+without a word. For Fighting Vipers 2 it reports the difference and accepts it: of 1,047,551 pixels of 3D,
+**73,299 differ, 3,640 of them by more than 8, by 97 at most**. `VF3_GPU_CHECK_DIR=<dir>` writes the two
+pictures to compare by eye.
+
+Measured on that machine, with the recompiler and the GPU:
+
+| | Virtua Fighter 3 | Fighting Vipers 2 |
+| --- | --- | --- |
+| Recompiled | 78,252 instructions | 69,716 |
+| The boot, unseen | 960 frames in **1.4 s** | 960 frames in **15.2 s** (its gzip unpacked by the game) |
+| Running | full speed | **about 49-51 frames a second** against the arcade's 57.5 |
+| A game frame | | 14-15 ms |
+| A picture (GPU) | | 2.1-4.2 ms, of which the renderer 0.9-1.3 |
+| Smooth motion's in-between | | 0.15-0.46 ms |
+
+So this game does not quite reach full speed on this laptop, which is no surprise: its PowerPC is clocked at
+2.5 times Virtua Fighter 3's and does that much more work a frame.
+
+What had to change in the host, all of it for the second game and none of it touching the first:
+
+- **The NVRAM is per game.** The backup RAM and EEPROM were saved as `backup` and `eeprom` in the data folder
+  whatever was running, so Fighting Vipers 2 would have read Virtua Fighter 3's settings at the start and
+  written over them at the end. Virtua Fighter 3 keeps those names, so saves made before this port took a second
+  game still load; another game gets its own (`backup-fvipers2`).
+- **The window says which game it is**, from the set's title rather than a fixed string.
+- **The play style.** Where a game keeps its coin settings, and where its FREE PLAY notices are, were found in
+  Virtua Fighter 3's test menu. For another game there is nothing to hide and nothing to set, so the PC way
+  takes coins as the arcade does and says so once, and the 300-frame probe for a coin setting is skipped.
+- **The stage sky's lead** (`sky_lead.h`) is how far Virtua Fighter 3's backdrop trails its camera -- 3 frames,
+  1.11 across and 1.08 up -- measured on that game's stages. Another game scrolls its own way, so it is left
+  alone and its backdrop simply moves as the game moves it.
+
+Widescreen works in the attract: at 16:9 and 21:9 the frustum really widens, showing more of the rig and the sea
+to the sides rather than stretching. **In a fight it does not engage** -- the picture stays 4:3 with bars. The
+host widens only on what it recognises as a stage, and that recognition is tuned to Virtua Fighter 3; Fighting
+Vipers 2's fights, with their health bars above and their caption below, do not match it. That is the next thing
+to look at, and nothing is wrong with the picture meanwhile.
+
+### What the regression check now covers
+
+Writing the host changes above broke Virtua Fighter 3, badly: an `else if` added to the coin block swallowed the
+`game.reset()` that followed it, so the board was never reset after its coin settings were applied, and the
+picture came out in torn bands. **None of the checks that existed caught it** -- the state, the RAM, the
+rendered shots and the lockstep were all still identical, because none of them runs the host. `verifier-vf3.cmd`
+now runs five checks, the last two new:
+
+| Check | |
+| --- | --- |
+| The PowerPC's state, frame by frame | 3000 frames |
+| All 8 MB of RAM | at the last frame |
+| The pictures `vf3run` renders | `tools/scripts/vf3-shots.txt` |
+| **The game frame the windowed host draws** | `host_last.png`, which is reproducible run to run (`host_window.png` is not: it follows the real-time pacing) |
+| The lockstep, interpreter against recompiled | 2231 frames |
+
+All five say IDENTIQUE. `jouer-fv2.cmd` opens the game in a window.
+
 ## What is still missing
 - **Nothing is compared frame for frame with the reference.** The pictures above are this port's alone. Until a
   reference run exists for Fighting Vipers 2, "it draws the scene" is all that can be claimed, not "it draws the
@@ -370,6 +436,10 @@ That is the brief's criterion for this phase met on both the attract and a match
   (`pacman -S mingw-w64-x86_64-sdl3` in MSYS2). The headless `vf3run` and `vf3lock` build and run without it.
 
 ## Building and running here
+
+SDL 3 comes from MSYS2 (`pacman -S mingw-w64-x86_64-sdl3`); FreeType is already there. With it the windowed
+`build/bin/vf3` builds too, and `jouer-fv2.cmd` opens the game. Note that SDL's pkg-config adds `-mwindows`, so
+the binary has no console and its messages go to `log.txt` in the data folder, not the terminal.
 
 MSYS2's g++ (16.1.0) builds `vf3run` and `vf3lock` unchanged, but `make` must be handed a writable temp directory
 or the compiler tries `C:\WINDOWS` and stops with "Cannot create temporary file"; passing `TMP`, `TEMP` and
@@ -391,4 +461,4 @@ The three warnings the build prints (`px`/`py` possibly uninitialized in `r3d_sc
 | 3 — a stable interpreter (attract, menus, inputs) | **done.** Boot, WARNING, title, the attract demo, a coin, the fighter select, and a whole round fought against the CPU: 4201 scripted frames, no fault |
 | 4 — Real3D and tiles | **started.** The Step 2.x culling nodes and formats are in and the 3D draws (section 9); the colours hold up across the demo, the one white frame being a flash the game asks for (section 10). Nothing is compared with a reference yet |
 | 5 — coverage and the recompiler | **done.** Its own address map from this port's own coverage, 69,716 instructions recompiled, and the lockstep identical over both scripts — 2231 frames on the attract and menus, 4201 through a match (section 13) |
-| 6 — polish | not started |
+| 6 — polish | **started.** The windowed host runs the game with sound, inputs, the menu, upscaling and the 3D on the GPU (Direct3D 12, tried on real hardware at last); per-game NVRAM, window name and play style; widescreen in the attract but not yet in a fight (section 14) |
