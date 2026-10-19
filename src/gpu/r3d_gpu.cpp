@@ -264,6 +264,8 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 		o = {};
 		o.sun[0] = v.sun[0]; o.sun[1] = v.sun[1]; o.sun[2] = v.sun[2]; o.sun[3] = v.sun_intensity;
 		o.light[0] = v.ambient; o.light[1] = 1.0f;   // (the sun clamped: Step 1.0's)
+		// whether the light that reaches a surface stops at full: Step 1.0 only, as the CPU rasterizer has it
+		o.light[2] = v.intensity_clamp ? 1.0f : 0.0f;
 		memcpy(o.spot_ellipse, v.spot_ellipse, sizeof(o.spot_ellipse));
 		o.spot_range[0] = v.spot_range[0]; o.spot_range[1] = v.spot_range[1];
 		memcpy(o.spot_colour, v.spot_colour, 12);
@@ -284,13 +286,16 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 		o.flags = (m.textured ? F_TEXTURED : 0) | (m.alpha_test ? F_ALPHA_TEST : 0) | (m.texture_alpha ? F_TEX_ALPHA : 0) |
 			(m.lighting ? F_LIGHTING : 0) | (m.fixed_shading ? F_FIXED : 0) | (m.smooth_shading ? F_SMOOTH : 0) |
 			(m.specular ? F_SPECULAR : 0) | (m.inverted ? F_INVERTED : 0);
-		o.format = m.format; o.tx = m.x; o.ty = m.y; o.tw = m.width; o.th = m.height;
+		// the nodes' texture offset moves where on the sheet the mesh reads from, as the CPU rasterizer has it
+		// (Step 1.5 and later; 0 on Step 1.0, which has no such word, so these are then m.x and m.y as before)
+		const int tox = d.model->tex_x, toy = d.model->tex_y;
+		o.format = m.format; o.tx = (m.x + tox) & 2047; o.ty = (m.y + toy) & 2047; o.tw = m.width; o.th = m.height;
 		o.page = m.page ^ d.model->page;
 		o.wrap = m.wrap_u | (m.wrap_v << 2);
 		o.levels = m.textured ? std::floor(std::log2(float(std::min(m.width, m.height)))) - 1.0f : 0.0f;
 		o.shininess = m.shininess; o.spec_value = m.specular_value; o.fog_intensity = m.fog_intensity;
 		o.vp = uint32_t(d.vp - scene.viewports.data());
-		o.flip = m.flip; o.flip_x = m.flip_x; o.flip_y = m.flip_y;
+		o.flip = m.flip; o.flip_x = (m.flip_x + tox) & 2047; o.flip_y = (m.flip_y + toy) & 2047;
 	}
 	// each polygon (a triangle, or four sides after the near plane) as triangles; their raw attributes (the
 	// prepared ones are over w) and clip positions in their viewport's projection

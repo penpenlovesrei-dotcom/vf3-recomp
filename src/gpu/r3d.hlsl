@@ -33,7 +33,7 @@ struct Draw
 struct Vp
 {
 	float4 sun;         // xyz, w intensity
-	float4 light;       // x ambient, y sun clamp (1/0)
+	float4 light;       // x ambient, y sun clamp (1/0), z the light intensity clamped at full (1/0: Step 1.0 only)
 	float4 spot_ellipse;
 	float4 spot_range;  // xy
 	float4 spot_colour, spot_fog_colour;
@@ -252,7 +252,10 @@ FsOut main(PolyV i)
 		else sun = dot(vp.sun.xyz, i.normal);
 		sun = clamp(sun, -1.0, 1.0);
 		if (vp.light.y > 0 || c.a < 0.999) sun = max(sun, 0.0);
-		float li = min(sun * vp.sun.w + vp.light.x, 1.0);
+		// the sun and ambient light, up to full on Step 1.0 and past it on the later steppings, as the CPU
+		// rasterizer has it (r3d_raster.cpp)
+		float li = sun * vp.sun.w + vp.light.x;
+		if (vp.light.z > 0) li = min(li, 1.0);
 		float3 l3 = li + vp.spot_colour.rgb * lobe;
 		c.rgb *= l3;
 		if (d.flags & F_SPECULAR) {
