@@ -150,6 +150,7 @@ void SoundBoard::reset()
 
 int SoundBoard::group_of(int n, int slot) const
 {
+	if (!driver_known) return 0;   // (soundboard.h: not the driver these records belong to)
 	const uint16_t *r = &ram[n][(0x400 + slot * 0x20) >> 1];
 	if (r[0] != (n ? 0x30 : 0x10) || r[1] != slot * 0x20) return 0;   // not the driver's record: the music's
 	return (r[2] & 0xFF) >= 0x0F;

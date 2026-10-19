@@ -32,6 +32,10 @@ public:
 	// then the channel the voice plays for. The music plays on channels 0x00 to 0x0E; the game's effects, voices
 	// and announcer ask for channels 0x0F to 0x12 (requests 0x11 to 0x14), on the second SCSP.
 	void set_volumes(float music, float effects);
+	// Whether this game's sound driver is the one group_of() reads. Virtua Fighter 3's is; for another game the
+	// records at 0x400 are something else, and reading them could put voices in the wrong group by coincidence,
+	// so every voice is the music's and the two volumes move together.
+	bool driver_known = true;
 
 	uint64_t cycles() const { return now; }
 	uint32_t pc() const { return cpu->pc(); }

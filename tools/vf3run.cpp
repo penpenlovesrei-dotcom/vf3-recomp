@@ -126,6 +126,8 @@ int main(int argc, char **argv)
 	static std::vector<int16_t> audio;
 	if (!wav_path.empty()) {
 		sound.attach(&board.sound_rom, &board.samples);
+		// the music/effects split reads Virtua Fighter 3's sound driver (soundboard.h)
+		sound.driver_known = board.set == "vf3";
 		sound.reset();
 		if (const char *v = getenv("VF3_VOLUMES")) {
 			int m = 100, e = 100;

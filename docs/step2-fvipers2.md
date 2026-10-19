@@ -459,6 +459,39 @@ can generate SPIR-V -- the one in the Windows Kits cannot, the release from
 Virtua Fighter 3 is untouched by all of it, measured: the five checks of `verifier-vf3.cmd` and, since the
 shader changed, its picture on the GPU as well -- all byte-identical to the upstream build.
 
+## 16. The sound board
+
+Nobody had listened to this game on the sound board (MAME's 68000 and two SCSPs, as Virtua Fighter 2 Recomp has
+them). `vf3run --wav FILE` writes what it plays, and over the whole fight script it plays: 73 seconds of stereo
+at 44.1 kHz, silent for the first 17 while the boot unpacks the program, then steady from the attract through
+the coin, the select and the round.
+
+Nothing in the board needed changing. The two things that could have:
+
+- **The samples are banked, and this game fills them.** The 68000 sees 8 MB at a time at 0x800000-0xFFFFFF, with
+  bit 4 of the register at 0x400001 choosing the upper half. Virtua Fighter 3 has 8 MB of samples mirrored into
+  16; Fighting Vipers 2 has four ROMs filling all 16, so it is the first set here that uses the bank. It was
+  already right.
+- **The MIDI path**, the program ROM's size and the board's timing are the same on both steppings.
+
+What did need a word is the menu's split between music and effects. The two volumes are applied per voice, and
+which group a voice belongs to is read out of **Virtua Fighter 3's sound driver**: a record per slot at 0x400 in
+each SCSP's RAM, the music on channels 0x00-0x0E and the effects, voices and announcer above. Another game's
+driver puts something else there, and reading it could sort voices into the wrong group by coincidence, so
+`SoundBoard::driver_known` is now set from the ROM set: off for anything but Virtua Fighter 3, where every voice
+counts as the music and the two sliders move together. The sound itself is unaffected.
+
+Measured side by side over each game's own script:
+
+| | Virtua Fighter 3 | Fighting Vipers 2 |
+| --- | --- | --- |
+| Peak (of 32767) | 8313 / 11221 | 4004 / 3666 |
+| RMS | 909 / 954 | 497 / 486 |
+
+So this game plays about 6 dB quieter than the other. Whether that is its own mix or something this port gets
+wrong is not settled: there is no reference recording of it on this machine to compare with, and the levels are
+well within what two games can differ by. Worth a listen against the real thing before anything is changed.
+
 ## What is still missing
 - **Nothing is compared frame for frame with the reference.** The pictures above are this port's alone. Until a
   reference run exists for Fighting Vipers 2, "it draws the scene" is all that can be claimed, not "it draws the
