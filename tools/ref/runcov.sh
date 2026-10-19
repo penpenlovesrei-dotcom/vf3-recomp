@@ -44,7 +44,8 @@ cd "$dir"
 export SM_COV_DIR="$dir/out" SM_SCRIPT="$dir/script.txt" SDL_AUDIODRIVER=dummy
 start=$(date +%s)
 case "$(uname)" in
-  Darwin)
+  Darwin | MINGW* | MSYS* | CYGWIN*)
+    # a hidden window: a Mac creates it with no Dock icon, Windows simply never shows it (there is no Xvfb)
     SM_HIDDEN=1 "$sm" "$rom" $opts > "$dir/stdout.txt" 2>&1 || true
     ;;
   *)

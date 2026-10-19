@@ -492,18 +492,56 @@ So this game plays about 6 dB quieter than the other. Whether that is its own mi
 wrong is not settled: there is no reference recording of it on this machine to compare with, and the levels are
 well within what two games can differ by. Worth a listen against the real thing before anything is changed.
 
+## 17. Against the reference, frame for frame
+
+Everything up to here was this port against itself. `tools/ref` is the piece that settles it: a patch that adds
+coverage and scripted input to Supermodel, and `SM_STATE`, which writes the CPU's state and a hash of RAM after
+every frame in exactly the format `vf3run --state` writes, so `tools/statecmp.py` compares the two.
+
+It builds on this machine. Supermodel at trzy/Supermodel **c65edb1** (the commit the patch is made against),
+the patch applied clean, built with `Makefiles/Makefile.Win32` against MSYS2's SDL2, GLEW, zlib, libpng and
+SDL2_net -- all already installed. `runcov.sh` needed one line: it ran the game under Xvfb on anything that
+wasn't a Mac, and Windows has no Xvfb but does have `SM_HIDDEN`, which is what the Mac branch uses.
+
+**Both scripts match the reference exactly:**
+
+| Script | Frames | Result |
+| --- | --- | --- |
+| `fv2-match.txt` -- boot, attract, a coin, the fighter select, random play | 2231 | **identical** |
+| `fv2-fight.txt` -- the above, plus a fighter picked and a whole round against the CPU | 4201 | **identical** |
+
+Every one of the 128 words a frame: all 32 general registers, all 32 floating-point registers, CR, XER, LR, CTR,
+MSR, the next PC, SRR0/1, the decrementer, the time base, FPSCR, the four SPRGs, HID0/1, the interrupt state,
+and a hash of all 8 MB of RAM. Over 6432 frames between them, not one word differs.
+
+That is the whole chain checked at once -- the gzip boot, the 166 MHz clock, the MPC106, the security chip, the
+Real3D's registers, the tile generator, the inputs and the interrupt timing -- against a build that is not this
+one. It does not check the pictures or the sound, which are this port's own code and have no counterpart in the
+reference's state dump.
+
+The reference's own count of the code this game runs, `00000100-00074B7C`, also sits right on top of the address
+map built from this port's coverage (section 13): 7196 entry points between 0x100 and 0x74B70.
+
+Nothing from the reference build is in this port. The patch is GPL and lives in `tools/ref` for making
+measurements with; Supermodel's source was read as documentation of the hardware and nothing was copied from it.
+
 ## What is still missing
-- **Nothing is compared frame for frame with the reference.** The pictures above are this port's alone. Until a
-  reference run exists for Fighting Vipers 2, "it draws the scene" is all that can be claimed, not "it draws the
-  right scene".
-- **No lockstep for Fighting Vipers 2 yet.** The recompiler has Virtua Fighter 3's address map
-  (`src/rec/vf3_map.cpp`); Fighting Vipers 2 needs its own, from coverage runs, before `vf3lock` means anything
-  for it. (Virtua Fighter 3's own lockstep passes on this branch; see above.)
-- **Whether the game is getting anywhere is not known.** It executes its own program and takes 2231 frames of
-  scripted input without faulting, but with no picture to look at there is nothing yet to say it is past its
-  own boot checks and into the attract. That is the next thing to measure, not something to assume.
-- **The windowed build needs SDL 3**, which isn't installed on this machine
-  (`pacman -S mingw-w64-x86_64-sdl3` in MSYS2). The headless `vf3run` and `vf3lock` build and run without it.
+
+- **The pictures are still not compared with the reference.** The CPU's state and RAM now are, over 6432 frames
+  (section 17), but what gets drawn and played is this port's own code and does not appear in the reference's
+  state dump. Upstream has 173,000 frames of state for Virtua Fighter 3; this game has 6432.
+- **The sound has not been compared with a reference either.** It plays, and over each game's own script this
+  one is about 6 dB quieter than Virtua Fighter 3 (section 16). Whether that is its own mix is not settled.
+- **`fvipers2o` has never been run.** The set is in the loader and should need nothing special, the loader
+  reading whichever gzip is in the CROM, but there is no dump of that revision here to try.
+- **The menu's music/effects split does nothing for this game** (section 16): which voice is which is read out
+  of Virtua Fighter 3's sound driver, so for anything else the two sliders move together.
+- **The boot takes 16 seconds of game time** unpacking the gzip, and the host runs it unseen. That is the game's
+  own boot, not slow emulation -- 960 frames at 57.5 Hz is 16.7 s, and this port does it in 15.2 -- but it is a
+  long wait, and the recompiler does not cover it: the stub runs in the CROM, and only the program in RAM is
+  recompiled.
+- **The release packaging has not been touched.** `tools/release`, `tools/win`, `tools/mac` and `tools/deck`
+  still name and ship one game.
 
 ## Building and running here
 
