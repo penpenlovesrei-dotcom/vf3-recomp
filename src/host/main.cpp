@@ -658,6 +658,12 @@ struct Game
 	float bg_dx = 0, bg_dy = 0;   // the newest frame's 3D drawn full width (a stage)
 	video::SkyLead sky;           // how far the stage's sky is behind the 3D camera (sky_lead.h)
 	bool sky_lead_known = true;   // whether that was measured for the loaded game (Virtua Fighter 3's was)
+	// How many rows may carry 2D at the 4:3 edges and still be a stage: fewer than video::H / this. The tight 20
+	// is Virtua Fighter 3's, whose HUD never reaches the edges, and it keeps that game's close-ups and its
+	// full-screen pictures out. Fighting Vipers 2 puts a player's icon hard against each edge above the health
+	// bars: 26 such rows, measured right through a round, against the 19 that limit allows. What really tells a
+	// stage from a picture is the other two tests -- the 3D drawn full width, and the 2D covering under half.
+	int stage_edge_divisor = 20;
 	std::vector<int16_t> audio;
 	uint64_t frame = 0;
 	bool tiles_on = true;   // (off for the boot run unseen: the 2D layers drawn a line at a time for nothing)
@@ -666,6 +672,7 @@ struct Game
 	{
 		if (!board.load(zip, error)) return false;
 		sky_lead_known = board.set == "vf3";   // (sky_lead.h was measured on that game's stages)
+		stage_edge_divisor = board.set == "vf3" ? 20 : 8;
 		if (!interp) {
 			ppcrec::Stats st;
 			built_image = board.program_image();
@@ -1545,7 +1552,12 @@ int main(int argc, char **argv)
 				covered += c;
 				edge_rows += (row[0] >> 24) != 0 || (row[video::W - 1] >> 24) != 0;
 			}
-			bool stage = game.view.full_3d && rows > 0 && edge_rows * 20 < video::H && covered * 100 < long(rows) * video::W * 50;
+			bool stage = game.view.full_3d && rows > 0 && edge_rows * game.stage_edge_divisor < video::H && covered * 100 < long(rows) * video::W * 50;
+			// VF3_STAGE_AUDIT=1: what the test above saw, for fitting it to a game whose HUD sits elsewhere
+			if (getenv("VF3_STAGE_AUDIT"))
+				fprintf(stderr, "stage %d: full_3d %d rows %d edge_rows %d (limit %d) covered %.1f%% (limit 50%%)\n",
+				        int(stage), int(game.view.full_3d), rows, edge_rows, video::H / game.stage_edge_divisor,
+				        rows ? 100.0 * double(covered) / (double(rows) * video::W) : 0.0);
 			// a stage stays one through a round's opening wipe and the like (2D over part of it for under 20 frames);
 			// a picture over all of it (the next match's, a close-up) or the 3D gone ends it at once
 			static int stage_hold = 0;

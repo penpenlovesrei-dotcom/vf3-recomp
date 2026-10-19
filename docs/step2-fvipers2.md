@@ -422,6 +422,43 @@ now runs five checks, the last two new:
 
 All five say IDENTIQUE. `jouer-fv2.cmd` opens the game in a window.
 
+## 15. Widescreen in a fight, and two things the GPU was not doing
+
+**Widescreen in a fight.** The host widens the picture only on what it recognises as a stage, and that test is
+Virtua Fighter 3's. `VF3_STAGE_AUDIT=1` prints what it saw, and on a Fighting Vipers 2 round the answer was
+exact: the 3D is drawn full width, the 2D covers 8-9 % (the limit is 50 %), and the one failing test is
+**26 rows with 2D at the 4:3 edges against a limit of 19** -- the player icons this game puts hard against each
+edge above the health bars. Virtua Fighter 3's HUD never reaches the edges, which is why 19 was enough.
+
+That allowance is now per game (`stage_edge_divisor`): 20 for Virtua Fighter 3, which leaves its test written
+exactly as it was, and 8 for anything else. What really tells a stage from a picture is the other two tests, the
+3D full width and the 2D under half. With it, a round is drawn across the whole 16:9 or 21:9 picture.
+
+**The texture offset was only on the CPU.** The culling nodes' texture offset (section 9) was applied in the CPU
+rasterizer and not in the GPU renderer, which read the mesh's place on the sheet raw. In a fight that gave one
+fighter the other's textures -- Charlie wearing Picky's blue armour on the GPU while the CPU drew him in his own
+green and purple with his bike.
+
+**The light's clamp was only on the CPU too.** `r3d.hlsl` clamped the light reaching a surface at full whatever
+the board, while the CPU stopped clamping above Step 1.0 (section 9), so the GPU's picture came out duller --
+which is how it was noticed. The shader takes the flag in `light.z` now.
+
+Measured on one frame of a match, the GPU against the CPU:
+
+| | Before | After |
+| --- | --- | --- |
+| Mean brightness (CPU 99.3) | 84.7 | **99.3** |
+| Sampled pixels differing by more than 8 | 69,571 | **5,158** |
+
+What is left differs by 8 or less: a GPU and a software rasterizer rounding and filtering differently.
+
+Rebuilding `src/gpu/r3d_shaders.h` needs `tools/gpu/shaders.sh` with SPIRV-Cross (MSYS2 has it) and a DXC that
+can generate SPIR-V -- the one in the Windows Kits cannot, the release from
+`microsoft/DirectXShaderCompiler` can.
+
+Virtua Fighter 3 is untouched by all of it, measured: the five checks of `verifier-vf3.cmd` and, since the
+shader changed, its picture on the GPU as well -- all byte-identical to the upstream build.
+
 ## What is still missing
 - **Nothing is compared frame for frame with the reference.** The pictures above are this port's alone. Until a
   reference run exists for Fighting Vipers 2, "it draws the scene" is all that can be claimed, not "it draws the
@@ -461,4 +498,4 @@ The three warnings the build prints (`px`/`py` possibly uninitialized in `r3d_sc
 | 3 — a stable interpreter (attract, menus, inputs) | **done.** Boot, WARNING, title, the attract demo, a coin, the fighter select, and a whole round fought against the CPU: 4201 scripted frames, no fault |
 | 4 — Real3D and tiles | **started.** The Step 2.x culling nodes and formats are in and the 3D draws (section 9); the colours hold up across the demo, the one white frame being a flash the game asks for (section 10). Nothing is compared with a reference yet |
 | 5 — coverage and the recompiler | **done.** Its own address map from this port's own coverage, 69,716 instructions recompiled, and the lockstep identical over both scripts — 2231 frames on the attract and menus, 4201 through a match (section 13) |
-| 6 — polish | **started.** The windowed host runs the game with sound, inputs, the menu, upscaling and the 3D on the GPU (Direct3D 12, tried on real hardware at last); per-game NVRAM, window name and play style; widescreen in the attract but not yet in a fight (section 14) |
+| 6 — polish | **started.** The windowed host runs the game with sound, inputs, the menu, upscaling and the 3D on the GPU (Direct3D 12, tried on real hardware at last); per-game NVRAM, window name and play style; widescreen in the attract and in a fight, and two Step 2.x things the GPU renderer was not doing (sections 14 and 15) |
