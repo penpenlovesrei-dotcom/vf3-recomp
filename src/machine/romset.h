@@ -32,6 +32,10 @@ struct result
 	bool is_fvipers2() const { return set == "fvipers2"; }
 };
 
+// The sets this build knows, as the file names they are usually kept under ("vf3.zip", ...), the one this
+// port was written for first. A program looking for a player's ROMs tries them in this order.
+std::vector<std::string> known_zip_names();
+
 // The CROM regions come back as host-order 32-bit words (as the CPU core reads them); the others as the bytes
 // of the big-endian words.
 result load(const std::string &zip);

@@ -319,6 +319,13 @@ std::vector<uint32_t> unpack_program(const std::vector<uint8_t> &crom_region, st
 
 } // namespace
 
+std::vector<std::string> known_zip_names()
+{
+	std::vector<std::string> names;
+	for (const set &s : SETS) names.push_back(std::string(s.name) + ".zip");
+	return names;
+}
+
 result load(const std::string &path)
 {
 	result res;

@@ -541,16 +541,26 @@ bool first_launch(const std::string &data, const std::string &keep, const std::s
 {
 	namespace fs = std::filesystem;
 	const fs::path own = fs::path(data) / "roms";
-	const fs::path roms = folder.empty() ? own : fs::path(folder), zip = roms / "vf3.zip";
-	const fs::path kept = !folder.empty() || keep.empty() ? own : fs::path(keep) / "roms";
 	std::error_code ec;
+	// The sets this build knows, tried in the order romset.h gives them, Virtua Fighter 3's first: a folder with
+	// vf3.zip in it is found exactly as it always was, and a package for the other game finds its set too. A
+	// folder with none of them gives the first name back, so every message below still has something to say.
+	const std::vector<std::string> set_names = romset::known_zip_names();
+	auto first_set_in = [&](const fs::path &dir) {
+		for (const std::string &n : set_names)
+			if (fs::is_regular_file(dir / n, ec)) return dir / n;
+		return dir / set_names.front();
+	};
+	const fs::path roms = folder.empty() ? own : fs::path(folder), zip = first_set_in(roms);
+	const fs::path kept = !folder.empty() || keep.empty() ? own : fs::path(keep) / "roms";
 	auto keep_copy = [&] {   // (when it isn't there already)
 		if (kept == roms || !folder.empty() || !fs::is_regular_file(zip, ec)) return;
-		if (fs::is_regular_file(kept / "vf3.zip", ec) && fs::file_size(kept / "vf3.zip", ec) == fs::file_size(zip, ec)) return;
+		const fs::path keep_as = kept / zip.filename();
+		if (fs::is_regular_file(keep_as, ec) && fs::file_size(keep_as, ec) == fs::file_size(zip, ec)) return;
 		fs::create_directories(kept, ec);
 		std::string why;
-		if (copy_whole(zip, kept / "vf3.zip", why)) fprintf(stderr, "a copy of vf3.zip kept in %s (for the next update)\n", kept.string().c_str());
-		else fprintf(stderr, "couldn't keep a copy of vf3.zip: %s\n", why.c_str());
+		if (copy_whole(zip, keep_as, why)) fprintf(stderr, "a copy of %s kept in %s (for the next update)\n", zip.filename().string().c_str(), kept.string().c_str());
+		else fprintf(stderr, "couldn't keep a copy of %s: %s\n", zip.filename().string().c_str(), why.c_str());
 	};
 	std::string problem;
 	auto check = [&](const fs::path &z) -> bool {
@@ -562,9 +572,10 @@ bool first_launch(const std::string &data, const std::string &keep, const std::s
 	if (!folder.empty()) {
 		if (fs::is_regular_file(zip, ec)) fprintf(stderr, "the game from the ROM folder %s\n", roms.string().c_str());
 		else {
-			fprintf(stderr, "ROM folder: no vf3.zip in %s%s: looking in %s next\n", roms.string().c_str(),
+			fprintf(stderr, "ROM folder: no set this build knows in %s%s: looking in %s next\n", roms.string().c_str(),
 					fs::is_directory(roms, ec) ? "" : " (no such folder)", own.string().c_str());
-			if (fs::is_regular_file(own / "vf3.zip", ec) && check(own / "vf3.zip")) {
+			const fs::path in_own = first_set_in(own);
+			if (fs::is_regular_file(in_own, ec) && check(in_own)) {
 				fprintf(stderr, "the game from %s\n", own.string().c_str());
 				return true;
 			}
@@ -575,21 +586,23 @@ bool first_launch(const std::string &data, const std::string &keep, const std::s
 		return true;
 	}
 	// an update in a new folder: the set kept from before
-	if (kept != roms && fs::is_regular_file(kept / "vf3.zip", ec) && check(kept / "vf3.zip")) {
+	if (const fs::path in_kept = first_set_in(kept); kept != roms && fs::is_regular_file(in_kept, ec) && check(in_kept)) {
 		fprintf(stderr, "the game from %s\n", kept.string().c_str());
 		return true;
 	}
 	if (getenv("VF3_HIDDEN")) {
-		fprintf(stderr, "%sno vf3.zip in %s\n", problem.c_str(), roms.string().c_str());
+		fprintf(stderr, "%sno set this build knows in %s\n", problem.c_str(), roms.string().c_str());
 		return false;
 	}
 	SDL_Init(SDL_INIT_VIDEO);
 	const char *title = "Virtua Fighter 3";
 	// (the player's ROM folder holds a vf3.zip that isn't the set: the one chosen goes in the data folder's roms,
 	// not over the player's own file)
-	const fs::path into = !folder.empty() && fs::exists(zip, ec) ? own : roms, into_zip = into / "vf3.zip";
+	const fs::path into = !folder.empty() && fs::exists(zip, ec) ? own : roms;
 	const std::string where = "It's copied into " + into.string() + ", so you only do this once.";
-	std::string note = problem + "Choose your copy of Virtua Fighter 3: MAME's \"vf3\" set (vf3.zip, Revision D).\n\n" + where;
+	const std::string which = "Choose your copy of one of the games this build runs: MAME's \"vf3\" set (vf3.zip,\n"
+	                          "Virtua Fighter 3, Revision D) or \"fvipers2\" (fvipers2.zip, Fighting Vipers 2).";
+	std::string note = problem + which + "\n\n" + where;
 	for (;;) {
 		if (!message_box(SDL_MESSAGEBOX_INFORMATION, title, note)) return false;
 		// (the callback may run on another thread: what it writes is read only after done, set last)
@@ -605,20 +618,22 @@ bool first_launch(const std::string &data, const std::string &keep, const std::s
 		if (chosen.failed) {
 			fs::create_directories(roms, ec);
 			message_box(SDL_MESSAGEBOX_INFORMATION, title,
-				"There's no file picker here. Put your vf3.zip in this folder, then start the game again:\n\n" + roms.string());
+				"There's no file picker here. Put your vf3.zip or fvipers2.zip in this folder, then start the\ngame again:\n\n" + roms.string());
 			return false;
 		}
 		if (chosen.files.empty()) return false;
 		const std::string f = chosen.files[0];
 		romset::result r = romset::load(f);
 		if (!r.ok) {
-			note = fs::path(f).filename().string() + ": " + r.error + "\n\nChoose MAME's \"vf3\" set (vf3.zip).\n\n" + where;
+			note = fs::path(f).filename().string() + ": " + r.error + "\n\n" + which + "\n\n" + where;
 			continue;
 		}
 		fs::create_directories(into, ec);
 		std::string why;
+		// kept under its set's own name, whichever game was picked
+		const fs::path into_zip = into / (r.set + ".zip");
 		if (!fs::equivalent(f, into_zip, ec) && !copy_whole(f, into_zip, why)) {
-			note = "Couldn't copy it into " + into.string() + ": " + why + "\n\nChoose your vf3.zip.";
+			note = "Couldn't copy it into " + into.string() + ": " + why + "\n\n" + which;
 			continue;
 		}
 		if (into == roms) keep_copy();
