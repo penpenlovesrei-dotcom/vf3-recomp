@@ -3,6 +3,7 @@
 // quits), playing an input script, and writes the CPU state and a RAM hash after every frame in the reference
 // build's format, for tools/statecmp.py.
 //   vf3run <vf3.zip> [--frames N] [--script FILE] [--state FILE] [--ram-at FRAME] [--watch ADDR] [--rec] [--quiet]
+// --full-roster makes Fighting Vipers 2's hidden fighters selectable (src/machine/model3.cpp, unlock_roster).
 // --wav FILE runs the sound board and writes what it plays. --shots DIR writes the script's screenshots there as PNG. --rec runs the recompiled code (src/rec) with the interpreter for the rest. --ram-at writes RAM after that frame to ram_<frame>.bin in the current folder; --watch ADDR (hex) reports
 // the CPU's stores to that word (--trace-pc ADDR: r3-r8 and LR each time that instruction runs; both on the interpreter). VF3_VOLUMES=music,effects (percent) sets the sound board's two volumes for --wav. VF3_POKE=addr=value
 // (hex address into --ram-at's dump, a byte; "b" first: the backup RAM's) writes RAM before every frame
@@ -27,7 +28,7 @@ int main(int argc, char **argv)
 	std::string rom, script_path, state_path, shots, wav_path, coverage_path;
 	long frames = -1, ram_at = -1;
 	uint32_t watch = 0xFFFFFFFF, trace_pc = 0xFFFFFFFF;
-	bool quiet = false, rec = false;
+	bool quiet = false, rec = false, full_roster = false;
 	for (int i = 1; i < argc; i++) {
 		std::string a = argv[i];
 		if (a == "--frames" && i + 1 < argc) frames = strtol(argv[++i], nullptr, 10);
@@ -38,6 +39,7 @@ int main(int argc, char **argv)
 		else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
 		else if (a == "--quiet") quiet = true;
 		else if (a == "--rec") rec = true;
+		else if (a == "--full-roster") full_roster = true;
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
 		else if (a == "--trace-pc" && i + 1 < argc) trace_pc = uint32_t(strtoul(argv[++i], nullptr, 16));
@@ -178,6 +180,11 @@ int main(int argc, char **argv)
 		}
 		auto tp0 = std::chrono::steady_clock::now();
 		board.run_frame();
+		// --full-roster: Fighting Vipers 2's hidden fighters, put in as soon as the boot has unpacked the code
+		// that gates them and held after that (model3.cpp, unlock_roster). It goes in before the rebuild below,
+		// so --rec makes its native code from the program as it will run.
+		if (full_roster && board.unlock_roster() > 0 && !quiet)
+			printf("frame %llu: the hidden fighters are selectable\n", (unsigned long long)board.frame);
 		// Once the boot is over: a game that patched its own program (Fighting Vipers 2 writes its own handlers
 		// into three exception vectors) no longer agrees with what the native code was made from, and one word
 		// of that turns the recompiler off. Built again from RAM as it stands, it agrees. The host does the same

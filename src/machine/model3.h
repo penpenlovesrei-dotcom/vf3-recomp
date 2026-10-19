@@ -166,6 +166,13 @@ public:
 	// it changed (2; 0: not the data known). show_free_play_text puts them back.
 	int hide_free_play_text();
 	void show_free_play_text();
+	// Fighting Vipers 2's hidden fighters, made selectable: the one instruction that gates the select screen's
+	// wider cursor, turned always-on (see the comment on it in model3.cpp, and docs/fv2-roster.md). Unlike the
+	// notices above, the address is in RAM, so there is nothing to do until the boot has unpacked the program --
+	// which is why this reads before it writes and the caller keeps calling. Returns 1 if it wrote the patch just
+	// now, 0 if there was nothing to do (already there, or the program isn't unpacked yet), -1 for a game this
+	// isn't known for.
+	int unlock_roster();
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 

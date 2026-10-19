@@ -1399,4 +1399,42 @@ void Model3::show_free_play_text()
 	free_play_text.clear();
 }
 
+// Fighting Vipers 2 carries a wider select screen than it ever shows. Its cursor handler has a second mode where
+// the cursor wraps at 14 instead of 10, which puts Del Sol, Kuhn, BM and Kuma on the row with the rest, and it is
+// gated on both operator buttons -- Service and Test -- being held at once. No player can do that: Test opens the
+// test menu. What is tested is not a progress flag but the input port's own state, refreshed every frame, so
+// there is nothing to write there. The comparison is what gives:
+//
+//     0005F3BC   cmpwi r0,192   ->   cmpwi r0,0
+//
+// and the gate is then open whenever no operator button is held, which is always.
+//
+// The address is in RAM, not in a ROM. This game's program is a gzip at the fixed CROM's offset 0 that its own
+// boot stub inflates into RAM 0 (romset.cpp), so there is nothing to patch until the boot has got that far, and
+// writing there before it has would land in a part of the program that is not decompressed yet -- the PowerPC
+// then goes somewhere else entirely, some frames later, with nothing to say why. Hence the read first: anything
+// but the instruction Sega wrote means this is not the moment.
+//
+// How often it has to be done was measured rather than assumed (tools/vf3run --watch 5F3BC): over a whole run --
+// boot, attract loop, select screen, a fight -- that word is written exactly once, by the inflate, at a boot PC
+// in the CROM. Nothing rewrites it afterwards. One write once the boot is over is therefore enough, and the
+// caller still calls every frame, which costs one comparison and covers the case this port has not been through.
+//
+// Known limit, and it is the game's, not the port's: past cursor 10 the names and portraits are wrong or missing.
+// The routine that draws them stops there and its table of positions holds eleven entries.
+int Model3::unlock_roster()
+{
+	// Measured on the Japan Revision A set. The other Fighting Vipers 2 set is a different build and its own
+	// address was never looked for, so it is left alone rather than patched at an address that means nothing
+	// there.
+	if (set != "fvipers2") return -1;
+	constexpr uint32_t SITE = 0x0005F3BC;
+	constexpr uint32_t AS_SEGA_WROTE_IT = 0x2C8000C0;   // cmpwi r0,192
+	constexpr uint32_t ALWAYS = 0x2C800000;             // cmpwi r0,0
+	if (word(ram, SITE) != AS_SEGA_WROTE_IT) return 0;
+	word(ram, SITE) = ALWAYS;
+	cpu.ram_written(SITE);   // (the recompiler's native code was made from the instruction that was there)
+	return 1;
+}
+
 } // namespace m3
