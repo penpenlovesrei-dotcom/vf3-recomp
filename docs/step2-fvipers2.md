@@ -603,6 +603,13 @@ identical to the reference over the whole fight script's 4201 frames.
   reading whichever gzip is in the CROM, but there is no dump of that revision here to try.
 - **The menu's music/effects split does nothing for this game** (section 16): which voice is which is read out
   of Virtua Fighter 3's sound driver, so for anything else the two sliders move together.
+- **Getting a credit in is awkward, and that needs fixing.** The PC way sets Virtua Fighter 3 to FREE PLAY and
+  then ignores coins altogether -- the bindable Coin button, key or pad, is guarded by `!g_pc_mode`. This game's
+  coin settings are not known (section 6), so it is never put in FREE PLAY, and the bindable button stays dead:
+  the only ways in are the cabinet's own hardwired `5` (and `6` for player two), which no menu mentions, the
+  game's own test menu on `F2`, or switching to Arcade play. What it should do instead is let a game whose FREE
+  PLAY this port cannot set fall back to taking coins properly: the bindable Coin button live in either play
+  style, and the menu saying so.
 - **The boot takes 16 seconds of game time** unpacking the gzip, and the host runs it unseen. That is the game's
   own boot, not slow emulation -- 960 frames at 57.5 Hz is 16.7 s, and this port does it in 15.2 -- but it is a
   long wait, and the recompiler does not cover it: the stub runs in the CROM, and only the program in RAM is
