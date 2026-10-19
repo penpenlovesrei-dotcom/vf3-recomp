@@ -203,6 +203,47 @@ const rom FV2_DATA[] = {
 	{ "mpr-20579", 0x08788436, SAMPLES, 0xC00000, 1, 1, false },
 };
 
+// Sega Rally 2 (Export, Step 2.0). The same board as Fighting Vipers 2 and no security chip, but only
+// three groups of banked CROM (48 MB, mirrored to fill the 128), 8 MB of samples mirrored to 16 as
+// Virtua Fighter 3's are, and two regions this port has nowhere to put: the MPEG music board's program
+// and music (the DSB, which this port does not have, so the game plays without its music) and the
+// drive board's. Its program is read like any other: whether it is a gzip is found in the CROM.
+// (Layout: Supermodel's Config/Games.xml, read as documentation.)
+const rom SR2_PROGRAM[] = {
+	{ "epr-20635.20", 0x7937473F, CROM, 0x0000000, 8, 2, true },
+	{ "epr-20634.19", 0x45A09245, CROM, 0x0000002, 8, 2, true },
+	{ "epr-20633.18", 0xF5A24F24, CROM, 0x0000004, 8, 2, true },
+	{ "epr-20632.17", 0x6829A801, CROM, 0x0000006, 8, 2, true },
+};
+
+const rom SR2_DATA[] = {
+	{ "mpr-20605.4", 0x00513401, BANKED, 0x0000000, 8, 2, true },
+	{ "mpr-20604.3", 0x99C5F396, BANKED, 0x0000002, 8, 2, true },
+	{ "mpr-20603.2", 0xAD0D8EB8, BANKED, 0x0000004, 8, 2, true },
+	{ "mpr-20602.1", 0x60CFA72A, BANKED, 0x0000006, 8, 2, true },
+	{ "mpr-20609.8", 0xC03CC0E5, BANKED, 0x1000000, 8, 2, true },
+	{ "mpr-20608.7", 0x0C9B0571, BANKED, 0x1000002, 8, 2, true },
+	{ "mpr-20607.6", 0x6DA85AA3, BANKED, 0x1000004, 8, 2, true },
+	{ "mpr-20606.5", 0x072498FD, BANKED, 0x1000006, 8, 2, true },
+	{ "mpr-20613.12", 0x2938C0D9, BANKED, 0x2000000, 8, 2, true },
+	{ "mpr-20612.11", 0x721A44B6, BANKED, 0x2000002, 8, 2, true },
+	{ "mpr-20611.10", 0x5D9F8BA2, BANKED, 0x2000004, 8, 2, true },
+	{ "mpr-20621.31", 0x3A99148F, VROM, 0x000000A, 32, 2, false },
+	{ "mpr-20622.32", 0x0618F056, VROM, 0x000000C, 32, 2, false },
+	{ "mpr-20623.33", 0xCCF31B85, VROM, 0x000000E, 32, 2, false },
+	{ "mpr-20624.34", 0x90F30936, VROM, 0x0000010, 32, 2, false },
+	{ "mpr-20625.35", 0x04F804FA, VROM, 0x0000012, 32, 2, false },
+	{ "mpr-20626.36", 0x2D6C97D6, VROM, 0x0000014, 32, 2, false },
+	{ "mpr-20627.37", 0xA14EE871, VROM, 0x0000016, 32, 2, false },
+	{ "mpr-20628.38", 0xBBA829A3, VROM, 0x0000018, 32, 2, false },
+	{ "mpr-20629.39", 0xEAD2EB31, VROM, 0x000001A, 32, 2, false },
+	{ "mpr-20630.40", 0xCC5881B8, VROM, 0x000001C, 32, 2, false },
+	{ "mpr-20631.41", 0x5CB69FFD, VROM, 0x000001E, 32, 2, false },
+	{ "epr-20636.21", 0x7139EBF8, SOUND, 0x0000000, 1, 1, false },
+	{ "mpr-20614.22", 0xA3930E4A, SAMPLES, 0x0000000, 1, 1, false },
+	{ "mpr-20615.24", 0x62E8A94A, SAMPLES, 0x0400000, 1, 1, false },
+};
+
 struct set
 {
 	const char *name;             // MAME's name for it
@@ -228,6 +269,8 @@ const set SETS[] = {
 	  { 0x800000, 0x4000000, 0x4000000, 0x80000, 0x1000000 }, LIST(FV2_PROGRAM), LIST(FV2_DATA) },
 	{ "fvipers2o", "Fighting Vipers 2 (Japan)", 0x20, 0x29260E96, true,
 	  { 0x800000, 0x4000000, 0x4000000, 0x80000, 0x1000000 }, LIST(FV2O_PROGRAM), LIST(FV2_DATA) },
+	{ "srally2", "Sega Rally 2 (Export)", 0x20, 0, false,
+	  { 0x800000, 0x3000000, 0x4000000, 0x80000, 0x800000 }, LIST(SR2_PROGRAM), LIST(SR2_DATA) },
 };
 #undef LIST
 
@@ -389,7 +432,17 @@ result load(const std::string &path)
 	memcpy(&res.crom[HELD[CROM] - s->size[CROM]], region[CROM].data(), s->size[CROM]);
 	if (s->size[CROM] < HELD[CROM])
 		memcpy(&res.crom[0], region[BANKED].data(), HELD[CROM] - s->size[CROM]);
-	mirror(res.banked, HELD[BANKED], region[BANKED], s->size[BANKED]);
+	// The banked CROM, as the reference build lays it out: a set of 64 MB or less goes into a 64 MB window with
+	// the rest of that window left at zero, and the whole window -- zeros included -- is repeated to fill the
+	// 128 MB the banking reaches; only a set bigger than 64 MB fills all 128 on its own. It matters for a set
+	// that fills neither: Sega Rally 2's 48 MB leaves 16 MB of zeros that the game reads, and repeating its
+	// 48 MB instead would put ROM where the board has none.
+	{
+		const size_t window = s->size[BANKED] <= 0x4000000 ? 0x4000000 : HELD[BANKED];
+		std::vector<uint8_t> win(window, 0);
+		memcpy(win.data(), region[BANKED].data(), std::min(window, s->size[BANKED]));
+		mirror(res.banked, HELD[BANKED], win, window);
+	}
 	to_host_words(res.crom);
 	to_host_words(res.banked);
 	mirror(res.vrom, HELD[VROM], region[VROM], s->size[VROM]);

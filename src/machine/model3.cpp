@@ -475,6 +475,11 @@ void Model3::reset()
 
 void Model3::set_crom_bank(uint8_t v)
 {
+	// VF3_BANK_LOG=1: each change of the banked CROM's window, for a game that reads from one this port put
+	// nothing in (debugging)
+	if (getenv("VF3_BANK_LOG") && v != crom_bank_reg)
+		fprintf(stderr, "crom bank: register %02X -> window %u (frame %llu)\n", v, unsigned((~v) & 0xF),
+		        (unsigned long long)frame);
 	crom_bank_reg = v;
 	crom_bank = banked.data() + size_t((~v) & 0xF) * 0x800000;
 }
@@ -1125,7 +1130,15 @@ uint32_t Model3::read32(uint32_t a)
 	if (a < 0x00800000)
 		return word(ram, a);
 	switch (a >> 24) {
-	case 0xFF: return *reinterpret_cast<const uint32_t *>(&(a < 0xFF800000 ? crom_bank : crom.data())[a & 0x7FFFFF]);
+	case 0xFF: {
+		const uint32_t v = *reinterpret_cast<const uint32_t *>(&(a < 0xFF800000 ? crom_bank : crom.data())[a & 0x7FFFFF]);
+		// VF3_CROM_WATCH=<hex address>: every read of that word in the CROM, with the window it came from
+		if (const char *w = getenv("VF3_CROM_WATCH"))
+			if (a == uint32_t(strtoul(w, nullptr, 16)))
+				fprintf(stderr, "crom read %08X = %08X (window %u, frame %llu)\n", a, bswap32(v),
+				        unsigned((~crom_bank_reg) & 0xF), (unsigned long long)frame);
+		return v;
+	}
 	case 0x84: return bswap32(r3d_register(a & 0x3F));
 	case 0xC2: return bswap32(r3d_dma_read32(a & 0xFF));
 	case 0xF0: case 0xFE:
