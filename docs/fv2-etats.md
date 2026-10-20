@@ -1,0 +1,192 @@
+# Les états de Fighting Vipers 2, et l'écran titre
+
+Rien ici n'est neuf. Tout a été mesuré sur la ROM entre le 2026-08-14 et le 2026-08-20, et consigné dans
+`Documents\SEGA Model 3\SupermodelSrc\Docs\MenuConsole.md` (§6, 6 bis, 6 quater, 6 sexies) ; les adresses sont
+dans `SupermodelSrc\Src\Menu\GameFV2.h`. Ce document les porte dans ce port pour qu'on cesse de les redécouvrir.
+
+Rien n'est repris du code de Supermodel : ce sont des faits sur le jeu, pas du code.
+
+
+## Le jeu dit lui-même où il en est
+
+Quatre octets contigus, et c'est toute la machine :
+
+```
+MODE_MAIN       0x0058FD98   le mode
+MODE_SUB        0x0058FD99   le sous-état du mode courant
+MODE_REQUEST    0x0058FD9A   le mode demandé
+SUBMODE_REQUEST 0x0058FD9B   le sous-état demandé
+```
+
+Les noms sont ceux de Sega, laissés en RAM : une suite contiguë de 80 chaînes à `0x00024494`, dont les 24
+premières sont les modes. **Une table contiguë ne dit pas où ses tranches commencent** — le découpage par les
+noms a été pris en défaut trois fois, et chaque tranche ci-dessous a fini par être mesurée à l'écran.
+
+### Les 24 modes
+
+```
+ 0 WARNING_INT     1 WARNING_DSP     2 ADV_INT         3 ADV_DSP
+ 4 SEL_INT         5 SEL_DSP         6 GAME_INT        7 GAME_DSP
+ 8 CONTINUE_INT    9 CONTINUE_DSP   10 INTRUDE_INT    11 INTRUDE_DSP
+12 ENDING_INT     13 ENDING_DSP     14 NAME_INT       15 NAME_DSP
+16 RANKING_INT    17 RANKING_DSP    18 OVER_INT       19 OVER_DSP
+20 TEST_INT       21 TEST_DSP       22 RESULT_INT     23 RESULT_DSP
+```
+
+`_INT` installe l'écran, `_DSP` le déroule.
+
+**`MODE_SUB` n'a de sens que pour trois modes : `GAME`, `SEL` et `ADV`.** Tous les autres laissent l'octet à ce
+que le mode précédent y avait mis. Pour `CONTINUE`, `OVER`, `INTRUDE`, `ENDING` et `NAME`, il suffit de lire le
+mode.
+
+### Les douze sous-états de l'attraction (ADV), `0x0002455C`
+
+```
+0 DONT_RECYCLE_INT   1 DONT_RECYCLE_DSP   2 ADV_SEGA_INT     3 ADV_SEGA_DSP
+4 FV2_TITLE_INT      5 FV2_TITLE_DSP      6 ADV_RATING_INT   7 ADV_RATING_DSP
+8 ADV_REPLAY_WAIT    9 ADV_REPLAY_INT    10 ADV_REPLAY_DSP  11 ADV_DEMO_DSP
+```
+
+Douze, non dix : mesuré. Et la tranche commence à l'indice 50 de la table, non à 52 — les deux noms manquants
+étaient **avant**, pas après, donc rien de ce qui suit ne glisse. Vérifié en gelant le jeu sous-état par
+sous-état et en regardant :
+
+| gelé sur | à l'écran |
+|---|---|
+| 3 (`ADV_SEGA_DSP`) | le logo SEGA, 192 images |
+| 5 (`FV2_TITLE_DSP`) | **l'écran titre** |
+
+### Les vingt sous-états d'un combat (GAME), `0x000244F4`
+
+```
+ 0 ROUND_MASK_INT   1 ROUND_MASK_IN   2 ROUND_MASK_DSP  3 ROUND_MASK_OUT
+ 4 ROUND_INT        5 ROUND_DSP       6 SET_INT         7 SET_INT_POSE
+ 8 SET_DSP          9 READY_INT      10 READY_DSP      11 FIGHT_INT
+12 FIGHT_DSP       13 JUDGE          14 JUDGE_DSP      15 REPLAY_INT
+16 REPLAY_DSP      17 VIC_INT        18 VIC_DSP        19 NEXT_PROG_SEL
+```
+
+Confirmés de bout en bout par la mesure. Le replay a ses propres états, donc **le jeu dit lui-même quand il a
+fini de montrer**, que le joueur l'ait coupé ou non — ce qu'aucun chronomètre ne pouvait remplacer.
+
+
+## « L'écran titre est-il à l'écran ? »
+
+```
+MODE_MAIN ∈ { 2 ADV_INT, 3 ADV_DSP }   et   MODE_SUB ∈ { 4 FV2_TITLE_INT, 5 FV2_TITLE_DSP }
+```
+
+Mesuré à l'écran, pas déduit des noms.
+
+À ne pas confondre avec `InAttract` (`[0x00700000] == 0`, l'état de la tâche `entry1`), qui répond à une tout
+autre question — « une partie tourne-t-elle » — et qui est vrai pendant l'avertissement, le logo, le titre, les
+présentations, les démos et les classements. Les deux servent, à des choses différentes.
+
+
+## Y aller : demander, ne pas forcer
+
+```
+MODE_REQUEST    = 3   ADV_DSP
+SUBMODE_REQUEST = 4   FV2_TITLE_INT
+```
+
+**Écrit une fois, jamais tenu.** Deux images. Le répartiteur de `0x0000ABC4` recopie `MODE_REQUEST` dans le mode
+*avant* de sauter : le mode n'est donc pas forcé, il est demandé, et c'est pour ça que ça marche. Tenir une
+demande est ce qui a cassé l'écran de sélection et son chrono, deux fois.
+
+Laisser passer **soixante images** avant de geler dessus : le gel coupe la voix de l'annonceur (à vingt images on
+entend « Fighting Vipers » sans le « 2 »), et sur la première image du sous-état 5 le fondu n'est pas fini, le
+logo SEGA s'y superpose encore. Trois cents sont déjà trop tard, l'écran est passé.
+
+Ces soixante images ne sont **pas** un chronomètre déguisé : l'état dit *quel* écran, c'est lui le signal ; les
+soixante n'écartent que le fondu.
+
+### Depuis un combat, ce levier ne commande rien
+
+Et l'autre non plus. Les deux écritures du séquenceur d'attraction —
+
+```
+[0x00580DFC] = 14      la dernière entrée réelle de la liste
+[0x00580DD2] = 0x7FFF  son minuteur, expiré
+```
+
+— marchent **depuis l'attraction** et seulement là. Essayées depuis un combat, elles ne font rien, et la
+relecture dit pourquoi : elles étaient encore intactes une seconde après. Le séquenceur d'attraction ne tourne
+pas pendant un match, donc personne ne les lit. *Un essai négatif doit dire lequel des deux : le jeu a recouvert
+nos valeurs, ou le jeu ne les lit pas.*
+
+Forcer l'état de la tâche `entry1` fait dérailler le jeu — essayé, mesuré.
+
+Reste la route du jeu lui-même : **finir le match sans le montrer ni l'entendre**, puis poser l'écran titre une
+fois l'attraction revenue.
+
+```
+0x00581455 = MATCH COUNT − 1    la manche en cours devient la dernière
+0x00581406 = 64                 le chrono au bord : une seconde affichée
+vie du joueur 1 = 0             pour qu'au TIME UP l'issue ne se discute pas
+```
+
+Le chrono est posé **une fois par manche, jamais tenu** — rechargé à chaque image il n'expire jamais. Le numéro
+de manche `0x00581456` dit quand une nouvelle commence, et c'est le seul moment où on le réécrit. La vie à zéro
+parce qu'au TIME UP c'est le moins pourvu qui perd, et qu'un nul ne se compte probablement pas comme une manche
+perdue : à zéro, il n'y a rien à supposer.
+
+Le K.O., le GAME OVER et le décompte du `CONTINUE` se déroulent par la route du jeu, derrière l'image du menu,
+le son coupé.
+
+
+## La liste des modes, et sa géométrie
+
+`assets/menu-console/title_list.png`, 709 x 897, RGBA, sept lignes : ARCADE, V.S., RANDOM, SURVIVAL, NETWORK,
+TRAINING, OPTIONS. **Une seule version de chaque ligne** — aucun des 45 fichiers n'est une variante
+« sélectionnée », donc la ligne choisie doit être marquée autrement.
+
+L'image a été recadrée sur son encre (709 x 897 à partir de 1027 x 1024) ; sans ce recadrage le vide comptait
+dans la hauteur et le bloc entier se décalait.
+
+Les sept bandes sont coupées **au milieu des blancs**, pas en sept parts égales : les étiquettes font de 114 à
+118 pixels, et des parts égales rogneraient les plus hautes.
+
+```
+0, 124.5, 254, 381.5, 511.5, 640.5, 769, 897        (sur 897)
+```
+
+Les libellés sont peints **calés à gauche** — `V.S.` a son milieu à 0,17 quand `NETWORK` l'a à 0,50 — donc chaque
+ligne doit être glissée pour amener son encre au milieu du bloc.
+
+| ligne | milieu de l'encre | demi-largeur | colonnes |
+|---|---|---|---|
+| ARCADE | 0,4006 | 0,3977 | 2..565 |
+| V.S. | 0,1728 | 0,1643 | 6..238 |
+| RANDOM | 0,4379 | 0,4320 | 4..616 |
+| SURVIVAL | 0,4732 | 0,4673 | 4..666 |
+| NETWORK | 0,5035 | 0,4908 | 9..704 |
+| TRAINING | 0,4746 | 0,4718 | 2..670 |
+| OPTIONS | 0,4281 | 0,4196 | 6..600 |
+
+Et sa place sur l'écran titre, en fractions de la hauteur, relevée sur une capture 3840 x 2160 :
+
+```
+haut   0.26157      hauteur 0.35557      milieu 0.5
+```
+
+Grossie de `7/6` (le bloc occupe la hauteur que sept lignes prendraient, pour six dessinées) et remontée de
+`50/1080`, les deux à la demande. Gardé comme un facteur appliqué à la mesure plutôt qu'en remplaçant celle-ci
+par le chiffre obtenu : les deux donnent la même image, mais l'un garde la mesure lisible et dit ce qui a été
+ajouté par-dessus.
+
+L'échelle verticale mesurée est 1,0013 et l'horizontale 1,1216 : cet écran est une image 4:3 montrée large, et
+l'étirement est celui de son affichage, pas celui du jeu. **Seul le placement vertical est pris de là**, la
+largeur suit les proportions de l'image.
+
+
+## Trois fautes, déjà payées là-bas
+
+- **Le style, pas le fond.** Le menu posé sur l'écran titre avait été basculé sur un style qui laisse voir le
+  jeu — ce qui contournait toute la branche où vivent les libellés peints, et les lignes retombaient à la police
+  du menu. Le remède n'est pas un style de plus, c'est une **soustraction** : même style, moins son illustration.
+- **Le masque des boutons.** Ce chemin n'ouvre pas le menu tout de suite, et c'est l'ouverture qui retenait les
+  entrées. Sans elle, Start arrivait au jeu, qui prenait son crédit et ouvrait l'écran de sélection pendant que
+  le voyage attendait un écran titre qui ne viendrait jamais.
+- **Deux changements livrés d'un coup**, sur un mécanisme dont le document disait lui-même qu'il n'avait jamais
+  été essayé. Frédéric n'avait aucun moyen de savoir lequel des deux cassait quoi, et il a fallu tout défaire.
