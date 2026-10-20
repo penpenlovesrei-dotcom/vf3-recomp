@@ -459,6 +459,10 @@ can generate SPIR-V -- the one in the Windows Kits cannot, the release from
 Virtua Fighter 3 is untouched by all of it, measured: the five checks of `verifier-vf3.cmd` and, since the
 shader changed, its picture on the GPU as well -- all byte-identical to the upstream build.
 
+That the two rasterizers reach a texture through the same six numbers, and that `Raster::prepare` already holds
+the one list both of them draw from, is what lets a texture pack be put in front of both at once without
+touching the shader at all: `docs/fv2-hd-3d.md` (`--hd-3d`).
+
 ## 16. The sound board
 
 Nobody had listened to this game on the sound board (MAME's 68000 and two SCSPs, as Virtua Fighter 2 Recomp has
