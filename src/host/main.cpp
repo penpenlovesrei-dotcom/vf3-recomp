@@ -820,18 +820,36 @@ struct Game
 		        (unsigned long long)roster_written);
 		rebuild_from_ram_if_stale();
 	}
-	// Honey's other costume, held exactly as the roster patch is and for the same reasons: two instructions in
-	// RAM, read before every write, and the native code made again for any write after the boot's own rebuild.
-	bool honey_costume = false;
-	uint64_t honey_written = 0;
-	void hold_honey()
+	// Honey's four costumes.
+	//
+	// The game already cycles two of them, and it is a cycle rather than a held direction -- measured on the
+	// select screen: one press of up gives colour 1, a second press gives colour 0 again, and holding up is the
+	// same as pressing it once. So this adds two more positions to a wheel the game already turns.
+	//
+	// The colour needs no help at all, which is the neat part. The game's own toggle advances on every press,
+	// so positions 2 and 3 of a four-long cycle already reach the game as colours 0 and 1. All this adds is the
+	// skirt, decided when the select screen is left -- the models are set up just after, and Honey's cloth
+	// handler runs exactly then (docs/fv2-honey.md).
+	//
+	// The two instructions go in and come back out, because the choice is per match: positions 0 and 1 must get
+	// Sega's own words back. The native code is made again only when something actually changed, so a player who
+	// keeps the same costume pays nothing between matches.
+	bool honey_costume = false;   // the setting: offer four instead of the game's two
+	int honey_cycle = 0;          // 0-3 while the select screen is up
+	bool honey_on_select = false, honey_up_was = false;
+	void honey_tick(bool up_now)
 	{
-		if (!honey_costume || board.honey_costume() <= 0) return;
-		honey_written++;
-		if (!rebuilt_after_boot) return;
-		fprintf(stderr, "Honey's costume: the patch went in after the boot (%llu), the native code made again\n",
-		        (unsigned long long)honey_written);
-		rebuild_from_ram_if_stale();
+		if (!honey_costume) return;
+		const bool on_select = board.fv2_task_state() == 5;
+		if (on_select && !honey_on_select) { honey_cycle = 0; honey_up_was = false; }   // (the screen just opened)
+		if (on_select) {
+			if (up_now && !honey_up_was) honey_cycle = (honey_cycle + 1) & 3;
+			honey_up_was = up_now;
+		} else if (honey_on_select && board.honey_costume(honey_cycle >= 2) > 0) {
+			fprintf(stderr, "Honey: costume %d of 4%s\n", honey_cycle + 1, honey_cycle >= 2 ? ", no skirt" : "");
+			if (rebuilt_after_boot) rebuild_from_ram_if_stale();
+		}
+		honey_on_select = on_select;
 	}
 	// The sound board runs on a thread of its own, a frame behind the game (its ~3 ms a frame alongside the next
 	// frame's work, not in a picture's time): it hears only the game's bytes, and its sound is queued a frame later
@@ -1398,7 +1416,6 @@ int main(int argc, char **argv)
 		game.tiles_on = true;
 		game.rebuilt_after_boot = true;
 		game.hold_roster();   // (before the rebuild: the native code is then made from the program as it will run)
-		game.hold_honey();
 		game.rebuild_from_ram_if_stale();
 		fprintf(stderr, "boot: %llu frames in %.2f s, unseen\n", (unsigned long long)game_frame,
 				std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
@@ -2332,10 +2349,10 @@ int main(int argc, char **argv)
 			[&] { return std::string(cfg.full_roster ? "On" : "Off"); },
 			[&](int) { cfg.full_roster = !cfg.full_roster; game.full_roster = cfg.full_roster; cfg_dirty = true;
 			           if (cfg.full_roster) game.hold_roster(); } });
-		p.items.push_back({ "Honey's other costume", "The one Sega put behind thirty straight wins in an intruded match, with her lower armour knocked off. Turned on here, she wears it from the next fight that loads, without the thirty.",
+		p.items.push_back({ "Honey: four costumes", "The select screen cycles Honey's two costumes with a press of Up. On, it cycles four: Sega's two, then the same two without the skirt -- the costume Sega put behind thirty straight wins in an intruded match. The extra two are chosen the same way, by pressing Up again.",
 			[&] { return std::string(cfg.honey_costume ? "On" : "Off"); },
 			[&](int) { cfg.honey_costume = !cfg.honey_costume; game.honey_costume = cfg.honey_costume; cfg_dirty = true;
-			           if (cfg.honey_costume) game.hold_honey(); } });
+			           game.honey_cycle = 0; } });
 		p.items.push_back(back_item());
 		return p;
 	};
@@ -2830,6 +2847,8 @@ int main(int argc, char **argv)
 				// The console way's injections go on last, so they get through even while the menu is holding
 				// the player's own Start back: choosing a mode has to hand the game a Start on that very frame.
 				for (int q = 0; q < 2; q++) c.start[q] = c.start[q] || console_ctl.start[q];
+				// Honey's costume wheel, turned by the same presses of up the game turns its own two with
+				game.honey_tick(c.up[0] || c.up[1]);
 				// The arcade's test menu (RAM 0x102002 is 4 while it's up; 0 at the attract, a fight, the boot): Down
 				// moves (the service button) and Start selects (the test button), any pad or key, as VF1's and VF2's;
 				// the menu's Service menu presses test once the game is past its boot; leaving it, the PC way restarts
@@ -2880,7 +2899,6 @@ int main(int argc, char **argv)
 			game.publish();
 			game_frame++;
 			game.hold_roster();   // (nothing to do unless the player asked for the hidden fighters)
-			game.hold_honey();
 			// a boot the player watches: the same check, once it is over
 			if (!game.rebuilt_after_boot && game_frame >= BOOT_FRAMES) { game.rebuilt_after_boot = true; game.rebuild_from_ram_if_stale(); }
 			pace.frames++;

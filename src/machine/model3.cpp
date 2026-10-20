@@ -1461,15 +1461,21 @@ int Model3::unlock_roster()
 //
 // In RAM, like the roster patch, and for the same reason: this game's program is a gzip the boot stub unpacks,
 // so there is nothing to patch until it has. Hence the read before each write.
-int Model3::honey_costume()
+// It goes both ways, because the costume is chosen per match: the two extra costumes are the cycle's positions
+// 2 and 3, and positions 0 and 1 must get Sega's own instructions back.
+int Model3::honey_costume(bool on)
 {
 	if (set != "fvipers2") return -1;
 	constexpr uint32_t ARMOUR_TEST = 0x00057A24, WIN_TEST = 0x00057A30;
 	constexpr uint32_t AS_SEGA_WROTE_IT[2] = { 0x41820040, 0x2C80001D };   // beq +0x40 ; cmpwi r0,29
 	constexpr uint32_t ALWAYS[2] = { 0x60000000, 0x2C80FFFF };             // nop       ; cmpwi r0,-1
-	if (word(ram, ARMOUR_TEST) != AS_SEGA_WROTE_IT[0] || word(ram, WIN_TEST) != AS_SEGA_WROTE_IT[1]) return 0;
-	word(ram, ARMOUR_TEST) = ALWAYS[0];
-	word(ram, WIN_TEST) = ALWAYS[1];
+	const uint32_t *from = on ? AS_SEGA_WROTE_IT : ALWAYS;
+	const uint32_t *to = on ? ALWAYS : AS_SEGA_WROTE_IT;
+	// Both words, or neither: the pair is one lever. And the read first, as everywhere here -- anything but
+	// what is expected means the program is not unpacked yet, or is not what this thinks it is.
+	if (word(ram, ARMOUR_TEST) != from[0] || word(ram, WIN_TEST) != from[1]) return 0;
+	word(ram, ARMOUR_TEST) = to[0];
+	word(ram, WIN_TEST) = to[1];
 	cpu.ram_written(ARMOUR_TEST);   // (the recompiler's native code was made from what was there)
 	cpu.ram_written(WIN_TEST);
 	return 1;
