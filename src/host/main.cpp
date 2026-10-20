@@ -1199,7 +1199,9 @@ int main(int argc, char **argv)
 	// The PC way: the FREE PLAY notices hidden (always free play: nothing to say); the arcade way: shown. Both
 	// the notices and the coin settings are at addresses found in Virtua Fighter 3's own test menu, so for
 	// another game there is nothing to hide and nothing to say about it (model3.h).
-	const bool play_style_known = board.set == "vf3";
+	// Whether this port knows where the game keeps its coin settings (Model3::coin_offset). Both games now, so
+	// the PC way -- and the console way, which is the PC way plus a menu -- comes up on FREE PLAY for either.
+	const bool play_style_known = board.coin_offset() >= 0;
 	// The console way is one game's: its menu is built on addresses measured in Fighting Vipers 2 (Japan,
 	// Revision A) and means nothing anywhere else, so the menu doesn't offer it there (docs/fv2-console.md).
 	const bool console_known = board.set == "fvipers2";
@@ -1211,7 +1213,11 @@ int main(int argc, char **argv)
 		if (!play_style_known) return;
 		if (game.emu_thread.joinable()) game.job_wait();   // (not while a frame runs alongside)
 		if (!g_pc_mode) board.show_free_play_text();
-		else if (board.hide_free_play_text() != 2) fprintf(stderr, "not the data known: the FREE PLAY notices stay\n");
+		// Where the notices are is Virtua Fighter 3's own, found in its CROM. For another game they simply stay,
+		// which is a cosmetic matter and not worth a line of complaint at every boot: Fighting Vipers 2 shows
+		// FREE PLAY in the corner, which is true.
+		else if (board.hide_free_play_text() != 2 && board.set == "vf3")
+			fprintf(stderr, "not the data known: the FREE PLAY notices stay\n");
 		game.program_changed();
 	};
 	auto boot = [&] {
@@ -2362,8 +2368,6 @@ int main(int argc, char **argv)
 		if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
 	};
 	auto open_menu = [&] { if (game.emu_thread.joinable()) game.job_wait(); if (menu.ready() && !menu.is_open()) menu.open(main_page()); sync_menu_sound(); };
-	// the console way's menu, on Start during the attract loop: the same machinery, opened at its own page
-	auto open_console = [&] { if (game.emu_thread.joinable()) game.job_wait(); if (menu.ready() && !menu.is_open()) menu.open(console_page()); sync_menu_sound(); };
 
 	// ---- test hooks ----
 	std::vector<std::pair<SDL_Scancode, uint64_t>> test_keys;   // VF3_KEYS
@@ -2642,20 +2646,12 @@ int main(int argc, char **argv)
 				hk = read_inputs(live, pads, pstate, cfg.ctl);
 				act = InputScript::Actions();
 				if (scripted) act = script.step(script_ctl, game_frame);
-				// The console way: Start during the attract loop opens the console's own menu instead of
-				// reaching the game. The press that worked the menu is held back until the player lets go,
-				// or it would arrive at the game on the next frame -- choosing Arcade would then pick a
-				// fighter the instant the select screen appeared.
-				if (cplay.on) {
-					const bool st = live.start[0] || live.start[1];
-					if (cplay.swallow_start) { if (!st) cplay.swallow_start = false; }
-					else if (st && !cplay.start_was && !menu.is_open() && board.fv2_in_attract()) {
-						open_console();
-						cplay.swallow_start = true;
-					}
-					cplay.start_was = st;
-					if (cplay.swallow_start) live.start[0] = live.start[1] = false;
-				}
+				// Start always reaches the game, in every play style. The console way used to take it during
+				// the attract loop and open its own menu with it, which is what the Dreamcast version does --
+				// but on a console Start is also how you start, and taking it away left the player with two
+				// buttons that both opened a menu and no way to begin a match. It was wrong twice over, since
+				// the board is on FREE PLAY in that style anyway: Start starting a game IS the console
+				// behaviour. The console's menu is a page of this port's own menu, under Escape.
 				cplay.step(board, console_ctl);
 				m3::Controls &c = board.controls;
 				auto mix = [](bool *a, const bool *b, const bool *d) { a[0] = b[0] || d[0]; a[1] = b[1] || d[1]; };

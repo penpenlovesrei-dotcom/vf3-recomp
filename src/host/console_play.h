@@ -18,6 +18,17 @@
 // press lasts 8 frames: a human press of Start was measured at 7 to 12 frames, so 8 is indistinguishable from
 // one, and the game samples its inputs at least once a frame.
 //
+// A console has no coin slot, and this is what the console way got wrong at first. Playing it, the menu opened,
+// a mode was chosen, and nothing happened: measured straight after, ARCADE chosen with no coin leaves the entry1
+// task at 0 -- still the attract loop -- while the same run with a coin first reaches the select screen. The
+// Start was being handed over correctly and the game was ignoring it, having no credit.
+//
+// The answer was not to feed the game coins, which was tried and is not what a console does. It was to find
+// where Fighting Vipers 2 keeps its COIN/CREDIT SETTING and put the board on FREE PLAY, as the PC way already
+// did for Virtua Fighter 3. That is one byte of the backup RAM (Model3::coin_offset), found by driving the
+// game's own test menu from an input script. The console way is the PC way plus a menu, so it comes up on free
+// play, and a mode chosen here costs nothing -- which is the whole point of a console.
+//
 // The press that worked the menu must not reach the game. Controls are not handed back when the menu closes but
 // when the player lets go -- otherwise the button that chose ARCADE would still be down on the next frame and
 // would pick a fighter the instant the select screen appeared.

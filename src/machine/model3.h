@@ -145,22 +145,46 @@ public:
 	// (the addresses are Virtua Fighter 3's own, found in its test menu, so the coin settings and the FREE PLAY
 	// notices below are only touched for that set: another game keeps its settings where this port doesn't know)
 	static constexpr int COIN_FACTORY = 1, COIN_FREE_PLAY = 27;
+	// Where a game keeps its test menu's COIN ASSIGNMENTS > COIN/CREDIT SETTING in the backup RAM, or -1 for one
+	// this port has not been shown. Both games number that setting the same way, 1 to 27, 27 being FREE PLAY.
+	//
+	// Virtua Fighter 3: 0x1E033, with the number repeated at 0x1E037 and a flag at 0x1E03B.
+	//
+	// Fighting Vipers 2: 0x17, near the start of the backup RAM, and ONE byte is the whole of it. Found the same
+	// way as Virtua Fighter 3's -- by setting FREE PLAY in the game's own test menu and comparing the backup RAM
+	// before and after. That moved seven bytes: four of them four apart (0x0B, 0x0F, 0x13, 0x17, which are the
+	// four lines of that page) and three more that look like bookkeeping. The one that matters was then picked
+	// out by putting the other six back and leaving only 0x17 at 27: the game still came up in FREE PLAY, and
+	// its picture was byte-identical to the run with all seven changed. So there is no checksum to keep and no
+	// neighbour to agree with.
+	int coin_offset() const { return set == "vf3" ? 0x1E033 : set == "fvipers2" ? 0x17 : -1; }
 	int coin_setting() const
 	{
-		if (set != "vf3") return -1;
-		const int v = backup.size() > 0x1E03B ? backup[0x1E033] : 0;
+		const int at = coin_offset();
+		if (at < 0 || backup.size() <= size_t(at) + 8) return -1;
+		const int v = backup[at];
 		return v >= 1 && v <= COIN_FREE_PLAY ? v : -1;
 	}
 	bool set_coin_setting(int v)   // (true if it changed)
 	{
+		const int at = coin_offset();
 		if (coin_setting() < 0 || v < 1 || v > COIN_FREE_PLAY) return false;
+		if (at != 0x1E033) {   // Fighting Vipers 2: the one byte, and that is all of it
+			const uint8_t was = backup[at];
+			backup[at] = uint8_t(v);
+			return was != backup[at];
+		}
 		const uint8_t was[3] = { backup[0x1E033], backup[0x1E037], backup[0x1E03B] };
 		backup[0x1E033] = uint8_t(v);
 		if (v == COIN_FREE_PLAY) backup[0x1E03B] = 1;
 		else backup[0x1E037] = uint8_t(v), backup[0x1E03B] = 0;
 		return was[0] != backup[0x1E033] || was[1] != backup[0x1E037] || was[2] != backup[0x1E03B];
 	}
-	bool free_play() const { return coin_setting() == COIN_FREE_PLAY && backup[0x1E03B] == 1; }
+	bool free_play() const
+	{
+		if (coin_setting() != COIN_FREE_PLAY) return false;
+		return coin_offset() != 0x1E033 || backup[0x1E03B] == 1;
+	}
 	// Blanks the FREE PLAY notices (the PC way: always free play, nothing to say), in the fixed CROM the boot copies
 	// the program from (so from the next boot). Checked against the known data around them first; returns how many
 	// it changed (2; 0: not the data known). show_free_play_text puts them back.

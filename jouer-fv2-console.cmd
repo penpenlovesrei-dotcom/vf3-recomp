@@ -4,17 +4,19 @@ rem avec Start pendant la demonstration, comme sur la version Dreamcast, au
 rem lieu de tomber directement sur la route fixe de l'arcade.
 rem Voir docs\fv2-console.md.
 rem
-rem IL FAUT QUAND MEME UNE PIECE. Le menu ne touche jamais au compteur de
-rem credits : choisir un mode donne au jeu un vrai appui sur Start, et c'est
-rem le jeu qui decide de ce que ca coute. Le freeplay du mode PC n'est connu
-rem que pour Virtua Fighter 3. Donc :
+rem PAS BESOIN DE PIECE : le mode console est en FREE PLAY, comme une console.
+rem Le portage pose le reglage COIN/CREDIT du jeu lui-meme au demarrage (un
+rem octet de la NVRAM, voir docs\fv2-console.md). Le menu, lui, ne touche
+rem jamais au compteur de credits : choisir un mode donne au jeu un vrai appui
+rem sur Start, et c'est le jeu qui decide de ce que ca coute -- rien, ici.
 rem
-rem     5   une piece joueur 1        6   une piece joueur 2
 rem     1   Start joueur 1            2   Start joueur 2
+rem     5   une piece joueur 1        6   une piece joueur 2
 rem     F2  Test                      9   Service
 rem
-rem Deux fois 5, puis 1 : le menu des modes s'ouvre. ARCADE ou SURVIVAL
-rem lancent la partie. Le menu est aussi sous Echap, ligne "Fighting Vipers 2".
+rem Un appui sur 1 pendant la demonstration ouvre le menu des modes. ARCADE ou
+rem SURVIVAL lancent la partie. Le menu est aussi sous Echap, ligne
+rem "Fighting Vipers 2".
 rem
 rem Le reglage est retenu dans settings.ini (console_mode = 1). Pour revenir
 rem au mode PC : lancer jouer-fv2.cmd une fois avec --pc.

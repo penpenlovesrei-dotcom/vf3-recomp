@@ -20,9 +20,60 @@ That is what makes it work on credits and on free play alike, without this port 
 Vipers 2's free-play byte -- which it has not (see the note in the commit that added the second game). It also
 means opening the menu costs nothing and cancelling costs nothing.
 
-The practical consequence here, and it is worth saying plainly: **this port still needs a coin in Fighting
-Vipers 2.** The PC way's FREE PLAY is only set for Virtua Fighter 3, so in the console way you still press 5 (or
-6 for player 2) before the menu's Start can start anything. That is the known gap, not a new one.
+That was true of the menu, and for a while it left the console way broken in a way only playing it showed: the
+menu opened, a mode was chosen, and nothing happened. The Start was being handed over correctly; the game was
+ignoring it, having no credit. A console has no coin slot, so asking the player for one was not an answer.
+
+Feeding the game coins was tried and is not what a console does either. The answer was to put the board on
+**FREE PLAY**, as the PC way already did for Virtua Fighter 3 -- which needed the one thing nobody had: where
+this game keeps that setting.
+
+It is one byte, `0x17` of the backup RAM, and it holds the COIN/CREDIT SETTING numbered as Virtua Fighter 3's
+is, 1 to 27, with 27 being FREE PLAY. How it was found is in the next section. The console way is the PC way
+plus a menu, so it now comes up on free play and a mode costs nothing.
+
+
+## Free play: one byte, and how it was found
+
+Neither this port nor the Supermodel-side work that preceded it had this. That work says so in as many words --
+its console menu worked "without its byte ever having been found", by never deciding about credits at all.
+
+What found it was the game's own test menu, driven from an input script. `tools/vf3run`'s scripts can press
+`test` and `service`, which are the two cabinet buttons that menu is worked with, and `--shots` shows where the
+cursor is, so the menu can be walked blind and then looked at:
+
+```
+TEST MENU             Test opens it, cursor on EXIT
+                      Service moves, Test selects -- the screen says so
+  9 x Service         down to COIN ASSIGNMENTS (the cursor wraps to the top and descends)
+  Test                COIN/CREDIT SETTING #1 -- one coin, one credit
+```
+
+Then FREE PLAY was set there by hand, the game left, and the backup RAM compared with a copy taken before.
+Seven bytes had moved:
+
+```
+0x0000B :  1 ->  4      the other lines of that page
+0x0000F :  1 ->  3
+0x00013 :  0 ->  6
+0x00017 :  1 -> 27      COIN/CREDIT SETTING, #27 being FREE PLAY
+0x01077 :  0 ->  2      bookkeeping
+0x014CE : 77 -> 84
+0x014CF : 228 -> 253
+```
+
+Seven bytes is not an answer. The one that matters was picked out by putting the other six back and leaving only
+`0x17` at 27: the game still came up in FREE PLAY, and the picture was **byte-identical** to the run with all
+seven changed. So there is no checksum to keep and no neighbour that has to agree -- `Model3::coin_offset`.
+
+Two things fell out of this that are worth keeping:
+
+- the numbering is the same as Virtua Fighter 3's, 1 to 27 with 27 being FREE PLAY, although the byte is at the
+  other end of the backup RAM. The two games share their test menu's framework, not its addresses.
+- `tools/vf3run` **never loads the backup RAM**. It starts every run on a board that has never been set, and
+  the game writes its factory settings in the first frames. So nothing about an operator setting can be proved
+  with it, and this was all done with the windowed host, which does load it. That cost a measurement before it
+  was noticed.
 
 
 ## Where the game is: one comparison
