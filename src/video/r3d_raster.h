@@ -10,6 +10,7 @@
 // are widened to the full width (widescreen).
 #pragma once
 #include "r3d_scene.h"
+#include "tex3d_hd.h"
 #include <cstdint>
 #include <vector>
 
@@ -68,6 +69,17 @@ public:
 	Batch batches[4 * 2 * 3];   // per priority, pass (high priority second) and layer
 	Priority prio[4];
 	void prepare(const Scene &scene);
+	// The texture pack (tex3d_hd.h): one place per draw, the replacement for the texture that draw's mesh asks
+	// for, or `hd` false where the native one stands. Empty when the pack and the dump are both off, which is
+	// what both rasterisers test. Worked out once a picture and read by the CPU rasteriser below and by the GPU
+	// renderer (src/gpu/r3d_gpu.cpp), so the two put the same texels on the screen.
+	std::vector<TexPlace> hd;
+	void resolve_hd(const uint16_t *tex_ram);
+	// What the caller knows about how old the texture memory is: 1 + the board's tex_serial, which counts every
+	// upload to it. While it does not change, what was worked out for one picture holds for the next, and a
+	// texture is hashed once instead of once a picture -- measured on a select screen at 2x, that is the
+	// difference between 17.2 ms and 10.8 ms of CPU rasterising (docs/fv2-hd-3d.md). 0: nothing is remembered.
+	uint64_t tex_version = 0;
 	float game_xscale() const { return xscale; }
 	float game_yscale() const { return scale; }
 
@@ -79,6 +91,7 @@ private:
 	std::vector<uint8_t> stencil, stencil_saved;
 	const uint16_t *tex = nullptr;
 	bool sun_clamp = true;
+	uint64_t hd_version = 0;   // the tex_version the texture pack's answers were worked out for
 
 	void gather(const Viewport &vp, int layer, bool overlay, std::vector<int> &items);
 	void prepare_mesh(int draw, std::vector<Tri> &out) const;

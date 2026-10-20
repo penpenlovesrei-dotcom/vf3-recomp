@@ -60,6 +60,12 @@
 //        + Start too; View tapped is a coin only when it's set as Coin); View + LB: render scale; View + RB:
 //        picture shape.
 //
+// --hd-3d draws a texture pack over the game's own 3D textures: PNGs of any size in texture_remplacement in the
+// data folder, each named by the hash of the texture it stands in for, which is the name the dump writes
+// (--hd-3d-dump, into texture_remplacement-dump). --no-hd-3d turns it off again, --hd-3d-pack <folder> and
+// --hd-3d-dump <folder> use folders of their own. docs/fv2-hd-3d.md says how it works and what it costs; without
+// --hd-3d nothing of it runs and every picture is the one it was.
+//
 // Testing without a display:
 //   VF3_HIDDEN=1         no window on screen, no sound out (the board still runs); never a dialog
 //   VF3_INTERP=1         the PowerPC on the interpreter (as --interp)
@@ -433,6 +439,7 @@ struct settings
 	// is the player saying "Sega's, whatever is in the folder".
 	std::string portraits;
 	bool portraits_off = false;
+	bool hd_3d = false;         // the 3D texture pack, from texture_remplacement in the data folder (src/video/tex3d_hd.h)
 	bool smooth_bg = true;   // the 2D backgrounds (the layers below the 3D) scaled smoothly, not as blocks
 	int filter = 0;          // the screen filter: 0 off, 1 scanlines, 2 CRT
 	int aa = 1;              // antialiasing: the 3D drawn aa times larger each way and averaged (1 off)
@@ -471,6 +478,7 @@ struct settings
 		flag("full_roster", full_roster);
 		if (auto it = kv.find("portraits_folder"); it != kv.end()) portraits = it->second;
 		flag("portraits_off", portraits_off);
+		flag("hd_3d", hd_3d);
 		flag("smooth_backgrounds", smooth_bg);
 		flag("background_filter", smooth_bg);   // (VF1's and VF2's name)
 		num("screen_filter", filter, 0, 2);
@@ -526,6 +534,7 @@ struct settings
 		if (console) fprintf(f, "console_mode = %d\n", int(console));         // (likewise: an older build reads the file as the PC way)
 		if (!portraits.empty()) fprintf(f, "portraits_folder = %s\n", portraits.c_str());   // (one game's, likewise)
 		if (portraits_off) fprintf(f, "portraits_off = %d\n", int(portraits_off));
+		if (hd_3d) fprintf(f, "hd_3d = %d\n", int(hd_3d));   // (a texture pack is one game's too: written only once asked for)
 		for (int p = 0; p < 2; p++) ctl[p].save(f, p);
 		const bool flushed = flush_to_disk(f);
 		if (fclose(f) == 0 && flushed && replace_file(path, tmp)) return true;
@@ -919,6 +928,7 @@ struct Game
 		video::SkyLead sky;
 		std::vector<uint16_t> tex;
 		std::vector<m3::Model3::TexUpload> uploads;   // (the areas changed since a renderer last took them)
+		uint32_t tex_serial = 0;   // (the board's count of uploads to it when this copy was taken)
 		const video::Scene &cur() const { return scene[newest]; }
 		const video::Scene &prev() const { return scene[newest ^ 1]; }
 	} view;
@@ -948,6 +958,7 @@ struct Game
 			}
 			if (view.uploads.size() > 512) view.uploads.assign(1, m3::Model3::TexUpload{ 0, 0, 2048, 2048 });
 		}
+		view.tex_serial = board.tex_serial;
 		ups.clear();
 	}
 	std::thread emu_thread;
@@ -999,6 +1010,9 @@ int main(int argc, char **argv)
 	                            // (the arcade way is --arcade, which came first and is kept as it was)
 	std::string arg_portraits;      // Fighting Vipers 2's select-screen portraits, from a folder of PNGs (--portraits DIR)
 	bool arg_no_portraits = false;  // --no-portraits: back to Sega's, and the setting forgotten
+	int arg_hd_3d = -1;         // the 3D texture pack (--hd-3d / --no-hd-3d)
+	std::string arg_hd_pack, arg_hd_dump;   // folders of their own, instead of the data folder's (--hd-3d-pack / --hd-3d-dump)
+	bool arg_hd_dump_on = false;
 	int arg_volume = -1, arg_music = -1, arg_effects = -1, arg_scale = 0, arg_aspect = -1, arg_full = -1;
 	std::string arg_roms;
 	for (int i = 1; i < argc; i++) {
@@ -1026,6 +1040,13 @@ int main(int argc, char **argv)
 		else if (a == "--portraits" && i + 1 < argc) arg_portraits = argv[++i];
 		else if (a.rfind("--portraits=", 0) == 0) arg_portraits = a.substr(12);
 		else if (a == "--no-portraits") arg_no_portraits = true;
+		else if (a == "--hd-3d") arg_hd_3d = 1;
+		else if (a == "--no-hd-3d") arg_hd_3d = 0;
+		else if (a == "--hd-3d-pack" && i + 1 < argc) { arg_hd_pack = argv[++i]; arg_hd_3d = 1; }
+		else if (a == "--hd-3d-dump") {
+			arg_hd_dump_on = true;
+			if (i + 1 < argc && std::string(argv[i + 1]).rfind("--", 0) != 0) arg_hd_dump = argv[++i];
+		}
 		else if (a == "--show-boot") show_boot = true;
 		else if (a.rfind("--", 0) == 0) { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
 		else if (a.rfind("-psn_", 0) == 0) {}
@@ -1127,6 +1148,7 @@ int main(int argc, char **argv)
 	// The console way takes the PC way's boot and free play: it only adds a menu of its own over the game, and
 	// it never touches the credit -- choosing a mode there hands the game a real Start, and the game decides
 	// what that costs (docs/fv2-console.md).
+	if (arg_hd_3d >= 0) cfg.hd_3d = arg_hd_3d;
 	g_pc_mode = !cfg.arcade;
 	int aspect_i = cfg.aspect;
 
@@ -1152,6 +1174,29 @@ int main(int argc, char **argv)
 	// saves made before this port took a second game still load, and another game gets its own -- otherwise
 	// Fighting Vipers 2 would read Virtua Fighter 3's settings at the start and write over them at the end. The
 	// NVRAM below and the portraits folder just under are both named this way.
+	//
+	// The 3D texture pack (src/video/tex3d_hd.h) is not, and on purpose: it sits in one folder,
+	// texture_remplacement, because a replacement is recognised by the content of the texture it stands in for,
+	// so one game's images cannot match another's and there is nothing to keep apart. texture_remplacement-dump
+	// is where the dump writes. Both take a folder of their own on the command line. Both are set up before the
+	// first picture, and asking for neither leaves both rasterisers' texture paths exactly as they were -- which
+	// is why Virtua Fighter 3 is untouched by any of it.
+	{
+		const std::string pack = arg_hd_pack.empty() ? data + "/texture_remplacement" : player_folder(arg_hd_pack, data);
+		if (cfg.hd_3d) {
+			std::string report;
+			if (!video::hd3d().load(pack, report))
+				fprintf(stderr, "the 3D texture pack: nothing loaded from %s: the game's own textures are drawn\n", pack.c_str());
+			else
+				fprintf(stderr, "%s\n", report.c_str());
+		}
+		if (arg_hd_dump_on) {
+			const std::string into = arg_hd_dump.empty() ? data + "/texture_remplacement-dump" : player_folder(arg_hd_dump, data);
+			std::string why;
+			if (!video::hd3d().dump_to(into, why)) fprintf(stderr, "%s\n", why.c_str());
+			else fprintf(stderr, "the 3D texture dump: every texture a polygon samples, into %s\n", into.c_str());
+		}
+	}
 	const std::string nv_suffix = board.set == "vf3" ? std::string() : "-" + board.set;
 	// The select-screen portraits, read from a folder of PNGs. Unlike the roster patch above, nothing here has
 	// to wait: the sheets are in the VROM, which is a ROM the game never writes, so they are replaced once in
@@ -1660,6 +1705,10 @@ int main(int argc, char **argv)
 		if (g3.on && g3_texture() && !game.view.tex.empty()) {
 			const auto tg = std::chrono::steady_clock::now();
 			raster.prepare(*s);
+			// the texture pack's place for each polygon, which the GPU renderer reads out of `raster` as the CPU
+			// rasteriser does (tex3d_hd.h); nothing at all when no pack and no dump were asked for
+			raster.tex_version = 1 + game.view.tex_serial;
+			raster.resolve_hd(game.view.tex.data());
 			const auto tp = std::chrono::steady_clock::now();
 			pace.prep_ms += std::chrono::duration<double, std::milli>(tp - tg).count();
 			picture_fixed_ms = pace.interp_ms + pace.prep_ms - fixed_before;
@@ -1679,6 +1728,7 @@ int main(int argc, char **argv)
 		}
 		if (!on_gpu) {
 			game.view.uploads.clear();
+			raster.tex_version = 1 + game.view.tex_serial;
 			raster.render(*s, game.view.tex.data());
 			const uint64_t tu = SDL_GetTicksNS();
 			send(tex3d, [&](uint8_t *p, size_t pitch) { raster.to_premultiplied(p, pitch, aa_now()); });

@@ -9,6 +9,7 @@
 #include "r3d_gpu.h"
 #include "r3d_shaders.h"
 #include "../machine/model3.h"
+#include "../video/tex3d_hd.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -177,7 +178,10 @@ bool R3dGpu::init(SDL_GPUDevice *device)
 	sampler = SDL_CreateGPUSampler(dev, &si);
 	SDL_GPUBufferCreateInfo bi = {};
 	bi.usage = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
-	bi.size = 2048 * 2048 * 2;
+	// the board's two pages of 2048 x 1024 words, and the texture pack's pages after them (tex3d_hd.h): the
+	// shader reaches a page by its number alone, so a replacement is read by the code that reads a native texture
+	hd_pages = video::hd3d().page_count();
+	bi.size = uint32_t(2048 * 2048 * 2) + uint32_t(hd_pages) * 1024 * 2048 * 2;
 	texram = SDL_CreateGPUBuffer(dev, &bi);
 	if (!sampler || !texram) { err = std::string("its buffers: ") + SDL_GetError(); return false; }
 	texram_full = true;
@@ -296,6 +300,18 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 		o.shininess = m.shininess; o.spec_value = m.specular_value; o.fog_intensity = m.fog_intensity;
 		o.vp = uint32_t(d.vp - scene.viewports.data());
 		o.flip = m.flip; o.flip_x = (m.flip_x + tox) & 2047; o.flip_y = (m.flip_y + toy) & 2047;
+		// The texture pack's replacement for this mesh's texture, where there is one (Raster::resolve_hd, which
+		// the CPU rasteriser reads the same way): the pack's pages come after the board's two in this buffer, so
+		// only these six numbers change. Level 0 only, a pack's images having no mipmaps, and no flipbook
+		// cross-fade, a mesh's two pictures sharing one page and one size here.
+		if (!prep.hd.empty() && prep.hd[i].hd) {
+			const video::TexPlace &p = prep.hd[i];
+			o.page = 2 + p.page;
+			o.tx = p.x; o.ty = p.y; o.tw = p.w; o.th = p.h;
+			o.format = p.format;
+			o.levels = 0;
+			o.flip = 0;
+		}
 	}
 	// each polygon (a triangle, or four sides after the near plane) as triangles; their raw attributes (the
 	// prepared ones are over w) and clip positions in their viewport's projection
@@ -355,11 +371,29 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 	if (tex_ram.size() < size_t(2048) * 2048) { err = "no texture memory yet"; return false; }
 	uint32_t tbytes = 0;
 	for (auto &r : rows) tbytes += r.second * 4096;
+	// The texture pack's pages: made bigger than the board's own buffer at start-up and uploaded once, since
+	// nothing writes to them while the game runs. A pack loaded after this renderer was made (not something the
+	// options allow today) would need the buffer again, so the size is checked rather than assumed.
+	const int want_hd = video::hd3d().page_count();
+	if (want_hd != hd_pages) {
+		SDL_WaitForGPUIdle(dev);
+		if (texram) SDL_ReleaseGPUBuffer(dev, texram);
+		SDL_GPUBufferCreateInfo bi = {};
+		bi.usage = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+		bi.size = uint32_t(2048 * 2048 * 2) + uint32_t(want_hd) * 1024 * 2048 * 2;
+		texram = SDL_CreateGPUBuffer(dev, &bi);
+		hd_pages = want_hd;
+		hd_up = false;
+		rows.assign(1, { 0, 2048 });
+		tbytes = 2048 * 4096;
+		if (!texram) { err = std::string("the texture buffer: ") + SDL_GetError(); return false; }
+	}
+	const uint32_t hdbytes = hd_up ? 0 : uint32_t(hd_pages) * 1024 * 4096;
 	if (!ensure_buffer(vbuf, vbuf_size, vbytes, SDL_GPU_BUFFERUSAGE_VERTEX) ||
 		!ensure_buffer(dbuf, dbuf_size, dbytes, SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ) ||
 		!ensure_buffer(pbuf, pbuf_size, pbytes, SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ))
 		return false;
-	const uint32_t total = vbytes + dbytes + pbytes + tbytes;
+	const uint32_t total = vbytes + dbytes + pbytes + tbytes + hdbytes;
 	if (!tb || tb_size < total) {
 		if (tb) SDL_ReleaseGPUTransferBuffer(dev, tb);
 		SDL_GPUTransferBufferCreateInfo ti = {};
@@ -380,6 +414,7 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 			memcpy(map + at, tex_ram.data() + size_t(r.first) * 2048, size_t(r.second) * 4096);
 			at += r.second * 4096;
 		}
+		if (hdbytes) memcpy(map + at, video::hd3d().pages(), hdbytes);
 	}
 	SDL_UnmapGPUTransferBuffer(dev, tb);
 	SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(dev);
@@ -397,6 +432,7 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 		up(vbytes + dbytes, pbuf, 0, pbytes);
 		uint32_t at = vbytes + dbytes + pbytes;
 		for (auto &r : rows) { up(at, texram, r.first * 4096, r.second * 4096); at += r.second * 4096; }
+		if (hdbytes) { up(at, texram, 2048 * 4096, hdbytes); hd_up = true; }
 		SDL_EndGPUCopyPass(cp);
 	}
 	// ---- the passes ----

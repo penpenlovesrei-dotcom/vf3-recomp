@@ -50,6 +50,10 @@ private:
 	SDL_GPUTransferBuffer *tb = nullptr;
 	uint32_t tb_size = 0;
 	bool texram_full = true;
+	// The texture pack's pages, held in the same buffer after the board's two (src/video/tex3d_hd.h): how many
+	// the buffer was made for, and whether they have been uploaded (they never change while the game runs)
+	int hd_pages = 0;
+	bool hd_up = false;
 	struct GV { float clip[4], view[3], normal[3], misc[4], lodbase; uint32_t draw; };
 	std::vector<GV> verts;
 	void free_targets();

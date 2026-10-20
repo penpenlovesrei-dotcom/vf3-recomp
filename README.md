@@ -236,9 +236,11 @@ On the `fv2` branch, the same binary also runs **Fighting Vipers 2** (Model 3 St
 set: every difference between the two boards, and what has and hasn't been checked, is in
 [docs/step2-fvipers2.md](docs/step2-fvipers2.md). `--full-roster` makes that game's hidden fighters -- Del Sol,
 Kuhn, BM and Dural -- selectable: [docs/fv2-roster.md](docs/fv2-roster.md). `--console` adds a third play style
-beside PC and arcade -- a console's own menu over the game, Start during the attract loop picking a mode:
+beside PC and arcade -- a console's own menu over the game, on free play:
 [docs/fv2-console.md](docs/fv2-console.md). The portraits along the bottom of its select screen are read from a
-folder of PNG files, without touching the ROM: [docs/fv2-portraits.md](docs/fv2-portraits.md).
+folder of PNG files, without touching the ROM: [docs/fv2-portraits.md](docs/fv2-portraits.md). `--hd-3d` draws a
+texture pack over that game's 3D -- images of any size, recognised by the content of the texture they stand in
+for, on both of the port's rasterisers: [docs/fv2-hd-3d.md](docs/fv2-hd-3d.md).
 
 ## Credits
 
