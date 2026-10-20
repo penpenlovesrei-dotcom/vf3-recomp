@@ -54,6 +54,12 @@
 //        + Start too; View tapped is a coin only when it's set as Coin); View + LB: render scale; View + RB:
 //        picture shape.
 //
+// --hd-3d draws a texture pack over the game's own 3D textures: PNGs of any size in Textures3D/<game> in the
+// data folder, each named by the hash of the texture it stands in for, which is the name the dump writes
+// (--hd-3d-dump, into Textures3D-dump/<game>). --no-hd-3d turns it off again, --hd-3d-pack <folder> and
+// --hd-3d-dump <folder> use folders of their own. docs/fv2-hd-3d.md says how it works and what it costs; without
+// --hd-3d nothing of it runs and every picture is the one it was.
+//
 // Testing without a display:
 //   VF3_HIDDEN=1         no window on screen, no sound out (the board still runs); never a dialog
 //   VF3_INTERP=1         the PowerPC on the interpreter (as --interp)
@@ -416,6 +422,7 @@ struct settings
 	bool fullscreen = false, arcade = false, show_fps = false, smooth = true;
 	bool timings = false;    // F9: the timings in the title bar
 	bool full_roster = false;   // Fighting Vipers 2's hidden fighters, selectable (Model3::unlock_roster)
+	bool hd_3d = false;         // the 3D texture pack, from Textures3D/<game> in the data folder (src/video/tex3d_hd.h)
 	bool smooth_bg = true;   // the 2D backgrounds (the layers below the 3D) scaled smoothly, not as blocks
 	int filter = 0;          // the screen filter: 0 off, 1 scanlines, 2 CRT
 	int aa = 1;              // antialiasing: the 3D drawn aa times larger each way and averaged (1 off)
@@ -450,6 +457,7 @@ struct settings
 		flag("show_fps", show_fps);
 		flag("smooth_motion", smooth);
 		flag("full_roster", full_roster);
+		flag("hd_3d", hd_3d);
 		flag("smooth_backgrounds", smooth_bg);
 		flag("background_filter", smooth_bg);   // (VF1's and VF2's name)
 		num("screen_filter", filter, 0, 2);
@@ -502,6 +510,7 @@ struct settings
 		if (!gpu3d_failed.empty()) fprintf(f, "gpu_3d_failed = %s\n", gpu3d_failed.c_str());
 		fprintf(f, "screen_filter = %d\nantialiasing = %d\nmusic_volume = %d\neffects_volume = %d\narcade_coins = %d\nframe_timings = %d\n", filter, aa, music, effects, arcade_coin, int(timings));
 		if (full_roster) fprintf(f, "full_roster = %d\n", int(full_roster));   // (one game's: written only once asked for)
+		if (hd_3d) fprintf(f, "hd_3d = %d\n", int(hd_3d));   // (a texture pack is one game's too: written only once asked for)
 		for (int p = 0; p < 2; p++) ctl[p].save(f, p);
 		const bool flushed = flush_to_disk(f);
 		if (fclose(f) == 0 && flushed && replace_file(path, tmp)) return true;
@@ -888,6 +897,7 @@ struct Game
 		video::SkyLead sky;
 		std::vector<uint16_t> tex;
 		std::vector<m3::Model3::TexUpload> uploads;   // (the areas changed since a renderer last took them)
+		uint32_t tex_serial = 0;   // (the board's count of uploads to it when this copy was taken)
 		const video::Scene &cur() const { return scene[newest]; }
 		const video::Scene &prev() const { return scene[newest ^ 1]; }
 	} view;
@@ -917,6 +927,7 @@ struct Game
 			}
 			if (view.uploads.size() > 512) view.uploads.assign(1, m3::Model3::TexUpload{ 0, 0, 2048, 2048 });
 		}
+		view.tex_serial = board.tex_serial;
 		ups.clear();
 	}
 	std::thread emu_thread;
@@ -963,6 +974,9 @@ int main(int argc, char **argv)
 	std::string zip;
 	bool arg_arcade = false, sound = true, show_boot = false, arg_interp = getenv("VF3_INTERP") != nullptr;
 	int arg_full_roster = -1;   // Fighting Vipers 2's hidden fighters (--full-roster / --no-full-roster)
+	int arg_hd_3d = -1;         // the 3D texture pack (--hd-3d / --no-hd-3d)
+	std::string arg_hd_pack, arg_hd_dump;   // folders of their own, instead of the data folder's (--hd-3d-pack / --hd-3d-dump)
+	bool arg_hd_dump_on = false;
 	int arg_volume = -1, arg_music = -1, arg_effects = -1, arg_scale = 0, arg_aspect = -1, arg_full = -1;
 	std::string arg_roms;
 	for (int i = 1; i < argc; i++) {
@@ -985,6 +999,13 @@ int main(int argc, char **argv)
 		}
 		else if (a == "--full-roster") arg_full_roster = 1;
 		else if (a == "--no-full-roster") arg_full_roster = 0;
+		else if (a == "--hd-3d") arg_hd_3d = 1;
+		else if (a == "--no-hd-3d") arg_hd_3d = 0;
+		else if (a == "--hd-3d-pack" && i + 1 < argc) { arg_hd_pack = argv[++i]; arg_hd_3d = 1; }
+		else if (a == "--hd-3d-dump") {
+			arg_hd_dump_on = true;
+			if (i + 1 < argc && std::string(argv[i + 1]).rfind("--", 0) != 0) arg_hd_dump = argv[++i];
+		}
 		else if (a == "--show-boot") show_boot = true;
 		else if (a.rfind("--", 0) == 0) { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
 		else if (a.rfind("-psn_", 0) == 0) {}
@@ -1073,6 +1094,7 @@ int main(int argc, char **argv)
 	if (arg_music >= 0) cfg.music = arg_music;
 	if (arg_effects >= 0) cfg.effects = arg_effects;
 	if (arg_full_roster >= 0) cfg.full_roster = arg_full_roster;
+	if (arg_hd_3d >= 0) cfg.hd_3d = arg_hd_3d;
 	g_pc_mode = !cfg.arcade;
 	int aspect_i = cfg.aspect;
 
@@ -1097,6 +1119,26 @@ int main(int argc, char **argv)
 	// The board's NVRAM, per game: Virtua Fighter 3 keeps the names it has always had, so saves made before this
 	// port took a second game still load, and another game gets its own -- otherwise Fighting Vipers 2 would read
 	// Virtua Fighter 3's settings at the start and write over them at the end.
+	// The 3D texture pack (src/video/tex3d_hd.h), per game: Textures3D/<game> in the data folder for the pack,
+	// Textures3D-dump/<game> for what the dump writes, each with a folder of its own on the command line. Both
+	// are set up before the first picture, and asking for neither leaves both rasterisers' texture paths as they
+	// were -- which is why Virtua Fighter 3 is untouched by any of it.
+	{
+		const std::string pack = arg_hd_pack.empty() ? data + "/Textures3D/" + board.set : player_folder(arg_hd_pack, data);
+		if (cfg.hd_3d) {
+			std::string report;
+			if (!video::hd3d().load(pack, report))
+				fprintf(stderr, "the 3D texture pack: nothing loaded from %s: the game's own textures are drawn\n", pack.c_str());
+			else
+				fprintf(stderr, "%s\n", report.c_str());
+		}
+		if (arg_hd_dump_on) {
+			const std::string into = arg_hd_dump.empty() ? data + "/Textures3D-dump/" + board.set : player_folder(arg_hd_dump, data);
+			std::string why;
+			if (!video::hd3d().dump_to(into, why)) fprintf(stderr, "%s\n", why.c_str());
+			else fprintf(stderr, "the 3D texture dump: every texture a polygon samples, into %s\n", into.c_str());
+		}
+	}
 	const std::string nv_suffix = board.set == "vf3" ? std::string() : "-" + board.set;
 	const std::string backup_path = data + "/backup" + nv_suffix, eeprom_path = data + "/eeprom" + nv_suffix;
 	load_blob(backup_path, board.backup.data(), board.backup.size());
@@ -1569,6 +1611,10 @@ int main(int argc, char **argv)
 		if (g3.on && g3_texture() && !game.view.tex.empty()) {
 			const auto tg = std::chrono::steady_clock::now();
 			raster.prepare(*s);
+			// the texture pack's place for each polygon, which the GPU renderer reads out of `raster` as the CPU
+			// rasteriser does (tex3d_hd.h); nothing at all when no pack and no dump were asked for
+			raster.tex_version = 1 + game.view.tex_serial;
+			raster.resolve_hd(game.view.tex.data());
 			const auto tp = std::chrono::steady_clock::now();
 			pace.prep_ms += std::chrono::duration<double, std::milli>(tp - tg).count();
 			picture_fixed_ms = pace.interp_ms + pace.prep_ms - fixed_before;
@@ -1588,6 +1634,7 @@ int main(int argc, char **argv)
 		}
 		if (!on_gpu) {
 			game.view.uploads.clear();
+			raster.tex_version = 1 + game.view.tex_serial;
 			raster.render(*s, game.view.tex.data());
 			const uint64_t tu = SDL_GetTicksNS();
 			send(tex3d, [&](uint8_t *p, size_t pitch) { raster.to_premultiplied(p, pitch, aa_now()); });

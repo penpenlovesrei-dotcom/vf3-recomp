@@ -136,7 +136,38 @@ void Raster::render(const Scene &scene, const uint16_t *tex_ram)
 	if (base.size() != size_t(w) * h) alloc();   // (let go while the GPU drew)
 	tex = tex_ram;
 	prepare(scene);
+	resolve_hd(tex_ram);
 	parallel_rows(h, [&](int y0, int y1) { draw_band(scene, y0, y1); }, 2);
+}
+
+// The texture pack's place for each polygon prepared, for both rasterisers (tex3d_hd.h). Nothing at all when the
+// pack and the dump are off: `hd` stays empty and the two rasterisers' texture paths are the ones they were.
+void Raster::resolve_hd(const uint16_t *tex_ram)
+{
+	if (!hd3d().active() || !tex_ram) {
+		hd.clear();
+		return;
+	}
+	// The content of a place in texture memory is hashed again whenever the board has written to it since; while
+	// it has not, every picture drawn from the same texture memory reuses what the one before worked out.
+	if (!tex_version || tex_version != hd_version) {
+		hd3d().new_picture();
+		hd_version = tex_version;
+	}
+	hd.assign(draws.size(), {});
+	for (size_t i = 0; i < draws.size(); i++) {
+		const Mesh &mesh = *draws[i].mesh;
+		if (!mesh.textured)
+			continue;
+		TexPlace native;
+		native.page = mesh.page ^ draws[i].model->page;
+		native.x = (mesh.x + draws[i].model->tex_x) & 2047;
+		native.y = (mesh.y + draws[i].model->tex_y) & 2047;
+		native.w = mesh.width;
+		native.h = mesh.height;
+		native.format = mesh.format;
+		hd3d().find(tex_ram, native, mesh.translator_map, hd[i]);
+	}
 }
 
 // Every polygon to draw, transformed, clipped by the near plane and placed on the output, in the order the passes
@@ -382,28 +413,33 @@ void Raster::fog_layers(const Scene &scene, int band0, int band1)
 
 namespace {
 
+// Where the texels come from: the memory, the page in it, the place, the size and the format. All of it is the
+// mesh's, except where the texture pack has put a replacement in its own pages (tex3d_hd.h), which is the whole
+// of the change that makes a pack work here.
 struct Sampler
 {
 	const uint16_t *tex;
-	const Mesh *mesh;
 	int page;
 	int bx, by;   // the texture's place (the mesh's; a flipbook's step before: flip_x, flip_y)
+	int format, width, height;
+	int wrap_u, wrap_v;
+	bool alpha_test;
 	C4 fetch(int level, int x, int y) const
 	{
 		x &= 2047 >> level;
 		y &= 1023 >> level;
-		return decode(mesh->format, tex[size_t(page * 1024 + mip_y[level] + y) * 2048 + mip_x[level] + x]);
+		return decode(format, tex[size_t(page * 1024 + mip_y[level] + y) * 2048 + mip_x[level] + x]);
 	}
 	C4 bilinear(int level, float u, float v) const
 	{
-		const float sw = float(mesh->width >> level), sh = float(mesh->height >> level);
+		const float sw = float(width >> level), sh = float(height >> level);
 		const int px = bx >> level, py = by >> level;
 		float u0, u1, v0, v1;
-		float a = tex_locations(mesh->wrap_u, sw, u, u0, u1);
-		float b = tex_locations(mesh->wrap_v, sh, v, v0, v1);
+		float a = tex_locations(wrap_u, sw, u, u0, u1);
+		float b = tex_locations(wrap_v, sh, v, v0, v1);
 		int x0 = int(u0 * sw + px), x1 = int(u1 * sw + px), y0 = int(v0 * sh + py), y1 = int(v1 * sh + py);
 		C4 p00 = fetch(level, x0, y0), p10 = fetch(level, x1, y0), p01 = fetch(level, x0, y1), p11 = fetch(level, x1, y1);
-		if (mesh->alpha_test) {
+		if (alpha_test) {
 			// contour: the colour of the more opaque neighbour spreads into the transparent texels
 			auto rgb = [](C4 &d, const C4 &s) { d.r = s.r; d.g = s.g; d.b = s.b; };
 			if (p00.a > p10.a) rgb(p10, p00);
@@ -440,9 +476,29 @@ void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 	// the nodes' texture offset moves where on the sheet the mesh reads from (Step 1.5 and later; 0 on Step 1.0,
 	// which has no such word, so the two lines below are then exactly what they were)
 	const int tx = model.tex_x, ty = model.tex_y;
-	const Sampler smp = { tex, &mesh, mesh.page ^ model.page, (mesh.x + tx) & 2047, (mesh.y + ty) & 2047 };
-	const Sampler smp_flip = { tex, &mesh, mesh.page ^ model.page, (mesh.flip_x + tx) & 2047, (mesh.flip_y + ty) & 2047 };
-	const float num_levels = mesh.textured ? std::floor(std::log2(float(std::min(mesh.width, mesh.height)))) - 1.0f : 0.0f;
+	Sampler smp = { tex, mesh.page ^ model.page, (mesh.x + tx) & 2047, (mesh.y + ty) & 2047,
+		mesh.format, mesh.width, mesh.height, mesh.wrap_u, mesh.wrap_v, mesh.alpha_test };
+	Sampler smp_flip = smp;
+	smp_flip.bx = (mesh.flip_x + tx) & 2047;
+	smp_flip.by = (mesh.flip_y + ty) & 2047;
+	float num_levels = mesh.textured ? std::floor(std::log2(float(std::min(mesh.width, mesh.height)))) - 1.0f : 0.0f;
+	// The texture pack's replacement for this mesh's texture, where there is one (resolve_hd): another page,
+	// place, size and format, and that is all the rasteriser needs to know about it. Level 0 only -- a pack's
+	// images have no mipmaps -- and no flipbook cross-fade, the GPU renderer's per-mesh record having one page
+	// and one size for a mesh's two pictures.
+	float flip = mesh.flip;
+	if (!hd.empty() && hd[size_t(T.draw)].hd) {
+		const TexPlace &p = hd[size_t(T.draw)];
+		smp.tex = hd3d().pages();
+		smp.page = p.page;
+		smp.bx = p.x;
+		smp.by = p.y;
+		smp.width = p.w;
+		smp.height = p.h;
+		smp.format = p.format;
+		num_levels = 0;
+		flip = 0;
+	}
 	static const float exp_index[4] = { 8, 16, 32, 64 }, mult_index[4] = { 1.6f, 1.6f, 2.4f, 3.2f };
 	const int shin = std::clamp(int(mesh.shininess), 0, 3);
 
@@ -508,9 +564,9 @@ void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 						return t1;
 					};
 					t = sample(smp);
-					if (mesh.flip > 0) {   // a flipbook's step faded in: the step before's picture mixed in
+					if (flip > 0) {   // a flipbook's step faded in: the step before's picture mixed in
 						const C4 o = sample(smp_flip);
-						const float k = mesh.flip;
+						const float k = flip;
 						t = { t.r + (o.r - t.r) * k, t.g + (o.g - t.g) * k, t.b + (o.b - t.b) * k, t.a + (o.a - t.a) * k };
 					}
 					if (mesh.inverted) { t.r = 1 - t.r; t.g = 1 - t.g; t.b = 1 - t.b; }

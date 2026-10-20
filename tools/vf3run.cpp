@@ -4,6 +4,8 @@
 // build's format, for tools/statecmp.py.
 //   vf3run <vf3.zip> [--frames N] [--script FILE] [--state FILE] [--ram-at FRAME] [--watch ADDR] [--rec] [--quiet]
 // --full-roster makes Fighting Vipers 2's hidden fighters selectable (src/machine/model3.cpp, unlock_roster).
+// --hd-dump DIR writes every 3D texture the game samples there as a PNG; --hd-pack DIR draws those PNGs in their
+// place (src/video/tex3d_hd.h). Both are off unless asked for.
 // --wav FILE runs the sound board and writes what it plays. --shots DIR writes the script's screenshots there as PNG. --rec runs the recompiled code (src/rec) with the interpreter for the rest. --ram-at writes RAM after that frame to ram_<frame>.bin in the current folder; --watch ADDR (hex) reports
 // the CPU's stores to that word (--trace-pc ADDR: r3-r8 and LR each time that instruction runs; both on the interpreter). VF3_VOLUMES=music,effects (percent) sets the sound board's two volumes for --wav. VF3_POKE=addr=value
 // (hex address into --ram-at's dump, a byte; "b" first: the backup RAM's) writes RAM before every frame
@@ -16,6 +18,7 @@
 #include "../src/video/tilegen.h"
 #include "../src/video/sky_lead.h"
 #include "../src/video/r3d_raster.h"
+#include "../src/video/tex3d_hd.h"
 #include "../src/sound/soundboard.h"
 #include <chrono>
 #include <cstdio>
@@ -29,6 +32,7 @@ int main(int argc, char **argv)
 	long frames = -1, ram_at = -1;
 	uint32_t watch = 0xFFFFFFFF, trace_pc = 0xFFFFFFFF;
 	bool quiet = false, rec = false, full_roster = false;
+	std::string hd_dump, hd_pack;
 	for (int i = 1; i < argc; i++) {
 		std::string a = argv[i];
 		if (a == "--frames" && i + 1 < argc) frames = strtol(argv[++i], nullptr, 10);
@@ -40,6 +44,8 @@ int main(int argc, char **argv)
 		else if (a == "--quiet") quiet = true;
 		else if (a == "--rec") rec = true;
 		else if (a == "--full-roster") full_roster = true;
+		else if (a == "--hd-dump" && i + 1 < argc) hd_dump = argv[++i];
+		else if (a == "--hd-pack" && i + 1 < argc) hd_pack = argv[++i];
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
 		else if (a == "--trace-pc" && i + 1 < argc) trace_pc = uint32_t(strtoul(argv[++i], nullptr, 16));
@@ -62,6 +68,21 @@ int main(int argc, char **argv)
 	if (!quiet)
 		printf("%s (\"%s\"): Model 3 Step %d.%d, the PowerPC paced at %d MHz\n", board.title.c_str(),
 		       board.set.c_str(), board.stepping >> 4, board.stepping & 0xF, board.ppc_hz / 1000000);
+	// --hd-pack / --hd-dump: the 3D texture pack (src/video/tex3d_hd.h). Set up before the first picture is
+	// drawn; asking for neither leaves both rasterisers' texture paths exactly as they were.
+	if (!hd_pack.empty()) {
+		std::string report;
+		video::hd3d().load(hd_pack, report);
+		if (!quiet) printf("%s\n", report.c_str());
+	}
+	if (!hd_dump.empty()) {
+		std::string why;
+		if (!video::hd3d().dump_to(hd_dump, why)) {
+			fprintf(stderr, "vf3run: %s\n", why.c_str());
+			return 1;
+		}
+		if (!quiet) printf("3D texture dump: every texture a polygon samples, into %s\n", hd_dump.c_str());
+	}
 	InputScript script;
 	if (!script_path.empty() && !script.load(script_path, error)) {
 		fprintf(stderr, "vf3run: %s\n", error.c_str());
@@ -571,6 +592,7 @@ int main(int argc, char **argv)
 						printf("  spot colour %.3f %.3f %.3f ellipse %.1f %.1f %.1f %.1f range %g %g\n", v.spot_colour[0], v.spot_colour[1], v.spot_colour[2],
 							v.spot_ellipse[0], v.spot_ellipse[1], v.spot_ellipse[2], v.spot_ellipse[3], v.spot_range[0], v.spot_range[1]);
 					}
+				raster.tex_version = 1 + board.tex_serial;
 				raster.render(scene, board.tex_ram.data());
 				static std::vector<uint32_t> below, above;
 				tiles.aligned(below, above);
