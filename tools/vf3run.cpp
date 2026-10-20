@@ -12,6 +12,10 @@
 // the CPU's stores to that word (--trace-pc ADDR: r3-r8 and LR each time that instruction runs; both on the interpreter). VF3_VOLUMES=music,effects (percent) sets the sound board's two volumes for --wav. VF3_POKE=addr=value
 // (hex address into --ram-at's dump, a byte; "b" first: the backup RAM's) writes RAM before every frame
 // (VF3_POKE_FRAMES=from-to: only those). VF3_FREE_PLAY=1: the coin setting FREE PLAY before the boot, as the PC way.
+// HD 2D (docs/fv2-hd-2d.md): --tile-dump DIR writes every tile and every layer layout the game draws, once each,
+// with the hash in the name; --tile-scale N draws the tile plane N times its size (1, the default, is the
+// hardware's and changes nothing); --tile-pack DIR puts that folder's images in the place of the tiles and layers
+// whose names they carry. With --shots the pictures then come out at the HD size.
 #include <map>
 #include "../src/host/input_script.h"
 #include "../src/host/console_play.h"
@@ -43,6 +47,8 @@ int main(int argc, char **argv)
 	long console_at = -1;
 	console_play cplay;
 	std::string hd_dump, hd_pack;
+	int tile_scale = 1;   // HD 2D: 1 is the hardware's own, and then nothing of it runs (src/video/tilehd.h)
+	std::string tile_pack_dir, tile_dump_dir;
 	for (int i = 1; i < argc; i++) {
 		std::string a = argv[i];
 		if (a == "--frames" && i + 1 < argc) frames = strtol(argv[++i], nullptr, 10);
@@ -62,6 +68,11 @@ int main(int argc, char **argv)
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
 		else if (a == "--trace-pc" && i + 1 < argc) trace_pc = uint32_t(strtoul(argv[++i], nullptr, 16));
+		// HD 2D (docs/fv2-hd-2d.md): the tile plane at a multiple of its size, a pack of images, a dump of what
+		// the game draws. All three off by default, and off the picture is what it was.
+		else if (a == "--tile-scale" && i + 1 < argc) tile_scale = int(strtol(argv[++i], nullptr, 10));
+		else if (a == "--tile-pack" && i + 1 < argc) tile_pack_dir = argv[++i];
+		else if (a == "--tile-dump" && i + 1 < argc) tile_dump_dir = argv[++i];
 		else if (a[0] != '-' && rom.empty()) rom = a;
 		else {
 			fprintf(stderr, "vf3run: unknown argument %s\nusage: vf3run <vf3.zip> [--frames N] [--script FILE] [--state FILE] [--quiet]\n", a.c_str());
@@ -153,7 +164,21 @@ int main(int argc, char **argv)
 	static video::Scene scene;
 	static video::Raster raster;
 	raster.resize(video::W, video::H);
-	if (!shots.empty())
+	// HD 2D: the pack is read once the scale is known, because every image in it must be at that scale
+	static video::TilePack tile_pack;
+	static video::TileDump tile_dump;
+	if (!tile_dump_dir.empty()) {
+		std::string why;
+		if (!tile_dump.open(tile_dump_dir, why)) fprintf(stderr, "vf3run: can't write the tile dump in %s (%s)\n", tile_dump_dir.c_str(), why.c_str());
+		else if (!quiet) printf("tile dump: %s/tiles and /layers, everything the game draws, once each\n", tile_dump_dir.c_str());
+	}
+	if (!tile_pack_dir.empty()) {
+		std::string report;
+		tile_pack.load(tile_pack_dir, std::clamp(tile_scale, 1, 8), report);
+		if (!quiet) printf("%s\n", report.c_str());
+	}
+	tiles.hd_set(tile_scale, &tile_pack, &tile_dump);
+	if (!shots.empty() || tiles.hd() || tile_dump.on())
 		board.on_line = [&](unsigned y) {
 			auto a = std::chrono::steady_clock::now();
 			if (y == 0) tiles.clear();
@@ -642,10 +667,27 @@ int main(int argc, char **argv)
 				for (int i = 0; i < video::W * video::H; i++)
 					picture[i] = (below[i] >> 24) ? below[i] : 0xFF000000u;
 				raster.compose(picture.data(), picture.data());
-				for (int i = 0; i < video::W * video::H; i++)
-					if (above[i] >> 24) picture[i] = above[i];
 				char p[64];
 				snprintf(p, sizeof(p), "/shot_%06llu_%s.png", (unsigned long long)board.frame, name.c_str());
+				if (tiles.hd()) {
+					// HD 2D: the HD layers with the 3D between them. The 3D is the hardware's own size and is
+					// repeated, as the host's renderer repeats it; its alpha is where it drew anything at all,
+					// which is what the float layers say (r3d_raster.h), so a translucent polygon still mixes
+					// with the native layer under it before the HD layer shows round it.
+					static std::vector<uint32_t> hd_below, hd_above, hd_pic;
+					for (int i = 0; i < video::W * video::H; i++)
+						if (!(raster.base[i].a > 0 || raster.t1[i].a > 0 || raster.t2[i].a > 0)) picture[i] = 0;
+					const int S = tiles.hd_scale();
+					tiles.aligned_hd(hd_below, hd_above);
+					hd_pic.assign(size_t(video::W) * S * size_t(video::H) * S, 0);
+					video::compose_hd(S, hd_below, hd_above, picture.data(), hd_pic.data());
+					write_png((shots + p).c_str(), hd_pic.data(), video::W * S, video::H * S);
+					if (!quiet)
+						printf("shot %s at %dx%d (tile scale %d)\n", p + 1, video::W * S, video::H * S, S);
+					continue;
+				}
+				for (int i = 0; i < video::W * video::H; i++)
+					if (above[i] >> 24) picture[i] = above[i];
 				write_png((shots + p).c_str(), picture.data(), video::W, video::H);
 				if (getenv("VF3_VP")) {
 					const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
@@ -755,6 +797,12 @@ int main(int argc, char **argv)
 		if (!quiet)
 			printf("coverage: %zu entry points of %zu words, to %s\n", n, board.cpu.cover_seeds.size(), coverage_path.c_str());
 	}
+	if (tile_dump.on()) {
+		const size_t nt = tile_dump.tiles(), nl = tile_dump.layouts();
+		tile_dump.close();   // (tiles.csv and layers/index.csv, which are written at the end)
+		if (!quiet) printf("tile dump: %zu distinct tiles and %zu layer layouts in %s\n", nt, nl, tile_dump_dir.c_str());
+	}
+	if (tiles.hd() && !quiet) printf("HD 2D: %ld tile slices drawn from the pack\n", tiles.hd_tiles_drawn);
 	double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 	if (!quiet) {
 		printf("%llu frames in %.1f s (%.0f frames a second)\n", (unsigned long long)board.frame, secs, board.frame / secs);

@@ -240,7 +240,9 @@ beside PC and arcade -- a console's own menu over the game, on free play:
 [docs/fv2-console.md](docs/fv2-console.md). The portraits along the bottom of its select screen are read from a
 folder of PNG files, without touching the ROM: [docs/fv2-portraits.md](docs/fv2-portraits.md). `--hd-3d` draws a
 texture pack over that game's 3D -- images of any size, recognised by the content of the texture they stand in
-for, on both of the port's rasterisers: [docs/fv2-hd-3d.md](docs/fv2-hd-3d.md).
+for, on both of the port's rasterisers: [docs/fv2-hd-3d.md](docs/fv2-hd-3d.md). `--tile-dump` writes out
+everything the tile generator draws, and `--tile-scale` / `--tile-pack` put larger pictures in the place of its
+tiles and whole layers the same way: [docs/fv2-hd-2d.md](docs/fv2-hd-2d.md).
 
 ## Credits
 

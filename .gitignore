@@ -16,7 +16,8 @@ __pycache__/
 # What this port keeps beside itself when it is launched from here: the four
 # jouer-*.cmd pin VF3_DATA to the project folder, so its settings, NVRAM, log,
 # the player's own portraits and their replacement textures land here and must
-# not be committed.
+# not be committed. The dumps and the packs are made from the player's own ROM
+# and never belong in the repository either.
 /settings.ini
 /settings.ini.tmp
 /log.txt
@@ -26,3 +27,4 @@ __pycache__/
 /eeprom-*
 /portraits-*/
 /texture_remplacement*/
+assets-hd/
