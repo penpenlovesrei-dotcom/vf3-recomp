@@ -256,9 +256,10 @@ back. With `--shots`, `vf3run` writes its pictures at the HD size.
   one (signature rectangles and holes); neither is here.
 - **Cell patterns**, for HD art larger than 8x8 **that moves**. Not met on Fighting Vipers 2.
 - **Hot reload** of the pack on a key.
-- **`_pANY` and a scrolling layer image were never exercised.** Both are written and neither was reached by
-  anything measured here: on the screens dumped, the only tile appearing with more than one palette was the
-  empty one, and the layouts replaced do not scroll. They are code that has not been seen to work.
+- **Three paths are written and were never exercised**, so they are code that has not been seen to work: the
+  `_pANY` fallback (on the screens dumped, the only tile appearing with more than one palette was the empty
+  one), a layer image on a layer that actually scrolls (the layouts replaced here stand still), and the
+  screen-shaped layer image -- only the 512-square tile-map shape was put on screen.
 - **The cost was never timed.** Both surfaces are written every frame at the scale and sent whole to the GPU;
   no slowdown was noticed at scale 4 in the windowed host, but nothing was measured, and there is no frame
   cache like the one the owner added in Supermodel.
