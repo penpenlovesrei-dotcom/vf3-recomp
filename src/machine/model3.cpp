@@ -1532,6 +1532,34 @@ constexpr uint32_t FV2_SURVIVAL_SETTING = 0x00120550;
 constexpr uint32_t FV2_REGION = 0x00120557;
 }
 
+// ---- The game's own state machine (docs/fv2-etats.md) ----
+//
+// Four contiguous bytes, and the twenty-four mode numbers Sega named in RAM. Measured on the ROM, on
+// Supermodel, and carried here rather than rediscovered: this port had none of it.
+//
+//   0x0058FD98  MODE_MAIN         the mode
+//   0x0058FD99  MODE_SUB          that mode's sub-state
+//   0x0058FD9A  MODE_REQUEST      the mode asked for
+//   0x0058FD9B  SUBMODE_REQUEST   the sub-state asked for
+//
+// The attract slice's sub-states, which is the one that matters here:
+//
+//   0 DONT_RECYCLE_INT  1 DONT_RECYCLE_DSP  2 ADV_SEGA_INT     3 ADV_SEGA_DSP
+//   4 FV2_TITLE_INT     5 FV2_TITLE_DSP     6 ADV_RATING_INT   7 ADV_RATING_DSP
+//   8 ADV_REPLAY_WAIT   9 ADV_REPLAY_INT   10 ADV_REPLAY_DSP  11 ADV_DEMO_DSP
+//
+// Twelve, not ten, and starting at the table's index 50 rather than 52 -- the two names that were missing were
+// BEFORE the slice, not after, so nothing below them shifts. Both were settled by freezing the game on one
+// sub-state and looking: 3 is the SEGA logo, 5 is the title screen.
+namespace {
+constexpr uint32_t FV2_MODE_MAIN = 0x0058FD98;
+constexpr uint32_t FV2_MODE_SUB = 0x0058FD99;
+constexpr uint32_t FV2_MODE_REQUEST = 0x0058FD9A;
+constexpr uint32_t FV2_SUBMODE_REQUEST = 0x0058FD9B;
+constexpr uint8_t FV2_MODE_ADV_INT = 2, FV2_MODE_ADV_DSP = 3;
+constexpr uint8_t FV2_ADV_TITLE_INT = 4, FV2_ADV_TITLE_DSP = 5;
+}
+
 int Model3::fv2_task_state() const
 {
 	if (set != "fvipers2" || ram.size() <= FV2_TASK_ENTRY1 + 3) return -1;
@@ -1561,6 +1589,34 @@ void Model3::fv2_set_region(int r)
 {
 	if (set != "fvipers2" || r < 0 || r > 3) return;
 	ram[FV2_REGION ^ 3] = uint8_t(r);
+}
+
+int Model3::fv2_mode() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return -1;
+	return ram[FV2_MODE_MAIN ^ 3];
+}
+
+int Model3::fv2_submode() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return -1;
+	return ram[FV2_MODE_SUB ^ 3];
+}
+
+bool Model3::fv2_on_title() const
+{
+	const int mode = fv2_mode();
+	if (mode != FV2_MODE_ADV_INT && mode != FV2_MODE_ADV_DSP) return false;
+	const int sub = fv2_submode();
+	return sub == FV2_ADV_TITLE_INT || sub == FV2_ADV_TITLE_DSP;
+}
+
+// ONCE. Not held -- see the header, and the two times holding a request cost a morning.
+void Model3::fv2_request_title()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return;
+	ram[FV2_MODE_REQUEST ^ 3] = FV2_MODE_ADV_DSP;
+	ram[FV2_SUBMODE_REQUEST ^ 3] = FV2_ADV_TITLE_INT;
 }
 
 } // namespace m3

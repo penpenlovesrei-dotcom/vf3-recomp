@@ -34,10 +34,42 @@
 #include <cstring>
 #include <string>
 
+
+// Fighting Vipers 2's own state machine, printed on every change -- the instrument the ROM work called
+// -menu-mode-log, which is what every timing measurement here should be hung on instead of counting frames
+// from an approximate event. Sega left these names in RAM, eighty strings in one run at 0x00024494, and the
+// slices below were settled by freezing the game one sub-state at a time and looking at the screen: a
+// contiguous table does not say where its slices begin, and taking them from the names was wrong three times.
+// See docs/fv2-etats.md.
+static const char *FV2_MODES[24] = {
+	"WARNING_INT", "WARNING_DSP", "ADV_INT", "ADV_DSP", "SEL_INT", "SEL_DSP", "GAME_INT", "GAME_DSP",
+	"CONTINUE_INT", "CONTINUE_DSP", "INTRUDE_INT", "INTRUDE_DSP", "ENDING_INT", "ENDING_DSP", "NAME_INT",
+	"NAME_DSP", "RANKING_INT", "RANKING_DSP", "OVER_INT", "OVER_DSP", "TEST_INT", "TEST_DSP", "RESULT_INT",
+	"RESULT_DSP"
+};
+static const char *FV2_SUB_GAME[20] = {
+	"ROUND_MASK_INT", "ROUND_MASK_IN", "ROUND_MASK_DSP", "ROUND_MASK_OUT", "ROUND_INT", "ROUND_DSP",
+	"SET_INT", "SET_INT_POSE", "SET_DSP", "READY_INT", "READY_DSP", "FIGHT_INT", "FIGHT_DSP", "JUDGE",
+	"JUDGE_DSP", "REPLAY_INT", "REPLAY_DSP", "VIC_INT", "VIC_DSP", "NEXT_PROG_SEL"
+};
+static const char *FV2_SUB_ADV[12] = {
+	"DONT_RECYCLE_INT", "DONT_RECYCLE_DSP", "ADV_SEGA_INT", "ADV_SEGA_DSP", "FV2_TITLE_INT", "FV2_TITLE_DSP",
+	"ADV_RATING_INT", "ADV_RATING_DSP", "ADV_REPLAY_WAIT", "ADV_REPLAY_INT", "ADV_REPLAY_DSP", "ADV_DEMO_DSP"
+};
+
+// Only GAME, SEL and ADV give the sub-state byte a meaning; every other mode leaves there whatever the
+// previous one put, so naming it would be inventing something.
+static const char *fv2_sub_name(int mode, int sub)
+{
+	if ((mode == 6 || mode == 7) && sub >= 0 && sub < 20) return FV2_SUB_GAME[sub];
+	if ((mode == 2 || mode == 3) && sub >= 0 && sub < 12) return FV2_SUB_ADV[sub];
+	return "";
+}
 int main(int argc, char **argv)
 {
 	std::string rom, script_path, state_path, shots, wav_path, coverage_path, portraits;
 	long frames = -1, ram_at = -1;
+	bool modes_log = false;
 	uint32_t watch = 0xFFFFFFFF, trace_pc = 0xFFFFFFFF;
 	bool quiet = false, rec = false, full_roster = false;
 	// --console-mode arcade|survival at --console-at N: the console way's mode machinery (src/host/console_play.h)
@@ -66,6 +98,7 @@ int main(int argc, char **argv)
 		else if (a == "--hd-dump" && i + 1 < argc) hd_dump = argv[++i];
 		else if (a == "--hd-pack" && i + 1 < argc) hd_pack = argv[++i];
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
+		else if (a == "--modes") modes_log = true;
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
 		else if (a == "--trace-pc" && i + 1 < argc) trace_pc = uint32_t(strtoul(argv[++i], nullptr, 16));
 		// HD 2D (docs/fv2-hd-2d.md): the tile plane at a multiple of its size, a pack of images, a dump of what
@@ -796,6 +829,17 @@ int main(int argc, char **argv)
 				px[i] = 0xFF000000u | (b * 255 / 31) << 16 | (g * 255 / 31) << 8 | (r * 255 / 31);
 			}
 			write_png("texram.png", px.data(), 2048, 1024);
+		}
+		if (modes_log) {
+			static int was_mode = -1, was_sub = -1;
+			const int mode = board.fv2_mode(), sub = board.fv2_submode();
+			if (mode >= 0 && (mode != was_mode || sub != was_sub)) {
+				printf("%6llu  %-13s %2d %-16s %s\n", (unsigned long long)board.frame,
+					   mode < 24 ? FV2_MODES[mode] : "?", sub, fv2_sub_name(mode, sub),
+					   board.fv2_on_title() ? "<- ECRAN TITRE" : "");
+				fflush(stdout);
+				was_mode = mode; was_sub = sub;
+			}
 		}
 		if (long(board.frame) == ram_at) {
 			std::string p = "ram_" + std::to_string(board.frame) + ".bin";

@@ -228,6 +228,29 @@ public:
 	// not write it back, so one write holds.
 	int fv2_region() const;              // -1: not this game
 	void fv2_set_region(int r);
+
+	// ---- The game's own state machine (docs/fv2-etats.md) ----
+	// Four contiguous bytes that Sega's own code reads and writes every frame: the mode, that mode's sub-state,
+	// and the two that REQUEST a mode and a sub-state. The names are the game's own, left in RAM as eighty
+	// strings in one run at 0x00024494, the first twenty-four of them the modes.
+	//
+	// All of it was measured on the ROM, on Supermodel, between the 14th and the 20th of August 2026 -- by
+	// freezing the game one sub-state at a time and looking at the screen, because the names alone put the
+	// attract slice two out, and a slicing taken from the names was caught wrong three separate times. A
+	// contiguous table does not say where its slices begin.
+	int fv2_mode() const;        // 2 ADV_INT 3 ADV_DSP 4 SEL_INT 5 SEL_DSP 6 GAME_INT 7 GAME_DSP ...; -1 not this game
+	int fv2_submode() const;     // only GAME, SEL and ADV mean anything by it; every other mode leaves the byte alone
+	// The game's own title screen is on screen: the mode is ADV and the sub-state is FV2_TITLE_INT or
+	// FV2_TITLE_DSP. This is NOT the question fv2_in_attract answers -- that one is "is a game running", and it
+	// is true of the warning, the SEGA logo, the title, the presentations, the demos and the rankings alike.
+	bool fv2_on_title() const;
+	// Asks the game for its title screen. The mode and sub-state here are a REQUEST: the dispatcher at
+	// 0x0000ABC4 copies the request into the mode before it jumps, so the mode is not forced, it is asked for --
+	// and it takes two frames. Written ONCE and never held: holding a request is what broke the select screen
+	// and its countdown, twice.
+	// It commands nothing from inside a fight, and the measurement that established that is worth more than the
+	// failure: the bytes were still intact a second later, so nobody had read them.
+	void fv2_request_title();
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 
