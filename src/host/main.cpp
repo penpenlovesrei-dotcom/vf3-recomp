@@ -841,13 +841,24 @@ struct Game
 	{
 		if (!honey_costume) return;
 		const bool on_select = board.fv2_task_state() == 5;
-		if (on_select && !honey_on_select) { honey_cycle = 0; honey_up_was = false; }   // (the screen just opened)
+		if (on_select && !honey_on_select) {   // the screen just opened: back to the first costume
+			honey_cycle = 0;
+			honey_up_was = false;
+			if (board.honey_costume(false) > 0 && rebuilt_after_boot) rebuild_from_ram_if_stale();
+		}
 		if (on_select) {
-			if (up_now && !honey_up_was) honey_cycle = (honey_cycle + 1) & 3;
+			if (up_now && !honey_up_was) {
+				honey_cycle = (honey_cycle + 1) & 3;
+				// Two things have to happen, in this order. The choice goes in first, because the preview is
+				// built from the program as it stands. Then the preview has to be ASKED for: nothing in this
+				// game watches the cursor, and the preview is built once, when the cursor lands -- so a press
+				// of Up on its own would change nothing on screen until the fight started
+				// (Model3::fv2_redo_fighter_model, docs/fv2-honey.md).
+				if (board.honey_costume(honey_cycle >= 2) > 0 && rebuilt_after_boot) rebuild_from_ram_if_stale();
+				for (int p = 0; p < 2; p++) board.fv2_redo_fighter_model(p);
+				fprintf(stderr, "Honey: costume %d of 4%s\n", honey_cycle + 1, honey_cycle >= 2 ? ", no skirt" : "");
+			}
 			honey_up_was = up_now;
-		} else if (honey_on_select && board.honey_costume(honey_cycle >= 2) > 0) {
-			fprintf(stderr, "Honey: costume %d of 4%s\n", honey_cycle + 1, honey_cycle >= 2 ? ", no skirt" : "");
-			if (rebuilt_after_boot) rebuild_from_ram_if_stale();
 		}
 		honey_on_select = on_select;
 	}

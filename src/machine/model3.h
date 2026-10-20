@@ -202,6 +202,10 @@ public:
 	// read before every write, and the caller keeps calling. 1 if it wrote just now, 0 if there was nothing to
 	// do, -1 for a game this isn't known for.
 	int honey_costume(bool on);
+	// Makes the game build a fighter's model again, now, without the cursor having moved. What that is for: the
+	// select screen's preview is the same model, built by the same task, and it is built once when the cursor
+	// lands -- so a costume chosen afterwards would not show until the fight. See docs/fv2-honey.md.
+	void fv2_redo_fighter_model(int player);
 
 	// ---- Fighting Vipers 2's console mode (docs/fv2-console.md) ----
 	// What the host has to read and write to put a console's own menu over this game. Every address below was

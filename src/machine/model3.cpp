@@ -1481,6 +1481,34 @@ int Model3::honey_costume(bool on)
 	return 1;
 }
 
+// Nothing in this game watches the cursor. The select screen's preview is built by a chain of tasks, and the
+// scheduler reads two words per task every frame -- bit 0 of the block for "this one runs", and the word after
+// it for where to enter. Those two words are not a trace a routine leaves behind: they ARE the command, read
+// sixty times a second. (Found by the decompilation session; the scheduler is at 0x00039174, its indirect call
+// at 0x000391A8, and the two primitives that arm and disarm a task are 0x00067B80 and 0x00067B94.)
+//
+// So a fighter's model is built again by re-arming the cloth task that builds it. One fighter, one block:
+//
+//     player 1   block 0x0070EC00   entry 0x0005756C
+//     player 2   block 0x0070ED00   entry 0x000575A0
+//
+// A PULSE, and that word matters. Written once, the task runs once and finishes. Written every frame it is
+// restarted before it can finish, and the model comes apart on screen -- which is what happened here the first
+// time, and is worth leaving written down.
+//
+// Measured: on the select screen, with the cursor never moving, one pulse makes the preview pick up a costume
+// chosen after the cursor landed -- the picture then being byte-identical to the one from a run where the
+// costume was set before the cursor ever arrived.
+void Model3::fv2_redo_fighter_model(int player)
+{
+	if (set != "fvipers2" || player < 0 || player > 1) return;
+	constexpr uint32_t BLOCK[2] = { 0x0070EC00, 0x0070ED00 };
+	constexpr uint32_t ENTRY[2] = { 0x0005756C, 0x000575A0 };
+	if (ram.size() <= BLOCK[player] + 8) return;
+	word(ram, BLOCK[player] + 4) = ENTRY[player];
+	word(ram, BLOCK[player]) |= 1;   // (already set while the select screen is up; set anyway, for anywhere else)
+}
+
 // ---- Fighting Vipers 2's console mode ----
 //
 // Four addresses, all in RAM, all measured here before they were used. The measurements are in
