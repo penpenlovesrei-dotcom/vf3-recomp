@@ -1,0 +1,28 @@
+# Fighting Vipers 2: HONEY against the CPU, far enough to cross a round end.
+# Same opening as fv2-honey.txt -- two coins, Start, eight presses of right to
+# cell 8, attack to confirm -- then random play from frame 3150.
+#
+# Measured with this script and this seed: the first round ends between frames
+# 4900 and 5100. The pictures are taken on either side of that, which is the
+# whole point: Honey's model is chosen when a round is set up, not when her
+# armour comes off, so the two sides of that line are what has to be compared.
+1900 press p1.coin
+1930 press p1.coin
+1960 press p1.start
+2080 press p1.right
+2110 press p1.right
+2140 press p1.right
+2170 press p1.right
+2200 press p1.right
+2230 press p1.right
+2260 press p1.right
+2290 press p1.right
+2350 press p1.punch
+3150 random p1 20261020
+3900 shot 1_round1
+4300 shot 2_round1
+4700 shot 3_round1
+5100 shot 4_after
+5300 shot 5_after
+5500 shot 6_after
+5700 quit

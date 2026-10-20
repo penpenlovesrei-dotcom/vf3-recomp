@@ -15,7 +15,7 @@ Nothing here comes from Supermodel. The game's own debug tables did most of the 
 
 It is **not** a separate model, and it is **not** merely an Armor Break state. It is the ordinary Honey, with
 three halfwords of her cloth model's working copy zeroed, and the game only does that when **both** of these
-hold at the moment her model is set up:
+hold **at the moment her model is set up, which is when a round loads**:
 
 - `armor_flag & 8` -- her **lower** armour has been knocked off, not merely damaged past its limit;
 - the word at `0x00581438` is **greater than 29** -- the current winner's run of consecutive wins.
@@ -23,7 +23,8 @@ hold at the moment her model is set up:
 That second word only ever advances when `0x0058145A == 3`, and `0x0058145A` is 1 when player 1 has entered and
 `+2` when player 2 has. **Three means both players are in** -- which is what 乱入対戦 is.
 
-So the folklore is right on every point, including the thirty.
+So the folklore is right on every point: the thirty, the lower armour, and the skirt going **at the next
+round**, because the handler that decides it does not run while a round is being played.
 
 
 ## The instruments
@@ -108,11 +109,12 @@ So:
 **`0x08` is the lower armour gone, on its own** -- that is the branch at `0x0006800C`, and it is reached
 without the upper one. That is exactly what the folklore asks for.
 
-### Setting the flag is not enough, and this is where the simple hypothesis dies
+### Bits 0 and 1 on their own do nothing to the model
 
 Forcing `flag0` to 2 or to 3 mid-fight changes the picture by **510 and 1061 pixels**, and every one of them
 is inside `x 1..28, y 7..92` -- the little green figure in the corner, the armour indicator. The 3D model is
-byte-identical. The flag records the break; it does not perform it.
+byte-identical, in that round and in the one after. Reaching the limit is not the same as the piece coming
+off: bit 3 is, and that is the one the model reads.
 
 
 ## `hadaka` -- Sega's own word, and it is a dead end for this question
@@ -169,6 +171,11 @@ The table is twelve words, offsets from `0x00057644`:
 Measured, not deduced: `tools/vf3run --trace-pc 57A1C` fires during a Honey fight with `r3 = 0x00700500`, and
 it fires **twice in a 4500-frame run**. The handler is not per-frame work; it runs when her model is set up.
 
+That one fact is why the first attempt at this came back negative and why the owner's "at the next round" is
+the hinge: forcing the armour flag in the middle of a round and comparing the same frames compares two
+pictures built from a model that was chosen before the poke existed. Nothing can change there. The comparison
+has to straddle a round end.
+
 
 ## Honey's handler, which is the whole answer
 
@@ -193,9 +200,37 @@ drawn.
 **There is no second Honey in the ROM.** There is one Honey, and a counter the game blanks when you have
 earned it.
 
-### Shown, not argued
+### Shown, not argued -- and the round end is the whole of it
 
-Three runs of the same script, pictures diffed frame by frame:
+`tools/scripts/fv2-honey-rounds.txt` is the same fight carried far enough to cross a round end; with this seed
+the first round ends between frames 4900 and 5100. Three runs of it, nothing in the game touched, only RAM
+written before each frame:
+
+| run | what was written | |
+|---|---|---|
+| **témoin** | nothing | |
+| **armure** | `0x00701444` low byte = `0x0A` | her lower armour has reached its limit and come off |
+| **trente** | the same, and `0x00581438 = 40` | and forty straight wins |
+
+Diffed frame by frame, **armure** against **trente**:
+
+```
+3900  round 1        0 pixels
+4300  round 1        0 pixels
+4700  round 1        0 pixels
+------------------------------ the round ends here
+5100  round after    541 pixels
+5300  round after   2252 pixels
+5500  round after    932 pixels
+```
+
+**Nothing while the round runs, and a different Honey from the first picture of the round after it.** At frame
+5300 the two are the same pose in the same camera: one still in her skirt, one not. That is the whole claim,
+and it needed no instruction patched -- only the flag Sega's own `ARMOR_INFO` page names, and the counter.
+
+`montrer-honey.cmd` runs the three and leaves the two folders that matter open.
+
+Two more, taken before the round end was understood, which pin the mechanism rather than the behaviour:
 
 | run | what was poked | against the untouched run |
 |---|---|---|
@@ -204,11 +239,8 @@ Three runs of the same script, pictures diffed frame by frame:
 | C | the same `nop`, and `cmpwi r0,29` turned into `cmpwi r0,-1` | **identical to B**, every frame, byte for byte |
 
 A says the `nop` on its own does nothing -- the counter was 0, so the test still sent her down the ordinary
-path. B says thirty wins takes her skirt off. C says one word at `0x00057A30` does exactly what thirty wins
-does, which is the lever this port would use.
-
-`montrer-honey.cmd` reproduces A and B and leaves both folders open. The difference is visible from the round
-intro onwards.
+path. C says one word at `0x00057A30` does exactly what thirty wins does, which is the lever this port would
+use.
 
 
 ## The counter: what it counts, and what gates it
@@ -261,15 +293,20 @@ reset. **The CPU ladder does not count.** The gate did its job.
   windowed host and a second pad, or a script written against the entry task rather than against the frame
   numbers.
 - **The lower armour was never knocked off by play here.** Forcing `limit_d` to 1 reliably sets `flag0` bit 1
-  (damage past the limit), but the random-input fights never reached the removal step that sets bit 3; that is
-  why the measurements above nop the `beq` instead. The branch at `0x0006800C` that sets it for the lower
-  armour alone was read, not watched.
+  (damage past the limit), but the random-input fights never reached the removal step that sets bit 3, so bit
+  3 was written straight into RAM instead. The branch at `0x0006800C` that sets it for the lower armour alone
+  was read, not watched.
+- **`tools/vf3run` never loads the NVRAM** -- it starts from a blank card every time. That does not weaken
+  anything here, because the counter is in RAM: `--watch 581438` over a whole game reports the program's own
+  three writes and nothing else, and the reset at `0x0000AFBC` zeroes it. But it does mean that if there is a
+  *second*, saved counter behind this, nothing on this page would have seen it.
 - **What the three zeroed halfwords are** was not decoded. They sit at `+0x28` of three consecutive 160-byte
   records, and zeroing them stops the skirt being drawn; whether the field is a polygon count, a leaf count or
   something else was not established.
 - Whether the thirtieth win has to be the one in which her armour goes, or whether any order does, is not
-  settled either: the handler reads both conditions at the same instant, at model setup, so what matters is
-  that both hold **then**. Nothing in the code remembers the order.
+  settled either -- but the code says it cannot matter: the handler reads both conditions at the same instant,
+  when a round loads, and nothing remembers the order. "During those matches, or on the thirty-first" is
+  therefore two descriptions of one thing.
 - `*1P COLOR` (`0x007005B9`) was swept as a possible second costume and is not one. Poked to 1 or 3 during a
   fight it only repaints the name plate (382 and 816 pixels, all inside the plate); poked to 2 the CPU stops
   with an invalid instruction at `0x00020908`; poked to 4 the whole screen changes. None of that was run down,
@@ -283,11 +320,13 @@ Two ways, both measured above.
 **Without changing the port.** `montrer-honey.cmd`, or by hand:
 
 ```
-VF3_POKE=58143B=0,58143A=0,581439=0,581438=40
+VF3_POKE=58143B=0,58143A=0,581439=0,581438=40   0x00581438 = 40 consecutive wins
+VF3_POKE=701444=10                              0x00701444 low byte = 0x0A, her lower armour off
+VF3_POKE_FRAMES=3200-5700
 ```
 
-which is `0x00581438 = 40` -- thirty-something consecutive wins -- held while the fight loads. Her lower armour
-still has to be off for the handler to look at the counter at all.
+Both have to hold when a round loads, and the skirt goes at **that** round, not the one being played. In a
+real game only the first of the two is ever written by hand: her lower armour comes off by being hit.
 
 **As an option, the way `--full-roster` is done.** One word, at `0x00057A30`:
 
