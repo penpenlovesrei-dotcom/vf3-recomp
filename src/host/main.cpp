@@ -2562,6 +2562,9 @@ int main(int argc, char **argv)
 		if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
 	};
 	auto open_menu = [&] { if (game.emu_thread.joinable()) game.job_wait(); if (menu.ready() && !menu.is_open()) menu.open(main_page()); sync_menu_sound(); };
+	// The console way's own menu, opened on Start during the attract loop. It is the same machinery, at its own
+	// page; what makes it the game's menu rather than this port's is where it opens from.
+	auto open_console = [&] { if (game.emu_thread.joinable()) game.job_wait(); if (menu.ready() && !menu.is_open()) menu.open(console_page()); sync_menu_sound(); };
 
 	// ---- test hooks ----
 	std::vector<std::pair<SDL_Scancode, uint64_t>> test_keys;   // VF3_KEYS
@@ -2840,12 +2843,37 @@ int main(int argc, char **argv)
 				hk = read_inputs(live, pads, pstate, cfg.ctl);
 				act = InputScript::Actions();
 				if (scripted) act = script.step(script_ctl, game_frame);
-				// Start always reaches the game, in every play style. The console way used to take it during
-				// the attract loop and open its own menu with it, which is what the Dreamcast version does --
-				// but on a console Start is also how you start, and taking it away left the player with two
-				// buttons that both opened a menu and no way to begin a match. It was wrong twice over, since
-				// the board is on FREE PLAY in that style anyway: Start starting a game IS the console
-				// behaviour. The console's menu is a page of this port's own menu, under Escape.
+				// The console way: Start during the attract loop opens the console's own menu, as the Dreamcast
+				// version does, and a line of that menu then hands the game a real Start.
+				//
+				// This was taken out once, and putting it back is not a change of mind -- it is the missing
+				// half arriving. Taken out, it had left the player with no way to begin a match at all,
+				// because the menu's ARCADE handed the game a Start the game ignored: a board on credits with
+				// no credit. Free play is what was missing, and this port now sets it (Model3::coin_offset).
+				// With that, Start opening the menu and the menu starting the game is a whole gesture rather
+				// than a dead end.
+				//
+				// Everywhere else -- the PC way, the arcade way, and anywhere but the attract loop -- Start
+				// reaches the game untouched.
+				// A script's Start counts as a player's here, and deliberately: it arrives through script_ctl
+				// rather than through the keyboard, so reading only the player's own would have left this
+				// whole path untestable without hands on a pad -- which is exactly how it went unverified the
+				// first time round.
+				if (cplay.on) {
+					const bool st = live.start[0] || live.start[1] || script_ctl.start[0] || script_ctl.start[1];
+					if (cplay.swallow_start) { if (!st) cplay.swallow_start = false; }   // (held back until let go)
+					else if (st && !cplay.start_was && !menu.is_open() && board.fv2_in_attract()) {
+						open_console();
+						cplay.swallow_start = true;
+					}
+					cplay.start_was = st;
+					// The press that opened the menu must not also reach the game: it would arrive on the next
+					// frame and pick a fighter the instant the select screen appeared.
+					if (cplay.swallow_start) {
+						live.start[0] = live.start[1] = false;
+						script_ctl.start[0] = script_ctl.start[1] = false;
+					}
+				}
 				cplay.step(board, console_ctl);
 				m3::Controls &c = board.controls;
 				auto mix = [](bool *a, const bool *b, const bool *d) { a[0] = b[0] || d[0]; a[1] = b[1] || d[1]; };
