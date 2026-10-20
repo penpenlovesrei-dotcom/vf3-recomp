@@ -417,7 +417,11 @@ struct settings
 	bool fullscreen = false, arcade = false, show_fps = false, smooth = true;
 	bool timings = false;    // F9: the timings in the title bar
 	bool full_roster = false;   // Fighting Vipers 2's hidden fighters, selectable (Model3::unlock_roster)
-	std::string portraits;      // Fighting Vipers 2's select-screen portraits, read from this folder of PNGs (fv2::replace_portraits)
+	// Fighting Vipers 2's select-screen portraits. Empty means the folder this port keeps for them beside its own
+	// settings and NVRAM (data/portraits-fvipers2); a folder named with --portraits overrides that. portraits_off
+	// is the player saying "Sega's, whatever is in the folder".
+	std::string portraits;
+	bool portraits_off = false;
 	bool smooth_bg = true;   // the 2D backgrounds (the layers below the 3D) scaled smoothly, not as blocks
 	int filter = 0;          // the screen filter: 0 off, 1 scanlines, 2 CRT
 	int aa = 1;              // antialiasing: the 3D drawn aa times larger each way and averaged (1 off)
@@ -453,6 +457,7 @@ struct settings
 		flag("smooth_motion", smooth);
 		flag("full_roster", full_roster);
 		if (auto it = kv.find("portraits_folder"); it != kv.end()) portraits = it->second;
+		flag("portraits_off", portraits_off);
 		flag("smooth_backgrounds", smooth_bg);
 		flag("background_filter", smooth_bg);   // (VF1's and VF2's name)
 		num("screen_filter", filter, 0, 2);
@@ -506,6 +511,7 @@ struct settings
 		fprintf(f, "screen_filter = %d\nantialiasing = %d\nmusic_volume = %d\neffects_volume = %d\narcade_coins = %d\nframe_timings = %d\n", filter, aa, music, effects, arcade_coin, int(timings));
 		if (full_roster) fprintf(f, "full_roster = %d\n", int(full_roster));   // (one game's: written only once asked for)
 		if (!portraits.empty()) fprintf(f, "portraits_folder = %s\n", portraits.c_str());   // (one game's, likewise)
+		if (portraits_off) fprintf(f, "portraits_off = %d\n", int(portraits_off));
 		for (int p = 0; p < 2; p++) ctl[p].save(f, p);
 		const bool flushed = flush_to_disk(f);
 		if (fclose(f) == 0 && flushed && replace_file(path, tmp)) return true;
@@ -1082,9 +1088,15 @@ int main(int argc, char **argv)
 	if (arg_music >= 0) cfg.music = arg_music;
 	if (arg_effects >= 0) cfg.effects = arg_effects;
 	if (arg_full_roster >= 0) cfg.full_roster = arg_full_roster;
-	// --portraits is remembered, so the folder is named once and the launcher is the only thing kept afterwards
-	if (!arg_portraits.empty() && cfg.portraits != arg_portraits) { cfg.portraits = arg_portraits; cfg_dirty = true; }
-	if (arg_no_portraits && !cfg.portraits.empty()) { cfg.portraits.clear(); cfg_dirty = true; }
+	// --portraits names a folder other than the one this port keeps for them, and is remembered, so it is named
+	// once. --no-portraits goes back to Sega's and is remembered too -- otherwise a folder still full of PNGs
+	// would quietly bring them back on the next launch.
+	if (!arg_portraits.empty() && (cfg.portraits != arg_portraits || cfg.portraits_off)) {
+		cfg.portraits = arg_portraits;
+		cfg.portraits_off = false;
+		cfg_dirty = true;
+	}
+	if (arg_no_portraits && !cfg.portraits_off) { cfg.portraits_off = true; cfg_dirty = true; }
 	g_pc_mode = !cfg.arcade;
 	int aspect_i = cfg.aspect;
 
@@ -1106,16 +1118,34 @@ int main(int argc, char **argv)
 	game.full_roster = cfg.full_roster;
 	if (cfg.full_roster && board.unlock_roster() < 0)
 		fprintf(stderr, "the hidden fighters: that was measured on Fighting Vipers 2 (Japan, Revision A), not on this game\n");
-	// The select-screen portraits, read from a folder of PNGs (settings: portraits_folder). Unlike the roster
-	// patch above, nothing here has to wait: the sheets are in the VROM, which is a ROM the game never writes,
-	// so they are replaced once in the image this process holds and that is the end of it. Nothing is written to
-	// the player's zip. See src/machine/fv2_portraits.cpp and docs/fv2-portraits.md.
-	if (!cfg.portraits.empty())
-		fv2::replace_portraits_and_report(board.set, board.vrom, cfg.portraits, stderr);
-	// The board's NVRAM, per game: Virtua Fighter 3 keeps the names it has always had, so saves made before this
-	// port took a second game still load, and another game gets its own -- otherwise Fighting Vipers 2 would read
-	// Virtua Fighter 3's settings at the start and write over them at the end.
+	// Per-game names for what this port keeps of its own: Virtua Fighter 3 keeps the names it has always had, so
+	// saves made before this port took a second game still load, and another game gets its own -- otherwise
+	// Fighting Vipers 2 would read Virtua Fighter 3's settings at the start and write over them at the end. The
+	// NVRAM below and the portraits folder just under are both named this way.
 	const std::string nv_suffix = board.set == "vf3" ? std::string() : "-" + board.set;
+	// The select-screen portraits, read from a folder of PNGs. Unlike the roster patch above, nothing here has
+	// to wait: the sheets are in the VROM, which is a ROM the game never writes, so they are replaced once in
+	// the image this process holds and that is the end of it. Nothing is written to the player's zip. See
+	// src/machine/fv2_portraits.cpp and docs/fv2-portraits.md.
+	//
+	// Where that folder is: beside this port's own settings and NVRAM, named the way they are --
+	// data/portraits-fvipers2. The first version of this had no folder of its own and asked the player to point
+	// the option at one in another project's tree, which is how two projects quietly start sharing files and
+	// then diverge. --portraits still names another folder for anyone who wants one.
+	//
+	// It is made if it is not there, so there is somewhere plain to drop the PNGs, and an empty one says
+	// nothing: a player who never touches it should not read two lines about it at every launch.
+	const std::string portraits_dir = cfg.portraits.empty() ? data + "/portraits" + nv_suffix
+	                                                        : player_folder(cfg.portraits, data);
+	if (board.set == "fvipers2" && !cfg.portraits_off) {
+		std::error_code pec;
+		std::filesystem::create_directories(portraits_dir, pec);
+		bool any = false;
+		for (std::filesystem::directory_iterator it(portraits_dir, pec), end; it != end && !any; it.increment(pec))
+			any = true;
+		if (any) fv2::replace_portraits_and_report(board.set, board.vrom, portraits_dir, stderr);
+		else fprintf(stderr, "portraits: none to read in %s (drop light/00.png and the rest there)\n", portraits_dir.c_str());
+	}
 	const std::string backup_path = data + "/backup" + nv_suffix, eeprom_path = data + "/eeprom" + nv_suffix;
 	load_blob(backup_path, board.backup.data(), board.backup.size());
 	load_blob(eeprom_path, board.eeprom.regs, sizeof(board.eeprom.regs));
