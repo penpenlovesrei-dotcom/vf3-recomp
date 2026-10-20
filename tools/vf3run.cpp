@@ -279,6 +279,43 @@ int main(int argc, char **argv)
 				}
 			}
 		}
+		// (tests: VF3_RAMLOG=addr[:n],... prints a frame-stamped line whenever any of the
+		// watched bytes changes. --watch names the instruction that writes a word but not
+		// the frame it happened on, and --ram-at gives one frame per run; reading the mode
+		// machine's progress through a whole match needs the frame numbers of the changes,
+		// which is what this gives in one run. Guest byte A is at index A^3.)
+		if (const char *rl = getenv("VF3_RAMLOG")) {
+			struct Slot { uint32_t at; int n; };
+			static std::vector<Slot> slots;
+			static std::vector<uint8_t> last;
+			static bool parsed = false;
+			if (!parsed) {
+				parsed = true;
+				for (const char *q = rl; q && *q;) {
+					unsigned long at = 0; int n = 1;
+					if (sscanf(q, "%lx:%d", &at, &n) < 1) break;
+					slots.push_back({uint32_t(at), n < 1 ? 1 : n});
+					q = strchr(q, ','); q = q ? q + 1 : nullptr;
+				}
+				for (const Slot &s : slots) last.insert(last.end(), size_t(s.n), 0);
+			}
+			std::vector<uint8_t> now;
+			for (const Slot &s : slots)
+				for (int k = 0; k < s.n; k++) {
+					const uint32_t a = s.at + uint32_t(k);
+					now.push_back((a ^ 3) < board.ram.size() ? board.ram[a ^ 3] : 0);
+				}
+			if (now != last) {
+				last = now;
+				fprintf(stderr, "ramlog %llu", (unsigned long long)board.frame);
+				size_t i = 0;
+				for (const Slot &s : slots) {
+					fprintf(stderr, " %08X=", s.at);
+					for (int k = 0; k < s.n; k++) fprintf(stderr, "%02X", now[i++]);
+				}
+				fprintf(stderr, "\n");
+			}
+		}
 		auto tp1 = std::chrono::steady_clock::now();
 		t_board += std::chrono::duration<double, std::milli>(tp1 - tp0).count();
 		if (prof) {
