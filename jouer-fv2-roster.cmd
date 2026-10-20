@@ -1,5 +1,5 @@
 @echo off
-rem Fighting Vipers 2 avec les personnages caches : Del Sol, Kuhn, BM et Kuma
+rem Fighting Vipers 2 avec les personnages caches : Del Sol, Kuhn, BM et Dural
 rem accessibles a la fleche sur l'ecran de selection, le curseur reboucle sur 14
 rem au lieu de 10. Voir docs\fv2-roster.md.
 rem

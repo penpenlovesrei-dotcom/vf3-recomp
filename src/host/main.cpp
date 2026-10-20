@@ -3,7 +3,7 @@
 // motion (a picture for each refresh of the screen, up to 120 a second), the in-game menu (as VF1's and VF2's),
 // and the board's NVRAM (backup RAM and EEPROM) and the menu's settings kept in a data folder.
 //
-//   vf3 [vf3.zip] [--arcade] [--fullscreen | --window] [--no-sound] [--volume N] [--music N] [--effects N]
+//   vf3 [vf3.zip] [--arcade | --console | --pc] [--full-roster] [--fullscreen | --window] [--no-sound] [--volume N] [--music N] [--effects N]
 //       [--scale N] [--aspect fit|4:3|16:10|16:9|21:9] [--show-boot] [--interp] [--roms <folder>]
 //
 // --volume, --music and --effects (0-100) as the menu's Sound page: the overall volume, and the music's and the
@@ -24,7 +24,8 @@
 //
 // The menu (Esc, or on a pad View tapped, L3 + R3 or the touchpad click) pauses the game and its sound: Display
 // (render scale, antialiasing, picture shape, 3D renderer, smooth motion, background and screen filters, FPS,
-// fullscreen), Sound (volume, music, effects and voices), Game (PC or arcade play style, reset), Arcade settings
+// fullscreen), Sound (volume, music, effects and voices), Game (the play style -- PC, arcade, or console for the
+// game that has one -- and reset), Arcade settings
 // (the arcade's own, and its service menu), Controls (each player's pad, keys and pad buttons) and Quit. Its
 // choices are kept in settings.ini in the data folder ("key = value"), written when the menu closes (and within
 // 3 s of a hotkey's change); the command line wins over them.
@@ -33,6 +34,11 @@
 // (the game's own coin setting FREE PLAY, the arcade's kept in settings.ini's arcade_coins and given back for the
 // arcade way; its FREE PLAY notices hidden), so Start starts. --arcade (or Game > Play style: Arcade) shows the
 // boot and takes coins (the 5 and 6 keys, or the Coin bindings).
+//
+// --console (Game > Play style: Console, Fighting Vipers 2 only) is the PC way plus a console's own menu over
+// the game: Start during the attract loop picks a mode, as the Dreamcast version does. It never touches the
+// credit -- choosing a mode hands the game a real Start -- so a coin is still needed for that game, whose free
+// play this port does not know. See docs/fv2-console.md.
 //
 // --scale N (1-6) draws the 3D at N times the arcade's 384 lines; the 2D (text, the HUD) is the arcade's,
 // enlarged. Until one is chosen, the scale fits the window as it first opens. F5 steps through them. If the
@@ -96,6 +102,7 @@
 #include "../video/parallel.h"
 #include "png.h"
 #include "input_script.h"
+#include "console_play.h"
 #include "menu.h"
 #include "controls.h"
 #include "sysinfo.h"
@@ -416,6 +423,10 @@ struct settings
 	bool fullscreen = false, arcade = false, show_fps = false, smooth = true;
 	bool timings = false;    // F9: the timings in the title bar
 	bool full_roster = false;   // Fighting Vipers 2's hidden fighters, selectable (Model3::unlock_roster)
+	// The console way: the PC way's boot and free play, plus a console's own menu over the game (Start in the
+	// attract loop). A third play style rather than a fourth flag on the other two, because that is how the
+	// player thinks of it; `arcade` keeps meaning exactly what it did, so nothing that reads it changes.
+	bool console = false;
 	bool smooth_bg = true;   // the 2D backgrounds (the layers below the 3D) scaled smoothly, not as blocks
 	int filter = 0;          // the screen filter: 0 off, 1 scanlines, 2 CRT
 	int aa = 1;              // antialiasing: the 3D drawn aa times larger each way and averaged (1 off)
@@ -446,6 +457,8 @@ struct settings
 		if (auto it = kv.find("gpu_3d_failed"); it != kv.end()) gpu3d_failed = it->second;
 		flag("fullscreen", fullscreen);
 		flag("arcade_mode", arcade);
+		flag("console_mode", console);
+		if (arcade && console) console = false;   // (a file edited by hand: the arcade way wins, as the older key)
 		flag("frame_timings", timings);
 		flag("show_fps", show_fps);
 		flag("smooth_motion", smooth);
@@ -502,6 +515,7 @@ struct settings
 		if (!gpu3d_failed.empty()) fprintf(f, "gpu_3d_failed = %s\n", gpu3d_failed.c_str());
 		fprintf(f, "screen_filter = %d\nantialiasing = %d\nmusic_volume = %d\neffects_volume = %d\narcade_coins = %d\nframe_timings = %d\n", filter, aa, music, effects, arcade_coin, int(timings));
 		if (full_roster) fprintf(f, "full_roster = %d\n", int(full_roster));   // (one game's: written only once asked for)
+		if (console) fprintf(f, "console_mode = %d\n", int(console));         // (likewise: an older build reads the file as the PC way)
 		for (int p = 0; p < 2; p++) ctl[p].save(f, p);
 		const bool flushed = flush_to_disk(f);
 		if (fclose(f) == 0 && flushed && replace_file(path, tmp)) return true;
@@ -761,8 +775,15 @@ struct Game
 	void hold_roster()
 	{
 		if (!full_roster || board.unlock_roster() <= 0) return;
-		if (++roster_written == 1) return;   // (the one before the rebuild below)
-		fprintf(stderr, "the hidden fighters: the game had reloaded that code, the patch is back in (%llu)\n",
+		roster_written++;
+		// Before the boot's own rebuild, there is nothing to do: that rebuild is what makes the native code from
+		// the patched program. After it, any write at all -- the game having reloaded that stretch of its code,
+		// or the player having just turned this on from the menu -- leaves one word of RAM disagreeing with the
+		// instruction its native code was made from, and one word turns the whole recompiler off. So it is built
+		// again from RAM, where it agrees. (Getting this wrong is what made the game run at a sixth of its speed
+		// once before: docs/step2-fvipers2.md, section 19.)
+		if (!rebuilt_after_boot) return;
+		fprintf(stderr, "the hidden fighters: the patch went in after the boot (%llu), the native code made again\n",
 		        (unsigned long long)roster_written);
 		rebuild_from_ram_if_stale();
 	}
@@ -956,6 +977,7 @@ struct Game
 
 } // namespace
 
+
 int main(int argc, char **argv)
 {
 	if (getenv("VF3_HIDDEN")) SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
@@ -963,6 +985,8 @@ int main(int argc, char **argv)
 	std::string zip;
 	bool arg_arcade = false, sound = true, show_boot = false, arg_interp = getenv("VF3_INTERP") != nullptr;
 	int arg_full_roster = -1;   // Fighting Vipers 2's hidden fighters (--full-roster / --no-full-roster)
+	int arg_style = -1;         // the play style asked for on the command line: 0 the PC way, 2 the console way
+	                            // (the arcade way is --arcade, which came first and is kept as it was)
 	int arg_volume = -1, arg_music = -1, arg_effects = -1, arg_scale = 0, arg_aspect = -1, arg_full = -1;
 	std::string arg_roms;
 	for (int i = 1; i < argc; i++) {
@@ -983,6 +1007,8 @@ int main(int argc, char **argv)
 			for (int k = 0; k < N_ASPECTS; k++) if (v == ASPECT_NAMES[k] || (k == 0 && v == "auto")) arg_aspect = k;
 			if (arg_aspect < 0) { fprintf(stderr, "--aspect: fit, 4:3, 16:10, 16:9 or 21:9\n"); return 2; }
 		}
+		else if (a == "--console") arg_style = 2;
+		else if (a == "--pc") arg_style = 0;
 		else if (a == "--full-roster") arg_full_roster = 1;
 		else if (a == "--no-full-roster") arg_full_roster = 0;
 		else if (a == "--show-boot") show_boot = true;
@@ -1073,6 +1099,10 @@ int main(int argc, char **argv)
 	if (arg_music >= 0) cfg.music = arg_music;
 	if (arg_effects >= 0) cfg.effects = arg_effects;
 	if (arg_full_roster >= 0) cfg.full_roster = arg_full_roster;
+	if (arg_style >= 0) { cfg.console = arg_style == 2; cfg.arcade = false; }
+	// The console way takes the PC way's boot and free play: it only adds a menu of its own over the game, and
+	// it never touches the credit -- choosing a mode there hands the game a real Start, and the game decides
+	// what that costs (docs/fv2-console.md).
 	g_pc_mode = !cfg.arcade;
 	int aspect_i = cfg.aspect;
 
@@ -1122,6 +1152,13 @@ int main(int argc, char **argv)
 	// the notices and the coin settings are at addresses found in Virtua Fighter 3's own test menu, so for
 	// another game there is nothing to hide and nothing to say about it (model3.h).
 	const bool play_style_known = board.set == "vf3";
+	// The console way is one game's: its menu is built on addresses measured in Fighting Vipers 2 (Japan,
+	// Revision A) and means nothing anywhere else, so the menu doesn't offer it there (docs/fv2-console.md).
+	const bool console_known = board.set == "fvipers2";
+	// the console way's own menu and its injections, mixed in with the script's and the player's (frame_inputs)
+	console_play cplay;
+	cplay.on = cfg.console && console_known;
+	m3::Controls console_ctl;
 	auto apply_play_style = [&] {
 		if (!play_style_known) return;
 		if (game.emu_thread.joinable()) game.job_wait();   // (not while a frame runs alongside)
@@ -2045,11 +2082,40 @@ int main(int argc, char **argv)
 	auto game_page = [&] {
 		menu_page p{ "Game", "", {} };
 		p.items.push_back({ "Play style",
-			"PC skips the boot screen and is always free play. Arcade has the boot screen, coins and credits, like the real cabinet: Start needs a credit, and Coin adds one (5 and 6, or set it in Controls: a key, or a pad button such as View); its coin settings are kept for it. Changing it restarts the game.",
-			[&] { return std::string(cfg.arcade ? "Arcade" : "PC"); },
-			[&](int) { cfg.arcade = !cfg.arcade; g_pc_mode = !cfg.arcade; cfg_dirty = true; reset_game(); } });
+			"PC skips the boot screen and is always free play. Arcade has the boot screen, coins and credits, like the real cabinet: Start needs a credit, and Coin adds one (5 and 6, or set it in Controls: a key, or a pad button such as View); its coin settings are kept for it. Console is the PC way with a console's own menu: Start during the attract loop picks a mode. Changing it restarts the game.",
+			[&] { return std::string(cfg.arcade ? "Arcade" : cfg.console ? "Console" : "PC"); },
+			// Three ways round, and only two where the console way isn't known: it is one game's, and offering
+			// it on another would be offering nothing.
+			[&](int d) {
+				const int n = console_known ? 3 : 2;
+				int i = (cfg.arcade ? 1 : cfg.console ? 2 : 0) + (d < 0 ? n - 1 : 1);
+				i %= n;
+				cfg.arcade = i == 1;
+				cfg.console = i == 2;
+				cplay = console_play();   // (a style changed mid-session: nothing of the last one is carried over)
+				cplay.on = cfg.console && console_known;
+				g_pc_mode = !cfg.arcade;
+				cfg_dirty = true;
+				reset_game();
+			} });
 		p.items.push_back({ "Reset game", "Restarts the game, like switching the arcade off and on. Rankings and settings are kept. (F3)",
 			{}, {}, [&] { reset_game(); } });
+		p.items.push_back(back_item());
+		return p;
+	};
+	// The console way's own page: what a console puts in front of an arcade game. Start during the attract loop
+	// opens it, and the game is paused behind it as it is behind any page of this menu. Each line hands the game
+	// a real Start when it closes -- the credit is the game's business, and this menu never touches it.
+	auto console_page = [&] {
+		menu_page p{ "Fighting Vipers 2", "Choosing a mode hands the game a real press of Start. What that costs is the game's own business, on credits as on free play.", {} };
+		p.items.push_back({ "Arcade", "The game as it comes: the fixed road of opponents.",
+			{}, {}, [&] { cplay.choose_arcade(); menu.close(); } });
+		p.items.push_back({ "Survival", "One opponent after another, with the life you have left. The flag is set once the game is running, not before -- set during the attract loop it stops the game starting at all -- and put back when the game ends.",
+			{}, {}, [&] { cplay.choose_survival(board); menu.close(); } });
+		p.items.push_back({ "Hidden fighters", "Del Sol, Kuhn, BM and Dural on the select screen, the cursor wrapping at 14 instead of 10. Past cursor 10 the game's own names and portraits are wrong or missing.",
+			[&] { return std::string(cfg.full_roster ? "On" : "Off"); },
+			[&](int) { cfg.full_roster = !cfg.full_roster; game.full_roster = cfg.full_roster; cfg_dirty = true;
+			           if (cfg.full_roster) game.hold_roster(); } });
 		p.items.push_back(back_item());
 		return p;
 	};
@@ -2231,6 +2297,10 @@ int main(int argc, char **argv)
 		p.items.push_back({ "Display", "Sharpness, antialiasing, screen shape, the 3D renderer, smooth motion, background and screen filters, frame rate and fullscreen.", {}, {}, [&] { menu.push(display_page()); } });
 		p.items.push_back({ "Sound", "The overall, music and effects volumes.", {}, {}, [&] { menu.push(sound_page()); } });
 		p.items.push_back({ "Game", "Play style and reset.", {}, {}, [&] { menu.push(game_page()); } });
+		// the console way's own page, where Start during the attract loop also opens it
+		if (cfg.console && console_known)
+			p.items.push_back({ "Fighting Vipers 2", "The console's menu: which mode to start, and the hidden fighters. Start during the attract loop opens it too.",
+								{}, {}, [&] { menu.push(console_page()); } });
 		p.items.push_back({ "Arcade settings", "Difficulty, rounds, energy, demo sound, country and the service menu. Changing them restarts the game.", {}, {},
 							[&] { if (arcade_before.empty()) arcade_before = arcade_bytes(); menu.push(arcade_page()); } });
 		p.items.push_back({ "Controls", "Each player's controller, keys and buttons.", {}, {}, [&] { menu.push(controls_page()); } });
@@ -2244,6 +2314,8 @@ int main(int argc, char **argv)
 		if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
 	};
 	auto open_menu = [&] { if (game.emu_thread.joinable()) game.job_wait(); if (menu.ready() && !menu.is_open()) menu.open(main_page()); sync_menu_sound(); };
+	// the console way's menu, on Start during the attract loop: the same machinery, opened at its own page
+	auto open_console = [&] { if (game.emu_thread.joinable()) game.job_wait(); if (menu.ready() && !menu.is_open()) menu.open(console_page()); sync_menu_sound(); };
 
 	// ---- test hooks ----
 	std::vector<std::pair<SDL_Scancode, uint64_t>> test_keys;   // VF3_KEYS
@@ -2522,6 +2594,21 @@ int main(int argc, char **argv)
 				hk = read_inputs(live, pads, pstate, cfg.ctl);
 				act = InputScript::Actions();
 				if (scripted) act = script.step(script_ctl, game_frame);
+				// The console way: Start during the attract loop opens the console's own menu instead of
+				// reaching the game. The press that worked the menu is held back until the player lets go,
+				// or it would arrive at the game on the next frame -- choosing Arcade would then pick a
+				// fighter the instant the select screen appeared.
+				if (cplay.on) {
+					const bool st = live.start[0] || live.start[1];
+					if (cplay.swallow_start) { if (!st) cplay.swallow_start = false; }
+					else if (st && !cplay.start_was && !menu.is_open() && board.fv2_in_attract()) {
+						open_console();
+						cplay.swallow_start = true;
+					}
+					cplay.start_was = st;
+					if (cplay.swallow_start) live.start[0] = live.start[1] = false;
+				}
+				cplay.step(board, console_ctl);
 				m3::Controls &c = board.controls;
 				auto mix = [](bool *a, const bool *b, const bool *d) { a[0] = b[0] || d[0]; a[1] = b[1] || d[1]; };
 				mix(c.coin, script_ctl.coin, live.coin); mix(c.start, script_ctl.start, live.start);
@@ -2530,6 +2617,9 @@ int main(int argc, char **argv)
 				mix(c.left, script_ctl.left, live.left); mix(c.right, script_ctl.right, live.right);
 				mix(c.punch, script_ctl.punch, live.punch); mix(c.kick, script_ctl.kick, live.kick);
 				mix(c.guard, script_ctl.guard, live.guard); mix(c.escape, script_ctl.escape, live.escape);
+				// The console way's injections go on last, so they get through even while the menu is holding
+				// the player's own Start back: choosing a mode has to hand the game a Start on that very frame.
+				for (int q = 0; q < 2; q++) c.start[q] = c.start[q] || console_ctl.start[q];
 				// The arcade's test menu (RAM 0x102002 is 4 while it's up; 0 at the attract, a fight, the boot): Down
 				// moves (the service button) and Start selects (the test button), any pad or key, as VF1's and VF2's;
 				// the menu's Service menu presses test once the game is past its boot; leaving it, the PC way restarts

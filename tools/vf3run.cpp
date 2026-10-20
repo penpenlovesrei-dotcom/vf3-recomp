@@ -10,6 +10,7 @@
 // (VF3_POKE_FRAMES=from-to: only those). VF3_FREE_PLAY=1: the coin setting FREE PLAY before the boot, as the PC way.
 #include <map>
 #include "../src/host/input_script.h"
+#include "../src/host/console_play.h"
 #include "../src/machine/model3.h"
 #include "../src/rec/ppc_rec.h"
 #include "../src/host/png.h"
@@ -29,6 +30,12 @@ int main(int argc, char **argv)
 	long frames = -1, ram_at = -1;
 	uint32_t watch = 0xFFFFFFFF, trace_pc = 0xFFFFFFFF;
 	bool quiet = false, rec = false, full_roster = false;
+	// --console-mode arcade|survival at --console-at N: the console way's mode machinery (src/host/console_play.h)
+	// without a menu or a window, so what it does to the game can be measured. It injects Start exactly as the
+	// menu does; the credit is still the game's business, so the script has to put a coin in first.
+	std::string console_mode;
+	long console_at = -1;
+	console_play cplay;
 	for (int i = 1; i < argc; i++) {
 		std::string a = argv[i];
 		if (a == "--frames" && i + 1 < argc) frames = strtol(argv[++i], nullptr, 10);
@@ -40,6 +47,8 @@ int main(int argc, char **argv)
 		else if (a == "--quiet") quiet = true;
 		else if (a == "--rec") rec = true;
 		else if (a == "--full-roster") full_roster = true;
+		else if (a == "--console-mode" && i + 1 < argc) console_mode = argv[++i];
+		else if (a == "--console-at" && i + 1 < argc) console_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
 		else if (a == "--trace-pc" && i + 1 < argc) trace_pc = uint32_t(strtoul(argv[++i], nullptr, 16));
@@ -161,6 +170,19 @@ int main(int argc, char **argv)
 		if (frames >= 0 && f >= uint64_t(frames))
 			break;
 		InputScript::Actions act = script.step(board.controls, f);
+		// --console-mode: the console way's mode machinery, driven straight instead of from a menu. The choice
+		// is made once, at --console-at, and after that it is stepped every frame like the host does it.
+		if (!console_mode.empty()) {
+			cplay.on = true;
+			if (long(f) == console_at) {
+				if (console_mode == "survival") cplay.choose_survival(board);
+				else cplay.choose_arcade();
+				if (!quiet) printf("frame %llu: console mode %s chosen\n", (unsigned long long)f, console_mode.c_str());
+			}
+			m3::Controls cc;
+			cplay.step(board, cc);
+			for (int q = 0; q < 2; q++) board.controls.start[q] = board.controls.start[q] || cc.start[q];
+		}
 		for (auto &m : act.marks)
 			if (!quiet) printf("frame %llu: mark %s\n", (unsigned long long)f, m.c_str());
 		static double t_board = 0, t_sound = 0, t_scene = 0;

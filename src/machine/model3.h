@@ -173,6 +173,28 @@ public:
 	// now, 0 if there was nothing to do (already there, or the program isn't unpacked yet), -1 for a game this
 	// isn't known for.
 	int unlock_roster();
+
+	// ---- Fighting Vipers 2's console mode (docs/fv2-console.md) ----
+	// What the host has to read and write to put a console's own menu over this game. Every address below was
+	// measured in this port before it was used, not carried over.
+	//
+	// The state of the task Sega's tables call entry1 -- the select screen's -- as a word. Measured through
+	// tools/scripts/fv2-fight.txt: 0 for the whole attract loop, 5 on the select screen, 0x2A in a fight. What
+	// is used is only "0 or not", which answers "is a game running". It is NOT a screen detector and must not
+	// be made into one: which attract screen is up does not matter, because the menu covers the screen itself.
+	// -1 for a game this isn't known for.
+	int fv2_task_state() const;
+	bool fv2_in_attract() const { return fv2_task_state() == 0; }
+	// Survival: a flag the game reads, and the operator setting that has to agree with it. Measured as 0 and 0
+	// on a stock board. The flag must NOT be set during the attract loop -- set there it stops the game
+	// starting at all, the injected Start is ignored and no credit is ever taken -- so the host arms it and
+	// only writes once a game is running, then holds it (docs/fv2-console.md).
+	int fv2_survival() const;            // 1 on, 0 off, -1 not this game
+	void fv2_set_survival(bool on);
+	// The region byte. Measured 0 on this Japanese revision; 0 Japan, 1 U.S.A., 2 Export, 3 Asia. The game does
+	// not write it back, so one write holds.
+	int fv2_region() const;              // -1: not this game
+	void fv2_set_region(int r);
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 

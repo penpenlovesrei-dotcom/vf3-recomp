@@ -1,7 +1,7 @@
 # Fighting Vipers 2: the hidden fighters, made selectable
 
 Fighting Vipers 2 ships with a select screen wider than the one it shows. Its cursor handler has a second mode
-where the cursor wraps at 14 instead of 10, and that mode puts Del Sol, Kuhn, BM and Kuma on the row with
+where the cursor wraps at 14 instead of 10, and that mode puts Del Sol, Kuhn, BM and Dural on the row with
 everyone else. Sega left it in and gated it behind something no player can reach.
 
 This is what the port does about it, what was measured to settle each point, and what it does not fix.
@@ -118,7 +118,12 @@ Measured, from the select screen, one press of left from Emi (cursor 0):
 | | cursor after | the row |
 |---|---|---|
 | as the game ships | 10 | wraps at the random slot |
-| with the patch | 14 | Del Sol, Kuhn, BM and Kuma are reachable |
+| with the patch | 14 | Del Sol, Kuhn, BM and Dural are reachable |
+
+This page first said Kuma, from an older note. It is Dural: the owner's own cursor-to-fighter table, measured
+later, gives cell 14 as Dural and says Kuma is reachable by no cursor at all. What was seen here agrees -- the
+fighter on cell 14 is the chrome one, not the bear. Who cells 11, 12 and 13 are was not checked here; the older
+note gives Del Sol, Kuhn and BM, in that order.
 
 Read at `00279668` (P1) and `00279669` (P2), the cursor positions named in Sega's own debug tables. The two
 pictures differ, and the port's windowed host produces a picture byte-identical to the headless run's.

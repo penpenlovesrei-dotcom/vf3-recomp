@@ -1400,7 +1400,7 @@ void Model3::show_free_play_text()
 }
 
 // Fighting Vipers 2 carries a wider select screen than it ever shows. Its cursor handler has a second mode where
-// the cursor wraps at 14 instead of 10, which puts Del Sol, Kuhn, BM and Kuma on the row with the rest, and it is
+// the cursor wraps at 14 instead of 10, which puts Del Sol, Kuhn, BM and Dural on the row with the rest, and it is
 // gated on both operator buttons -- Service and Test -- being held at once. No player can do that: Test opens the
 // test menu. What is tested is not a progress flag but the input port's own state, refreshed every frame, so
 // there is nothing to write there. The comparison is what gives:
@@ -1435,6 +1435,60 @@ int Model3::unlock_roster()
 	word(ram, SITE) = ALWAYS;
 	cpu.ram_written(SITE);   // (the recompiler's native code was made from the instruction that was there)
 	return 1;
+}
+
+// ---- Fighting Vipers 2's console mode ----
+//
+// Four addresses, all in RAM, all measured here before they were used. The measurements are in
+// docs/fv2-console.md; in short, with tools/vf3run --ram-at on tools/scripts/fv2-fight.txt:
+//
+//   0x00700000  the entry1 task's state, as a word: 0 all through the attract loop, 5 on the select
+//               screen, 0x2A in a fight. Read as "0 or not": is a game running.
+//   0x0058145F  Survival's flag, 0 on a stock board.
+//   0x00120550  the operator setting Survival needs to agree with it, 0 on a stock board.
+//   0x00120557  the region, 0 on this Japanese revision (0 Japan, 1 U.S.A., 2 Export, 3 Asia). Writing 2
+//               was tried with VF3_POKE and held: the game does not write it back.
+//
+// A byte of guest address a is ram[a ^ 3]: RAM here keeps the PowerPC's 32-bit words in the host's order.
+//
+// Everything is gated on the Japan Revision A set, as the roster patch is: the other build was never
+// measured, and an address that means nothing there would be worse than doing nothing.
+namespace {
+constexpr uint32_t FV2_TASK_ENTRY1 = 0x00700000;
+constexpr uint32_t FV2_SURVIVAL_FLAG = 0x0058145F;
+constexpr uint32_t FV2_SURVIVAL_SETTING = 0x00120550;
+constexpr uint32_t FV2_REGION = 0x00120557;
+}
+
+int Model3::fv2_task_state() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_TASK_ENTRY1 + 3) return -1;
+	return int(*reinterpret_cast<const uint32_t *>(&ram[FV2_TASK_ENTRY1]));
+}
+
+int Model3::fv2_survival() const
+{
+	if (set != "fvipers2") return -1;
+	return ram[FV2_SURVIVAL_FLAG ^ 3] ? 1 : 0;
+}
+
+void Model3::fv2_set_survival(bool on)
+{
+	if (set != "fvipers2") return;
+	ram[FV2_SURVIVAL_FLAG ^ 3] = on ? 1 : 0;
+	ram[FV2_SURVIVAL_SETTING ^ 3] = on ? 1 : 0;
+}
+
+int Model3::fv2_region() const
+{
+	if (set != "fvipers2") return -1;
+	return ram[FV2_REGION ^ 3];
+}
+
+void Model3::fv2_set_region(int r)
+{
+	if (set != "fvipers2" || r < 0 || r > 3) return;
+	ram[FV2_REGION ^ 3] = uint8_t(r);
 }
 
 } // namespace m3
