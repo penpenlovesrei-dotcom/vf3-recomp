@@ -109,12 +109,22 @@ content, as `<hash>_<width>x<height>_f<format>.png` -- RGBA8, so transparency su
 `textures.csv` beside them says where each was found; it is **added to**, never started again, so two sessions of
 capture describe every PNG in the folder.
 
-**What is not drawn is not captured.** Measured over `tools/scripts/fv2-shots.txt` (2421 frames: the boot, the
-attract, a coin, the fighter select): **322 distinct textures**, 309 of them format 0 and 13 format 7, from
-32 x 32 up to 1024 x 1024.
+**What is not drawn is not captured** -- and in this port, what is not *drawn* is not even the same as what the
+game puts on screen, because the headless runner renders only the frames its script asks a picture for, while
+the windowed host renders every picture. Measured:
 
-The capture is passive in the strict sense: over that script the 22 pictures it renders are **byte-identical** to
-the ones the same build renders with no dump.
+| the capture | distinct textures |
+| --- | --- |
+| `vf3run --script fv2-shots.txt` (2421 frames, 22 pictures rendered) | 322 |
+| `vf3run --script fv2-fight.txt` (4201 frames, 16 pictures rendered) | 220 |
+| **the host over `fv2-fight.txt`** (4201 frames, every picture) | **541** |
+
+So the capture to make a pack from is the launcher's, not the runner's: the launcher misses nothing that goes
+past on screen. Of the 541, 309 of the first capture's were format 0 and 13 format 7, from 32 x 32 up to
+1024 x 1024.
+
+The capture is passive in the strict sense: over `fv2-shots.txt` the 22 pictures rendered with the dump on are
+**byte-identical** to the ones the same build renders with no dump.
 
 
 ## 5. The pack
@@ -211,12 +221,16 @@ Nothing it makes belongs in the repository: it is the game's own pictures, alter
 - With the option off, Fighting Vipers 2's 22 pictures over `fv2-shots.txt` and Virtua Fighter 3's three over
   `vf3-shots.txt` are **byte-identical** to the build before this change.
 - With the dump on, the same 22 pictures are byte-identical too.
-- With a proof pack of 319 textures: the 14 pictures before the 3D starts are byte-identical, and every picture
-  with 3D in it changed. On the GPU, the same pack draws, and the GPU and the CPU still agree (section 7).
-- The pack also runs through a whole match (`tools/scripts/fv2-fight.txt`, 4201 frames, 16 pictures) without
-  trouble, and there it shows what section 4 says: a pack built from a capture that never reached a fight
-  replaces what that capture saw and nothing else, so one fighter changes and the stage does not. A capture
-  taken through the fight itself is what a stage pack needs.
+- The match run too (`tools/scripts/fv2-fight.txt`, 4201 frames, 16 pictures): byte-identical to the build
+  before this change, with the option off.
+- With a proof pack of 319 textures over `fv2-shots.txt`: the 14 pictures before any 3D is drawn are
+  byte-identical, and every one of the 8 with 3D in it changed.
+- With a proof pack of 538 textures, made from the host's capture of a whole match, over `fv2-fight.txt`:
+  **15 of the 16 pictures changed** (the one that did not is the stage loading, which draws no 3D), and in a
+  round the stage, the sky, both fighters and their bikes are all replaced while the tile generator's 2D --
+  the health bars, the names, STAGE 1, the timer -- is not, which is exactly the line between the two layers.
+- That 538-texture pack takes **10 pages**, so the GPU's storage buffer is 8 MiB + 40 MiB; it draws, and the
+  GPU and the CPU still agree (section 7).
 
 
 ## 11. What has not been done
