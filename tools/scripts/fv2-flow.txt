@@ -1,0 +1,18 @@
+# Fighting Vipers 2: the whole match flow, for reading the mode machine.
+#
+# fv2-fight.txt stops in the first round (it quits at 4200). This one carries on
+# with the stick moving until the match is decided and the game has gone back to
+# the attract, which is what docs/fv2-flux-de-match.md needs to see: the round
+# end, the next round, the match end, the continue countdown, and the return.
+#
+# A coin, start, two places along the portrait strip, the pick confirmed with
+# punch (the screen says PRESS START BUTTON, but it is an attack button that
+# takes the fighter), then random play to the end.
+1900 press p1.coin
+1930 press p1.coin
+1960 press p1.start
+2100 press p1.right
+2140 press p1.right
+2220 press p1.punch
+3000 random p1 20261020
+20000 quit
