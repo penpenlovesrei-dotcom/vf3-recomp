@@ -29,6 +29,13 @@ the short of it:
 - Sega's own variable names come from the game's debug tables: 80 pages, 1035 named entries,
   745 distinct addresses.
 
+**The Ghidra project is at `C:\Temp\fv2-ghidra` (`FV2.gpr`)**, outside the repository, because it
+holds the game's program and no Sega binary belongs in git. In it: 1382 functions at the
+program's own call targets, 745 of Sega's variable names, the 81 state handlers named from the
+game's tables with a plate comment each, their bodies bounded, and the four dispatchers' jump
+tables cut back to their real length. `tools/fv2/README.md` rebuilds it from scratch in two
+commands.
+
 The instruments are `vf3run`'s: `--trace-pc ADDR` (r3-r8 and LR at each pass), `--watch ADDR`
 (every write to a word, with the PC and LR that did it), `--ram-at`, `--shots`, `VF3_POKE` with
 `VF3_POKE_FRAMES`, and `VF3_RAMLOG` (added for this work: a frame-stamped line whenever any of a
@@ -98,18 +105,24 @@ value 11 at frame 1386 of `fv2-flow.txt`, which is `ADV_DEMO_DSP`, the attract's
 `0x005813F0`, which Sega's `ADV_INFO` page calls `STATUS`, is tested by nearly every handler
 below. These are the bits this work saw used, and only those:
 
-| bit | where it is read | what the measurement says |
-| --- | --- | --- |
-| `0x00000008` | `NEXT_PROG_SEL` | the ladder is finished: go to the ending. Read in the code; never seen set |
-| `0x04000000` | the attract states set it, `DECIDE_INT` clears it | going to the select screen. **Measured**: appears on the Start frame, gone again two frames later |
-| `0x20000000` | inside the `0x30000000` mask the attract tests | **Measured**: `STATUS` reads `0x24000000` on frame 1961, the frame Start is taken |
-| `0x30000000` | the attract states, `intrude_check`, `FIGHT_DSP` | "Start has been pressed" |
-| `0x40000000` | `intrude_check`, `VIC_INT`, `NEXT_PROG_SEL`; `ROUND_MASK_INT` clears it | **Measured**: set from frame 14918 to the end of the match, and it is the bit that sent this run to `CONTINUE` instead of another round. What sets it was **not** established, and in this run player 2 pressed nothing, so it is not simply player 2's Start |
-| `0x80000000` | set by `FIGHT_DSP` | the round timed out. **Measured**: appears on frame 4640, the frame `0x00581404` reaches 0 |
+`vf3run --watch 5813F0` over `fv2-flow.txt` names every writer in the run, which is what the
+"set at" column below rests on:
 
-Measured values of the whole word across `fv2-flow.txt`: `0x00000000` (most of the run),
-`0x00000020`, `0x04000000`, `0x24000000`, `0x40000000`, `0x80000000`. The `0x20` seen on frame
-1960, the frame before Start is taken, was not run down.
+| bit | where it is read | set at | what the measurement says |
+| --- | --- | --- | --- |
+| `0x00000008` | `NEXT_PROG_SEL` | -- | the ladder is finished: go to the ending. Read in the code; **never seen set** |
+| `0x04000000` | the attract states set it, `DECIDE_INT` clears it | `0x0000B15C`, then `0x0005EFA8` (318 times) | going to the select screen. **Measured**: it appears on the Start frame and the select screen keeps re-asserting it |
+| `0x20000000` | inside the `0x30000000` mask the attract tests | `0x0000B15C` | **Measured**: `0x0000B15C` writes `0x24000020` once, with `LR 0x0000B7D8` -- that is `fv2_adv_start_pressed` reached from `ADV_DEMO_DSP`, on frame 1961 |
+| `0x30000000` | the attract states, `intrude_check`, `FIGHT_DSP` | | "Start has been pressed" |
+| `0x40000000` | `intrude_check`, `VIC_INT`, `NEXT_PROG_SEL`; `ROUND_MASK_INT` clears it | `0x0000CD78` (`LR 0x0000CCB0`) | **Measured**: written in the round-decision code, between the `JUDGE` handler and `JUDGE_DSP`, and it is the bit that sent this run to `CONTINUE` instead of another round. In this run player 2 pressed nothing, so it is **not** player 2's Start; what it means exactly was not run down |
+| `0x80000000` | set by `FIGHT_DSP` | `0x0000C678` (`LR 0x0000C600`), and `0x0000CD78` | the round timed out. **Measured twice over**: `0x0000C678` is inside `FIGHT_DSP`, which is the line read above, and the word reads `0x80000000` from frame 4640, the frame `0x00581404` reaches 0 |
+
+One more writer accounts for most of the traffic and was not run down: `0x000122C4`
+(`LR 0x000120F4`) writes the whole word **4293 times** in the run -- 3510 of them 0 -- so there is
+a per-frame routine maintaining it that this page has not read.
+
+Measured values of the whole word across the run: `0x00000000` (most of it), `0x00000020`,
+`0x04000000`, `0x20000020`, `0x24000000`, `0x24000020`, `0x40000000`, `0x80000000`.
 
 ### The tick
 
@@ -703,7 +716,19 @@ And the ones this work named itself, because the debug tables do not:
 | `0x0058FDBC`, `0x0058FDC0` | the slot and the block the scheduler is running |
 
 
-## 6. What is not settled
+## 6. Nothing in the port moved
+
+The only change this work made to the port is `VF3_RAMLOG`, which is off unless the environment
+variable is set and only reads RAM. Measured against the binary as it stood before
+(`build/bin/vf3run` at `421f342`), same ROMs, same scripts:
+
+| check | result |
+| --- | --- |
+| Virtua Fighter 3, the PowerPC's state frame by frame, 600 frames | **byte-identical** (307,200 bytes) |
+| Fighting Vipers 2, the same over all of `fv2-fight.txt` | **byte-identical** (2,150,912 bytes) |
+
+
+## 7. What is not settled
 
 - **The second player was never got in.** `0x0058145A == 3` gates the cut-in, the consecutive-win
   counter and the two-player branch of `NEXT_PROG_SEL`, and no run here reached it. The whole
