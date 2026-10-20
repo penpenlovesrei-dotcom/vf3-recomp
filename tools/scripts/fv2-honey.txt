@@ -1,0 +1,31 @@
+# Fighting Vipers 2: coin, start, walk the cursor to HONEY (cell 8) and fight the CPU.
+# Two coins because this port does not know this game's free play; one press of Start then
+# eight presses of right, which is where HONEY sits -- measured, see docs/fv2-honey.md.
+# The attack button confirms the choice; Start would pick the second costume.
+1900 press p1.coin
+1930 press p1.coin
+1960 press p1.start
+2050 shot 1_select
+2080 press p1.right
+2110 press p1.right
+2140 press p1.right
+2170 press p1.right
+2200 press p1.right
+2230 press p1.right
+2260 press p1.right
+2290 press p1.right
+2320 shot 2_honey
+2350 press p1.punch
+2600 shot 3_load
+2900 shot 4_intro
+3100 shot 5_round
+3150 random p1 20261020
+3300 shot 6_fight
+3450 shot 7_fight
+3600 shot 8_fight
+3750 shot 9_fight
+3900 shot 10_fight
+4050 shot 11_fight
+4200 shot 12_fight
+4350 shot 13_fight
+4500 quit

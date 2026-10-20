@@ -242,7 +242,9 @@ folder of PNG files, without touching the ROM: [docs/fv2-portraits.md](docs/fv2-
 texture pack over that game's 3D -- images of any size, recognised by the content of the texture they stand in
 for, on both of the port's rasterisers: [docs/fv2-hd-3d.md](docs/fv2-hd-3d.md). `--tile-dump` writes out
 everything the tile generator draws, and `--tile-scale` / `--tile-pack` put larger pictures in the place of its
-tiles and whole layers the same way: [docs/fv2-hd-2d.md](docs/fv2-hd-2d.md).
+tiles and whole layers the same way: [docs/fv2-hd-2d.md](docs/fv2-hd-2d.md). And the costume players have told
+each other about for twenty-odd years, after thirty straight wins, turns out to be in Sega's code, in Honey's
+own cloth handler and nobody else's: [docs/fv2-honey.md](docs/fv2-honey.md).
 
 ## Credits
 
