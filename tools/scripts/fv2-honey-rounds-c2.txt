@@ -1,0 +1,28 @@
+# Fighting Vipers 2: HONEY in her second costume, far enough to cross a round end.
+# Identical to fv2-honey-rounds.txt in every way but three lines: the stick is
+# held UP across the confirm, which is what picks the second costume. Measured:
+# *1P COLOR (0x007005B9) reads 1 after this and 0 after the plain confirm, and
+# it is the stick that does it -- punch, kick, guard and escape all give 0, and
+# up or down with any of them gives 1.
+1900 press p1.coin
+1930 press p1.coin
+1960 press p1.start
+2080 press p1.right
+2110 press p1.right
+2140 press p1.right
+2170 press p1.right
+2200 press p1.right
+2230 press p1.right
+2260 press p1.right
+2290 press p1.right
+2320 hold p1.up
+2350 press p1.punch
+2380 release p1.up
+3150 random p1 20261020
+3900 shot 1_round1
+4300 shot 2_round1
+4700 shot 3_round1
+5100 shot 4_after
+5300 shot 5_after
+5500 shot 6_after
+5700 quit

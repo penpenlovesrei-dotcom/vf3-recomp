@@ -243,6 +243,87 @@ path. C says one word at `0x00057A30` does exactly what thirty wins does, which 
 use.
 
 
+## The costume the game already has, and the one it doesn't
+
+Every fighter ships with two costumes, picked on the select screen. The game's own name for the choice is
+`*1P COLOR`, `0x007005B9` (`*2P COLOR`, `0x007075B9`), on the `CONFIG` page.
+
+**It is the stick, not the button.** Seven runs of the same script differing only by what was held or pressed
+to confirm Honey, `0x007005B9` read mid-fight:
+
+| held across the confirm | confirmed with | `*1P COLOR` |
+|---|---|---|
+| nothing | punch | 0 |
+| nothing | kick | 0 |
+| nothing | guard | 0 |
+| nothing | escape | 0 |
+| **up** | punch | **1** |
+| **up** | kick | **1** |
+| **down** | punch | **1** |
+
+So all four attack buttons confirm and are equivalent, up and down do the same thing as each other, and
+nothing else in the fight changes: same character (6), same opponent (10), same stage (`0x0058FD9F` = 9),
+same round. The owner's "bouton haut" is the **up direction**, and `down` is a second way in.
+
+### The cloth handler does not read the colour, and it does not have to
+
+Honey's handler at `0x00057A1C` reads three things and no more: her armour flag at `+0xF44`, the counter at
+`0x00581438`, and the byte at `+8` of the fighter. **That last one is the fighter's slot, not a costume
+index** -- measured, it is 0 for player 1 and 1 for player 2, in the colour-0 run and the colour-1 run alike.
+So `0x00471C48 + n*2560` is "player 0's cloth working copy, player 1's", 2560 bytes each, and there is no
+table of variants hiding there. That lead is closed.
+
+Which is the good news: the blanking is geometry, the colour is texture, and they do not meet. Measured --
+the same armour flag and the same counter, once for each costume, diffed against the identical run without
+the counter:
+
+```
+                    costume 1              costume 2
+3900  round 1        0 pixels               0 pixels
+4300  round 1        0 pixels               0 pixels
+4700  round 1        0 pixels               0 pixels
+------------------------------------------------------ the round ends here
+5100  round after    541 pixels            869 pixels
+5300  round after   2252 pixels            737 pixels
+5500  round after    932 pixels           1056 pixels
+```
+
+**Both costumes lose the skirt, and only from the round after.** There are four Honeys, not three:
+
+| | with skirt | without |
+|---|---|---|
+| costume 1 (confirm) | `30-couleur1-avec-jupe.png` | `31-couleur1-sans-jupe.png` |
+| costume 2 (up + confirm) | `32-couleur2-avec-jupe.png` | `33-couleur2-sans-jupe.png` |
+
+`montrer-honey-costumes.cmd` produces all four, in four folders, from `tools/scripts/fv2-honey-rounds.txt`
+and `tools/scripts/fv2-honey-rounds-c2.txt`.
+
+### What a fourth choice at the select screen would need
+
+Nothing in the ROM distinguishes a punch confirm from a kick confirm: the costume comes from the stick alone,
+and the four attack buttons are interchangeable. **That ignored dimension is where a third and fourth choice
+fit** -- for instance confirm with punch for the skirt and with kick without it, up still choosing the
+costume, which gives the four:
+
+| | | |
+|---|---|---|
+| punch | costume 1 | |
+| up + punch | costume 2 | |
+| kick | costume 1 | no skirt |
+| up + kick | costume 2 | no skirt |
+
+The port would have to notice which button confirmed, and hold the two words of Honey's handler patched --
+`0x00057A24` to a `nop` and `0x00057A30` to `cmpwi r0,-1` -- only while that match's model is being set up.
+That is per match rather than global, and it is the only part of this page **not** done here: the global
+option lives on the `fv2` branch, which this branch was told not to rebase onto, so wiring a second, clashing
+one here would be the wrong place for it. Everything it needs is measured above.
+
+A caution that is measured, not guessed: those two words are not the same lever. Patching only
+`0x00057A30` leaves the armour test standing, so the skirt stays until her lower armour is genuinely knocked
+off; patching both takes it off from the first round, whatever happens in the fight. Which of the two the
+costume choice should mean is the owner's call.
+
+
 ## The counter: what it counts, and what gates it
 
 `0x00581438` is written in three places and nowhere else (`tools/vf3run --watch 581438` over a whole game
@@ -307,10 +388,14 @@ reset. **The CPU ladder does not count.** The gate did its job.
   settled either -- but the code says it cannot matter: the handler reads both conditions at the same instant,
   when a round loads, and nothing remembers the order. "During those matches, or on the thirty-first" is
   therefore two descriptions of one thing.
-- `*1P COLOR` (`0x007005B9`) was swept as a possible second costume and is not one. Poked to 1 or 3 during a
-  fight it only repaints the name plate (382 and 816 pixels, all inside the plate); poked to 2 the CPU stops
-  with an invalid instruction at `0x00020908`; poked to 4 the whole screen changes. None of that was run down,
-  and none of it touches the model.
+- **The fourth choice is not wired.** The four variants are all reachable and all four are shown, but by
+  writing RAM, not by a button at the select screen. What the port must do is above; it was not done here
+  because the option it would extend is on another branch.
+- `*1P COLOR` (`0x007005B9`) **poked during a fight** is not the way to change costume: the model is already
+  loaded, so poking it to 1 or 3 only repaints the name plate (382 and 816 pixels, all inside the plate),
+  poked to 2 the CPU stops with an invalid instruction at `0x00020908`, and poked to 4 the whole screen
+  changes. The costume has to be chosen the way the game chooses it, at the confirm -- which is what the
+  table above does.
 
 
 ## Reaching it from this port
