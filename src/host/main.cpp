@@ -430,6 +430,7 @@ struct settings
 	bool fullscreen = false, arcade = false, show_fps = false, smooth = true;
 	bool timings = false;    // F9: the timings in the title bar
 	bool full_roster = false;   // Fighting Vipers 2's hidden fighters, selectable (Model3::unlock_roster)
+	bool honey_costume = false; // Honey's other costume, without the thirty wins (Model3::honey_costume)
 	// The console way: the PC way's boot and free play, plus a console's own menu over the game (Start in the
 	// attract loop). A third play style rather than a fourth flag on the other two, because that is how the
 	// player thinks of it; `arcade` keeps meaning exactly what it did, so nothing that reads it changes.
@@ -481,6 +482,7 @@ struct settings
 		flag("show_fps", show_fps);
 		flag("smooth_motion", smooth);
 		flag("full_roster", full_roster);
+		flag("honey_costume", honey_costume);
 		if (auto it = kv.find("portraits_folder"); it != kv.end()) portraits = it->second;
 		flag("portraits_off", portraits_off);
 		flag("hd_3d", hd_3d);
@@ -538,6 +540,7 @@ struct settings
 		if (!gpu3d_failed.empty()) fprintf(f, "gpu_3d_failed = %s\n", gpu3d_failed.c_str());
 		fprintf(f, "screen_filter = %d\nantialiasing = %d\nmusic_volume = %d\neffects_volume = %d\narcade_coins = %d\nframe_timings = %d\n", filter, aa, music, effects, arcade_coin, int(timings));
 		if (full_roster) fprintf(f, "full_roster = %d\n", int(full_roster));   // (one game's: written only once asked for)
+		if (honey_costume) fprintf(f, "honey_costume = %d\n", int(honey_costume));   // (likewise)
 		if (console) fprintf(f, "console_mode = %d\n", int(console));         // (likewise: an older build reads the file as the PC way)
 		if (!portraits.empty()) fprintf(f, "portraits_folder = %s\n", portraits.c_str());   // (one game's, likewise)
 		if (portraits_off) fprintf(f, "portraits_off = %d\n", int(portraits_off));
@@ -817,6 +820,19 @@ struct Game
 		        (unsigned long long)roster_written);
 		rebuild_from_ram_if_stale();
 	}
+	// Honey's other costume, held exactly as the roster patch is and for the same reasons: two instructions in
+	// RAM, read before every write, and the native code made again for any write after the boot's own rebuild.
+	bool honey_costume = false;
+	uint64_t honey_written = 0;
+	void hold_honey()
+	{
+		if (!honey_costume || board.honey_costume() <= 0) return;
+		honey_written++;
+		if (!rebuilt_after_boot) return;
+		fprintf(stderr, "Honey's costume: the patch went in after the boot (%llu), the native code made again\n",
+		        (unsigned long long)honey_written);
+		rebuild_from_ram_if_stale();
+	}
 	// The sound board runs on a thread of its own, a frame behind the game (its ~3 ms a frame alongside the next
 	// frame's work, not in a picture's time): it hears only the game's bytes, and its sound is queued a frame later
 	// (the queue kept a frame shorter for it: QUEUED)
@@ -1025,6 +1041,7 @@ int main(int argc, char **argv)
 	std::string zip;
 	bool arg_arcade = false, sound = true, show_boot = false, arg_interp = getenv("VF3_INTERP") != nullptr;
 	int arg_full_roster = -1;   // Fighting Vipers 2's hidden fighters (--full-roster / --no-full-roster)
+	int arg_honey = -1;         // Honey's other costume (--honey-costume / --no-honey-costume)
 	int arg_style = -1;         // the play style asked for on the command line: 0 the PC way, 2 the console way
 	                            // (the arcade way is --arcade, which came first and is kept as it was)
 	std::string arg_portraits;      // Fighting Vipers 2's select-screen portraits, from a folder of PNGs (--portraits DIR)
@@ -1059,6 +1076,8 @@ int main(int argc, char **argv)
 		else if (a == "--pc") arg_style = 0;
 		else if (a == "--full-roster") arg_full_roster = 1;
 		else if (a == "--no-full-roster") arg_full_roster = 0;
+		else if (a == "--honey-costume") arg_honey = 1;
+		else if (a == "--no-honey-costume") arg_honey = 0;
 		else if (a == "--portraits" && i + 1 < argc) arg_portraits = argv[++i];
 		else if (a.rfind("--portraits=", 0) == 0) arg_portraits = a.substr(12);
 		else if (a == "--no-portraits") arg_no_portraits = true;
@@ -1164,6 +1183,7 @@ int main(int argc, char **argv)
 	if (arg_music >= 0) cfg.music = arg_music;
 	if (arg_effects >= 0) cfg.effects = arg_effects;
 	if (arg_full_roster >= 0) cfg.full_roster = arg_full_roster;
+	if (arg_honey >= 0) cfg.honey_costume = arg_honey;
 	if (arg_style >= 0) { cfg.console = arg_style == 2; cfg.arcade = false; }
 	// --portraits names a folder other than the one this port keeps for them, and is remembered, so it is named
 	// once. --no-portraits goes back to Sega's and is remembered too -- otherwise a folder still full of PNGs
@@ -1240,6 +1260,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "HD 2D: the tile plane drawn at %d x %d (%d times the hardware's)\n",
 		        video::W * game.tiles.hd_scale(), video::H * game.tiles.hd_scale(), game.tiles.hd_scale());
 	game.full_roster = cfg.full_roster;
+	game.honey_costume = cfg.honey_costume;
 	if (cfg.full_roster && board.unlock_roster() < 0)
 		fprintf(stderr, "the hidden fighters: that was measured on Fighting Vipers 2 (Japan, Revision A), not on this game\n");
 	// Per-game names for what this port keeps of its own: Virtua Fighter 3 keeps the names it has always had, so
@@ -1377,6 +1398,7 @@ int main(int argc, char **argv)
 		game.tiles_on = true;
 		game.rebuilt_after_boot = true;
 		game.hold_roster();   // (before the rebuild: the native code is then made from the program as it will run)
+		game.hold_honey();
 		game.rebuild_from_ram_if_stale();
 		fprintf(stderr, "boot: %llu frames in %.2f s, unseen\n", (unsigned long long)game_frame,
 				std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
@@ -2310,6 +2332,10 @@ int main(int argc, char **argv)
 			[&] { return std::string(cfg.full_roster ? "On" : "Off"); },
 			[&](int) { cfg.full_roster = !cfg.full_roster; game.full_roster = cfg.full_roster; cfg_dirty = true;
 			           if (cfg.full_roster) game.hold_roster(); } });
+		p.items.push_back({ "Honey's other costume", "The one Sega put behind thirty straight wins in an intruded match, with her lower armour knocked off. Turned on here, she wears it from the next fight that loads, without the thirty.",
+			[&] { return std::string(cfg.honey_costume ? "On" : "Off"); },
+			[&](int) { cfg.honey_costume = !cfg.honey_costume; game.honey_costume = cfg.honey_costume; cfg_dirty = true;
+			           if (cfg.honey_costume) game.hold_honey(); } });
 		p.items.push_back(back_item());
 		return p;
 	};
@@ -2854,6 +2880,7 @@ int main(int argc, char **argv)
 			game.publish();
 			game_frame++;
 			game.hold_roster();   // (nothing to do unless the player asked for the hidden fighters)
+			game.hold_honey();
 			// a boot the player watches: the same check, once it is over
 			if (!game.rebuilt_after_boot && game_frame >= BOOT_FRAMES) { game.rebuilt_after_boot = true; game.rebuild_from_ram_if_stale(); }
 			pace.frames++;

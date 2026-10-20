@@ -197,6 +197,11 @@ public:
 	// now, 0 if there was nothing to do (already there, or the program isn't unpacked yet), -1 for a game this
 	// isn't known for.
 	int unlock_roster();
+	// Honey's other costume, the one Sega gated behind thirty straight wins (docs/fv2-honey.md). Two
+	// instructions in her own cloth handler, turned always-true, in the same shape as the roster patch above:
+	// read before every write, and the caller keeps calling. 1 if it wrote just now, 0 if there was nothing to
+	// do, -1 for a game this isn't known for.
+	int honey_costume();
 
 	// ---- Fighting Vipers 2's console mode (docs/fv2-console.md) ----
 	// What the host has to read and write to put a console's own menu over this game. Every address below was

@@ -1437,6 +1437,44 @@ int Model3::unlock_roster()
 	return 1;
 }
 
+// Honey's other costume: the one players have passed around for twenty years, and which turns out to be in
+// Sega's code, in her own cloth handler and nobody else's (docs/fv2-honey.md).
+//
+// The cloth task switches on the fighter's id through a table of twelve handlers. Honey's is the only one of
+// the twelve that reads a counter, and it zeroes three halfwords of her cloth model's working copy when two
+// things hold at the instant her model is set up:
+//
+//   - her LOWER armour has actually been knocked off -- armor_flag & 8, which is the piece gone, not merely
+//     damaged past its limit;
+//   - the word at 0x00581438 is greater than 29. That word is the current winner's run of straight wins, and
+//     it only advances while 0x0058145A is 3 -- a byte built as 1 for player 1 having entered plus 2 for
+//     player 2, so three means both players are in the machine. Which is 乱入対戦, the intruded match.
+//
+// Two instructions decide it, and they are what this turns always-true:
+//
+//   00057A24   beq +0x40        the armour test   ->  nop
+//   00057A30   cmpwi r0,29      the win counter   ->  cmpwi r0,-1
+//
+// Both were read in this port's own RAM before being used: 0x41820040 and 0x2C80001D, exactly as measured.
+// Patching only the first does nothing at all -- that was measured too, 0 pixels different over a whole run,
+// because the counter test then fails -- so the pair go in together or not at all.
+//
+// In RAM, like the roster patch, and for the same reason: this game's program is a gzip the boot stub unpacks,
+// so there is nothing to patch until it has. Hence the read before each write.
+int Model3::honey_costume()
+{
+	if (set != "fvipers2") return -1;
+	constexpr uint32_t ARMOUR_TEST = 0x00057A24, WIN_TEST = 0x00057A30;
+	constexpr uint32_t AS_SEGA_WROTE_IT[2] = { 0x41820040, 0x2C80001D };   // beq +0x40 ; cmpwi r0,29
+	constexpr uint32_t ALWAYS[2] = { 0x60000000, 0x2C80FFFF };             // nop       ; cmpwi r0,-1
+	if (word(ram, ARMOUR_TEST) != AS_SEGA_WROTE_IT[0] || word(ram, WIN_TEST) != AS_SEGA_WROTE_IT[1]) return 0;
+	word(ram, ARMOUR_TEST) = ALWAYS[0];
+	word(ram, WIN_TEST) = ALWAYS[1];
+	cpu.ram_written(ARMOUR_TEST);   // (the recompiler's native code was made from what was there)
+	cpu.ram_written(WIN_TEST);
+	return 1;
+}
+
 // ---- Fighting Vipers 2's console mode ----
 //
 // Four addresses, all in RAM, all measured here before they were used. The measurements are in
