@@ -29,3 +29,6 @@ __pycache__/
 /texture_remplacement*/
 assets-hd/
 /captures-honey/
+
+# Les images du menu console : elles viennent en partie du jeu, donc hors depot.
+/assets/menu-console/
