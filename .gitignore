@@ -12,3 +12,15 @@ build/
 /tools/site/strip/node_modules/
 /tools/site/strip/package-lock.json
 __pycache__/
+
+# What this port keeps beside itself when it is launched from here: the four
+# jouer-*.cmd pin VF3_DATA to the project folder, so its settings, NVRAM, log
+# and the player's own portraits land here and must not be committed.
+/settings.ini
+/settings.ini.tmp
+/log.txt
+/backup
+/backup-*
+/eeprom
+/eeprom-*
+/portraits-*/
