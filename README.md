@@ -238,7 +238,10 @@ set: every difference between the two boards, and what has and hasn't been check
 Kuhn, BM and Dural -- selectable: [docs/fv2-roster.md](docs/fv2-roster.md). `--console` adds a third play style
 beside PC and arcade -- a console's own menu over the game, Start during the attract loop picking a mode:
 [docs/fv2-console.md](docs/fv2-console.md). The portraits along the bottom of its select screen are read from a
-folder of PNG files, without touching the ROM: [docs/fv2-portraits.md](docs/fv2-portraits.md).
+folder of PNG files, without touching the ROM: [docs/fv2-portraits.md](docs/fv2-portraits.md). And the thing
+players have told each other about for twenty-odd years -- Honey without her skirt after thirty straight wins --
+turns out to be in Sega's code, in Honey's own cloth handler and nobody else's:
+[docs/fv2-honey.md](docs/fv2-honey.md).
 
 ## Credits
 
