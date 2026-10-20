@@ -91,6 +91,7 @@
 //   VF3_TEST_LOAD=ms:s   each picture ms longer (by the scale's square, from 1x) for the first s seconds after the
 //                        start's grace (the governor's tests)
 #include "version.h"      // VF3_VERSION, VF3_DATE (made by the Makefile from git)
+#include "../machine/fv2_portraits.h"
 #include "../machine/model3.h"
 #include "../machine/romset.h"
 #include "../rec/ppc_rec.h"
@@ -427,6 +428,11 @@ struct settings
 	// attract loop). A third play style rather than a fourth flag on the other two, because that is how the
 	// player thinks of it; `arcade` keeps meaning exactly what it did, so nothing that reads it changes.
 	bool console = false;
+	// Fighting Vipers 2's select-screen portraits. Empty means the folder this port keeps for them beside its own
+	// settings and NVRAM (data/portraits-fvipers2); a folder named with --portraits overrides that. portraits_off
+	// is the player saying "Sega's, whatever is in the folder".
+	std::string portraits;
+	bool portraits_off = false;
 	bool smooth_bg = true;   // the 2D backgrounds (the layers below the 3D) scaled smoothly, not as blocks
 	int filter = 0;          // the screen filter: 0 off, 1 scanlines, 2 CRT
 	int aa = 1;              // antialiasing: the 3D drawn aa times larger each way and averaged (1 off)
@@ -463,6 +469,8 @@ struct settings
 		flag("show_fps", show_fps);
 		flag("smooth_motion", smooth);
 		flag("full_roster", full_roster);
+		if (auto it = kv.find("portraits_folder"); it != kv.end()) portraits = it->second;
+		flag("portraits_off", portraits_off);
 		flag("smooth_backgrounds", smooth_bg);
 		flag("background_filter", smooth_bg);   // (VF1's and VF2's name)
 		num("screen_filter", filter, 0, 2);
@@ -516,6 +524,8 @@ struct settings
 		fprintf(f, "screen_filter = %d\nantialiasing = %d\nmusic_volume = %d\neffects_volume = %d\narcade_coins = %d\nframe_timings = %d\n", filter, aa, music, effects, arcade_coin, int(timings));
 		if (full_roster) fprintf(f, "full_roster = %d\n", int(full_roster));   // (one game's: written only once asked for)
 		if (console) fprintf(f, "console_mode = %d\n", int(console));         // (likewise: an older build reads the file as the PC way)
+		if (!portraits.empty()) fprintf(f, "portraits_folder = %s\n", portraits.c_str());   // (one game's, likewise)
+		if (portraits_off) fprintf(f, "portraits_off = %d\n", int(portraits_off));
 		for (int p = 0; p < 2; p++) ctl[p].save(f, p);
 		const bool flushed = flush_to_disk(f);
 		if (fclose(f) == 0 && flushed && replace_file(path, tmp)) return true;
@@ -987,6 +997,8 @@ int main(int argc, char **argv)
 	int arg_full_roster = -1;   // Fighting Vipers 2's hidden fighters (--full-roster / --no-full-roster)
 	int arg_style = -1;         // the play style asked for on the command line: 0 the PC way, 2 the console way
 	                            // (the arcade way is --arcade, which came first and is kept as it was)
+	std::string arg_portraits;      // Fighting Vipers 2's select-screen portraits, from a folder of PNGs (--portraits DIR)
+	bool arg_no_portraits = false;  // --no-portraits: back to Sega's, and the setting forgotten
 	int arg_volume = -1, arg_music = -1, arg_effects = -1, arg_scale = 0, arg_aspect = -1, arg_full = -1;
 	std::string arg_roms;
 	for (int i = 1; i < argc; i++) {
@@ -1011,6 +1023,9 @@ int main(int argc, char **argv)
 		else if (a == "--pc") arg_style = 0;
 		else if (a == "--full-roster") arg_full_roster = 1;
 		else if (a == "--no-full-roster") arg_full_roster = 0;
+		else if (a == "--portraits" && i + 1 < argc) arg_portraits = argv[++i];
+		else if (a.rfind("--portraits=", 0) == 0) arg_portraits = a.substr(12);
+		else if (a == "--no-portraits") arg_no_portraits = true;
 		else if (a == "--show-boot") show_boot = true;
 		else if (a.rfind("--", 0) == 0) { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
 		else if (a.rfind("-psn_", 0) == 0) {}
@@ -1100,6 +1115,15 @@ int main(int argc, char **argv)
 	if (arg_effects >= 0) cfg.effects = arg_effects;
 	if (arg_full_roster >= 0) cfg.full_roster = arg_full_roster;
 	if (arg_style >= 0) { cfg.console = arg_style == 2; cfg.arcade = false; }
+	// --portraits names a folder other than the one this port keeps for them, and is remembered, so it is named
+	// once. --no-portraits goes back to Sega's and is remembered too -- otherwise a folder still full of PNGs
+	// would quietly bring them back on the next launch.
+	if (!arg_portraits.empty() && (cfg.portraits != arg_portraits || cfg.portraits_off)) {
+		cfg.portraits = arg_portraits;
+		cfg.portraits_off = false;
+		cfg_dirty = true;
+	}
+	if (arg_no_portraits && !cfg.portraits_off) { cfg.portraits_off = true; cfg_dirty = true; }
 	// The console way takes the PC way's boot and free play: it only adds a menu of its own over the game, and
 	// it never touches the credit -- choosing a mode there hands the game a real Start, and the game decides
 	// what that costs (docs/fv2-console.md).
@@ -1124,10 +1148,34 @@ int main(int argc, char **argv)
 	game.full_roster = cfg.full_roster;
 	if (cfg.full_roster && board.unlock_roster() < 0)
 		fprintf(stderr, "the hidden fighters: that was measured on Fighting Vipers 2 (Japan, Revision A), not on this game\n");
-	// The board's NVRAM, per game: Virtua Fighter 3 keeps the names it has always had, so saves made before this
-	// port took a second game still load, and another game gets its own -- otherwise Fighting Vipers 2 would read
-	// Virtua Fighter 3's settings at the start and write over them at the end.
+	// Per-game names for what this port keeps of its own: Virtua Fighter 3 keeps the names it has always had, so
+	// saves made before this port took a second game still load, and another game gets its own -- otherwise
+	// Fighting Vipers 2 would read Virtua Fighter 3's settings at the start and write over them at the end. The
+	// NVRAM below and the portraits folder just under are both named this way.
 	const std::string nv_suffix = board.set == "vf3" ? std::string() : "-" + board.set;
+	// The select-screen portraits, read from a folder of PNGs. Unlike the roster patch above, nothing here has
+	// to wait: the sheets are in the VROM, which is a ROM the game never writes, so they are replaced once in
+	// the image this process holds and that is the end of it. Nothing is written to the player's zip. See
+	// src/machine/fv2_portraits.cpp and docs/fv2-portraits.md.
+	//
+	// Where that folder is: beside this port's own settings and NVRAM, named the way they are --
+	// data/portraits-fvipers2. The first version of this had no folder of its own and asked the player to point
+	// the option at one in another project's tree, which is how two projects quietly start sharing files and
+	// then diverge. --portraits still names another folder for anyone who wants one.
+	//
+	// It is made if it is not there, so there is somewhere plain to drop the PNGs, and an empty one says
+	// nothing: a player who never touches it should not read two lines about it at every launch.
+	const std::string portraits_dir = cfg.portraits.empty() ? data + "/portraits" + nv_suffix
+	                                                        : player_folder(cfg.portraits, data);
+	if (board.set == "fvipers2" && !cfg.portraits_off) {
+		std::error_code pec;
+		std::filesystem::create_directories(portraits_dir, pec);
+		bool any = false;
+		for (std::filesystem::directory_iterator it(portraits_dir, pec), end; it != end && !any; it.increment(pec))
+			any = true;
+		if (any) fv2::replace_portraits_and_report(board.set, board.vrom, portraits_dir, stderr);
+		else fprintf(stderr, "portraits: none to read in %s (drop light/00.png and the rest there)\n", portraits_dir.c_str());
+	}
 	const std::string backup_path = data + "/backup" + nv_suffix, eeprom_path = data + "/eeprom" + nv_suffix;
 	load_blob(backup_path, board.backup.data(), board.backup.size());
 	load_blob(eeprom_path, board.eeprom.regs, sizeof(board.eeprom.regs));

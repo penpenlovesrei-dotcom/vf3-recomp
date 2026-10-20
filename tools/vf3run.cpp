@@ -4,6 +4,8 @@
 // build's format, for tools/statecmp.py.
 //   vf3run <vf3.zip> [--frames N] [--script FILE] [--state FILE] [--ram-at FRAME] [--watch ADDR] [--rec] [--quiet]
 // --full-roster makes Fighting Vipers 2's hidden fighters selectable (src/machine/model3.cpp, unlock_roster).
+// --portraits DIR replaces Fighting Vipers 2's select-screen portraits from a folder of PNG files, in the VROM
+// this run holds in memory (src/machine/fv2_portraits.cpp, docs/fv2-portraits.md). Nothing is written to the zip.
 // --wav FILE runs the sound board and writes what it plays. --shots DIR writes the script's screenshots there as PNG. --rec runs the recompiled code (src/rec) with the interpreter for the rest. --ram-at writes RAM after that frame to ram_<frame>.bin in the current folder; --watch ADDR (hex) reports
 // the CPU's stores to that word (--trace-pc ADDR: r3-r8 and LR each time that instruction runs; both on the interpreter). VF3_VOLUMES=music,effects (percent) sets the sound board's two volumes for --wav. VF3_POKE=addr=value
 // (hex address into --ram-at's dump, a byte; "b" first: the backup RAM's) writes RAM before every frame
@@ -12,6 +14,7 @@
 #include "../src/host/input_script.h"
 #include "../src/host/console_play.h"
 #include "../src/machine/model3.h"
+#include "../src/machine/fv2_portraits.h"
 #include "../src/rec/ppc_rec.h"
 #include "../src/host/png.h"
 #include "../src/video/tilegen.h"
@@ -26,7 +29,7 @@
 
 int main(int argc, char **argv)
 {
-	std::string rom, script_path, state_path, shots, wav_path, coverage_path;
+	std::string rom, script_path, state_path, shots, wav_path, coverage_path, portraits;
 	long frames = -1, ram_at = -1;
 	uint32_t watch = 0xFFFFFFFF, trace_pc = 0xFFFFFFFF;
 	bool quiet = false, rec = false, full_roster = false;
@@ -49,6 +52,7 @@ int main(int argc, char **argv)
 		else if (a == "--full-roster") full_roster = true;
 		else if (a == "--console-mode" && i + 1 < argc) console_mode = argv[++i];
 		else if (a == "--console-at" && i + 1 < argc) console_at = strtol(argv[++i], nullptr, 10);
+		else if (a == "--portraits" && i + 1 < argc) portraits = argv[++i];
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
 		else if (a == "--trace-pc" && i + 1 < argc) trace_pc = uint32_t(strtoul(argv[++i], nullptr, 16));
@@ -71,6 +75,11 @@ int main(int argc, char **argv)
 	if (!quiet)
 		printf("%s (\"%s\"): Model 3 Step %d.%d, the PowerPC paced at %d MHz\n", board.title.c_str(),
 		       board.set.c_str(), board.stepping >> 4, board.stepping & 0xF, board.ppc_hz / 1000000);
+	// --portraits: the select-screen portraits, replaced in the VROM image before the board runs. The VROM is a
+	// ROM -- the game never writes a word of it -- so this is done once, here, and never again; unlike the roster
+	// patch below, which lives in RAM and has to wait for the boot to unpack the program.
+	if (!portraits.empty())
+		fv2::replace_portraits_and_report(board.set, board.vrom, portraits, quiet ? nullptr : stdout);
 	InputScript script;
 	if (!script_path.empty() && !script.load(script_path, error)) {
 		fprintf(stderr, "vf3run: %s\n", error.c_str());
