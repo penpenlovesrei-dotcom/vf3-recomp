@@ -24,3 +24,6 @@ __pycache__/
 /eeprom
 /eeprom-*
 /portraits-*/
+
+# What montrer-honey.cmd writes: two folders of the game's own pictures.
+/captures-honey/
