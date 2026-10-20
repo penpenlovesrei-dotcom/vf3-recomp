@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include "tilehd.h"
 
 namespace m3 { class Model3; }
 
@@ -50,7 +51,33 @@ public:
 	// the 3D (RGBA, alpha ignored) between the layers, into out (RGBA); out may be the 3D's own buffer
 	void compose(const uint32_t *pic3d, uint32_t *out) const;
 
+	// ---- HD 2D (tilehd.h, docs/fv2-hd-2d.md) ----
+	// The tile plane drawn at `scale` times its native size each way, with the pack's images in the place of
+	// the tiles and whole layers it holds. Nothing of this is on unless the player asks for it: with scale 1
+	// and no pack, hd() is false, the HD surfaces are never allocated, and line() below runs exactly the
+	// instructions it ran before -- not "probably the same", but the same code behind one `if`.
+	// A dump may be given on its own: it reads what is drawn and writes nothing to the surfaces, so the
+	// picture is unchanged while it runs.
+	void hd_set(int scale, TilePack *pack, TileDump *dump);
+	bool hd() const { return hd_on; }
+	int hd_scale() const { return hd_s; }
+	// the HD surfaces as aligned() and aligned_wide() give the native ones; (W * scale) and (WW * scale) wide,
+	// (H * scale) tall. Empty while hd() is false.
+	void aligned_hd(std::vector<uint32_t> &below_out, std::vector<uint32_t> &above_out) const;
+	void aligned_wide_hd(std::vector<uint32_t> &out) const;
+	long hd_tiles_drawn = 0;   // (the log: tile slices the pack's images were used for, ever)
+
 private:
+	bool hd_on = false;       // (a scale above 1, or a pack with something in it: the HD surfaces are drawn)
+	bool hd_probe = false;    // (hd_on, or a dump: the extra block in line()'s tile loop runs at all)
+	int hd_s = 1;
+	TilePack *hd_pack = nullptr;
+	TileDump *hd_dump = nullptr;
+	std::vector<uint32_t> below_hd, above_hd, below_wide_hd;
+	const HDImage *hd_layer[4] = {};   // (this frame: the pack's image for a layer whose name table it knows)
+	void hd_begin(const m3::Model3 &board);   // (the frame's first line: the surfaces cleared, the layers looked up)
+	void hd_line_sides(unsigned y);           // (the line's last act: the widened layer's sides, native, enlarged)
+
 	// a layer's panorama: its rows as runs of patterns (first, length), learned where the map shows one wrap
 	struct Pano { std::map<int, int> rows; int len = 0; };   // (len: the rows' usual length, the map's rows apart)
 	Pano pano[4];
@@ -115,5 +142,11 @@ private:
 	void add_row(int layer, int b, int len);
 
 };
+
+// HD 2D: compose(), at the HD size. `b` and `a` are what aligned_hd() gave, `pic3d` the 3D at the hardware's
+// own W x H with alpha 0 where it drew nothing (so it is repeated scale x scale, as the host's renderer repeats
+// it). Shared by both hosts so their pictures cannot drift apart.
+void compose_hd(int scale, const std::vector<uint32_t> &b, const std::vector<uint32_t> &a,
+	const uint32_t *pic3d, uint32_t *out);
 
 } // namespace video

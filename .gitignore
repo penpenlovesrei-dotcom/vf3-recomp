@@ -12,3 +12,5 @@ build/
 /tools/site/strip/node_modules/
 /tools/site/strip/package-lock.json
 __pycache__/
+# HD 2D: the tile dumps and the packs are made from the ROM and never belong in the repo
+assets-hd/

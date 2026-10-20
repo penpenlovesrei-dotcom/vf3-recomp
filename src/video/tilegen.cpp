@@ -612,6 +612,7 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 			cover2 = n2 * 2 > H;
 		}
 		learn(board);
+		if (hd_probe) hd_begin(board);
 		ext_rows.clear(); ext_how.clear(); ext_edge.clear(); wrap_votes.clear(); mem_mirror.clear();
 		std::fill(clear_known.begin(), clear_known.end(), 0);
 		std::fill(solid_memo.begin(), solid_memo.end(), 0);
@@ -627,7 +628,7 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 			continue;
 		const Offset off = offset_of(regs[(0x40 + 4 * pair) / 4]);
 		const uint32_t mask = (vram[0xF7000 / 4 + y] >> (pair ? 0 : 16)) & 0xFFFF;
-		struct L { int sx, sy; bool four; uint32_t *dst; const uint32_t *names; } ls[2];
+		struct L { int sx, sy; bool four; uint32_t *dst; const uint32_t *names; uint32_t *dst_hd; } ls[2];
 		for (int k = 0; k < 2; k++) {
 			int layer = prim + k;
 			uint32_t r = regs[0x60 / 4 + layer];
@@ -637,8 +638,11 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 			scroll.sx[layer][y] = int16_t(sx);
 			scroll.sy[layer][y] = int16_t(ls[k].sy);
 			ls[k].four = (regs[0x20 / 4] >> (12 + layer)) & 1;
-			ls[k].dst = ((regs[0x20 / 4] >> (8 + layer)) & 1 ? above : below).data() + size_t(y) * W;
+			const bool over = (regs[0x20 / 4] >> (8 + layer)) & 1;
+			ls[k].dst = (over ? above : below).data() + size_t(y) * W;
 			ls[k].names = vram + (0xF8000 + layer * 0x2000) / 4;
+			// HD: the first of the scale rows this line owns in the HD surface (null unless hd())
+			ls[k].dst_hd = hd_on ? (over ? above_hd : below_hd).data() + size_t(y) * hd_s * size_t(W) * hd_s : nullptr;
 		}
 		// the colours: each 5-bit channel with the pair's offset, looked up
 		// (made again only when the offsets change: they hardly do, and it was made for every line)
@@ -705,6 +709,72 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 			}
 			return drawn;   // (those not black)
 		};
+		// HD (tilehd.h): the same texels again, into the HD surface, at scale times the size. Three cases, in
+		// the order the owner's Supermodel work settled on:
+		//  - the layer as a whole is the pack's: the image IS the layer, so its own transparency decides and
+		//    the game's tiles do not come back behind it. The source is where this texel sits in the tile map,
+		//    scroll and wrap included, so the layer still scrolls;
+		//  - the tile is the pack's: the hardware's see-through texels stay see-through, and the image's
+		//    pixels are drawn where the hardware would have drawn one;
+		//  - neither: the hardware's own colour in a scale-by-scale block. At scale 1 this is the one
+		//    instruction `put` writes, which is why scale 1 is unchanged rather than nearly unchanged.
+		// The pack's pixels get the pair's colour offsets (registers 0x40/0x44) put back on them. Those are
+		// normally baked into the palette, which HD art goes round; without this a fade to black would leave
+		// the HD art lit.
+		auto hd_put = [&](const L &l, int layer, int x, uint32_t e, int fy, int fx0, int n) {
+			if (hd_dump) hd_dump->tile(vram, pal, e, l.four);
+			if (!hd_on) return;
+			const int S = hd_s, W2 = W * S;
+			const HDImage *li = hd_layer[layer];
+			const HDImage *ti = nullptr;
+			if (!li && hd_pack) ti = hd_pack->tile(tile_hash(vram, e, l.four), tile_palette(e, l.four), l.four);
+			// a pack pixel over what is there: the offsets applied, then composited where its alpha is partial
+			// (the hardware has one bit of transparency; an HD edge that was antialiased must not go back to a
+			// staircase). Where nothing was drawn yet it is left as it is, alpha and all, for the host's own
+			// blend to feather it over the 3D.
+			auto blend = [&](uint32_t d, uint32_t s) {
+				const uint32_t a = s >> 24;
+				if (!a) return d;
+				uint32_t c[3];
+				for (int ch = 0; ch < 3; ch++) c[ch] = uint32_t(std::clamp(int((s >> (8 * ch)) & 255) + offs[ch], 0, 255));
+				const uint32_t rgb = c[0] | c[1] << 8 | c[2] << 16;
+				if (a == 255) return 0xFF000000u | rgb;
+				if (!(d >> 24)) return a << 24 | rgb;
+				uint32_t o = 0;
+				for (int ch = 0; ch < 3; ch++)
+					o |= ((((rgb >> (8 * ch)) & 255) * a + ((d >> (8 * ch)) & 255) * (255 - a)) / 255) << (8 * ch);
+				return 0xFF000000u | o;
+			};
+			for (int i = 0; i < n; i++) {
+				const int fx = fx0 + i;
+				const uint32_t *src = nullptr;
+				int sstride = 0;
+				if (li) {
+					// (the screen-shaped image is the screen: it neither scrolls nor wraps, by its shape)
+					const int mx = li->screen ? x + i : ((x + i + l.sx) & 511), my = li->screen ? int(y) : ((int(y) + l.sy) & 511);
+					src = li->row(my * S) + size_t(mx) * S;
+					sstride = li->w;
+				} else {
+					const uint32_t v = texel(e, l.four, fy, fx);
+					if (v & 0x8000) continue;
+					if (ti) { src = ti->row(fy * S) + size_t(fx) * S; sstride = ti->w; }
+					else {
+						const uint32_t c = colour_of(v);
+						for (int j = 0; j < S; j++) {
+							uint32_t *d = l.dst_hd + size_t(j) * W2 + size_t(x + i) * S;
+							for (int u = 0; u < S; u++) d[u] = c;
+						}
+						continue;
+					}
+				}
+				hd_tiles_drawn++;
+				for (int j = 0; j < S; j++) {
+					const uint32_t *s = src + size_t(j) * sstride;
+					uint32_t *d = l.dst_hd + size_t(j) * W2 + size_t(x + i) * S;
+					for (int u = 0; u < S; u++) d[u] = blend(d[u], s[u]);
+				}
+			}
+		};
 		// a 32-pixel column at a time (the mask's), a tile's row of texels at a time
 		for (int c0 = 0; c0 < W; c0 += 32) {
 			const int k = (mask >> (15 - c0 / 32)) & 1 ? 0 : 1;
@@ -722,6 +792,7 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 				// the texels of this tile's row from x on (to the tile's end or the column's)
 				const int fx0 = px & 7, n = std::min(8 - fx0, c1 - x);
 				put(l.dst, x, e, l.four, fy, fx0, n);
+				if (hd_probe) hd_put(l, prim + k, x, e, fy, fx0, n);
 				x += n;
 			}
 		}
@@ -1247,6 +1318,118 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 		std::fill_n(below_wide.data() + size_t(y) * WW, EXT, 0u);
 		std::fill_n(below_wide.data() + size_t(y) * WW + EXT + W, EXT, 0u);
 	}
+	if (hd_on) hd_line_sides(y);
+}
+
+// ---- HD 2D. See tilehd.h and docs/fv2-hd-2d.md. ----
+
+void TileGen::hd_set(int scale, TilePack *pack, TileDump *dump)
+{
+	hd_s = std::clamp(scale, 1, 8);
+	hd_pack = pack && !pack->empty() ? pack : nullptr;
+	hd_dump = dump && dump->on() ? dump : nullptr;
+	hd_on = hd_s > 1 || hd_pack != nullptr;
+	hd_probe = hd_on || hd_dump != nullptr;
+	if (!hd_on) {
+		below_hd.clear(); above_hd.clear(); below_wide_hd.clear();
+		below_hd.shrink_to_fit(); above_hd.shrink_to_fit(); below_wide_hd.shrink_to_fit();
+	}
+	for (auto &p : hd_layer) p = nullptr;
+}
+
+void TileGen::hd_begin(const m3::Model3 &board)
+{
+	const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
+	const uint32_t *regs = board.tile_regs;
+	if (hd_dump) hd_dump->frame(vram, vram + 0x40000, regs, board.frame);
+	for (auto &p : hd_layer) p = nullptr;
+	if (!hd_on) return;
+	const size_t n = size_t(W) * hd_s * size_t(H) * hd_s, nw = size_t(WW) * hd_s * size_t(H) * hd_s;
+	if (below_hd.size() != n) { below_hd.assign(n, 0); above_hd.assign(n, 0); below_wide_hd.assign(nw, 0); }
+	else { std::fill(below_hd.begin(), below_hd.end(), 0u); std::fill(above_hd.begin(), above_hd.end(), 0u); }
+	if (!hd_pack) return;
+	// A whole layer is keyed on the hash of its name table -- not on what is on screen, because a layer that
+	// scrolls shows a different window of the same layout every frame. The line is said once per (layer, image):
+	// a pack indexed by content never says of itself that it found a match, and that is the first thing to
+	// look at when nothing happens.
+	for (int layer = 0; layer < 4; layer++) {
+		if (!(regs[0x60 / 4 + layer] & 0x80000000u)) continue;
+		const uint64_t h = layer_hash(vram, layer);
+		hd_layer[layer] = hd_pack->layer(layer, h);
+		static std::map<uint64_t, bool> said;
+		if (hd_layer[layer] && !said.count(uint64_t(layer) << 60 | (h >> 4))) {
+			said[uint64_t(layer) << 60 | (h >> 4)] = true;
+			fprintf(stderr, "tile pack: layer %d drawn from L%d_%016llx.png\n", layer, layer, (unsigned long long)h);
+		}
+	}
+}
+
+void TileGen::hd_line_sides(unsigned y)
+{
+	// The widened layer below the 3D (widescreen's sides) is the port's own reconstruction and stays on the
+	// hardware's grid: it is enlarged into the HD surface as blocks, and then the part the hardware really
+	// fills -- the 496 columns, and not one more -- is overwritten at its own resolution.
+	const int S = hd_s;
+	const size_t WW2 = size_t(WW) * S;
+	const uint32_t *src = below_wide.data() + size_t(y) * WW;
+	for (int j = 0; j < S; j++) {
+		uint32_t *d = below_wide_hd.data() + (size_t(y) * S + size_t(j)) * WW2;
+		for (int x = 0; x < WW; x++) {
+			const uint32_t c = src[x];
+			for (int u = 0; u < S; u++) d[size_t(x) * S + u] = c;
+		}
+		memcpy(d + size_t(EXT) * S, below_hd.data() + (size_t(y) * S + size_t(j)) * size_t(W) * S, size_t(W) * S * 4);
+	}
+}
+
+void TileGen::aligned_hd(std::vector<uint32_t> &b, std::vector<uint32_t> &a) const
+{
+	const int S = hd_s, S2 = 2 * S, w = W * S, h = H * S;   // (aligned()'s 2-pixel shift, at this scale)
+	b.assign(size_t(w) * h, 0);
+	a.assign(size_t(w) * h, 0);
+	if (!hd_on) return;
+	for (int y = 0; y + S2 < h; y++) {
+		memcpy(&b[size_t(y) * w], &below_hd[size_t(y + S2) * w + S2], size_t(w - S2) * 4);
+		memcpy(&a[size_t(y) * w], &above_hd[size_t(y + S2) * w + S2], size_t(w - S2) * 4);
+		for (int x = w - S2; x < w; x++) {
+			b[size_t(y) * w + x] = b[size_t(y) * w + w - S2 - 1];
+			a[size_t(y) * w + x] = a[size_t(y) * w + w - S2 - 1];
+		}
+	}
+	for (int y = h - S2; y < h; y++) {
+		memcpy(&b[size_t(y) * w], &b[size_t(h - S2 - 1) * w], size_t(w) * 4);
+		memcpy(&a[size_t(y) * w], &a[size_t(h - S2 - 1) * w], size_t(w) * 4);
+	}
+}
+
+void TileGen::aligned_wide_hd(std::vector<uint32_t> &b) const
+{
+	const int S = hd_s, S2 = 2 * S, w = WW * S, h = H * S;
+	b.assign(size_t(w) * h, 0);
+	if (!hd_on) return;
+	for (int y = 0; y + S2 < h; y++) {
+		memcpy(&b[size_t(y) * w], &below_wide_hd[size_t(y + S2) * w + S2], size_t(w - S2) * 4);
+		for (int x = w - S2; x < w; x++) b[size_t(y) * w + x] = b[size_t(y) * w + w - S2 - 1];
+	}
+	for (int y = h - S2; y < h; y++) memcpy(&b[size_t(y) * w], &b[size_t(h - S2 - 1) * w], size_t(w) * 4);
+}
+
+void compose_hd(int scale, const std::vector<uint32_t> &b, const std::vector<uint32_t> &a,
+	const uint32_t *pic3d, uint32_t *out)
+{
+	const int S = std::max(1, scale), w = W * S;
+	for (int y = 0; y < H * S; y++)
+		for (int x = 0; x < w; x++) {
+			const size_t i = size_t(y) * w + size_t(x);
+			uint32_t c = 0xFF000000u;
+			if (b[i] >> 24) c = b[i];
+			if (pic3d) {
+				const uint32_t d = pic3d[size_t(y / S) * W + size_t(x / S)];
+				if (d >> 24) c = d | 0xFF000000u;
+			}
+			if (a[i] >> 24) c = a[i];
+			out[i] = c;
+		}
 }
 
 void TileGen::aligned(std::vector<uint32_t> &b, std::vector<uint32_t> &a) const

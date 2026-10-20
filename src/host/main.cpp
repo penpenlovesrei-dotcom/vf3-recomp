@@ -416,6 +416,11 @@ struct settings
 	bool fullscreen = false, arcade = false, show_fps = false, smooth = true;
 	bool timings = false;    // F9: the timings in the title bar
 	bool full_roster = false;   // Fighting Vipers 2's hidden fighters, selectable (Model3::unlock_roster)
+	// HD 2D (src/video/tilehd.h, docs/fv2-hd-2d.md): the tile plane drawn tile_scale times its size each way,
+	// with tile_pack's images in the place of the tiles and layers whose names they carry. 1 and empty are the
+	// hardware's own, and then none of it runs at all.
+	int tile_scale = 1;
+	std::string tile_pack;
 	bool smooth_bg = true;   // the 2D backgrounds (the layers below the 3D) scaled smoothly, not as blocks
 	int filter = 0;          // the screen filter: 0 off, 1 scanlines, 2 CRT
 	int aa = 1;              // antialiasing: the 3D drawn aa times larger each way and averaged (1 off)
@@ -450,6 +455,8 @@ struct settings
 		flag("show_fps", show_fps);
 		flag("smooth_motion", smooth);
 		flag("full_roster", full_roster);
+		num("tile_scale", tile_scale, 1, 8);
+		if (auto it = kv.find("tile_pack"); it != kv.end()) tile_pack = it->second;
 		flag("smooth_backgrounds", smooth_bg);
 		flag("background_filter", smooth_bg);   // (VF1's and VF2's name)
 		num("screen_filter", filter, 0, 2);
@@ -502,6 +509,8 @@ struct settings
 		if (!gpu3d_failed.empty()) fprintf(f, "gpu_3d_failed = %s\n", gpu3d_failed.c_str());
 		fprintf(f, "screen_filter = %d\nantialiasing = %d\nmusic_volume = %d\neffects_volume = %d\narcade_coins = %d\nframe_timings = %d\n", filter, aa, music, effects, arcade_coin, int(timings));
 		if (full_roster) fprintf(f, "full_roster = %d\n", int(full_roster));   // (one game's: written only once asked for)
+		if (tile_scale > 1) fprintf(f, "tile_scale = %d\n", tile_scale);      // (as full_roster: written only once asked for)
+		if (!tile_pack.empty()) fprintf(f, "tile_pack = %s\n", tile_pack.c_str());
 		for (int p = 0; p < 2; p++) ctl[p].save(f, p);
 		const bool flushed = flush_to_disk(f);
 		if (fclose(f) == 0 && flushed && replace_file(path, tmp)) return true;
@@ -669,6 +678,8 @@ struct Game
 	bool have_prev = false;
 	std::vector<uint32_t> below = std::vector<uint32_t>(video::W * video::H), above = std::vector<uint32_t>(video::W * video::H);
 	std::vector<uint32_t> below_wide = std::vector<uint32_t>(video::WW * video::H);   // (widescreen's: tilegen.h)
+	// the same three at the HD size, empty unless tiles.hd() (src/video/tilehd.h)
+	std::vector<uint32_t> below_hd, above_hd, below_wide_hd;
 	bool full_3d = false;
 	video::TileGen::Scroll prev_scroll;   // the frame before's (for bg_dx, bg_dy)
 	std::vector<uint32_t> prev_below;
@@ -858,6 +869,10 @@ struct Game
 		have_prev = frame > 1;
 		tiles.aligned(below, above);
 		tiles.aligned_wide(below_wide);
+		// HD 2D: the same two planes at the HD size, beside the native ones. Everything that reads the layers to
+		// decide something -- the scroll below, the stage test, the sides' colours -- goes on reading the native
+		// ones, so none of those measurements change with the scale.
+		if (tiles.hd()) { tiles.aligned_hd(below_hd, above_hd); tiles.aligned_wide_hd(below_wide_hd); }
 		bg_moved = video::TileGen::scrolled(prev_scroll, tiles.scroll, prev_below, below, bg_dx, bg_dy) && have_prev;
 		prev_scroll = tiles.scroll;
 		prev_below = below;
@@ -885,6 +900,7 @@ struct Game
 		float bg_dx = 0, bg_dy = 0;
 		std::vector<uint32_t> below = std::vector<uint32_t>(video::W * video::H), above = std::vector<uint32_t>(video::W * video::H);
 		std::vector<uint32_t> below_wide = std::vector<uint32_t>(video::WW * video::H);
+		std::vector<uint32_t> below_hd, above_hd, below_wide_hd;   // (HD 2D: empty unless tiles.hd())
 		video::SkyLead sky;
 		std::vector<uint16_t> tex;
 		std::vector<m3::Model3::TexUpload> uploads;   // (the areas changed since a renderer last took them)
@@ -903,6 +919,9 @@ struct Game
 		view.below = below;
 		view.above = above;
 		view.below_wide = below_wide;
+		view.below_hd = below_hd;
+		view.above_hd = above_hd;
+		view.below_wide_hd = below_wide_hd;
 		view.sky = sky;
 		// the texture RAM: the rows written since the last (all of it the first time, or after many)
 		auto &ups = board.tex_uploads;
@@ -963,6 +982,9 @@ int main(int argc, char **argv)
 	std::string zip;
 	bool arg_arcade = false, sound = true, show_boot = false, arg_interp = getenv("VF3_INTERP") != nullptr;
 	int arg_full_roster = -1;   // Fighting Vipers 2's hidden fighters (--full-roster / --no-full-roster)
+	int arg_tile_scale = -1;    // HD 2D (--tile-scale / --tile-pack / --no-tile-pack / --tile-dump)
+	std::string arg_tile_pack, arg_tile_dump;
+	bool arg_no_tile_pack = false;
 	int arg_volume = -1, arg_music = -1, arg_effects = -1, arg_scale = 0, arg_aspect = -1, arg_full = -1;
 	std::string arg_roms;
 	for (int i = 1; i < argc; i++) {
@@ -985,6 +1007,10 @@ int main(int argc, char **argv)
 		}
 		else if (a == "--full-roster") arg_full_roster = 1;
 		else if (a == "--no-full-roster") arg_full_roster = 0;
+		else if (a == "--tile-scale" && i + 1 < argc) arg_tile_scale = std::clamp(atoi(argv[++i]), 1, 8);
+		else if (a == "--tile-pack" && i + 1 < argc) arg_tile_pack = argv[++i];
+		else if (a == "--no-tile-pack") arg_no_tile_pack = true;
+		else if (a == "--tile-dump" && i + 1 < argc) arg_tile_dump = argv[++i];
 		else if (a == "--show-boot") show_boot = true;
 		else if (a.rfind("--", 0) == 0) { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
 		else if (a.rfind("-psn_", 0) == 0) {}
@@ -1073,6 +1099,9 @@ int main(int argc, char **argv)
 	if (arg_music >= 0) cfg.music = arg_music;
 	if (arg_effects >= 0) cfg.effects = arg_effects;
 	if (arg_full_roster >= 0) cfg.full_roster = arg_full_roster;
+	if (arg_tile_scale >= 0) cfg.tile_scale = arg_tile_scale;
+	if (!arg_tile_pack.empty()) cfg.tile_pack = arg_tile_pack;
+	if (arg_no_tile_pack) cfg.tile_pack.clear();   // (--no-tile-pack: the settings' pack ignored, for comparing)
 	g_pc_mode = !cfg.arcade;
 	int aspect_i = cfg.aspect;
 
@@ -1091,6 +1120,26 @@ int main(int argc, char **argv)
 		if (!game.load(zip, err, arg_interp)) return fail(err);
 	}
 	m3::Model3 &board = game.board;
+	// HD 2D (docs/fv2-hd-2d.md). The pack is read once the scale is known, because every image in it has to be
+	// at that scale: one drawn for another is refused by name rather than shown at the wrong size. With no pack
+	// and a scale of 1 -- the default -- hd() stays false and the rasteriser is the one it has always been.
+	static video::TilePack tile_pack;
+	static video::TileDump tile_dump;
+	if (!arg_tile_dump.empty()) {
+		std::string why;
+		if (!tile_dump.open(arg_tile_dump, why))
+			fprintf(stderr, "the tile dump can't be written in %s (%s)\n", arg_tile_dump.c_str(), why.c_str());
+		else fprintf(stderr, "tile dump: %s, with tiles/ and layers/ -- everything the game draws, once each\n", arg_tile_dump.c_str());
+	}
+	if (!cfg.tile_pack.empty()) {
+		std::string report;
+		tile_pack.load(cfg.tile_pack, cfg.tile_scale, report);
+		fprintf(stderr, "%s\n", report.c_str());
+	}
+	game.tiles.hd_set(cfg.tile_scale, &tile_pack, &tile_dump);
+	if (game.tiles.hd())
+		fprintf(stderr, "HD 2D: the tile plane drawn at %d x %d (%d times the hardware's)\n",
+		        video::W * game.tiles.hd_scale(), video::H * game.tiles.hd_scale(), game.tiles.hd_scale());
 	game.full_roster = cfg.full_roster;
 	if (cfg.full_roster && board.unlock_roster() < 0)
 		fprintf(stderr, "the hidden fighters: that was measured on Fighting Vipers 2 (Japan, Revision A), not on this game\n");
@@ -1415,8 +1464,12 @@ int main(int argc, char **argv)
 	struct { uint64_t t0 = 0; int pictures = 0, frames = 0; double draw_ms = 0, emu_ms = 0, upload_ms = 0, gpu_ms = 0, stopped_s = 0; int slow[4] = {}; double slow_work_ms = 0, prep_ms = 0, g3_wall_ms = 0, interp_ms = 0; } pace;   // (slow: passes over 1.5 refreshes, by what they ran: nothing but a picture, a frame's first half, its second, a whole frame)
 	uint64_t between_n = 0, cut_n = 0;   // smooth motion's pictures between frames, and those shown as the frame (a cut)
 	int tex_w = 0, tex_h = 0;
+	// HD 2D: the tile plane's two textures are the scale times the hardware's size, and the layers sent into
+	// them are the HD ones. Everything else about them -- blending, filtering, where they are drawn -- is as
+	// before, and at scale 1 these are the old sizes to the pixel.
+	const int tile_s = game.tiles.hd() ? game.tiles.hd_scale() : 1;
 	auto make_2d = [&](SDL_Texture *&t, int w) {
-		t = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, video::H);
+		t = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w * tile_s, video::H * tile_s);
 		SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
 		SDL_SetTextureScaleMode(t, SDL_SCALEMODE_NEAREST);
 	};
@@ -1432,8 +1485,10 @@ int main(int argc, char **argv)
 		else if (SDL_LockTexture(t, nullptr, &p, &pitch)) { write(static_cast<uint8_t *>(p), size_t(pitch)); SDL_UnlockTexture(t); }
 	};
 	auto send_2d = [&](SDL_Texture *t, const std::vector<uint32_t> &src, int w) {
+		const size_t rw = size_t(w) * tile_s, rows = size_t(video::H) * tile_s;
+		if (src.size() < rw * rows) return;   // (a frame before the game's first: the layers not made yet)
 		send(t, [&](uint8_t *p, size_t pitch) {
-			for (int y = 0; y < video::H; y++) memcpy(p + size_t(y) * pitch, src.data() + size_t(y) * w, size_t(w) * 4);
+			for (size_t y = 0; y < rows; y++) memcpy(p + y * pitch, src.data() + y * rw, rw * 4);
 		});
 	};
 	// the 3D's size: 384 lines a scale, as wide as the picture's shape
@@ -1658,8 +1713,8 @@ int main(int argc, char **argv)
 				}
 			}
 			const uint64_t tu = SDL_GetTicksNS();
-			send_2d(tex_below, game.view.below_wide, video::WW);
-			send_2d(tex_above, game.view.above, video::W);
+			send_2d(tex_below, game.view.below_wide_hd.empty() ? game.view.below_wide : game.view.below_wide_hd, video::WW);
+			send_2d(tex_above, game.view.above_hd.empty() ? game.view.above : game.view.above_hd, video::W);
 			pace.upload_ms += double(SDL_GetTicksNS() - tu) / 1e6;
 		}
 	};
@@ -1691,7 +1746,8 @@ int main(int argc, char **argv)
 		const float sy = std::clamp(bg_shift_y, -float(video::H) + 1, float(video::H) - 1);
 		auto band = [&](float v0, float v1, float d0, float d1) {
 			if (v1 - v0 < 0.01f || d1 - d0 < 0.01f) return;
-			const SDL_FRect src = { u0, v0, u1 - u0, v1 - v0 };
+			const float ts = float(tile_s);   // (the source is in the texture's own pixels: the scale times the layer's)
+			const SDL_FRect src = { u0 * ts, v0 * ts, (u1 - u0) * ts, (v1 - v0) * ts };
 			const SDL_FRect dst = { x0, mid.y + d0 * k, x1 - x0, (d1 - d0) * k };
 			SDL_RenderTexture(ren, tex_below, &src, &dst);
 		};
@@ -1813,6 +1869,17 @@ int main(int argc, char **argv)
 		std::vector<uint32_t> pic(video::W * video::H);
 		for (int i = 0; i < video::W * video::H; i++) pic[i] = (game.below[i] >> 24) ? game.below[i] : 0xFF000000u;
 		one.compose(pic.data(), pic.data());
+		if (game.tiles.hd() && !game.below_hd.empty()) {
+			// HD 2D: the HD layers with the 3D between them, as tools/vf3run writes its own (video::compose_hd).
+			// The 3D keeps the hardware's size and is repeated, which is what the renderer does on screen.
+			for (int i = 0; i < video::W * video::H; i++)
+				if (!(one.base[i].a > 0 || one.t1[i].a > 0 || one.t2[i].a > 0)) pic[i] = 0;
+			const int S = game.tiles.hd_scale();
+			std::vector<uint32_t> big(size_t(video::W) * S * size_t(video::H) * S);
+			video::compose_hd(S, game.below_hd, game.above_hd, pic.data(), big.data());
+			write_png(path.c_str(), big.data(), video::W * S, video::H * S);
+			return;
+		}
 		for (int i = 0; i < video::W * video::H; i++) if (game.above[i] >> 24) pic[i] = game.above[i];
 		write_png(path.c_str(), pic.data(), video::W, video::H);
 	};
@@ -2848,6 +2915,12 @@ int main(int argc, char **argv)
 	rec_stop();
 	if (cfg_dirty && quit_after < 0) cfg.save(settings_path);
 	if (audio) SDL_DestroyAudioStream(audio);
+	if (tile_dump.on()) {
+		// (tiles.csv and layers/index.csv are written here: the dump keeps its inventory until the end)
+		fprintf(stderr, "tile dump: %zu distinct tiles and %zu layer layouts in %s\n",
+		        tile_dump.tiles(), tile_dump.layouts(), arg_tile_dump.c_str());
+		tile_dump.close();
+	}
 	for (auto &p : pads) if (p) SDL_CloseGamepad(p);
 	menu_owner.reset();
 	if (g3.tex) SDL_DestroyTexture(g3.tex);
