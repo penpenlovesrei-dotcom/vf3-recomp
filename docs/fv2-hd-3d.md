@@ -111,7 +111,16 @@ capture describe every PNG in the folder.
 
 **What is not drawn is not captured** -- and in this port, what is not *drawn* is not even the same as what the
 game puts on screen, because the headless runner renders only the frames its script asks a picture for, while
-the windowed host renders every picture. Measured:
+the windowed host renders every picture.
+
+That cost a false conclusion once, and the trap is worth leaving marked. `--hd-dump` used to need `--shots`
+beside it: without a folder to put pictures in, the runner drew nothing, so no texture was ever sampled and the
+dump wrote its CSV header and not one file. Which looks exactly like a broken dump, and was read as one. It now
+renders at its script's shot marks when the dump is on, whether or not anything is written, so `--hd-dump`
+stands on its own -- measured, 322 textures with no `--shots` and no stray pictures. The 2D tile dump never had
+this, because the tile path installs itself whenever that dump is open.
+
+Measured:
 
 | the capture | distinct textures |
 | --- | --- |

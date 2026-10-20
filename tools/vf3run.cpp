@@ -221,6 +221,11 @@ int main(int argc, char **argv)
 	board.cpu.trace_pc = trace_pc;
 	auto t0 = std::chrono::steady_clock::now();
 	uint64_t f = 0;
+	// A picture only reaches a file when --shots named a folder. With only --hd-dump, the scene is still
+	// built and drawn -- a texture is not sampled until something is drawn with it -- and nothing is written.
+	auto shot_png = [&](const std::string &p, const uint32_t *px, int pw, int ph) {
+		if (!shots.empty()) write_png((shots + p).c_str(), px, pw, ph);
+	};
 	for (;; f++) {
 		if (frames >= 0 && f >= uint64_t(frames))
 			break;
@@ -638,7 +643,7 @@ int main(int argc, char **argv)
 			s[116] = uint32_t(board.frame);
 			fwrite(s, 4, 128, state);
 		}
-		if (!shots.empty())
+		if (!shots.empty() || !hd_dump.empty())
 			for (auto &name : act.shots) {
 				scene_builder.build(board, scene);
 				if (getenv("VF3_VP"))
@@ -681,14 +686,14 @@ int main(int argc, char **argv)
 					tiles.aligned_hd(hd_below, hd_above);
 					hd_pic.assign(size_t(video::W) * S * size_t(video::H) * S, 0);
 					video::compose_hd(S, hd_below, hd_above, picture.data(), hd_pic.data());
-					write_png((shots + p).c_str(), hd_pic.data(), video::W * S, video::H * S);
+					shot_png(p, hd_pic.data(), video::W * S, video::H * S);
 					if (!quiet)
 						printf("shot %s at %dx%d (tile scale %d)\n", p + 1, video::W * S, video::H * S, S);
 					continue;
 				}
 				for (int i = 0; i < video::W * video::H; i++)
 					if (above[i] >> 24) picture[i] = above[i];
-				write_png((shots + p).c_str(), picture.data(), video::W, video::H);
+				shot_png(p, picture.data(), video::W, video::H);
 				if (getenv("VF3_VP")) {
 					const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
 					for (int L = 0; L < 4; L++) {
@@ -707,7 +712,7 @@ int main(int argc, char **argv)
 					snprintf(p, sizeof(p), "/below_%06llu_%s.png", (unsigned long long)board.frame, name.c_str());
 					std::vector<uint32_t> bl(below);
 					for (auto &v : bl) v |= 0xFF000000u;
-					write_png((shots + p).c_str(), bl.data(), video::W, video::H);
+					shot_png(p, bl.data(), video::W, video::H);
 				}
 				if (const char *bs = getenv("VF3_BIGSHOT")) {   // the 3D alone at that scale, over grey (holes show), big_<frame>.png
 					static video::Raster big;
@@ -718,7 +723,7 @@ int main(int argc, char **argv)
 					big.compose(o.data(), o.data());
 					char p[64];
 					snprintf(p, sizeof(p), "/big_%06llu_%s.png", (unsigned long long)board.frame, name.c_str());
-					write_png((shots + p).c_str(), o.data(), big.width(), big.height());
+					shot_png(p, o.data(), big.width(), big.height());
 				}
 				if (getenv("VF3_WIDESHOT")) {   // the layer below the 3D widened (as widescreen's sides show it), the screen's edges marked
 					char p[64];
@@ -727,7 +732,7 @@ int main(int argc, char **argv)
 					tiles.aligned_wide(wd);
 					for (auto &v : wd) v |= 0xFF000000u;
 					for (int y = 0; y < video::H; y += 4) wd[size_t(y) * video::WW + video::EXT] = wd[size_t(y) * video::WW + video::EXT + video::W - 1] = 0xFF0000FFu;
-					write_png((shots + p).c_str(), wd.data(), video::WW, video::H);
+					shot_png(p, wd.data(), video::WW, video::H);
 				}
 			}
 		if (getenv("VF3_NVDUMP") && strstr((std::string(",") + getenv("VF3_NVDUMP") + ",").c_str(), ("," + std::to_string(board.frame) + ",").c_str())) {
