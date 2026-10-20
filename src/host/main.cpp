@@ -62,7 +62,7 @@
 //
 // --hd-3d draws a texture pack over the game's own 3D textures: PNGs of any size in texture_remplacement in the
 // data folder, each named by the hash of the texture it stands in for, which is the name the dump writes
-// (--hd-3d-dump, into texture_remplacement-dump). --no-hd-3d turns it off again, --hd-3d-pack <folder> and
+// (--hd-3d-dump, into texture_remplacement/DUMP). --no-hd-3d turns it off again, --hd-3d-pack <folder> and
 // --hd-3d-dump <folder> use folders of their own. docs/fv2-hd-3d.md says how it works and what it costs; without
 // --hd-3d nothing of it runs and every picture is the one it was.
 //
@@ -1177,7 +1177,7 @@ int main(int argc, char **argv)
 	//
 	// The 3D texture pack (src/video/tex3d_hd.h) is not, and on purpose: it sits in one folder,
 	// texture_remplacement, because a replacement is recognised by the content of the texture it stands in for,
-	// so one game's images cannot match another's and there is nothing to keep apart. texture_remplacement-dump
+	// so one game's images cannot match another's and there is nothing to keep apart. texture_remplacement/DUMP
 	// is where the dump writes. Both take a folder of their own on the command line. Both are set up before the
 	// first picture, and asking for neither leaves both rasterisers' texture paths exactly as they were -- which
 	// is why Virtua Fighter 3 is untouched by any of it.
@@ -1191,7 +1191,7 @@ int main(int argc, char **argv)
 				fprintf(stderr, "%s\n", report.c_str());
 		}
 		if (arg_hd_dump_on) {
-			const std::string into = arg_hd_dump.empty() ? data + "/texture_remplacement-dump" : player_folder(arg_hd_dump, data);
+			const std::string into = arg_hd_dump.empty() ? data + "/texture_remplacement/DUMP" : player_folder(arg_hd_dump, data);
 			std::string why;
 			if (!video::hd3d().dump_to(into, why)) fprintf(stderr, "%s\n", why.c_str());
 			else fprintf(stderr, "the 3D texture dump: every texture a polygon samples, into %s\n", into.c_str());
