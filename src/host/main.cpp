@@ -84,6 +84,12 @@
 //                        goes to build/host_window_F.png
 //   VF3_MENU_KEYS=k,...  presses these keys (esc, up, down, left, right, enter, or SDL key names) 6 passes of the
 //                        loop apart from pass 30
+//   VF3_MIDI_LOG=N       every block of bytes the GAME sends its sound board, with the mode it was in and the
+//                        loudest sample of the frame before; and every Nth frame besides, so silence is on the
+//                        record too (N=1: every frame)
+//   VF3_MIDI_SEND=h@F,.. hands the sound board those bytes (hex, no spaces) at game frame F, as if the game had
+//                        written them: a way to ask the board a question and hear the answer in VF3_MIDI_LOG's
+//                        peaks, without a line of menu code resting on the guess
 //   VF3_KEYS_S=k@sec,... presses key k at that many seconds of real time. The one hook that can drive something
 //                        drawn over a FROZEN game: VF3_KEYS goes by the game's frames, which stop there, and
 //                        VF3_MENU_KEYS goes off in the first second. Seconds, because the clock is the only
@@ -948,6 +954,23 @@ struct Game
 		sound_wait();   // (the frame before's sound, made meanwhile)
 		audio.insert(audio.end(), sound_out.begin(), sound_out.end());
 		sound_out.clear();
+		// (tests: what the GAME itself says to the sound board, frame by frame, with the state it was in when
+		// it said it -- VF3_MIDI_LOG. Read-only: nothing here changes a byte or when it goes.)
+		if (static const bool say = getenv("VF3_MIDI_LOG") != nullptr; say) {
+			// the loudest sample the board made for the frame before, so the log says what a byte did as well
+			// as that it went
+			int peak = 0;
+			for (int16_t s : audio) peak = std::max(peak, std::abs(int(s)));
+			if (!board.midi.empty()) {
+				std::string hex;
+				for (uint8_t b : board.midi) { char t[8]; snprintf(t, sizeof t, "%02X ", b); hex += t; }
+				fprintf(stderr, "midi: frame %llu, mode %d sub %d: %-20s (peak before %d)\n",
+						(unsigned long long)frame, board.fv2_mode(), board.fv2_submode(), hex.c_str(), peak);
+			} else if (static const uint64_t every = std::max(1ull, strtoull(getenv("VF3_MIDI_LOG"), nullptr, 10)); frame % every == 0) {
+				fprintf(stderr, "midi: frame %llu, mode %d sub %d: %-20s (peak before %d)\n",
+						(unsigned long long)frame, board.fv2_mode(), board.fv2_submode(), "-", peak);
+			}
+		}
 		{
 			std::lock_guard<std::mutex> lk(sound_m);
 			sound_midi.assign(board.midi.begin(), board.midi.end());
@@ -2630,6 +2653,19 @@ int main(int argc, char **argv)
 			if (t.empty() || at == std::string::npos) continue;
 			keys_s.push_back({ SDL_GetScancodeFromName(t.substr(0, at).c_str()), atof(t.c_str() + at + 1), false });
 		}
+	// VF3_MIDI_SEND: bytes handed to the sound board at a given game frame, as if the game had written them.
+	// For asking the board a question -- does this one stop the music? -- and reading the answer in the peaks,
+	// before anything in the menu rests on the answer.
+	std::vector<std::pair<uint64_t, std::vector<uint8_t>>> midi_send;
+	if (const char *k = getenv("VF3_MIDI_SEND"))
+		for (std::string all = std::string(k) + ","; !all.empty(); all.erase(0, all.find(',') + 1)) {
+			const std::string t = all.substr(0, all.find(','));
+			const size_t at = t.find('@');
+			if (t.empty() || at == std::string::npos || at % 2) continue;
+			std::vector<uint8_t> bytes;
+			for (size_t i = 0; i + 1 < at; i += 2) bytes.push_back(uint8_t(strtoul(t.substr(i, 2).c_str(), nullptr, 16)));
+			if (!bytes.empty()) midi_send.push_back({ strtoull(t.c_str() + at + 1, nullptr, 10), bytes });
+		}
 	std::vector<uint64_t> shot_at;   // VF3_SHOT_AT: the window at these passes, to build/host_window_at_N.png
 	if (const char *k = getenv("VF3_SHOT_AT"))
 		for (const char *q = k; *q;) { shot_at.push_back(strtoull(q, nullptr, 10)); while (*q && *q != ',') q++; if (*q) q++; }
@@ -3042,6 +3078,12 @@ int main(int argc, char **argv)
 				SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
 			game.audio.clear();
 			for (auto &k : test_keys) if (k.second == game_frame) { send_key(k.first); window_shots.push_back(game_frame + 3); }
+			// VF3_MIDI_SEND: in with the game's own bytes, so the board hears it exactly as it hears the game
+			for (auto &m : midi_send)
+				if (m.first == game_frame) {
+					board.midi.insert(board.midi.end(), m.second.begin(), m.second.end());
+					fprintf(stderr, "midi sent by hand at frame %llu\n", (unsigned long long)game_frame);
+				}
 			if (quit_after >= 0 && int64_t(game_frame) >= quit_after) running = false;
 			switch (hk) {
 			case hotkey::menu: open_menu(); break;

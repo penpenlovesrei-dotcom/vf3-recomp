@@ -1,0 +1,8 @@
+# Fighting Vipers 2, the console way: a game begun from the list itself, so that what the GAME says to its
+# sound board can be read on the select screen and in a fight (VF3_MIDI_LOG), not only in the attract loop.
+#
+# Start on the title screen opens the list; the run's VF3_KEYS_S presses Return to choose ARCADE, which hands
+# the game a Start of its own. The punch below lands on the select screen a few seconds later and picks a
+# fighter, since that screen is confirmed with an attack button and not with Start.
+1255 press p1.start
+1500 press p1.punch

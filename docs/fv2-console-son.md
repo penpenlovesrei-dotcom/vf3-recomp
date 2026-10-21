@@ -109,6 +109,106 @@ touche à telle seconde, le seul moyen de piloter quelque chose dessiné sur un 
   **démonstration** pour que la mesure veuille dire quelque chose.
 
 
+## Étape 1, faite le 2026-10-21 : ce que le jeu dit vraiment à sa carte son
+
+Relevé avec `VF3_MIDI_LOG=N` : tout bloc d'octets que **le jeu** envoie, avec le mode où il était et le pic de
+l'image précédente ; plus une ligne toutes les N images, pour que le silence soit au dossier lui aussi. Rien
+n'est modifié par ce relevé.
+
+### Il parle très peu, sauf en combat
+
+| état | blocs envoyés |
+|---|---|
+| avertissement | 1 (image 82) |
+| attraction, logo, titre, démo | 4 en 1250 images |
+| `SEL_INT` / `SEL_DSP`, la sélection | 3 |
+| `GAME_DSP`, un combat | **55 en 1700 images** |
+
+La boucle d'attraction entière, 73 secondes, tient en **six blocs**, un par changement d'écran. Un combat, lui,
+parle sans arrêt.
+
+### Ce qu'il envoie dans la boucle
+
+```
+image   82  mode 0            FF                                    le seul FF de toute la partie
+image  997  ADV               A0 00 01
+image  999  ADV_SEGA_INT      A0 00 01  A0 30 00                     la voix « SEGA »
+image 1193  FV2_TITLE_DSP     A0 2B 00                               la voix « Fighting »
+image 1247  FV2_TITLE_DSP     A0 2B 05                               la voix « Vipers 2 »
+image 1385  ADV_DEMO_DSP      A0 10 07                               la musique de la démo
+image 1257  SEL_INT           A0 2E 24  A0 00 01  A0 10 00  A0 2B 02  effet, silence, musique, voix
+```
+
+Trois choses en découlent, et aucune n'était prévue :
+
+1. **Le jeu n'envoie jamais `FF`**, sauf une fois à l'amorçage. Sa commande de silence à lui est `A0 00 01`,
+   et il la met en tête de ses blocs exactement là où le relevé d'août voyait `FF`. La ligne de ce document
+   qui disait « le jeu l'envoie lui-même en tête de chaque bloc » était vraie du relevé d'août, pas d'ici.
+2. **L'écran titre n'a pas de musique à lui** — deux voix, rien d'autre. La musique qu'on y entend est celle de
+   la démonstration, laissée en route. C'est exactement ce que Frédéric a signalé.
+3. **L'écran de sélection pose lui-même sa musique** (`A0 00 01` puis `A0 10 00`, image 1257). Donc remettre la
+   musique après un mode choisi est non seulement inutile, c'est nuisible — et ça explique la mesure d'août où
+   l'écran de sélection héritait de la musique de la démo.
+
+### Les deux commandes d'arrêt, mesurées côte à côte
+
+Fond : la musique de la démo à l'image 2000, pic moyen 6025 sur les 360 images suivantes.
+
+| envoyé à l'image 2000 | pic moyen ensuite |
+|---|---|
+| rien (témoin) | **6025** |
+| `A0 00 01` | **0** |
+| `FF` | **0** |
+
+Et le piège du reset, repris avec le bon instrument — un bip `A0 2E 23` sur fond silencieux, puis la commande
+d'arrêt 40 images plus tard, relevé toutes les 4 images :
+
+```
+image   bip seul   bip + A0 00 01   bip + FF
+ 2040       3162             3162       3162
+ 2044       3119                0          0
+ 2072        865                0          0
+ 2076        100                0          0
+```
+
+**Ni l'une ni l'autre ne relance le bip** : les deux le coupent net. Le piège mesuré en août sur Supermodel ne
+se reproduit pas sur la carte son de ce portage. Donc **le délai de 80 images ne sert à rien ici**, et l'arrêt
+peut partir dès l'ouverture. (Mesuré sur ce portage, pas sur la vraie carte : c'est ce portage qu'on livre.)
+
+
+## Étape 2 : la réponse à la question mère
+
+**Geler le jeu et faire tourner la carte son est sans risque là où la liste s'ouvre.** Entre l'image 1247 et
+l'image 1385 — tout l'écran titre — le jeu ne dit **rien** à sa carte. Il n'y a donc rien à rater pendant le
+gel : ce n'est pas un dialogue interrompu, c'est un silence prolongé.
+
+Ce qui avait cassé dans la version défaite n'était donc pas le principe, et c'est important de le dire
+exactement : c'était **la cadence** (une image de son une passe sur deux, trente par seconde au lieu de 57,5)
+et **les cas non traités** (quatre sorties, trois seulement remplies). Pas l'idée de faire tourner la carte.
+
+**En revanche, geler pendant un combat serait une autre affaire** : 55 blocs en 1700 images. Un menu de pause
+qui gèle un combat couperait un dialogue en cours. C'est noté pour le jour où ce menu-là sera écrit ; la liste
+des modes, elle, ne s'ouvre que sur l'écran titre.
+
+
+## Étape 3 : le tableau des quatre sorties, à valider avant d'écrire
+
+Chaque case est justifiée par une mesure ci-dessus, et aucune n'est un avis.
+
+| sortie | la musique | le son |
+|---|---|---|
+| un mode choisi (ARCADE, SURVIVAL) | **rien** : l'écran de sélection pose la sienne, image 1257 | le son de choix |
+| une ligne sans levier | — (la liste reste ouverte) | **rien** : il ne s'est rien passé |
+| annulation (B) | remettre ce qui jouait, si on l'a arrêté | le son d'annulation |
+| Échap, le menu du portage par-dessus | **remettre aussi** — c'était le trou n° 1 | rien |
+
+Et l'arrêt lui-même : `A0 00 01`, la commande du jeu, **à l'ouverture et sans délai**, puisque le piège du
+reset ne se reproduit pas ici. Pas de `FF` : le jeu ne s'en sert pas.
+
+Pour « remettre ce qui jouait » : le dernier `A0 10 nn` que le jeu a demandé, qui se lit au passage dans les
+octets qu'il envoie. Mesuré : c'était bien `A0 10 07`, la musique de la démo.
+
+
 ## L'ordre
 
 Un pas, une mesure, une capture ou un relevé montré. Pas deux pas d'un coup — c'est ce qui a été payé deux fois
