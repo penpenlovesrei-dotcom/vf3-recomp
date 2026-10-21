@@ -224,8 +224,40 @@ au pas suivant — le levier de §6 bis, et on voit ici pourquoi il marche.
 `0x00580DFC` n'apparaît. Le séquenceur n'avance plus sa liste là ; le replay court sur sa propre durée. Pousser
 la liste n'a donc rien à pousser.
 
-La question suivante est donc précise : **qu'est-ce qui met fin au replay ?** Tant qu'elle n'a pas de réponse,
-Start n'a pas de route propre depuis cet écran-là.
+### Ce qui met fin au replay — et la route propre, enfin
+
+Relevé en surveillant le mot de la machine à états (`vf3run --watch 58FD98`). Le mode et son sous-état sont
+réécrits à chaque image par la machine à modes, mais **`SUBMODE_REQUEST` (`0x0058FD9B`) n'est écrit qu'une
+poignée de fois**, et ces écritures-là *sont* la boucle d'attraction :
+
+```
+a WARNING_DSP       = 0, = 1                    la boucle demarre
+a DONT_RECYCLE_*    = 2, = 3                    vers le logo SEGA
+a ADV_SEGA_DSP      = 4, = 5                    vers l ecran titre
+a FV2_TITLE_DSP     = B  ou  = 8                vers la demonstration, ou vers le replay
+a ADV_REPLAY_DSP    = 0 par 0x0000B7C0, puis 1  <- LE REPLAY DEMANDE LE REDEMARRAGE DE LA BOUCLE
+```
+
+**La façon dont le jeu sort d'un replay n'est pas de demander l'écran titre : c'est de demander que la boucle
+recommence** (`DONT_RECYCLE_INT`). Et ce redémarrage est précisément l'endroit où il éteint les tâches qui
+dessinent (`0x0000B240`, entre les sous-états 1 et 2).
+
+D'où la route propre, qui marche de partout dans l'attraction et en deux temps :
+
+1. `MODE_REQUEST = 3`, `SUBMODE_REQUEST = 0` — écrit **une fois** : la boucle redémarre et le jeu fait **son**
+   ménage ;
+2. une fois arrivé au logo SEGA (sous-état 2 ou 3), là où la scène est vide, demander l'écran titre.
+
+Mesuré avec la sonde d'images, depuis une démonstration **et** depuis un replay :
+
+```
+appui image 1450 (demo)    sub 0, 1, 2 puis ECRAN TITRE a l image 1455 : 0 modele
+appui image 2100 (replay)  sub 0, 1, 2 puis ECRAN TITRE a l image 2105 : 0 modele
+```
+
+**Cinq images, et 0 modèle** — le même écran titre que celui où le jeu arrive seul. Contre 397 modèles pour la
+demande directe, et 400 images d'attente pour le levier du séquenceur, qui lui ne commandait rien depuis un
+replay.
 
 ### Ce que ça donne, et où ça bute
 

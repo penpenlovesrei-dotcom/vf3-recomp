@@ -1619,6 +1619,30 @@ void Model3::fv2_request_title()
 	ram[FV2_SUBMODE_REQUEST ^ 3] = FV2_ADV_TITLE_INT;
 }
 
+// Asks the attract loop to START OVER -- which is the one road on which the game tidies up after itself.
+//
+// Found by watching the state machine's own bytes (vf3run --watch 58FD98). The mode and its sub-state are
+// rewritten every frame by the mode machine, but SUBMODE_REQUEST, 0x0058FD9B, is written only a handful of
+// times, and those few writes ARE the attract loop:
+//
+//     at WARNING_DSP      = 0, = 1        the loop starts
+//     at DONT_RECYCLE_*   = 2, = 3        on to the SEGA logo
+//     at ADV_SEGA_DSP     = 4, = 5        on to the title screen
+//     at FV2_TITLE_DSP    = B or = 8      on to the demonstration, or to the replay
+//     at ADV_REPLAY_DSP   = 0 at 0x0000B7C0, then = 1     <- the replay ends by asking for the loop's start
+//
+// So the game's own way out of a replay is not to ask for the title screen: it is to ask the attract loop to
+// begin again, DONT_RECYCLE_INT. And the restart is exactly where the drawing tasks are cleared, by the write
+// at 0x0000B240 between sub-states 1 and 2. One request, and the game does its own housekeeping.
+//
+// Written ONCE and never held, like every other request here.
+void Model3::fv2_restart_attract()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return;
+	ram[FV2_MODE_REQUEST ^ 3] = FV2_MODE_ADV_DSP;
+	ram[FV2_SUBMODE_REQUEST ^ 3] = 0;   // DONT_RECYCLE_INT
+}
+
 // The attract sequencer's own road to the title screen: its list is pushed to its last real entry and its
 // timer set long expired, written ONCE, and the game then walks off the end of the list itself -- which is
 // the only way it takes the branch that installs the title screen off-list. Measured on the ROM in August

@@ -256,6 +256,9 @@ public:
 	// end itself and installs the title screen the way it does on its own. Works from the attract loop and
 	// only there. See model3.cpp for what the picture probe measured against the request above.
 	void fv2_attract_to_title();
+	// Asks the attract loop to start over (DONT_RECYCLE_INT), which is how the game itself leaves a replay --
+	// and the restart is where it clears the tasks that draw. model3.cpp says how that was watched.
+	void fv2_restart_attract();
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 

@@ -98,7 +98,12 @@ struct console_play
 			// the sequencer is not running, so the request is all there is, and it does not end the game
 			// either (docs/fv2-etats.md).
 			if (what == start_for::title) {
-				if (b.fv2_in_attract()) { b.fv2_attract_to_title(); skip_logo = SKIP_GIVE_UP; }
+				// From the attract loop, the game's own way out of whatever is drawing: ask the loop to start
+				// over. That is what the replay itself does when it ends (0x0000B7C0 writes SUBMODE_REQUEST =
+				// 0), and the restart is where the game clears the tasks that draw, two sub-states later. Then
+				// the title screen is asked for as soon as that housekeeping is done -- the SEGA logo -- so
+				// the player does not have to sit through it.
+				if (b.fv2_in_attract()) { b.fv2_restart_attract(); skip_logo = SKIP_GIVE_UP; }
 				else b.fv2_request_title();
 			}
 			swallow_start = true;
@@ -127,8 +132,10 @@ struct console_play
 		if (!on) return;
 		if (skip_logo > 0) {
 			const int mode = b.fv2_mode(), sub = b.fv2_submode();
-			// out of the demonstration and of the replays: whatever was drawing has stopped
-			const bool tidy = (mode == 2 || mode == 3) && sub != 10 && sub != 11;
+			// The SEGA logo, and not a sub-state before it: the tasks that draw are cleared BETWEEN sub-state
+			// 1 and sub-state 2 (model3.cpp), so this is the first moment the scene is the game's own idea of
+			// empty. Asking any earlier would carry the old one over, which is the whole defect.
+			const bool tidy = (mode == 2 || mode == 3) && (sub == 2 || sub == 3);
 			if (tidy) { b.fv2_request_title(); skip_logo = 0; }
 			else skip_logo--;
 		}
