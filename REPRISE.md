@@ -36,7 +36,7 @@ la liste.
 ```
                         sur l'écran titre du jeu  ->  la liste des sept modes s'ouvre par-dessus
 Start, mode console
-                        partout ailleurs          ->  le jeu est prié de revenir à son écran titre
+                        partout ailleurs          ->  le jeu revient à son écran titre, par SA route
 ```
 
 Dans les deux cas l'appui est **retenu** : le jeu ne le voit pas.
@@ -59,18 +59,35 @@ Dans les deux cas l'appui est **retenu** : le jeu ne le voit pas.
   demandent le chrono de l'écran de sélection, jamais mesuré ici ; NETWORK, TRAINING et OPTIONS n'ont aucun
   levier dans ce portage.
 
-### Ce que la mesure a dit, et qui n'était pas prévu
+### La route de Start vers l'écran titre, et les trois essais qu'il a fallu
 
-`mesurer-fv2-start.cmd`, cinq essais d'un seul appui chacun. La demande de mode commande l'écran **depuis
-partout** — le logo SEGA, la démonstration, l'écran de sélection, et même en plein combat : l'écran titre
-revient une image après.
+C'est le morceau qui a coûté la soirée, et le résultat tient en deux lignes : **depuis l'attraction, Start
+demande à la boucle de recommencer, puis demande l'écran titre une fois le ménage fait.**
 
-**Mais elle ne termine pas la partie.** La tâche `entry1` (`0x00700000`) reste à sa valeur de jeu : `0x2A`
-depuis un combat, `0x2D` depuis la sélection. L'écran titre revient par-dessus une partie qui court toujours,
-donc `fv2_in_attract()` reste faux. Le tableau complet est dans `docs/fv2-etats.md`.
+```
+MODE_REQUEST = 3, SUBMODE_REQUEST = 0   écrit UNE FOIS : la boucle redémarre, le jeu range sa scène
+puis, arrivé au logo SEGA (sub 2 ou 3)  la demande d'écran titre
+```
 
-C'était écrit « ces leviers ne commandent rien depuis un combat » : c'était vrai des deux écritures du
-séquenceur d'attraction, et faux de la demande de mode, qui n'avait jamais été essayée là.
+Mesuré : **écran titre en cinq images, à 0 modèle 3D**, depuis une démonstration comme depuis un replay —
+exactement l'écran titre où le jeu arrive seul.
+
+Les deux routes écartées restent au dossier, parce qu'elles ont chacune appris quelque chose :
+
+| route | ce qu'elle donne |
+|---|---|
+| la demande de mode seule | une image, mais **397 modèles** laissés sur l'écran titre : les démos suivantes sortent noires ou vides |
+| le levier du séquenceur (§6 bis) | propre depuis une démonstration, **inerte depuis un replay**, et un replay de 77 s derrière |
+| **le redémarrage de la boucle** | **cinq images et 0 modèle, de partout** |
+
+Pourquoi : la demande de mode change ce qui est **affiché**, elle n'arrête pas ce qui **dessine**. Le jeu
+n'éteint ses tâches de dessin qu'au redémarrage de sa boucle (`0x0000B240`, entre les sous-états 1 et 2), et
+c'est exactement ce que le replay demande quand il se termine (`0x0000B7C0` écrit `SUBMODE_REQUEST = 0`).
+Toute la chaîne est relevée dans `docs/fv2-etats.md`, au `--watch`, sans rien décompiler.
+
+**Ce qui reste vrai et non résolu** : depuis un **combat**, la demande de mode ramène l'écran titre mais ne
+termine pas la partie — `entry1` (`0x00700000`) reste à `0x2A`. L'écran titre revient par-dessus une partie qui
+court toujours.
 
 ### Les captures, et de quoi elles sont la preuve
 
@@ -84,6 +101,20 @@ séquenceur d'attraction, et faux de la demande de mode, qui n'avait jamais ét�
 
 La deuxième est celle qui compte : elle va d'un bout à l'autre, sans main sur la manette.
 
+### La sonde, et ce qu'elle a permis
+
+`jouer-fv2-console-sonde.cmd` lance le jeu avec `VF3_PIC_LOG` et `VF3_MIDI_LOG` : **une ligne par image
+dessinée** dans `log.txt` — modèles 3D, vues, mode, sous-état — et tout ce que le jeu dit à sa carte son. C'est
+elle qui a nommé le défaut que quatre essais scriptés n'avaient pas su reproduire :
+
+```
+écran titre où le jeu arrive seul     0 modèle,  8 vues
+écran titre demandé par Start       397 modèles, 10 vues
+```
+
+Repères pour la prochaine fois : un écran titre sain est à **0 modèle sur 8 vues**, une démonstration autour de
+**400 à 520**.
+
 ### Deux crochets d'essai, sans lesquels rien de tout ça ne se vérifiait
 
 La liste gèle le jeu, donc tout ce qui compte les images du jeu n'arrive plus — c'est le blocage de neuf
@@ -92,6 +123,14 @@ minutes de la veille. D'où, dans l'hôte :
 ```
 VF3_QUIT_AFTER_S=N     finir après N secondes d'horloge
 VF3_KEYS_S=k@sec,...   envoyer la touche k à telle seconde
+```
+
+Et trois autres, posés dans la soirée, qui ont fait tout le reste du travail :
+
+```
+VF3_PIC_LOG=1          chaque image dessinée : modèles, vues, mode, sous-état
+VF3_MIDI_LOG=N         ce que le JEU dit à sa carte son, plus une ligne toutes les N images
+VF3_MIDI_SEND=h@F      poser une question à la carte son à l'image F ; la réponse se lit dans les pics
 ```
 
 
@@ -169,6 +208,48 @@ Réponses courtes. Dire ce qui est mesuré et ce qui ne l'est pas.
 - **Les heredocs bash mangent les apostrophes et les échappements.** Écrire les fichiers avec l'outil Write.
 - **Les fichiers du dépôt sont en CRLF.** Un script d'insertion qui cherche `\n` ne trouve rien.
 - **Le lien échoue en « Permission denied »** si le jeu ou le vérificateur tourne encore.
+
+---
+
+# Journal du 2026-10-21, le soir
+
+## Trois rustines sonores, et ce qu'elles ont coûté
+
+Le son de la liste a été posé en trois fois dans la même heure, chaque fois sur un retour de Frédéric — « pas
+de bruitage », « la musique ne s'arrête pas », « ça grésille » — et la quatrième fois il a écrit : « beaucoup
+de bugs sonores et de comportement, je ne saurais les énumérer ».
+
+Tout a été **défait**. Le grésillement était bien de moi (la carte son avancée une passe sur deux : trente
+images de son par seconde au lieu de 57,5), mais le fond était la méthode : une rustine par symptôme ne
+converge pas, et **un son ne se vérifie pas en regardant une image**. `docs/fv2-console-son.md` tient la place
+du son : ce qui est acquis, les quatre questions à trancher avant d'écrire, le tableau des quatre sorties de la
+liste à remplir case par case, et l'ordre des pas. Rien de sonore n'est écrit.
+
+L'étape 1 de ce plan a quand même été faite, et elle a retourné trois idées reçues : **le jeu n'envoie jamais
+`FF`** (sa commande de silence est `A0 00 01`), **l'écran titre n'a pas de musique à lui** (ce qu'on y entend
+est celle de la démonstration, laissée en route), et **l'écran de sélection pose la sienne** — donc remettre
+l'ancienne après un mode choisi est nuisible. Tout est dans `docs/fv2-console.md`.
+
+## Le vrai défaut était ailleurs, et la sonde l'a nommé
+
+« Après être sorti du menu, les deux démos sont buggées : personnages très sombres ou absents. » Quatre essais
+scriptés n'ont pas su le reproduire — les démos y étaient **identiques au bit près** avec et sans la liste.
+C'est en instrumentant **sa** partie (`VF3_PIC_LOG`) que la réponse est tombée en deux lignes : l'écran titre
+du jeu porte 0 modèle 3D, celui que Start demandait en portait 397.
+
+La demande de mode change ce qui est **affiché** et n'arrête pas ce qui **dessine**. De là, trois essais
+mesurés, deux impasses, et la bonne route — le redémarrage de la boucle — trouvée en regardant *comment le jeu
+lui-même sort d'un replay*. Aucun décompilateur : `vf3run --watch` nomme l'instruction qui écrit, et c'était
+assez.
+
+## Ce que la soirée confirme sur la méthode
+
+- **Quatre essais scriptés qui ne reproduisent rien ne prouvent rien** : ils ne couvraient pas le chemin qu'il
+  prenait, lui. Instrumenter sa partie a coûté dix minutes et a donné la réponse.
+- **Demander le levier au jeu plutôt que de l'inventer.** Les deux leviers qui marchent ici sont ceux que le
+  jeu s'envoie à lui-même. Les deux qui ont échoué étaient les nôtres.
+- **Ne pas lancer le jeu avant d'avoir dit quoi regarder.** Fait deux fois, reproché une fois. Depuis, les
+  lanceurs sont donnés, pas déclenchés.
 
 ---
 
