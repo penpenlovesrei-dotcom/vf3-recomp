@@ -167,6 +167,41 @@ route du jeu décrite juste au-dessus, qui n'est pas câblée.
 *Un essai négatif doit dire lequel des deux ; un essai positif doit dire jusqu'où il porte.*
 
 
+## Les tâches qui dessinent l'attraction — relevé du 2026-10-21
+
+Mesuré parce que demander l'écran titre laissait une scène sale derrière elle. Les blocs de tâches sont à
+`0x00700000`, **un tous les `0x100`** ; l'ordonnanceur lit deux mots de chacun soixante fois par seconde : le
+**bit 0 du premier mot** dit si la tâche tourne, le mot suivant est sa routine.
+
+Relevé aux trois moments de la boucle, par vidage de la RAM (`vf3run --ram-at`) :
+
+| bloc | écran titre | démonstration | replay |
+|---|---|---|---|
+| `0x00700200` | `00000000 00062144` | `00000000 00062144` | `00000001 00062390` |
+| `0x00700300` | `00000000 000621B0` | `00000000 000621B0` | `00000001 00062404` |
+| `0x00700400` | `00000000 00015A4C` | `00000000 00015A4C` | `00000001 00015A74` |
+| `0x00700500` | `00000000 0003F874` | `01018001 00040134` | `01010041 00040134` |
+
+**Sur l'écran titre, toutes sont éteintes.** La démonstration en fait tourner une, le replay quatre. Le reste
+de la région qui diffère est en flottants — des coordonnées, pas des blocs de tâches.
+
+`0x00700000` et `0x00700100` sont `entry1` et `entry2`, les tâches d'une partie ; forcer `entry1` fait dérailler
+le jeu (essayé en août). Elles sont éteintes dans l'attraction de toute façon.
+
+### Ce que ça donne, et où ça bute
+
+Éteindre le bit 0 avant de demander l'écran titre **range presque tout, depuis la démonstration** : l'écran
+titre passe de **397 modèles à 4-19**, contre 0 pour celui où le jeu arrive seul.
+
+**Mais pas depuis le replay** : relu dix images après la demande, les trois tâches `0x00700200`, `0x00700300`
+et `0x00700400` sont **rallumées par le jeu**. Un effacement écrit une fois ne tient pas, et le tenir est
+justement ce qu'il ne faut pas faire.
+
+Donc la vraie sortie n'est pas d'éteindre ces bits à la main : c'est de trouver **ce que le jeu exécute** quand
+son séquenceur installe l'écran titre, et qui arrête ces tâches pour de bon. C'est la prochaine mesure, et elle
+demande de décompiler cette branche du séquenceur.
+
+
 ## La liste des modes, et sa géométrie
 
 `assets/menu-console/title_list.png`, 709 x 897, RGBA, sept lignes : ARCADE, V.S., RANDOM, SURVIVAL, NETWORK,
