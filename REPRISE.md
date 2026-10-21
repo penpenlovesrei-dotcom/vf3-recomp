@@ -39,9 +39,7 @@ Start, mode console
                         partout ailleurs          ->  le jeu est prié de revenir à son écran titre
 ```
 
-Dans les deux cas l'appui est **retenu** : le jeu ne le voit pas. Et dans les deux cas **la musique s'arrête** —
-le mode est demandé dans le dos du séquenceur d'attraction, et c'est lui qui envoie le bloc de sons à chaque
-changement d'écran, donc sans ça la musique de la démonstration continue par-dessus l'écran titre.
+Dans les deux cas l'appui est **retenu** : le jeu ne le voit pas.
 
 - La décision est `console_play::take_start` (`src/host/console_play.h`), donc l'hôte et `vf3run` la prennent
   de la même façon, et `vf3run --modes --console-start N` la **mesure** sans fenêtre.
@@ -54,15 +52,9 @@ changement d'écran, donc sans ça la musique de la démonstration continue par-
   128 sur les trois canaux, et la même mesure sur les deux captures d'ici donne 0,500.
 - **On en ressort** : B à la manette (ou la touche de coup de pied, ou Retour arrière) referme la liste et
   laisse le jeu là où il était. A, Start, Entrée ou la touche de coup de poing choisissent.
-- **Les bruitages sont ceux du jeu**, joués par sa propre carte son : `A0 2E 23` à l'ouverture et au choix,
-  `A0 2E 26` au déplacement, `A0 2E 27` à l'annulation. Ce qu'il a fallu ajouter, c'est de **faire tourner la
-  carte son pendant que le jeu est gelé** (`Game::sound_only_frame`), **à la cadence du jeu** : la première
-  version demandait une fois par passe si une image de son était due, et comme une image fait 17,38 ms quand
-  une passe en fait 16,67, ça n'en produisait qu'une passe sur deux — trente à la seconde au lieu de 57,5,
-  la file se vidait, et ça s'entend comme un son qui ralentit et grésille. C'est un accumulateur maintenant.
-- **La musique s'arrête** sous la liste : `FF`, le reset MIDI, envoyé 80 images après l'ouverture parce que
-  `FF` relance un son encore en cours avant de le couper. Elle est remise **seulement si le joueur recule**,
-  20 images après la fermeture : sur un mode choisi, le jeu change d'écran et demande la sienne.
+- **La liste est muette**, et le son du jeu est en pause derrière elle, comme sous le menu Échap. Une première
+  version des bruitages a été posée puis **défaite le jour même** : voir le journal du 2026-10-21 et
+  `docs/fv2-console-son.md`, qui pose les questions auxquelles la prochaine devra répondre avant d'être écrite.
 - ARCADE et SURVIVAL agissent. Les cinq autres lignes sont dessinées et ne font rien : RANDOM et V.S.
   demandent le chrono de l'écran de sélection, jamais mesuré ici ; NETWORK, TRAINING et OPTIONS n'ont aucun
   levier dans ce portage.

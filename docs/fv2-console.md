@@ -171,7 +171,7 @@ is decided by one question -- is the game's OWN title screen on screen? -- and `
 it from the game's state machine (`docs/fv2-etats.md`), which is not the question `fv2_in_attract` answers.
 
     on the title screen   ->  the list of modes opens over that screen
-    anywhere else         ->  the game is asked for its title screen, and the music stops
+    anywhere else         ->  the game is asked for its title screen
 
 The decision is `console_play::take_start`, so the windowed host and `vf3run` make it the same way, and
 `vf3run --modes --console-start N` measures it without a window. What that measured, with the game's own mode
@@ -181,26 +181,6 @@ from the SEGA logo, from the demonstration, from the select screen and from insi
 **But a request does not end a game.** Read back afterwards, the entry1 task is still in its playing state
 (0x2A from a fight, 0x2D from the select screen). The title screen is back over a game that is still running,
 so `fv2_in_attract` stays false. Leaving a fight properly is the game's own road, and it is not wired.
-
-**The music stops on that road too**, and for a reason worth writing down: the mode is asked for behind the
-attract sequencer's back, and it is the sequencer that sends the sound block at every screen change -- FF,
-then the voices, then the segment's music. Asked directly, the game installs its title screen and the
-demonstration's music plays on over it. So the request carries the same FF the game itself puts at the head
-of each of those blocks.
-
-Measured in the windowed host, two runs of the same thing differing only in the press, with the loudest sample
-of every frame in the log:
-
-```
-image      no press   Start at 1450
- 1450          5906            5906      identical up to the press
- 1460          2193               0
- 1470         12327               0
- 1480          5570               0
- 1510          1613            7162      the title screen's own voice, which is its own
- 1600          8262               0
- average 1460-1700: 5871 against 674
-```
 
 The press is withheld whichever way it went, and the next one is not read until this one has been let go --
 otherwise the button that opened the list would still be down on the frame the list hands the game a Start of
@@ -232,101 +212,17 @@ same screen with its menu and without, give 255 -> 128 on all three channels (me
 outside the menu's own block). This port draws black at alpha 128 over the whole picture, under the list, and
 the same measurement on its own two captures gives 0.500.
 
-The game is frozen behind it, as behind this port's menu -- the title screen lasts 192 frames of its own, and
-a list that let the game walk on would end up over a demonstration. Up and down move; Start, the pad's A,
-Enter or the space bar choose; **the pad's B or Backspace back out** and leave the game where it was; and
-Escape still opens this port's menu, which closes the list. On the keyboard, choosing and backing out are the
-player's own punch and kick bindings, because that is where A and B sit on the pad in this port.
+The game is frozen behind it, as behind this port's menu, and its sound with it: the title screen lasts 192
+frames of its own, and a list that let the game walk on would end up over a demonstration. Up and down move;
+Start, the pad's A, Enter or the space bar choose; **the pad's B or Backspace back out** and leave the game
+where it was; and Escape still opens this port's menu, which closes the list. On the keyboard, choosing and
+backing out are the player's own punch and kick bindings, because that is where A and B sit on the pad here.
 
-### The sounds are the game's own, and the board goes on playing under a frozen game
-
-The list has the four sounds the owner's menu has, and they are the game's: Fighting Vipers 2 has no DSB, so
-everything goes through one port as MIDI, `A0 <bank> <index>`, bank `0x2E` being the effects.
-
-| | code | the game's own SOUND TEST |
-|---|---|---|
-| opening, and choosing | `A0 2E 23` | 388 `sd_sign_16` |
-| moving | `A0 2E 26` | 391 `sd_ketsu_00` |
-| backing out | `A0 2E 27` | 392 `sd_sonic00_11` |
-
-The reading of those codes is not ours and not a guess: the game itself sends `A0 2E 23` when sound 388 is
-played from its own SOUND TEST, and 388 - 0x23 = 391 - 0x26 = 392 - 0x27 = 353, which makes the three one rule.
-
-What this port had to add is that **the sound board is run while the game is frozen**. It is its own 68000 and
-its own SCSP, fed by the bytes the game writes and already run on a thread of its own, so it can be stepped
-when the PowerPC is not (`Game::sound_only_frame`): a frame's worth of sound on the game's own clock for as
-long as the list is up. Without it the list is mute and the music the title screen was playing stops dead in
-the middle of a note. The last sound, the one that closes the list, goes in with the game's own bytes instead,
-because the list's own sound frames stop with it.
-
-**The music stops while the list is up**, which is one byte: `FF`, the MIDI system reset. The game sends it
-itself at the head of every block of sound commands, so it is a driver built to be reset.
-
-It goes out LATE, 80 frames after the list opens, and the delay is not a matter of taste: `FF` restarts a
-sound still playing before cutting it, measured four ways on the real board, so the reset has to outlast the
-opening bip or the bip is heard twice. Sending it first stops the music at once but makes the bip wait for the
-driver to come back, which was measured and rejected.
-
-On the way out the music comes back, and **only when the player backs out**: on a mode chosen the game changes
-screen and asks for its own, and putting the old one back arrives too late and overwrites it -- the select
-screen inherited the demo's music, measured on the owner's build. Which music it was is the game's own
-business, so the host keeps the last `A0 10 nn` the game asked for and plays that one, 20 frames after the
-list closes so it starts after the closing sound rather than over it.
-
-### Measured, and the first measurement was not good enough
-
-`VF3_LIST_SOUND_LOG=1` says what went to the board, what the board made of it, and at what rate the board is
-being run. The run below opens the list on a title screen that comes **after a demonstration**
-(`tools/scripts/fv2-console-liste-musique.txt`), and that matters: the first title screen, the one right after
-the SEGA logo, has only the announcer's voice, which ends by itself -- a run that opens the list there cannot
-tell a music that was stopped from a music that had finished. The first attempt here did exactly that and
-proved nothing.
-
-```
-frame 1450: Start off the title screen (sub-state 11): the game asked for its title screen
-frame 1520: Start on the title screen: the console's list of modes is up
-list sound: A0 2E 23   peak 5926   (1 frame)        the opening bip, over the demo's music
-list sound: -          peak 4871   (60 frames in 1.03 s, 58.2 a second)
-list sound: FF         peak 6201   (80 frames in 1.38 s, 58.0 a second)   the reset goes out
-list sound: -          peak    0   (120 frames in 2.08 s, 57.7 a second)  and the music is gone
-list sound: -          peak    0   (180 frames in 3.11 s, 57.8 a second)  ... and stays gone
-52.0 s: key Down sent
-list sound: A0 2E 26   peak    0   (740 frames in 12.85 s, 57.6 a second)
-56.0 s: key C sent
-the console's list, closing: A0 2E 27 goes in with the game's own bytes
-the console's list: backed out
-the console's list: the music the game was playing put back (A0 10 07)
-```
-
-`A0 10 07` is one of the two the owner's own MIDI log had going past in the attract loop, which is a second
-reading of the same thing from a different side.
-
-**And the rate is the point of the second column.** The board has to be run at the game's own 57.52 frames a
-second; the first version asked once a pass whether a frame's time had passed, and since a frame is 17.38 ms
-and a pass is a refresh at 16.67, that made a frame every OTHER pass -- thirty a second, the queue emptying,
-and that is what a player hears as the sound slowing down and crackling. It is an accumulator now, and it
-catches up: 57.5 to 57.8 a second measured over nineteen seconds, with the device's queue holding between 4
-and 9.5 kB (a frame is 3 kB).
-
-Measured, with `VF3_LIST_SOUND_LOG=1` saying what went to the board and what the board made of it, on a run
-driven by `VF3_KEYS_S`:
-
-```
-list sound: A0 2E 23     3066 samples, peak 4069      the list opens
-list sound: -            1534 samples, peak 0         ... silence, frame after frame
-40.0 s: key Down sent
-list sound: A0 2E 26     1532 samples, peak 0         the move goes out
-list sound: -            1534 samples, peak 2880      and the board answers, six frames of it
-list sound: -            1532 samples, peak 4417
-list sound: -            1534 samples, peak 4289
-list sound: -            1534 samples, peak 3110
-list sound: -            1532 samples, peak 678
-list sound: -            1534 samples, peak 279
-list sound: -            1532 samples, peak 0
-42.0 s: key C sent
-the console's list, closing: A0 2E 27 goes in with the game's own bytes
-the console's list: backed out
-```
+**The list has no sounds of its own, and that is on purpose for now.** A first attempt at them was taken out
+the same day it was written (see the journal in REPRISE.md): it ran the sound board under a frozen game, sent
+the MIDI reset behind the game's back and put the music back by hand, and it was put together in three patches
+on three reports rather than from a plan. What a second attempt has to answer, before a line of it is written,
+is in `docs/fv2-console-son.md`.
 
 ARCADE and SURVIVAL act; the five other lines are drawn and do nothing yet, and leave the list up rather than
 pretending something happened. RANDOM and V.S. want the select screen's own timing, which this port has not
