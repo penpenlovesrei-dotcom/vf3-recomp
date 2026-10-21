@@ -1905,8 +1905,10 @@ int main(int argc, char **argv)
 		if (static const bool pic_log = getenv("VF3_PIC_LOG") != nullptr; pic_log) {   // (tests: each picture's makings)
 			size_t models = 0;
 			for (auto &v : s->viewports) models += v.models.size();
-			fprintf(stderr, "pic f %llu t %.2f blended %d models %zu vps %zu full %d sky %d side %08x blank %d\n", (unsigned long long)game_frame, t,
-			        int(s == &between), models, s->viewports.size(), int(game.view.full_3d), int(sky_wide), side_colour[0], int(s->blank));
+			fprintf(stderr, "pic f %llu t %.2f blended %d models %zu vps %zu full %d sky %d side %08x blank %d mode %d sub %d\n",
+			        (unsigned long long)game_frame, t,
+			        int(s == &between), models, s->viewports.size(), int(game.view.full_3d), int(sky_wide), side_colour[0], int(s->blank),
+			        board.fv2_mode(), board.fv2_submode());
 		}
 		if (new_2d) {
 			// A stage: the 3D full width and the 2D over it clear of the 4:3 edges (a fight's HUD never reaches them)
