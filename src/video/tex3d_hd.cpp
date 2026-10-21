@@ -121,7 +121,7 @@ bool Tex3dHd::dump_to(const std::string &dir, std::string &error)
 	const std::string csv = dir + "/textures.csv";
 	const bool fresh = !std::filesystem::exists(csv, ec);
 	if (FILE *f = fopen(csv.c_str(), "a")) {
-		if (fresh) fprintf(f, "name,hash,width,height,format,page,x,y\n");
+		if (fresh) fprintf(f, "name,hash,width,height,format,page,x,y,alpha\n");
 		fclose(f);
 	}
 	return true;
@@ -242,7 +242,7 @@ bool Tex3dHd::place(const std::vector<uint8_t> &rgba, int w, int h, int format, 
 	return true;
 }
 
-bool Tex3dHd::find(const uint16_t *tex, const TexPlace &native, bool translator_map, TexPlace &out)
+bool Tex3dHd::find(const uint16_t *tex, const TexPlace &native, bool translator_map, AlphaUse alpha, TexPlace &out)
 {
 	if (!tex || native.w <= 0 || native.h <= 0)
 		return false;
@@ -265,7 +265,7 @@ bool Tex3dHd::find(const uint16_t *tex, const TexPlace &native, bool translator_
 		// anywhere on the screen. Never matched, never dumped.
 		st.flat_refused++;
 	} else if (dump_on) {
-		dump_one(tex, native, hash);
+		dump_one(tex, native, hash, alpha);
 	}
 	if (!flat) {
 		const Key k = { hash, native.w, native.h, native.format };
@@ -285,13 +285,23 @@ bool Tex3dHd::find(const uint16_t *tex, const TexPlace &native, bool translator_
 	return s.hit;
 }
 
-void Tex3dHd::dump_one(const uint16_t *tex, const TexPlace &native, uint64_t hash)
+void Tex3dHd::dump_one(const uint16_t *tex, const TexPlace &native, uint64_t hash, AlphaUse alpha)
 {
+	static const char *const alpha_name[] = { "opaque", "contour", "graded" };
 	char name[64];
 	snprintf(name, sizeof(name), "%016llx_%dx%d_f%d.png", (unsigned long long)hash, native.w, native.h, native.format);
 	// written once: already here from this run or an earlier one
-	if (!dumped_names.insert(name).second)
+	if (!dumped_names.insert(name).second) {
+		// The same texels drawn again. If the polygon uses their alpha differently this time, the one file on
+		// disk cannot carry both, so say so instead of leaving it to be found in the picture.
+		if (auto it = dumped_alpha.find(name); it != dumped_alpha.end() && it->second != alpha) {
+			fprintf(stderr, "3D texture dump: %s drawn both %s and %s; the file keeps %s\n", name,
+					alpha_name[int(it->second)], alpha_name[int(alpha)], alpha_name[int(it->second)]);
+			it->second = alpha;   // said once per change, not once per picture
+		}
 		return;
+	}
+	dumped_alpha.emplace(name, alpha);
 	const std::string path = dump_dir + "/" + name;
 	std::error_code ec;
 	if (!std::filesystem::exists(path, ec)) {
@@ -301,6 +311,13 @@ void Tex3dHd::dump_one(const uint16_t *tex, const TexPlace &native, uint64_t has
 			for (int x = 0; x < native.w; x++) {
 				uint8_t c[4];
 				decode_rgba(native.format, row[(native.x + x) & (PAGE_W - 1)], c);
+				// The polygon's use of the alpha, not the texel's: see the header. Opaque is the common case and
+				// the one that was wrong -- a texel's top bit that no polygon reads is not transparency.
+				switch (alpha) {
+				case AlphaUse::Opaque:  c[3] = 0xFF; break;
+				case AlphaUse::Contour: c[3] = c[3] < 32 ? 0x00 : 0xFF; break;   // the rasteriser's own threshold
+				case AlphaUse::Graded:  break;
+				}
 				px[size_t(y) * native.w + x] = uint32_t(c[0]) | uint32_t(c[1]) << 8 | uint32_t(c[2]) << 16 | uint32_t(c[3]) << 24;
 			}
 		}
@@ -308,8 +325,8 @@ void Tex3dHd::dump_one(const uint16_t *tex, const TexPlace &native, uint64_t has
 	}
 	st.dumped++;
 	if (FILE *f = fopen((dump_dir + "/textures.csv").c_str(), "a")) {
-		fprintf(f, "%s,%016llx,%d,%d,%d,%d,%d,%d\n", name, (unsigned long long)hash, native.w, native.h,
-				native.format, native.page, native.x, native.y);
+		fprintf(f, "%s,%016llx,%d,%d,%d,%d,%d,%d,%s\n", name, (unsigned long long)hash, native.w, native.h,
+				native.format, native.page, native.x, native.y, alpha_name[int(alpha)]);
 		fclose(f);
 	}
 }

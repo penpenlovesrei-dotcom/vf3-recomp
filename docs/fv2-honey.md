@@ -307,10 +307,34 @@ reset. **The CPU ladder does not count.** The gate did its job.
   settled either -- but the code says it cannot matter: the handler reads both conditions at the same instant,
   when a round loads, and nothing remembers the order. "During those matches, or on the thirty-first" is
   therefore two descriptions of one thing.
-- `*1P COLOR` (`0x007005B9`) was swept as a possible second costume and is not one. Poked to 1 or 3 during a
+- `*1P COLOR` (`0x007005B9`) **is the costume colour**, but it is read when a round loads and not after. Poked to 1 or 3 *during* a
   fight it only repaints the name plate (382 and 816 pixels, all inside the plate); poked to 2 the CPU stops
   with an invalid instruction at `0x00020908`; poked to 4 the whole screen changes. None of that was run down,
-  and none of it touches the model.
+  and none of it touches the model -- which is the whole point: by then the model and its textures are already
+  loaded, so a poke cannot reach them. **Chosen at the select screen it does reach them.** One press of **up**
+  on the fighter's cell before confirming takes the byte from 0 to 1, measured 2026-10-21 at frame 3300 of
+  `tools/scripts/fv2-honey-tex-c2.txt`. START does *not* do this: it confirms nothing at all, the select
+  screen's counter runs down and the game takes the cell under the cursor by itself.
+
+  **Two values, not four.** The byte toggles: up once gives 1, up twice gives 0 again, up three times 1; down
+  behaves the same. The confirming button makes no difference either -- punch, kick and guard all give 0 without
+  up and 1 with it -- and neither does confirming with two or three buttons at once, nor with escape alone,
+  nor holding a button through the selection (the held button confirms by itself). Twenty-six runs, each read
+  at frame 3300. `tools/fv2/mk_couleurs.py` writes the scripts.
+
+  This matters because the Dreamcast port has **four** colour sets for Kuhn -- grey and gold, each with an
+  alternative -- obtained there by holding R while selecting. Nothing in this arcade build reaches a third
+  one. Measured on the Dreamcast disc's own files, Kuhn's four sets are four separate MDL entries (48 to 51)
+  over one and the same model, so the port carries art this build does not; whether the build can select it
+  at all is not settled. The second player was never brought in here, and distinguishing two players who
+  pick the same fighter is the usual job of an alternative colour -- that is where to look next.
+
+  What the two colours actually are, captured with `extraire-textures-honey.cmd` (three runs, the third being
+  another fighter to subtract the stage, the opponent and the effects): **53 textures** for colour 0 and
+  **51** for colour 1. Of the 48 places in texture memory the two runs have in common, **29 hold a different
+  image** and 19 hold the same one. Honey's hair and her hair-wings go from brown to gold, her dress from navy
+  to dark purple, the heart on her chest from red to blue; the white feather wing, the lace, the stitching and
+  the greyscale pieces the engine tints at draw time are byte-identical in both.
 
 
 ## Reaching it from this port

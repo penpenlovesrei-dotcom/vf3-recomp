@@ -38,6 +38,22 @@
 //
 // A texture of one single texel value is refused, in the dump and at the match: its hash is the hash of every
 // flat texture of that size, so a pack entry for one would replace anything flat anywhere on the screen.
+//
+// **The alpha a dumped image carries is the polygon's, not the texel's.** A texel's top bit (T1RGB5) or its
+// alpha nibble is only transparency when the polygon asks for it, and src/video/r3d_raster.cpp says so in three
+// lines at the end of its texel fetch:
+//
+//     if (mesh.alpha_test && t.a < 32.0f / 255.0f) continue;   // a cut-out: the texel is dropped
+//     if (mesh.texture_alpha) { ... }                          // the alpha grades the blend
+//     else if (!mesh.alpha_test) { t.a = 1; }                  // otherwise FORCED OPAQUE
+//
+// Dumping the decoded alpha regardless, as this did until 2026-10-21, writes transparency the screen never had.
+// In Fighting Vipers 2 it shows as a one-pixel comb -- every other column, sometimes every other row, fully
+// transparent -- because the game leaves the T bit alternating in texture memory where no polygon reads it.
+// Supermodel has the same trouble in its own sheet dump and answers it by writing the whole of texture memory
+// twice, `textures_t1rgb5_contour.bmp` and `textures_t1rgb5_opaque.bmp` (Src/Model3/Real3D.cpp), leaving the
+// choice to the eye. Here the choice is not needed: the polygon that drew the texture is in hand, so the dump
+// writes the alpha that polygon used and says which in textures.csv.
 #pragma once
 #include <cstdint>
 #include <string>
@@ -53,6 +69,16 @@ struct TexPlace
 {
 	int page = 0, x = 0, y = 0, w = 0, h = 0, format = 0;
 	bool hd = false;
+};
+
+// What the polygon does with the texel's alpha, which is what the dumped image must carry. Read off the three
+// lines of r3d_raster.cpp quoted above, in their order: the contour test comes first, so a polygon that has both
+// counts as Contour.
+enum class AlphaUse
+{
+	Opaque,    // neither flag: the rasteriser forces t.a = 1
+	Contour,   // alpha_test: a one-bit cut-out, the texel dropped below 32/255
+	Graded,    // texture_alpha: the texel's own alpha grades the blend
 };
 
 class Tex3dHd
@@ -72,7 +98,7 @@ public:
 	// The replacement for a texture a polygon is about to draw, or false for "the native one stands". tex: the
 	// board's texture memory (2048 x 2048 words). Called once per polygon per picture, from Raster::resolve_hd,
 	// after new_picture().
-	bool find(const uint16_t *tex, const TexPlace &native, bool translator_map, TexPlace &out);
+	bool find(const uint16_t *tex, const TexPlace &native, bool translator_map, AlphaUse alpha, TexPlace &out);
 	// Forgets what was worked out for the picture before. The content of a place in texture memory is hashed
 	// again every picture, because the game writes over its texture memory as it goes and nothing here is told
 	// when it does; within one picture the same place is hashed once however many polygons read it.
@@ -120,10 +146,14 @@ private:
 	bool dump_on = false;
 	std::string dump_dir;
 	std::unordered_set<std::string> dumped_names;
+	// What alpha each dumped image was written with. The image is written the first time the texture is drawn;
+	// if a later polygon draws the same texels with a different use of the alpha, the file cannot be both and a
+	// line is printed rather than the picture being quietly wrong.
+	std::unordered_map<std::string, AlphaUse> dumped_alpha;
 	Stats st;
 
 	bool place(const std::vector<uint8_t> &rgba, int w, int h, int format, TexPlace &out);
-	void dump_one(const uint16_t *tex, const TexPlace &native, uint64_t hash);
+	void dump_one(const uint16_t *tex, const TexPlace &native, uint64_t hash, AlphaUse alpha);
 };
 
 // The one instance: the option is a whole-run setting, and both rasterisers and the host read it

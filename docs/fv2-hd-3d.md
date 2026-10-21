@@ -109,6 +109,44 @@ content, as `<hash>_<width>x<height>_f<format>.png` -- RGBA8, so transparency su
 `textures.csv` beside them says where each was found; it is **added to**, never started again, so two sessions of
 capture describe every PNG in the folder.
 
+### The alpha an image carries is the polygon's, not the texel's
+
+A texel's top bit (T1RGB5) or its alpha nibble is **not** transparency on its own. Whether it is, is the polygon's
+business, and `src/video/r3d_raster.cpp` settles it in three lines at the end of the texel fetch:
+
+```cpp
+if (mesh.alpha_test && t.a < 32.0f / 255.0f) continue;   // a cut-out: the texel is dropped
+if (mesh.texture_alpha) { ... }                          // the alpha grades the blend
+else if (!mesh.alpha_test) { t.a = 1; }                  // otherwise FORCED OPAQUE
+```
+
+Until 2026-10-21 the dump wrote the decoded alpha regardless, so it wrote transparency the screen never had. In
+Fighting Vipers 2 it showed as a **one-pixel comb** -- every other column, sometimes every other row, fully
+transparent -- because the game leaves the T bit alternating in texture memory wherever no polygon reads it.
+Over Honey's costume, **42 of 53** images had at least one wholly transparent row or column; after the fix, **10**,
+and every one of those ten is a polygon that really does use its alpha.
+
+Supermodel has the same trouble in its own sheet dump and answers it by writing the whole of texture memory
+twice -- `textures_t1rgb5_contour.bmp` and `textures_t1rgb5_opaque.bmp` (`Src/Model3/Real3D.cpp`, `DumpTextures`) --
+leaving the choice to the eye. Here the choice is not needed: the polygon that drew the texture is in hand, so
+the dump writes the alpha that polygon used and says which in a ninth CSV column:
+
+| `alpha` | the polygon | what the image carries |
+| --- | --- | --- |
+| `opaque` | neither flag | alpha 255 everywhere |
+| `contour` | `alpha_test` | a cut-out, 0 or 255 at the rasteriser's own 32/255 threshold |
+| `graded` | `texture_alpha` | the decoded alpha, untouched |
+
+Measured over one Honey capture: **145 opaque, 21 graded, 7 contour**. The identity of a texture does not move --
+the hash is over the raw 16-bit texels, not over the image written -- so a pack made before the fix still matches.
+
+One texture can be drawn by two polygons that disagree. The file is written the first time it is drawn and cannot
+carry both, so a line is printed rather than the picture being quietly wrong:
+
+```
+3D texture dump: <name> drawn both opaque and contour; the file keeps opaque
+```
+
 **What is not drawn is not captured** -- and in this port, what is not *drawn* is not even the same as what the
 game puts on screen, because the headless runner renders only the frames its script asks a picture for, while
 the windowed host renders every picture.

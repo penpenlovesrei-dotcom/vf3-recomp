@@ -32,3 +32,9 @@ assets-hd/
 
 # Les images du menu console : elles viennent en partie du jeu, donc hors depot.
 /assets/menu-console/
+
+# Les captures de textures, horodatees : images du jeu, hors depot.
+/captures-textures-honey/
+
+# Le dump complet des textures : images du jeu, hors depot.
+/Textures3D-dump*/

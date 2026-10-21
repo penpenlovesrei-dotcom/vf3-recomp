@@ -1,7 +1,12 @@
 # Fighting Vipers 2: coin, start, walk the cursor to HONEY (cell 8) and fight the CPU.
 # Two coins because this port does not know this game's free play; one press of Start then
 # eight presses of right, which is where HONEY sits -- measured, see docs/fv2-honey.md.
-# The attack button confirms the choice; Start would pick the second costume.
+# The attack button confirms the choice. Start does NOT pick a second costume:
+# measured 2026-10-21, it confirms nothing at all -- the select screen's counter
+# runs down (14, 13, 11, 03 ...) and the game takes the cell under the cursor by
+# itself. Start is the second player's join, as the screen says. The second colour
+# is one press of UP on the cell before confirming: *1P COLOR 0x007005B9 reads 0
+# without it and 1 with it.
 1900 press p1.coin
 1930 press p1.coin
 1960 press p1.start

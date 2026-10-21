@@ -166,7 +166,12 @@ void Raster::resolve_hd(const uint16_t *tex_ram)
 		native.w = mesh.width;
 		native.h = mesh.height;
 		native.format = mesh.format;
-		hd3d().find(tex_ram, native, mesh.translator_map, hd[i]);
+		// What this polygon does with the texel's alpha, in the order the texel fetch below tests it: the contour
+		// test first, so a polygon carrying both flags counts as a cut-out. A dumped image carries this alpha and
+		// not the texel's, which is the only way the dump shows what the screen shows.
+		const AlphaUse alpha = mesh.alpha_test ? AlphaUse::Contour
+			: mesh.texture_alpha ? AlphaUse::Graded : AlphaUse::Opaque;
+		hd3d().find(tex_ram, native, mesh.translator_map, alpha, hd[i]);
 	}
 }
 
