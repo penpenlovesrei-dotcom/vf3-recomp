@@ -3146,6 +3146,13 @@ int main(int argc, char **argv)
 			}
 			if (audio && !game.audio.empty() && !ff && rec.dir.empty())   // (recording: to its file only, not queued for hours)
 				SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
+			// (tests: the loudest sample this frame made, so a run with no ears can say when the game went
+			// quiet -- the same hook as the list's own, on this side of the freeze)
+			if (static const bool say = getenv("VF3_LIST_SOUND_LOG") != nullptr; say) {
+				int peak = 0;
+				for (int16_t s : game.audio) peak = std::max(peak, std::abs(int(s)));
+				fprintf(stderr, "game sound: frame %llu, peak %d\n", (unsigned long long)game_frame, peak);
+			}
 			game.audio.clear();
 			for (auto &k : test_keys) if (k.second == game_frame) { send_key(k.first); window_shots.push_back(game_frame + 3); }
 			if (quit_after >= 0 && int64_t(game_frame) >= quit_after) running = false;

@@ -171,7 +171,7 @@ is decided by one question -- is the game's OWN title screen on screen? -- and `
 it from the game's state machine (`docs/fv2-etats.md`), which is not the question `fv2_in_attract` answers.
 
     on the title screen   ->  the list of modes opens over that screen
-    anywhere else         ->  the game is asked for its title screen
+    anywhere else         ->  the game is asked for its title screen, and the music stops
 
 The decision is `console_play::take_start`, so the windowed host and `vf3run` make it the same way, and
 `vf3run --modes --console-start N` measures it without a window. What that measured, with the game's own mode
@@ -181,6 +181,26 @@ from the SEGA logo, from the demonstration, from the select screen and from insi
 **But a request does not end a game.** Read back afterwards, the entry1 task is still in its playing state
 (0x2A from a fight, 0x2D from the select screen). The title screen is back over a game that is still running,
 so `fv2_in_attract` stays false. Leaving a fight properly is the game's own road, and it is not wired.
+
+**The music stops on that road too**, and for a reason worth writing down: the mode is asked for behind the
+attract sequencer's back, and it is the sequencer that sends the sound block at every screen change -- FF,
+then the voices, then the segment's music. Asked directly, the game installs its title screen and the
+demonstration's music plays on over it. So the request carries the same FF the game itself puts at the head
+of each of those blocks.
+
+Measured in the windowed host, two runs of the same thing differing only in the press, with the loudest sample
+of every frame in the log:
+
+```
+image      no press   Start at 1450
+ 1450          5906            5906      identical up to the press
+ 1460          2193               0
+ 1470         12327               0
+ 1480          5570               0
+ 1510          1613            7162      the title screen's own voice, which is its own
+ 1600          8262               0
+ average 1460-1700: 5871 against 674
+```
 
 The press is withheld whichever way it went, and the next one is not read until this one has been let go --
 otherwise the button that opened the list would still be down on the frame the list hands the game a Start of

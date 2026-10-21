@@ -61,7 +61,7 @@ struct console_play
 	// rankings alike, and all but one of those are the wrong screen for a list of modes.
 	//
 	//   on the title screen -> the list of modes opens over it (the caller draws it; nothing here does);
-	//   anywhere else       -> the game is asked for its own title screen.
+	//   anywhere else       -> the game is asked for its own title screen, and the music stops.
 	//
 	// The press itself never reaches the game, either way, and the next one is not read until this one has been
 	// let go: the button that opened the list would otherwise still be down on the frame the list hands the game
@@ -89,7 +89,15 @@ struct console_play
 		if (swallow_start) { if (!pressed) swallow_start = false; }   // (held back until it has been let go)
 		else if (pressed && !start_was) {
 			what = b.fv2_on_title() ? start_for::list : start_for::title;
-			if (what == start_for::title) b.fv2_request_title();
+			if (what == start_for::title) {
+				b.fv2_request_title();
+				// And the music the game was playing stops with it. The mode is asked for behind the attract
+				// sequencer's back, and it is the sequencer that sends the sound block at each screen change
+				// -- FF, then the voices and the segment's music -- so without this the demonstration's music
+				// plays on over a title screen that has nothing to do with it. FF is the MIDI system reset,
+				// the game's own first byte in every one of those blocks.
+				b.midi.push_back(0xFF);
+			}
 			swallow_start = true;
 		}
 		start_was = pressed;

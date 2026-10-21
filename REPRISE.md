@@ -39,7 +39,9 @@ Start, mode console
                         partout ailleurs          ->  le jeu est prié de revenir à son écran titre
 ```
 
-Dans les deux cas l'appui est **retenu** : le jeu ne le voit pas.
+Dans les deux cas l'appui est **retenu** : le jeu ne le voit pas. Et dans les deux cas **la musique s'arrête** —
+le mode est demandé dans le dos du séquenceur d'attraction, et c'est lui qui envoie le bloc de sons à chaque
+changement d'écran, donc sans ça la musique de la démonstration continue par-dessus l'écran titre.
 
 - La décision est `console_play::take_start` (`src/host/console_play.h`), donc l'hôte et `vf3run` la prennent
   de la même façon, et `vf3run --modes --console-start N` la **mesure** sans fenêtre.
