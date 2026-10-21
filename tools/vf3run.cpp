@@ -78,6 +78,15 @@ int main(int argc, char **argv)
 	std::string console_mode;
 	long console_at = -1;
 	console_play cplay;
+	// --console-start N: one press of Start at frame N, put through the same two-way decision the windowed host
+	// makes (console_play::take_start) -- the list of modes on the game's own title screen, a request for that
+	// title screen anywhere else. It is here so that decision can be MEASURED with --modes instead of being
+	// argued about: the log says which way it went, and the game's own mode says what came of it.
+	// Several are allowed. Nothing is drawn (there is no window): where the host would put the list up over a
+	// frozen title screen, this says so and lets the game run on. With this on, a script's own Start is taken
+	// the same way the host takes the player's; the injections of --console-mode are not, which is how a mode
+	// chosen from the list hands the game a Start of its own.
+	std::vector<long> console_start;
 	std::string hd_dump, hd_pack;
 	int tile_scale = 1;   // HD 2D: 1 is the hardware's own, and then nothing of it runs (src/video/tilehd.h)
 	std::string tile_pack_dir, tile_dump_dir;
@@ -94,6 +103,7 @@ int main(int argc, char **argv)
 		else if (a == "--full-roster") full_roster = true;
 		else if (a == "--console-mode" && i + 1 < argc) console_mode = argv[++i];
 		else if (a == "--console-at" && i + 1 < argc) console_at = strtol(argv[++i], nullptr, 10);
+		else if (a == "--console-start" && i + 1 < argc) console_start.push_back(strtol(argv[++i], nullptr, 10));
 		else if (a == "--portraits" && i + 1 < argc) portraits = argv[++i];
 		else if (a == "--hd-dump" && i + 1 < argc) hd_dump = argv[++i];
 		else if (a == "--hd-pack" && i + 1 < argc) hd_pack = argv[++i];
@@ -263,6 +273,26 @@ int main(int argc, char **argv)
 		if (frames >= 0 && f >= uint64_t(frames))
 			break;
 		InputScript::Actions act = script.step(board.controls, f);
+		// --console-start: the player's Start, taken by the console way before the game ever sees it. A press
+		// lasts 6 frames here, as the host's own does, so the release is seen too -- the decision works on the
+		// edge, and the next press is not read until this one has been let go.
+		if (!console_start.empty()) {
+			cplay.on = true;
+			bool pressed = board.controls.start[0] || board.controls.start[1];
+			for (long n : console_start) if (long(f) >= n && long(f) < n + 6) pressed = true;
+			switch (cplay.take_start(board, pressed, false)) {
+			case console_play::start_for::list:
+				if (!quiet) printf("frame %llu: Start on the title screen -> the list of modes (mode %d, sub-state %d); nothing is drawn here\n",
+								   (unsigned long long)f, board.fv2_mode(), board.fv2_submode());
+				break;
+			case console_play::start_for::title:
+				if (!quiet) printf("frame %llu: Start off the title screen (mode %d, sub-state %d) -> the game asked for its title screen\n",
+								   (unsigned long long)f, board.fv2_mode(), board.fv2_submode());
+				break;
+			case console_play::start_for::none: break;
+			}
+			if (cplay.swallow_start) board.controls.start[0] = board.controls.start[1] = false;
+		}
 		// --console-mode: the console way's mode machinery, driven straight instead of from a menu. The choice
 		// is made once, at --console-at, and after that it is stepped every frame like the host does it.
 		if (!console_mode.empty()) {

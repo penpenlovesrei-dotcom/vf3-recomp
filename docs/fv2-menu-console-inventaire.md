@@ -133,3 +133,13 @@ covers the screen with its own image and opens on Start.
 That is the only part with no prior art to lift here, and it depends on nothing in section 7. It is also what
 makes the rest visible -- including the fact that the game gives no feedback at all for which costume is
 selected, its own two included.
+
+**Done the 2026-10-21**, and the sentence above needs one correction: there WAS prior art, in the owner's own
+files rather than in this port -- the geometry in `GameFV2.h`, and, in `MenuOverlay.cpp`, the answer to "one
+version of each line exists": the chosen line blinks and the others stay at full. The first attempt here dimmed
+the six others instead, which was an invention where a decision already existed.
+
+`src/host/fv2_mode_list.h` draws the seven lines over the picture the game made, on its own title screen, and
+goes nowhere near `game_menu`. Start opens it there and asks for the title screen anywhere else
+(`console_play::take_start`). What that cost, what it measured and what it did not close is in
+`docs/fv2-console.md` and `docs/fv2-etats.md`.

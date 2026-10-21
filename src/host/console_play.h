@@ -53,6 +53,49 @@ struct console_play
 	void choose_survival(m3::Model3 &b) { survival = ARMED; armed_frames = 0; survival_was = b.fv2_survival(); choose_arcade(); }
 	void choose_versus() { inject_start = 8; inject_start_p2 = 0; swallow_start = true; }
 
+	// ---- what Start does, and it is two jobs told apart by one question ----
+	// Is the game's own title screen on screen? Model3::fv2_on_title answers it: the mode is ADV and the
+	// sub-state is FV2_TITLE_INT or FV2_TITLE_DSP, measured by freezing the game one sub-state at a time and
+	// looking at the screen (docs/fv2-etats.md). That is NOT the question fv2_in_attract above answers -- "is a
+	// game running" is true of the warning, the SEGA logo, the title, the presentations, the demos and the
+	// rankings alike, and all but one of those are the wrong screen for a list of modes.
+	//
+	//   on the title screen -> the list of modes opens over it (the caller draws it; nothing here does);
+	//   anywhere else       -> the game is asked for its own title screen.
+	//
+	// The press itself never reaches the game, either way, and the next one is not read until this one has been
+	// let go: the button that opened the list would otherwise still be down on the frame the list hands the game
+	// a Start of its own, and would pick a fighter the instant the select screen appeared.
+	//
+	// What "asked" means, and why it is not forced: the dispatcher at 0x0000ABC4 copies MODE_REQUEST into the
+	// mode before it jumps, so the request is written ONCE and never held -- holding one is what broke the
+	// select screen and its countdown, twice. It takes two frames.
+	//
+	// Where it works, and how far: measured the 2026-10-21 with vf3run --modes --console-start, one press at a
+	// time. The title screen comes back ONE frame later from the SEGA logo, from the demonstration, from the
+	// select screen and from inside a fight alike -- the last three had never been tried, and the attract
+	// sequencer's own two levers, which do nothing from a fight, had been taken to speak for this one as well.
+	//
+	// But a request moves the SCREEN, not the game: read back afterwards the entry1 task is still in its
+	// playing state (0x2A from a fight, 0x2D from the select screen), so the title screen comes back over a
+	// game that is still running and fv2_in_attract stays false. Leaving a fight properly is the game's own
+	// road -- finish the match off screen -- which is written down in docs/fv2-etats.md and is not wired here.
+	enum class start_for { none, list, title };
+	start_for take_start(m3::Model3 &b, bool pressed, bool list_open)
+	{
+		// While the list is up it is the list's button, not the game's: withheld whatever it does there.
+		if (list_open) { start_was = pressed; swallow_start = true; return start_for::none; }
+		start_for what = start_for::none;
+		if (swallow_start) { if (!pressed) swallow_start = false; }   // (held back until it has been let go)
+		else if (pressed && !start_was) {
+			what = b.fv2_on_title() ? start_for::list : start_for::title;
+			if (what == start_for::title) b.fv2_request_title();
+			swallow_start = true;
+		}
+		start_was = pressed;
+		return what;
+	}
+
 	// Once a frame, before the game runs. Returns what to hand the game on top of the player's own controls.
 	void step(m3::Model3 &b, m3::Controls &out)
 	{

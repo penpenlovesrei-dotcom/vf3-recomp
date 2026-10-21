@@ -1,12 +1,22 @@
 @echo off
-rem Fighting Vipers 2 a la maniere d'une console : le menu des modes s'ouvre
-rem avec Start pendant la demonstration, comme sur la version Dreamcast, au
-rem lieu de tomber directement sur la route fixe de l'arcade.
+rem Fighting Vipers 2 a la maniere d'une console : Start ouvre la liste des sept
+rem modes sur l'ecran titre du jeu, comme sur la version Dreamcast, au lieu de
+rem tomber directement sur la route fixe de l'arcade.
 rem Voir docs\fv2-console.md.
+rem
+rem UNE SEULE TOUCHE, DEUX COMPORTEMENTS :
+rem   sur l'ecran titre du jeu  -> Start ouvre la liste des sept modes
+rem   partout ailleurs          -> Start ramene le jeu a son ecran titre
+rem Dans les deux cas le jeu ne voit pas l'appui.
+rem
+rem Dans la liste : haut et bas deplacent, Start (ou Entree) choisit, et la
+rem ligne choisie clignote. ARCADE et SURVIVAL lancent la partie ; les cinq
+rem autres lignes sont dessinees et ne font encore rien. Echap ouvre toujours le
+rem menu de reglages de ce portage, et referme la liste au passage.
 rem
 rem PAS BESOIN DE PIECE : le mode console est en FREE PLAY, comme une console.
 rem Le portage pose le reglage COIN/CREDIT du jeu lui-meme au demarrage (un
-rem octet de la NVRAM, voir docs\fv2-console.md). Le menu, lui, ne touche
+rem octet de la NVRAM, voir docs\fv2-console.md). La liste, elle, ne touche
 rem jamais au compteur de credits : choisir un mode donne au jeu un vrai appui
 rem sur Start, et c'est le jeu qui decide de ce que ca coute -- rien, ici.
 rem
@@ -14,9 +24,8 @@ rem     1   Start joueur 1            2   Start joueur 2
 rem     5   une piece joueur 1        6   une piece joueur 2
 rem     F2  Test                      9   Service
 rem
-rem Un appui sur 1 pendant la demonstration ouvre le menu des modes. ARCADE ou
-rem SURVIVAL lancent la partie. Le menu est aussi sous Echap, ligne
-rem "Fighting Vipers 2".
+rem Les memes choix sont aussi sous Echap, ligne "Fighting Vipers 2" : c'est une
+rem page de reglages de ce portage, et ce n'est pas la liste.
 rem
 rem Le reglage est retenu dans settings.ini (console_mode = 1). Pour revenir
 rem au mode PC : lancer jouer-fv2.cmd une fois avec --pc.
@@ -30,7 +39,7 @@ set "VF3_DATA=%~dp0"
 if "%VF3_DATA:~-1%"=="\" set "VF3_DATA=%VF3_DATA:~0,-1%"
 cd /d "%~dp0"
 if not exist "build\bin\vf3.exe" (
-  echo build\bin\vf3.exe manque : installer SDL 3 puis lancer construire.cmd.
+  echo build\bin\vf3.exe manque : installer SDL 3 puis lancer construire-hote.cmd.
   pause
   exit /b 1
 )

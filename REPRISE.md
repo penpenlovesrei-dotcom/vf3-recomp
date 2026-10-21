@@ -1,7 +1,6 @@
 # Reprise — Fighting Vipers 2, menu console
 
-État au **2026-10-20**, branche `fv2`, 36 commits devant `mine/fv2`, rien de poussé depuis le tag
-`fv2-v0.2.0-alpha`. Arbre propre.
+État au **2026-10-21**, branche `fv2`, rien de poussé depuis le tag `fv2-v0.2.0-alpha`.
 
 Le journal du jour est en bas. Ce qui suit est l'état, pas le récit.
 
@@ -18,67 +17,84 @@ Tout est derrière un lanceur `.cmd` à la racine, et tous épinglent `VF3_DATA`
 | le pack de tuiles 2D | `jouer-fv2-hd2d.cmd`, `releve-tuiles-fv2.cmd` | `docs/fv2-hd-2d.md` |
 | les textures 3D | `jouer-fv2-hd3d.cmd`, `dumper-textures-3d-fv2.cmd` | `docs/fv2-hd-3d.md` |
 | les quatre costumes de Honey | `montrer-honey.cmd` | `docs/fv2-honey.md` |
-| les modes console | `jouer-fv2-console.cmd` | `docs/fv2-console.md` |
+| les modes console, et la liste sur l'écran titre | `jouer-fv2-console.cmd` | `docs/fv2-console.md` |
+| mesurer ce que fait Start | `mesurer-fv2-start.cmd` | `docs/fv2-etats.md` |
+| les captures de la liste | `capturer-fv2-liste.cmd` | `docs/fv2-console.md` |
+| construire la fenêtre aussi | `construire-hote.cmd` | |
 | construire | `construire.cmd` | |
 | vérifier | `verifier-vf3.cmd` | |
 
 Et le jeu tourne en **free play** : un seul octet de la NVRAM, `backup[0x17] = 27`.
 
-**Les modes console sont aujourd'hui une page du menu de la touche Échap.** C'est tout ce qu'ils sont, et il
-faut le dire ainsi : ce n'est pas le menu d'une console, c'est une page de réglages de ce portage.
+**Start fait maintenant les deux choses demandées**, et la liste des sept modes est une surface à elle,
+dessinée sur l'écran titre du jeu. La page du menu Échap existe toujours à côté, inchangée : ce n'est pas elle,
+la liste.
 
 
-## Ce qu'on vient de poser, et qui ne sert encore à rien
-
-`docs/fv2-etats.md` — la machine à états du jeu, portée du travail fait sur la ROM en août.
-
-```
-MODE_MAIN 0x0058FD98   MODE_SUB 0x0058FD99   MODE_REQUEST 0x0058FD9A   SUBMODE_REQUEST 0x0058FD9B
-```
-
-Dans `src/machine/model3.h` : `fv2_mode()`, `fv2_submode()`, `fv2_on_title()`, `fv2_request_title()`.
-Dans `tools/vf3run.cpp` : `--modes`, qui imprime le mode et son sous-état sous les noms de Sega à chaque
-changement. **Personne ne les appelle.**
-
-
-## Ce que Frédéric a demandé, et qui est la prochaine marche
-
-Une seule touche, deux comportements selon où le jeu en est :
-
-- **ailleurs qu'à l'écran titre** → Start ramène à l'écran titre ;
-- **à l'écran titre** → Start ouvre le sous-menu, la liste des sept modes ;
-- dans les deux cas Start est **retenu**, le jeu ne le voit pas.
-
-Le menu Échap peut rester où il est.
-
-### Le chemin est mesuré, et il est en deux morceaux
-
-**Depuis l'attraction** — deux images :
+## Ce qui a été fait le 2026-10-21
 
 ```
-MODE_REQUEST = 3 (ADV_DSP)   SUBMODE_REQUEST = 4 (FV2_TITLE_INT)      écrit UNE FOIS, jamais tenu
+                        sur l'écran titre du jeu  ->  la liste des sept modes s'ouvre par-dessus
+Start, mode console
+                        partout ailleurs          ->  le jeu est prié de revenir à son écran titre
 ```
 
-**Depuis un combat** — ce levier ne commande rien, et l'autre non plus. Il faut sortir de la partie par la
-route du jeu : finir le match sans le montrer ni l'entendre (`0x00581455 = MATCH COUNT−1`,
-`0x00581406 = 64` une fois par manche, vie du joueur 1 à zéro), puis poser l'écran titre une fois
-l'attraction revenue. Tout est dans `docs/fv2-etats.md`.
+Dans les deux cas l'appui est **retenu** : le jeu ne le voit pas.
 
-### La surface
+- La décision est `console_play::take_start` (`src/host/console_play.h`), donc l'hôte et `vf3run` la prennent
+  de la même façon, et `vf3run --modes --console-start N` la **mesure** sans fenêtre.
+- La surface est `src/host/fv2_mode_list.h`. Elle ne passe pas par `game_menu` : elle dessine
+  `assets/menu-console/title_list.png` sur l'image que le jeu vient de produire. Géométrie entièrement
+  reprise du relevé (`docs/fv2-etats.md`), plus les deux facteurs demandés à l'époque — grossie de 7/6,
+  remontée de 50/1080. La ligne choisie **clignote** (alpha 1 → 0,5 sur 45 images) : c'est la réponse du
+  propriétaire au fait qu'une seule version de chaque ligne existe. **L'image derrière passe à la moitié**
+  pendant que la liste est là, comme sur la Dreamcast : mesuré sur deux captures de cette version, 255 devient
+  128 sur les trois canaux, et la même mesure sur les deux captures d'ici donne 0,500.
+- ARCADE et SURVIVAL agissent. Les cinq autres lignes sont dessinées et ne font rien : RANDOM et V.S.
+  demandent le chrono de l'écran de sélection, jamais mesuré ici ; NETWORK, TRAINING et OPTIONS n'ont aucun
+  levier dans ce portage.
 
-C'est la seule pièce sans antériorité à reprendre. `assets/menu-console/` porte les 45 images du propriétaire
-(hors dépôt, `.gitignore`) ; `title_list.png` est la liste des sept modes, 709 x 897, et sa géométrie est
-relevée — bandes, encre, placement sur l'écran titre — dans `docs/fv2-etats.md`.
+### Ce que la mesure a dit, et qui n'était pas prévu
 
-**Une seule version de chaque ligne existe.** Aucun des 45 fichiers n'est une variante « sélectionnée », donc
-la ligne choisie devra être marquée autrement.
+`mesurer-fv2-start.cmd`, cinq essais d'un seul appui chacun. La demande de mode commande l'écran **depuis
+partout** — le logo SEGA, la démonstration, l'écran de sélection, et même en plein combat : l'écran titre
+revient une image après.
 
-Et ce qu'il ne faut pas refaire : la liste doit se poser **sur l'écran titre du jeu**, pas sur une illustration
-qui le recouvre, et surtout pas être une page de plus du menu RmlUi — c'est exactement la faute commise deux
-fois aujourd'hui.
+**Mais elle ne termine pas la partie.** La tâche `entry1` (`0x00700000`) reste à sa valeur de jeu : `0x2A`
+depuis un combat, `0x2D` depuis la sélection. L'écran titre revient par-dessus une partie qui court toujours,
+donc `fv2_in_attract()` reste faux. Le tableau complet est dans `docs/fv2-etats.md`.
+
+C'était écrit « ces leviers ne commandent rien depuis un combat » : c'était vrai des deux écritures du
+séquenceur d'attraction, et faux de la demande de mode, qui n'avait jamais été essayée là.
+
+### Les captures, et de quoi elles sont la preuve
+
+`capturer-fv2-liste.cmd`, trois images dans `build\` :
+
+| image | ce qu'elle montre |
+|---|---|
+| `liste-1-arcade.png` | les sept lignes sur le vrai écran titre, FREE PLAY lisible dessous |
+| `liste-2-survival.png` | trois fois bas puis Entrée : la partie démarre, et l'écran de sélection dit SURVIVAL MODE |
+| `liste-3-retour-au-titre.png` | Start pendant la démonstration : l'écran titre est revenu |
+
+La deuxième est celle qui compte : elle va d'un bout à l'autre, sans main sur la manette.
+
+### Deux crochets d'essai, sans lesquels rien de tout ça ne se vérifiait
+
+La liste gèle le jeu, donc tout ce qui compte les images du jeu n'arrive plus — c'est le blocage de neuf
+minutes de la veille. D'où, dans l'hôte :
+
+```
+VF3_QUIT_AFTER_S=N     finir après N secondes d'horloge
+VF3_KEYS_S=k@sec,...   envoyer la touche k à telle seconde
+```
 
 
 ## Ce qui reste ouvert, et qui bloque quoi
+
+- **Sortir vraiment d'un combat.** L'écran revient, la partie non (ci-dessus). La route du jeu — finir le match
+  sans le montrer ni l'entendre, `0x00581455 = MATCH COUNT−1`, `0x00581406 = 64` une fois par manche, vie du
+  joueur 1 à zéro — est relevée dans `docs/fv2-etats.md` et **n'est pas câblée**.
 
 - **Le second joueur n'a jamais été introduit.** `0x0058145A == 3` commande le cut-in, le compteur de victoires
   d'affilée et la moitié à deux de `NEXT_PROG_SEL`. C'est un trou de **banc d'essai**, pas de connaissance : il
@@ -148,6 +164,35 @@ Réponses courtes. Dire ce qui est mesuré et ce qui ne l'est pas.
 - **Les heredocs bash mangent les apostrophes et les échappements.** Écrire les fichiers avec l'outil Write.
 - **Les fichiers du dépôt sont en CRLF.** Un script d'insertion qui cherche `\n` ne trouve rien.
 - **Le lien échoue en « Permission denied »** si le jeu ou le vérificateur tourne encore.
+
+---
+
+# Journal du 2026-10-21
+
+## Start, et la liste
+
+Les deux chemins demandés hier sont posés, et la liste est enfin une surface à elle. Ce qui a changé par
+rapport aux deux essais ratés n'est pas l'intention, c'est le **lieu** : `fv2_mode_list::render` dessine entre
+`compose()` et le menu, sur l'image du jeu, et ne touche jamais à `game_menu`.
+
+Le reste de la journée a tenu dans trois choses.
+
+**Lire avant d'écrire, pour de bon.** La géométrie, le facteur 7/6, la remontée de 50/1080 et surtout la façon
+de marquer la ligne choisie étaient déjà dans `SupermodelSrc\Src\Menu\GameFV2.h` et
+`Src\OSD\SDL\MenuOverlay.cpp`. La première version d'ici éteignait les six autres lignes — une invention,
+alors que la réponse existait : c'est la ligne choisie qui **clignote**, les autres restent pleines. Rien du
+code n'a été repris ; les nombres, si.
+
+**Un essai positif doit dire jusqu'où il porte.** La demande de mode ramène l'écran titre depuis un combat —
+ce qu'on croyait impossible. Mais la relecture de `entry1` dit que la partie, elle, court toujours. Une mesure
+juste peut porter une conclusion trop large : « ça marche » voulait dire « l'écran revient », pas « on est
+sorti de la partie ».
+
+**La vérification doit porter sur ce qui est en cause.** La veille, le contrôle ne distinguait pas les deux
+menus. Aujourd'hui `liste-2-survival.png` ne peut pas se confondre : la liste s'ouvre sur l'écran titre du
+jeu, son curseur descend de trois lignes, la ligne choisie lance la partie, et l'écran de sélection dit
+SURVIVAL MODE. Il a fallu deux crochets pour ça (`VF3_QUIT_AFTER_S`, `VF3_KEYS_S`), parce que tout ce qui
+compte les images du jeu s'arrête quand la liste est là.
 
 ---
 

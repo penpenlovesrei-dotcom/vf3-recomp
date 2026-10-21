@@ -134,6 +134,38 @@ perdue : à zéro, il n'y a rien à supposer.
 Le K.O., le GAME OVER et le décompte du `CONTINUE` se déroulent par la route du jeu, derrière l'image du menu,
 le son coupé.
 
+### Mesuré ici le 2026-10-21 : la demande, elle, passe de partout — mais elle ne sort pas de la partie
+
+Ce qui précède porte sur les deux écritures du **séquenceur d'attraction**. La demande de mode est un autre
+levier, et il n'avait jamais été essayé ailleurs que depuis l'attraction. Il l'est maintenant, avec
+`vf3run --modes --console-start N`, qui fait passer un appui sur Start par la décision de l'hôte et dit ce
+qu'elle a choisi, image par image.
+
+| Start à l'image | le jeu était | ce qui a été décidé | ce qui est arrivé |
+|---|---|---|---|
+| 1100 | `ADV_DSP` 3, le logo SEGA | demander le titre | écran titre à **1101**, au lieu de 1193 |
+| 1255 | `ADV_DSP` 5, l'écran titre | ouvrir la liste | **rien d'écrit** ; la suite image pour image comme le témoin |
+| 1450 | `ADV_DSP` 11, la démonstration | demander le titre | écran titre à **1451** |
+| 2100 | `SEL_DSP` 1, l'écran de sélection | demander le titre | écran titre à **2101** |
+| 3100 | `GAME_DSP` 12, en plein combat | demander le titre | écran titre à **3101** |
+
+Les trois derniers sont neufs. La demande commande donc **l'écran** depuis l'attraction, depuis la sélection
+et depuis un combat.
+
+**Et elle ne termine pas la partie.** C'est le même essai poussé d'un cran : la RAM relue après coup dit que la
+tâche `entry1` (`0x00700000`, « une partie tourne-t-elle ») est restée à sa valeur de jeu.
+
+```
+depuis un combat     entry1 = 0x2A avant, 0x2A après   (relu à l'image 4000)
+depuis la sélection  entry1 = 5 avant,    0x2D après   (relu à l'image 2600)
+```
+
+L'écran titre revient donc par-dessus une partie qui, elle, court toujours. `fv2_in_attract()` reste faux, et
+tout ce qui s'y accroche — l'armement de Survival le premier — le voit. Sortir vraiment d'un combat reste la
+route du jeu décrite juste au-dessus, qui n'est pas câblée.
+
+*Un essai négatif doit dire lequel des deux ; un essai positif doit dire jusqu'où il porte.*
+
 
 ## La liste des modes, et sa géométrie
 

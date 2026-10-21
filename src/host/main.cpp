@@ -71,6 +71,10 @@
 //   VF3_INTERP=1         the PowerPC on the interpreter (as --interp)
 //   VF3_QUIT_AFTER=N     quit after N game frames, writing build/host_last.png (the frame) and
 //                        build/host_window.png (the window as drawn); such runs save nothing
+//   VF3_QUIT_AFTER_S=N   quit after N seconds of real time, writing the same two pictures. The clock runs while
+//                        the game is frozen, so this arrives where VF3_QUIT_AFTER cannot: anything that freezes
+//                        the game (the menu, the console's list of modes) stops its frames. Use it with a
+//                        VF3_QUIT_AFTER out of reach, which is what marks a run as a test run.
 //   VF3_SCRIPT=file      inputs from an input script (src/host/input_script.h), frame by frame from the boot;
 //                        its shots go to build/host_<name>.png
 //   VF3_WINDOW=WxH       the window's size in points
@@ -80,6 +84,10 @@
 //                        goes to build/host_window_F.png
 //   VF3_MENU_KEYS=k,...  presses these keys (esc, up, down, left, right, enter, or SDL key names) 6 passes of the
 //                        loop apart from pass 30
+//   VF3_KEYS_S=k@sec,... presses key k at that many seconds of real time. The one hook that can drive something
+//                        drawn over a FROZEN game: VF3_KEYS goes by the game's frames, which stop there, and
+//                        VF3_MENU_KEYS goes off in the first second. Seconds, because the clock is the only
+//                        thing still moving. Use with VF3_QUIT_AFTER_S.
 //   VF3_SHOT_AT=n,...    the window as drawn at these passes of the loop, to build/host_window_at_N.png
 //   VF3_ROMS=folder      the player's ROM folder (as --roms)
 //   VF3_3D=cpu|gpu|auto  the 3D renderer for this run (as Display > 3D renderer)
@@ -110,6 +118,7 @@
 #include "png.h"
 #include "input_script.h"
 #include "console_play.h"
+#include "fv2_mode_list.h"
 #include "menu.h"
 #include "controls.h"
 #include "sysinfo.h"
@@ -1135,6 +1144,13 @@ int main(int argc, char **argv)
 	}
 	const bool hidden = getenv("VF3_HIDDEN") != nullptr;
 	const int64_t quit_after = getenv("VF3_QUIT_AFTER") ? atoll(getenv("VF3_QUIT_AFTER")) : -1;
+	// A limit in SECONDS of real time, not in the game's frames, and it exists for one reason: anything that
+	// freezes the game stops its frames, so VF3_QUIT_AFTER never comes. A run that opened the console's list of
+	// modes sat for nine minutes that way once and had to be killed from outside. The clock keeps running while
+	// the game is frozen, so this always arrives -- and what is frozen does not change, so a picture taken at
+	// the limit is the same picture whenever the limit falls. Use it with VF3_QUIT_AFTER (a number out of
+	// reach), which is what marks a run as a test run everywhere else.
+	const double quit_seconds = getenv("VF3_QUIT_AFTER_S") ? atof(getenv("VF3_QUIT_AFTER_S")) : -1;
 	InputScript script;
 	bool scripted = false;
 	if (const char *sp = getenv("VF3_SCRIPT")) {
@@ -2155,6 +2171,12 @@ int main(int argc, char **argv)
 	game_menu &menu = *menu_owner;
 	if (!menu.init(win, ren, find_assets()))
 		fprintf(stderr, "no menu: its files (assets/ui) weren't found\n");
+	// ---- the console's own list of modes ----
+	// A surface of its own, drawn over the picture the game made on its own title screen: the owner's picture of
+	// the seven lines and nothing else (src/host/fv2_mode_list.h). It is NOT a page of the menu above, and that
+	// distinction is the whole point -- a page of the menu is a page of this port's settings whatever is in it.
+	fv2_mode_list modes;
+	if (cplay.on) modes.load(ren, find_assets(), stderr);
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
 	pad_state pstate[2];
@@ -2338,6 +2360,8 @@ int main(int argc, char **argv)
 				cfg.console = i == 2;
 				cplay = console_play();   // (a style changed mid-session: nothing of the last one is carried over)
 				cplay.on = cfg.console && console_known;
+				modes.hide();
+				if (cplay.on) modes.load(ren, find_assets(), stderr);   // (read once: the second call is free)
 				g_pc_mode = !cfg.arcade;
 				cfg_dirty = true;
 				reset_game();
@@ -2557,11 +2581,33 @@ int main(int argc, char **argv)
 	};
 	bool sound_paused = false;
 	auto sync_menu_sound = [&] {
-		if (!audio || menu.is_open() == sound_paused) return;
-		sound_paused = menu.is_open();
+		// the game is frozen behind the menu and behind the console's list of modes alike, and so is its sound
+		const bool quiet_now = menu.is_open() || modes.shown;
+		if (!audio || quiet_now == sound_paused) return;
+		sound_paused = quiet_now;
 		if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
 	};
 	auto open_menu = [&] { if (game.emu_thread.joinable()) game.job_wait(); if (menu.ready() && !menu.is_open()) menu.open(main_page()); sync_menu_sound(); };
+	// A line of the console's list chosen. ARCADE and SURVIVAL are wired: their levers were measured in this
+	// port and it writes them (docs/fv2-console.md). The other five are drawn and do nothing yet -- RANDOM and
+	// V.S. want the select screen's own timing, which has not been measured here, and NETWORK, TRAINING and
+	// OPTIONS have no lever in this port at all. A line that does nothing leaves the list up: closing it would
+	// say something happened.
+	auto choose_mode = [&](int line) {
+		fprintf(stderr, "the console's list: %s chosen\n", fv2_mode_list::name(line));
+		if (line == fv2_mode_list::ARCADE) cplay.choose_arcade();
+		else if (line == fv2_mode_list::SURVIVAL) cplay.choose_survival(board);
+		else {
+			fprintf(stderr, "the console's list: %s has no lever in this port yet -- nothing done\n", fv2_mode_list::name(line));
+			return;
+		}
+		modes.hide();
+		// The press that chose must not reach the game as a player's Start as well: the mode's own injection is
+		// what hands the game one, and it goes on last (frame_inputs below).
+		cplay.swallow_start = true;
+		cplay.start_was = true;
+		sync_menu_sound();
+	};
 
 	// ---- test hooks ----
 	std::vector<std::pair<SDL_Scancode, uint64_t>> test_keys;   // VF3_KEYS
@@ -2572,6 +2618,17 @@ int main(int argc, char **argv)
 			const size_t at = t.find('@');
 			if (t.empty() || at == std::string::npos) continue;
 			test_keys.push_back({ SDL_GetScancodeFromName(t.substr(0, at).c_str()), strtoull(t.c_str() + at + 1, nullptr, 10) });
+		}
+	// VF3_KEYS_S: keys sent at a real-time mark instead of at a game frame, which is what it takes to drive
+	// anything drawn over a frozen game (see the top). Each is sent once.
+	struct timed_key { SDL_Scancode key; double at; bool sent; };
+	std::vector<timed_key> keys_s;
+	if (const char *k = getenv("VF3_KEYS_S"))
+		for (std::string all = std::string(k) + ","; !all.empty(); all.erase(0, all.find(',') + 1)) {
+			const std::string t = all.substr(0, all.find(','));
+			const size_t at = t.find('@');
+			if (t.empty() || at == std::string::npos) continue;
+			keys_s.push_back({ SDL_GetScancodeFromName(t.substr(0, at).c_str()), atof(t.c_str() + at + 1), false });
 		}
 	std::vector<uint64_t> shot_at;   // VF3_SHOT_AT: the window at these passes, to build/host_window_at_N.png
 	if (const char *k = getenv("VF3_SHOT_AT"))
@@ -2661,6 +2718,7 @@ int main(int argc, char **argv)
 		make_2d(tex_above, video::W);
 		if (glass) { SDL_DestroyTexture(glass); glass = nullptr; glass_w = glass_h = 0; }
 		menu.textures_lost();
+		if (cplay.on) modes.textures_lost(ren, find_assets());   // (nothing of this exists in the other styles)
 		new_frame = true;   // (the next picture sends the 2D again)
 	};
 	// Started from a terminal, the window can open behind it or without the keyboard (the keys go to the terminal):
@@ -2677,6 +2735,9 @@ int main(int argc, char **argv)
 	uint64_t save_t = SDL_GetTicksNS();   // the settings and the NVRAM saved every 3 s when changed
 	while (running) {
 		pass++;
+		// the test runs' limit in seconds (above): this pass still draws and still writes its pictures
+		static const uint64_t run_t0 = SDL_GetTicksNS();
+		if (quit_seconds >= 0 && double(SDL_GetTicksNS() - run_t0) / 1e9 >= quit_seconds) running = false;
 		const uint64_t pass_t0 = SDL_GetTicksNS();
 		int pass_kind = 0;   // (the pace line's: 0 a picture only, 1 a frame's first half, 2 its second, 3 a whole frame)
 		uint64_t pass_work_ns = 0;
@@ -2688,6 +2749,13 @@ int main(int argc, char **argv)
 				: SDL_GetScancodeFromName(k.c_str());
 			send_key(sc);
 		}
+		// VF3_KEYS_S: the keys that go by the clock, so they arrive even with the game frozen
+		for (timed_key &k : keys_s)
+			if (!k.sent && double(SDL_GetTicksNS() - run_t0) / 1e9 >= k.at) {
+				k.sent = true;
+				send_key(k.key);
+				fprintf(stderr, "%.1f s: key %s sent\n", k.at, SDL_GetScancodeName(k.key));
+			}
 		SDL_Event e;
 		while (SDL_PollEvent(&e)) {
 			if (e.type == SDL_EVENT_QUIT) running = false;
@@ -2699,6 +2767,14 @@ int main(int argc, char **argv)
 				if (!hidden && SDL_GetKeyboardFocus() != win) SDL_RaiseWindow(win);   // (the move to a new Space can lose it)
 			}
 			if (menu.handle_event(e)) continue;
+			// The console's list of modes, while it is up: its own surface takes the keys and the pad, and
+			// Escape is left alone so this port's menu can always be reached.
+			if (modes.shown && !(e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE)) {
+				const int chose = modes.handle_event(e, cfg.ctl);
+				if (chose >= 0) choose_mode(chose);
+				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
+					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
+			}
 			// Fullscreen also with F and Alt+Enter, as VF1's and VF2's (after the menu's own events: typing in its
 			// fields never does it; F not while a player has it as a control, nor with Ctrl, Alt or the command key)
 			auto fullscreen_key = [&](const SDL_KeyboardEvent &k) {
@@ -2760,7 +2836,11 @@ int main(int argc, char **argv)
 			gov_grace(2);
 		}
 		if (clock_reset) { clock_reset = false; frames_run = 0; restart_clock_real(); new_frame = true; }
-		const bool stopped = paused || menu.is_open();
+		// the console's list of modes freezes the game behind it as the menu does: the title screen it is drawn
+		// on lasts 192 frames of its own (measured), and a list that let the game walk on to the demo would be
+		// a list over a demonstration
+		if (modes.shown && menu.is_open()) modes.hide();   // (Escape opened this port's menu over it)
+		const bool stopped = paused || menu.is_open() || modes.shown;
 		const bool ff = !stopped && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB];
 		int due = 0;
 		if (stopped) {
@@ -2840,12 +2920,38 @@ int main(int argc, char **argv)
 				hk = read_inputs(live, pads, pstate, cfg.ctl);
 				act = InputScript::Actions();
 				if (scripted) act = script.step(script_ctl, game_frame);
-				// Start always reaches the game, in every play style. The console way used to take it during
-				// the attract loop and open its own menu with it, which is what the Dreamcast version does --
-				// but on a console Start is also how you start, and taking it away left the player with two
-				// buttons that both opened a menu and no way to begin a match. It was wrong twice over, since
-				// the board is on FREE PLAY in that style anyway: Start starting a game IS the console
-				// behaviour. The console's menu is a page of this port's own menu, under Escape.
+				// The console way's Start: one button, two jobs, told apart by where the game is
+				// (console_play.h). On the game's own title screen it opens the console's list of modes over
+				// that screen; anywhere else it asks the game for its title screen. The press itself never
+				// reaches the game either way, and nothing here touches the credit -- the board is on FREE
+				// PLAY in this style, and a mode chosen from the list hands the game a Start of its own.
+				//
+				// In the PC way and the arcade way Start goes to the game untouched, as it always did.
+				//
+				// A script's Start counts as a player's here, deliberately: it arrives through script_ctl
+				// rather than the keyboard, and reading only the player's own would leave this whole path
+				// impossible to exercise without hands on a pad -- which is exactly how it went unverified
+				// the first time round.
+				if (cplay.on) {
+					const bool st = live.start[0] || live.start[1] || script_ctl.start[0] || script_ctl.start[1];
+					switch (cplay.take_start(board, st, modes.shown)) {
+					case console_play::start_for::list:
+						modes.show();
+						sync_menu_sound();
+						fprintf(stderr, "frame %llu: Start on the title screen: the console's list of modes is up\n",
+								(unsigned long long)game_frame);
+						break;
+					case console_play::start_for::title:
+						fprintf(stderr, "frame %llu: Start off the title screen (mode %d, sub-state %d): the game asked for its title screen\n",
+								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
+						break;
+					case console_play::start_for::none: break;
+					}
+					if (cplay.swallow_start) {
+						live.start[0] = live.start[1] = false;
+						script_ctl.start[0] = script_ctl.start[1] = false;
+					}
+				}
 				cplay.step(board, console_ctl);
 				m3::Controls &c = board.controls;
 				auto mix = [](bool *a, const bool *b, const bool *d) { a[0] = b[0] || d[0]; a[1] = b[1] || d[1]; };
@@ -3050,6 +3156,13 @@ int main(int argc, char **argv)
 			}
 		}
 		compose();
+		// the console's list of modes, over the picture the game made (and under this port's menu, if that is
+		// open as well): mid is the game's own 4:3 screen, which is what its placement was measured against
+		if (modes.shown) {
+			SDL_FRect list_all, list_mid;
+			picture_rect(list_all, list_mid);
+			modes.render(ren, list_all, list_mid);
+		}
 		// the frame rate: the pictures shown a second, over the game (not the menu or a pause, where no new
 		// pictures are made: hidden there, as VF1's and VF2's)
 		const bool fps_shown = cfg.show_fps && !stopped;

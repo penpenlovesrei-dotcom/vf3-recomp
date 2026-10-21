@@ -164,6 +164,85 @@ game running:
 and the screen says `SURVIVAL MODE` next to the fighter.
 
 
+## Start: one button, two jobs
+
+Added the 2026-10-21. In the console way Start is the console's button and the game never sees it. What it does
+is decided by one question -- is the game's OWN title screen on screen? -- and `Model3::fv2_on_title` answers
+it from the game's state machine (`docs/fv2-etats.md`), which is not the question `fv2_in_attract` answers.
+
+    on the title screen   ->  the list of modes opens over that screen
+    anywhere else         ->  the game is asked for its title screen
+
+The decision is `console_play::take_start`, so the windowed host and `vf3run` make it the same way, and
+`vf3run --modes --console-start N` measures it without a window. What that measured, with the game's own mode
+log beside it, is the table in `docs/fv2-etats.md`: the title screen comes back one frame after the request
+from the SEGA logo, from the demonstration, from the select screen and from inside a fight alike.
+
+**But a request does not end a game.** Read back afterwards, the entry1 task is still in its playing state
+(0x2A from a fight, 0x2D from the select screen). The title screen is back over a game that is still running,
+so `fv2_in_attract` stays false. Leaving a fight properly is the game's own road, and it is not wired.
+
+The press is withheld whichever way it went, and the next one is not read until this one has been let go --
+otherwise the button that opened the list would still be down on the frame the list hands the game a Start of
+its own, and would pick a fighter the instant the select screen appeared.
+
+
+## The list of modes is a surface of its own
+
+`src/host/fv2_mode_list.h`, and the thing to say first is what it is NOT: it is not a page of this port's menu.
+That was built twice, and rejected twice, and the reason is not a matter of taste -- the menu under Escape is
+this port's settings, an RmlUi document with its own backdrop, and a page added to it is a page of settings
+whatever is written in it. This draws the owner's own picture of the seven lines straight over the picture the
+game made, on the game's real title screen, with nothing else on it.
+
+The picture is `assets/menu-console/title_list.png` (709 x 897, outside the repository), and every number in
+the drawing is the measurement written down in `docs/fv2-etats.md`: the seven bands cut in the middles of the
+white, each slid sideways to bring its own left-aligned ink to the middle, the block at 0.26157 of the
+picture's height and 0.35557 of it tall, the width following the picture's proportions. On top of the
+measurement are the two things the owner asked for, kept as factors applied to it rather than as the figures
+they work out to: grown by 7/6 about its own middle, lifted by 50/1080.
+
+One version of each line exists -- none of the 45 files is a "selected" variant -- so the chosen line is marked
+by what it does rather than by what it is: it blinks, its alpha falling to 0.5 and back over 45 frames, which
+is the owner's own answer to the same problem.
+
+**The picture behind goes to half** while the list is up, which is what the Dreamcast version does and what
+makes the lines readable over the logo. The figure is measured, not chosen: two captures of that version, the
+same screen with its menu and without, give 255 -> 128 on all three channels (median 0.502 over 56000 pixels
+outside the menu's own block). This port draws black at alpha 128 over the whole picture, under the list, and
+the same measurement on its own two captures gives 0.500.
+
+The game is frozen behind it, as behind this port's menu, and its sound with it: the title screen lasts 192
+frames of its own, and a list that let the game walk on would end up over a demonstration. Up and down move,
+Start, A, Enter or the space bar choose, and Escape still opens this port's menu (which closes the list).
+
+ARCADE and SURVIVAL act; the five other lines are drawn and do nothing yet, and leave the list up rather than
+pretending something happened. RANDOM and V.S. want the select screen's own timing, which this port has not
+measured; NETWORK, TRAINING and OPTIONS have no lever here at all.
+
+### What was measured, and how
+
+Driving something drawn over a frozen game needs hooks that do not go by the game's frames, because those
+stop. Two were added to the host, and they are what made this verifiable at all:
+
+```
+VF3_QUIT_AFTER_S=N    end the run after N seconds of real time
+VF3_KEYS_S=k@sec,...  press key k at that many seconds
+```
+
+With those, `capturer-fv2-liste.cmd` takes the three pictures in `build\`, hidden, without a hand on a pad:
+
+| picture | what it shows |
+|---|---|
+| `liste-1-arcade.png` | the seven lines over the game's own title screen, FREE PLAY still readable under them |
+| `liste-2-survival.png` | three presses of down, then Enter: the game starts, and the select screen says SURVIVAL MODE |
+| `liste-3-retour-au-titre.png` | Start during the demonstration: the title screen is back |
+
+The second is the one that matters most, because it is end to end: the list opened on the real title screen,
+its own cursor moved, the line chosen handed the game a Start of its own, and the game began a match on free
+play without a coin.
+
+
 ## Using it
 
 ```
@@ -175,9 +254,9 @@ for `fvipers2` -- everything above was measured on the Japan Revision A set, and
 would be offering nothing. It is kept in `settings.ini` as `console_mode`; `--pc` puts it back.
 `jouer-fv2-console.cmd` is the launcher.
 
-In the console way, Start during the attract loop opens the console's page, and it is also under Escape as
-*Fighting Vipers 2*. The game is paused behind it, as behind any page of this menu -- that machinery already
-existed here, which is most of why this was short.
+In the console way, Start opens the console's own list of modes on the game's title screen, and brings that
+title screen back from anywhere else (above). The same choices are also under Escape as *Fighting Vipers 2*,
+as a page of this port's menu -- that page stays where it is, and it is not the list.
 
 `tools/vf3run --console-mode arcade|survival --console-at N` drives the same mode machinery without a menu or a
 window, which is how the measurements above were taken.
@@ -190,8 +269,9 @@ window, which is how the measurements above were taken.
   30 frames after that screen appears. Both need the select screen's own timing, which this page has not
   measured here, so neither is wired up. The hooks are in `console_play` (`inject_start_p2` is there and
   unused); what is missing is the measurement, not the plumbing.
-- **The pause menu.** Start during a fight should open a console's pause menu. Here Escape already does
-  everything that menu would, so this was left until the modes are finished.
+- **The pause menu.** Start during a fight brings the title screen back rather than opening a console's pause
+  menu, and it leaves the game running underneath (above). Here Escape already does everything that menu
+  would, so this was left until the modes are finished.
 - **The region.** The byte is readable and writable through `Model3::fv2_region`, and holds, but nothing calls
   it yet: it has to be written at the moment the settings have just been loaded from the NVRAM, or the NVRAM
   read overwrites it, and that moment has not been pinned down in this port.

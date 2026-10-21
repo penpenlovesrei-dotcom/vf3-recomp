@@ -1,0 +1,7 @@
+# Fighting Vipers 2, the console way: Start somewhere that is NOT the game's title screen -- here during the
+# attract loop's demonstration, which runs from frame 1386 (measured). The game is asked for its title screen,
+# and takes two frames to put it up.
+#
+# Nothing freezes on this road, so the run can end on the game's own frames (VF3_QUIT_AFTER) and the window it
+# writes is the title screen the game came back to.
+1450 press p1.start

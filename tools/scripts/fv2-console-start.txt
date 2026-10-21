@@ -1,0 +1,17 @@
+# Fighting Vipers 2, the console way: a game begun the way the console's list begins one, so that a press of
+# Start can then be measured from the select screen and from inside a fight.
+#
+# There is no "press p1.start" here on purpose. In the console way Start is the console's button and never
+# reaches the game, so the game is begun by the list's own ARCADE instead -- the injected Start of
+# --console-mode arcade --console-at 1960, which goes on last and is not withheld. Run it as, for instance:
+#
+#   vf3run fvipers2.zip --script tools/scripts/fv2-console-start.txt --modes \
+#          --console-mode arcade --console-at 1960 --console-start 3100 --frames 3400
+#
+# vf3run never loads the backup RAM, so the board has never been set and a credit still has to be paid for:
+# hence the two coins. In the windowed host the console way is on FREE PLAY and there are none.
+# The select screen is confirmed with an attack button, not Start.
+1900 press p1.coin
+1930 press p1.coin
+2220 press p1.punch
+4200 quit
