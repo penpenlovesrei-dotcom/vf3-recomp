@@ -25,6 +25,9 @@
 // figure comes from the list as it was when six lines were drawn and a seventh was written under them, and it
 // is kept as the owner left it rather than recomputed for seven -- and lifted by 50/1080 of the height.
 //
+// It has the game's own sounds under it -- moving, choosing, backing out -- played by the game's own sound
+// board, which the host keeps running while the game itself is frozen (the codes are below).
+//
 // And the picture behind it goes to half while the list is up, as the Dreamcast version does -- measured on two
 // captures of that version, the same screen with its menu and without, where 255 becomes 128 on all three
 // channels. Black at exactly half, not a figure chosen by eye.
@@ -73,6 +76,24 @@ struct fv2_mode_list
 	// how far the picture is taken down behind the list: black at half, measured on the Dreamcast version
 	static constexpr uint8_t DIM_ALPHA = 128;
 
+	// ---- the list's own sounds ----
+	// The game's own, played by the game's own sound board. Fighting Vipers 2 has no DSB: everything goes
+	// through one byte port as MIDI, A0 <bank> <index>, and bank 0x2E is the effects, where the menu's sounds
+	// live. The three below are the owner's, each one named and numbered in the game's own SOUND TEST, and the
+	// reading of the code was confirmed by the game itself: playing sound 388 from its SOUND TEST sends
+	// A0 2E 23. (388 - 0x23 = 391 - 0x26 = 392 - 0x27 = 353, which is what makes the three of them one rule
+	// rather than three guesses.)
+	static constexpr uint8_t SND_OPEN[3]   = { 0xA0, 0x2E, 0x23 };   // sd_sign_16    388
+	static constexpr uint8_t SND_MOVE[3]   = { 0xA0, 0x2E, 0x26 };   // sd_ketsu_00   391
+	static constexpr uint8_t SND_CHOOSE[3] = { 0xA0, 0x2E, 0x23 };   // sd_sign_16    388 (the same as opening)
+	static constexpr uint8_t SND_CANCEL[3] = { 0xA0, 0x2E, 0x27 };   // sd_sonic00_11 392
+	// Nothing here sends the MIDI system reset (FF) to stop the music. The owner's menu had to -- its game kept
+	// running behind it and kept firing sounds -- but the game is frozen behind this one, so it fires none, and
+	// the title screen's own music goes on playing under the list, which is what a console does.
+
+	// what handle_event returns when the player backed out, as against a line chosen (0..LINES-1) or -1
+	static constexpr int CANCELLED = -2;
+
 	bool shown = false;      // the list is up, and the game is frozen behind it
 	int sel = ARCADE;
 	bool ready = false, tried = false;
@@ -80,6 +101,16 @@ struct fv2_mode_list
 	std::string path;        // where the file was looked for (the log says so once)
 	int stick_y = 0;
 	uint64_t blink_t0 = 0;   // when the list went up, in SDL's nanoseconds: the blink is read from the clock
+	std::vector<uint8_t> midi;   // the bytes waiting for the sound board (the host hands them over each frame)
+
+	void play(const uint8_t (&s)[3]) { midi.insert(midi.end(), s, s + 3); }
+	// What the host hands the sound board on the next of its frames, and empties here.
+	std::vector<uint8_t> take_midi()
+	{
+		std::vector<uint8_t> out;
+		out.swap(midi);
+		return out;
+	}
 
 	// Reads the picture once. False (and a line in the log) if it isn't there: then the list never opens, and
 	// Start goes on doing the other half of its job.
@@ -131,16 +162,23 @@ struct fv2_mode_list
 		sel = ARCADE;
 		stick_y = 0;
 		blink_t0 = SDL_GetTicksNS();   // (so the chosen line starts at full, and the blink starts there)
+		play(SND_OPEN);
 	}
 	void hide() { shown = false; }
 
 	// The cursor goes round. The owner's own list does not, and for a reason that is not ours: its last line is
 	// QUIT GAME, and going round put quitting the emulator one press above ARCADE. Nothing here quits anything.
-	void move(int d) { sel = (sel + LINES + d) % LINES; }
+	void move(int d) { sel = (sel + LINES + d) % LINES; play(SND_MOVE); }
+	int chose() { play(SND_CHOOSE); return sel; }
+	int cancel() { play(SND_CANCEL); return CANCELLED; }
 
-	// One event while the list is up. Returns the line chosen, or -1. Up and down move; Start, A, Enter or the
-	// space bar choose. The keys are the player's own bindings as well as the arrows, so a pad or either
-	// keyboard works without anything to set.
+	// One event while the list is up. Returns the line chosen, CANCELLED, or -1 for anything else.
+	//
+	// Up and down move; Start, the pad's A, Enter or the space bar choose; the pad's B or Backspace back out,
+	// which is what the Dreamcast version itself tells the player at the foot of that screen -- "Use the A
+	// Button to decide. Use the B Button to back." On the keyboard the two are the player's own punch and kick
+	// bindings, because that is where A and B sit on the pad in this port (punch is South, kick is East), so
+	// whichever the player uses, the same two buttons decide and back.
 	//
 	// The press that OPENED the list cannot choose a line with the same stroke, and nothing here has to guard
 	// against it: SDL updates the keyboard it is asked about while the events are polled, at the top of the
@@ -159,8 +197,11 @@ struct fv2_mode_list
 			const SDL_Scancode sc = e.key.scancode;
 			if (sc == SDL_SCANCODE_UP || bound(C_UP, sc)) move(-1);
 			else if (sc == SDL_SCANCODE_DOWN || bound(C_DOWN, sc)) move(+1);
-			else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER || sc == SDL_SCANCODE_SPACE || bound(C_START, sc))
-				return sel;
+			else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER || sc == SDL_SCANCODE_SPACE
+					 || bound(C_START, sc) || bound(C_PUNCH, sc))
+				return chose();
+			else if (sc == SDL_SCANCODE_BACKSPACE || bound(C_KICK, sc))
+				return cancel();
 			return -1;
 		}
 		case SDL_EVENT_KEY_UP:
@@ -169,7 +210,8 @@ struct fv2_mode_list
 			switch (e.gbutton.button) {
 			case SDL_GAMEPAD_BUTTON_DPAD_UP: move(-1); break;
 			case SDL_GAMEPAD_BUTTON_DPAD_DOWN: move(+1); break;
-			case SDL_GAMEPAD_BUTTON_START: case SDL_GAMEPAD_BUTTON_SOUTH: return sel;
+			case SDL_GAMEPAD_BUTTON_START: case SDL_GAMEPAD_BUTTON_SOUTH: return chose();
+			case SDL_GAMEPAD_BUTTON_EAST: return cancel();
 			default: break;
 			}
 			return -1;

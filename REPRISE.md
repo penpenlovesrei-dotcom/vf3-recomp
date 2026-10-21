@@ -50,6 +50,12 @@ Dans les deux cas l'appui est **retenu** : le jeu ne le voit pas.
   propriétaire au fait qu'une seule version de chaque ligne existe. **L'image derrière passe à la moitié**
   pendant que la liste est là, comme sur la Dreamcast : mesuré sur deux captures de cette version, 255 devient
   128 sur les trois canaux, et la même mesure sur les deux captures d'ici donne 0,500.
+- **On en ressort** : B à la manette (ou la touche de coup de pied, ou Retour arrière) referme la liste et
+  laisse le jeu là où il était. A, Start, Entrée ou la touche de coup de poing choisissent.
+- **Les bruitages sont ceux du jeu**, joués par sa propre carte son : `A0 2E 23` à l'ouverture et au choix,
+  `A0 2E 26` au déplacement, `A0 2E 27` à l'annulation. Ce qu'il a fallu ajouter, c'est de **faire tourner la
+  carte son pendant que le jeu est gelé** (`Game::sound_only_frame`) : sans ça la liste est muette et la
+  musique de l'écran titre s'arrête au milieu d'une note.
 - ARCADE et SURVIVAL agissent. Les cinq autres lignes sont dessinées et ne font rien : RANDOM et V.S.
   demandent le chrono de l'écran de sélection, jamais mesuré ici ; NETWORK, TRAINING et OPTIONS n'ont aucun
   levier dans ce portage.

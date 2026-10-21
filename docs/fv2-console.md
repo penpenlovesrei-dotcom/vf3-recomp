@@ -212,9 +212,55 @@ same screen with its menu and without, give 255 -> 128 on all three channels (me
 outside the menu's own block). This port draws black at alpha 128 over the whole picture, under the list, and
 the same measurement on its own two captures gives 0.500.
 
-The game is frozen behind it, as behind this port's menu, and its sound with it: the title screen lasts 192
-frames of its own, and a list that let the game walk on would end up over a demonstration. Up and down move,
-Start, A, Enter or the space bar choose, and Escape still opens this port's menu (which closes the list).
+The game is frozen behind it, as behind this port's menu -- the title screen lasts 192 frames of its own, and
+a list that let the game walk on would end up over a demonstration. Up and down move; Start, the pad's A,
+Enter or the space bar choose; **the pad's B or Backspace back out** and leave the game where it was; and
+Escape still opens this port's menu, which closes the list. On the keyboard, choosing and backing out are the
+player's own punch and kick bindings, because that is where A and B sit on the pad in this port.
+
+### The sounds are the game's own, and the board goes on playing under a frozen game
+
+The list has the four sounds the owner's menu has, and they are the game's: Fighting Vipers 2 has no DSB, so
+everything goes through one port as MIDI, `A0 <bank> <index>`, bank `0x2E` being the effects.
+
+| | code | the game's own SOUND TEST |
+|---|---|---|
+| opening, and choosing | `A0 2E 23` | 388 `sd_sign_16` |
+| moving | `A0 2E 26` | 391 `sd_ketsu_00` |
+| backing out | `A0 2E 27` | 392 `sd_sonic00_11` |
+
+The reading of those codes is not ours and not a guess: the game itself sends `A0 2E 23` when sound 388 is
+played from its own SOUND TEST, and 388 - 0x23 = 391 - 0x26 = 392 - 0x27 = 353, which makes the three one rule.
+
+What this port had to add is that **the sound board is run while the game is frozen**. It is its own 68000 and
+its own SCSP, fed by the bytes the game writes and already run on a thread of its own, so it can be stepped
+when the PowerPC is not (`Game::sound_only_frame`): a frame's worth of sound on the game's own clock for as
+long as the list is up. Without it the list is mute and the music the title screen was playing stops dead in
+the middle of a note. The last sound, the one that closes the list, goes in with the game's own bytes instead,
+because the list's own sound frames stop with it.
+
+Nothing here sends the MIDI system reset (`FF`) to stop the music. The owner's menu had to -- its game kept
+running behind it and kept firing sounds -- but this one freezes the game, so it fires none.
+
+Measured, with `VF3_LIST_SOUND_LOG=1` saying what went to the board and what the board made of it, on a run
+driven by `VF3_KEYS_S`:
+
+```
+list sound: A0 2E 23     3066 samples, peak 4069      the list opens
+list sound: -            1534 samples, peak 0         ... silence, frame after frame
+40.0 s: key Down sent
+list sound: A0 2E 26     1532 samples, peak 0         the move goes out
+list sound: -            1534 samples, peak 2880      and the board answers, six frames of it
+list sound: -            1532 samples, peak 4417
+list sound: -            1534 samples, peak 4289
+list sound: -            1534 samples, peak 3110
+list sound: -            1532 samples, peak 678
+list sound: -            1534 samples, peak 279
+list sound: -            1532 samples, peak 0
+42.0 s: key C sent
+the console's list, closing: A0 2E 27 goes in with the game's own bytes
+the console's list: backed out
+```
 
 ARCADE and SURVIVAL act; the five other lines are drawn and do nothing yet, and leave the list up rather than
 pretending something happened. RANDOM and V.S. want the select screen's own timing, which this port has not

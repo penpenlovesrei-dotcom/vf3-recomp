@@ -940,6 +940,26 @@ struct Game
 		finish_frame(sound_on, picture);
 		sysinfo::note_frame();   // (on the thread that ran it: the game's own, when it has one)
 	}
+	// One frame's worth of SOUND and nothing else, with bytes of our own handed to the board.
+	//
+	// The sound board is its own 68000 and its own SCSP, fed by the bytes the game writes to one port and run
+	// on its own thread (above) -- so it can be run when the PowerPC is not. That is what the console's list of
+	// modes needs: the game is frozen behind it, but the board must go on, or the list's own sounds have
+	// nothing to play them and the music the title screen was playing stops dead in the middle of a note.
+	void sound_only_frame(const std::vector<uint8_t> &bytes)
+	{
+		if (!sound_thread.joinable()) sound_start();
+		sound_wait();   // (the frame before's sound, made meanwhile)
+		audio.insert(audio.end(), sound_out.begin(), sound_out.end());
+		sound_out.clear();
+		{
+			std::lock_guard<std::mutex> lk(sound_m);
+			sound_midi = bytes;
+			sound_job_on = true;
+			sound_busy = true;
+		}
+		sound_cv.notify_all();
+	}
 	void start_frame() { board.run_frame_start(); }
 	void finish_frame(bool sound_on, bool picture)
 	{
@@ -2581,8 +2601,10 @@ int main(int argc, char **argv)
 	};
 	bool sound_paused = false;
 	auto sync_menu_sound = [&] {
-		// the game is frozen behind the menu and behind the console's list of modes alike, and so is its sound
-		const bool quiet_now = menu.is_open() || modes.shown;
+		// The menu silences the game; the console's list of modes does NOT. The game is frozen behind both, but
+		// the list has sounds of its own and they come out of the game's own sound board, which the host keeps
+		// running under it (Game::sound_only_frame). Pausing the device here would take those with it.
+		const bool quiet_now = menu.is_open();
 		if (!audio || quiet_now == sound_paused) return;
 		sound_paused = quiet_now;
 		if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
@@ -2593,6 +2615,18 @@ int main(int argc, char **argv)
 	// V.S. want the select screen's own timing, which has not been measured here, and NETWORK, TRAINING and
 	// OPTIONS have no lever in this port at all. A line that does nothing leaves the list up: closing it would
 	// say something happened.
+	// Whatever the list still has to say when it closes goes in with the game's own bytes, to be handed to the
+	// sound board by the next frame the game runs: the list's own sound frames stop with it, and its last sound
+	// -- choosing, or backing out -- would go with them.
+	auto flush_list_midi = [&] {
+		const std::vector<uint8_t> m = modes.take_midi();
+		board.midi.insert(board.midi.end(), m.begin(), m.end());
+		if (static const bool say = getenv("VF3_LIST_SOUND_LOG") != nullptr; say && !m.empty()) {
+			std::string hex;
+			for (uint8_t b : m) { char t[8]; snprintf(t, sizeof t, "%02X ", b); hex += t; }
+			fprintf(stderr, "the console's list, closing: %sgoes in with the game's own bytes\n", hex.c_str());
+		}
+	};
 	auto choose_mode = [&](int line) {
 		fprintf(stderr, "the console's list: %s chosen\n", fv2_mode_list::name(line));
 		if (line == fv2_mode_list::ARCADE) cplay.choose_arcade();
@@ -2602,6 +2636,7 @@ int main(int argc, char **argv)
 			return;
 		}
 		modes.hide();
+		flush_list_midi();
 		// The press that chose must not reach the game as a player's Start as well: the mode's own injection is
 		// what hands the game one, and it goes on last (frame_inputs below).
 		cplay.swallow_start = true;
@@ -2772,6 +2807,14 @@ int main(int argc, char **argv)
 			if (modes.shown && !(e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE)) {
 				const int chose = modes.handle_event(e, cfg.ctl);
 				if (chose >= 0) choose_mode(chose);
+				else if (chose == fv2_mode_list::CANCELLED) {
+					// backed out: the list goes, the game comes back where it was -- on its own title screen
+					modes.hide();
+					flush_list_midi();
+					cplay.swallow_start = true;   // (as when a line is chosen: the press stays ours)
+					cplay.start_was = true;
+					fprintf(stderr, "the console's list: backed out\n");
+				}
 				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
 					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
 			}
@@ -2841,6 +2884,34 @@ int main(int argc, char **argv)
 		// a list over a demonstration
 		if (modes.shown && menu.is_open()) modes.hide();   // (Escape opened this port's menu over it)
 		const bool stopped = paused || menu.is_open() || modes.shown;
+		// The sound board, kept running under the list while the game is frozen: a frame's worth of it on the
+		// game's own clock, with whatever the list has to say (moving, choosing, backing out). Without this the
+		// board is never stepped, so the list is silent and the title screen's music stops in mid-note.
+		if (modes.shown) {
+			static uint64_t list_sound_t = 0;
+			const uint64_t now_sound = SDL_GetTicksNS();
+			if (now_sound - list_sound_t >= uint64_t(1e9 / FRAME_HZ)) {
+				list_sound_t = now_sound;
+				const std::vector<uint8_t> said = modes.take_midi();
+				game.sound_only_frame(said);
+				// (tests: what was said to the board, and what the board made of it -- a run with no ears can
+				// still say that the bytes went out and that the board was running to hear them)
+				if (static const bool say = getenv("VF3_LIST_SOUND_LOG") != nullptr; say && (!said.empty() || !game.audio.empty())) {
+					std::string hex;
+					for (uint8_t b : said) { char t[8]; snprintf(t, sizeof t, "%02X ", b); hex += t; }
+					int peak = 0;
+					for (int16_t s : game.audio) peak = std::max(peak, std::abs(int(s)));
+					fprintf(stderr, "list sound: %-12s %zu samples, peak %d\n", hex.empty() ? "-" : hex.c_str(), game.audio.size(), peak);
+				}
+				if (audio && !game.audio.empty() && rec.dir.empty())
+					SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
+				if (rec.wav) {
+					fwrite(game.audio.data(), sizeof(int16_t), game.audio.size(), rec.wav);
+					rec.wav_bytes += uint32_t(game.audio.size() * sizeof(int16_t));
+				}
+				game.audio.clear();
+			}
+		}
 		const bool ff = !stopped && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB];
 		int due = 0;
 		if (stopped) {
