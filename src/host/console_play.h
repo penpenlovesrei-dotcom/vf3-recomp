@@ -89,18 +89,49 @@ struct console_play
 		if (swallow_start) { if (!pressed) swallow_start = false; }   // (held back until it has been let go)
 		else if (pressed && !start_was) {
 			what = b.fv2_on_title() ? start_for::list : start_for::title;
-			if (what == start_for::title) b.fv2_request_title();
+			// Two roads to the title screen, and they are not interchangeable. From the attract loop, the
+			// game's own: the sequencer is pushed to the end of its list and walks off it, which installs the
+			// title screen the way the game does on its own -- and, measured with the picture probe, leaves
+			// no 3D behind. The mode request shows the title screen just as fast but does not stop what was
+			// drawing: 397 models still on a screen the game draws with none, and the demonstrations that
+			// follow come out with fighters missing or blackened. Elsewhere -- the select screen, a fight --
+			// the sequencer is not running, so the request is all there is, and it does not end the game
+			// either (docs/fv2-etats.md).
+			if (what == start_for::title) {
+				if (b.fv2_in_attract()) { b.fv2_attract_to_title(); skip_logo = SKIP_GIVE_UP; }
+				else b.fv2_request_title();
+			}
 			swallow_start = true;
 		}
 		start_was = pressed;
 		return what;
 	}
 
+	// The game's own road to the title screen goes by way of the SEGA logo, which takes its time: measured, the
+	// title screen landed 400 frames after the press instead of one. The two are not alternatives, though --
+	// they can be used one after the other. The sequencer's road is what TIDIES THE SCENE (the demonstration
+	// stops drawing), and once that is done the mode request carries nothing over, because there is nothing
+	// left to carry: measured at 0 models from the first frame of the logo. So: the game's road to clean up,
+	// then the request to skip the waiting, taken as soon as the demonstration is over.
+	//
+	// Asked while the logo is already up, the scene is clean on the spot and the title screen comes one frame
+	// later, as it always did. The count is a way out, not a timer: if that moment never comes the request is
+	// dropped rather than held, because a request held is what broke the select screen twice.
+	static constexpr int SKIP_GIVE_UP = 600;
+	int skip_logo = 0;        // frames left to wait for the scene to be tidy before asking for the title
+
 	// Once a frame, before the game runs. Returns what to hand the game on top of the player's own controls.
 	void step(m3::Model3 &b, m3::Controls &out)
 	{
 		out = m3::Controls();
 		if (!on) return;
+		if (skip_logo > 0) {
+			const int mode = b.fv2_mode(), sub = b.fv2_submode();
+			// out of the demonstration and of the replays: whatever was drawing has stopped
+			const bool tidy = (mode == 2 || mode == 3) && sub != 10 && sub != 11;
+			if (tidy) { b.fv2_request_title(); skip_logo = 0; }
+			else skip_logo--;
+		}
 		if (inject_start > 0) { out.start[0] = true; inject_start--; }
 		if (inject_start_p2 > 0) { out.start[1] = true; inject_start_p2--; }
 		switch (survival) {

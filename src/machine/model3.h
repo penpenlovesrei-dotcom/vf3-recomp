@@ -251,6 +251,11 @@ public:
 	// It commands nothing from inside a fight, and the measurement that established that is worth more than the
 	// failure: the bytes were still intact a second later, so nobody had read them.
 	void fv2_request_title();
+	// The attract sequencer's OWN road to the title screen, which is not the same thing and leaves a very
+	// different screen behind: pushed to the end of its list with its timer expired, the game walks off the
+	// end itself and installs the title screen the way it does on its own. Works from the attract loop and
+	// only there. See model3.cpp for what the picture probe measured against the request above.
+	void fv2_attract_to_title();
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 

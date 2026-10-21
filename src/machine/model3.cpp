@@ -1619,4 +1619,30 @@ void Model3::fv2_request_title()
 	ram[FV2_SUBMODE_REQUEST ^ 3] = FV2_ADV_TITLE_INT;
 }
 
+// The attract sequencer's own road to the title screen: its list is pushed to its last real entry and its
+// timer set long expired, written ONCE, and the game then walks off the end of the list itself -- which is
+// the only way it takes the branch that installs the title screen off-list. Measured on the ROM in August
+// (MenuConsole.md section 6 bis); writing 15 does not work, the sequencer tests the entry after the current
+// one against the list's terminator and runs away.
+//
+// WHY THIS AND NOT THE MODE REQUEST ABOVE, measured here on the 2026-10-21 with the picture probe: asked for
+// the title screen mid-demonstration, the mode machine shows it at once, but the 3D the demonstration was
+// drawing is still there. A title screen the game reached by itself carries NO 3D at all -- 0 models, 8
+// viewports, full_3d 0 -- where one reached by the request carried 397 models over 10 viewports and the
+// full-screen 3D still on. The demonstrations that follow then draw from a scene nobody tidied, and that is
+// the missing and the blackened fighters. The request changes what is displayed; it does not stop what was
+// drawing. Only the game's own road does that.
+//
+// It works from the attract loop and only there -- the sequencer does not run during a game (docs/fv2-etats.md).
+void Model3::fv2_attract_to_title()
+{
+	constexpr uint32_t FV2_ADV_LIST_AT = 0x00580DFC;     // where the attract sequencer is in its list
+	constexpr uint32_t FV2_ADV_TIMER = 0x00580DD2;       // how long the entry it is on still has
+	constexpr uint8_t FV2_ADV_LAST_ENTRY = 14;
+	if (set != "fvipers2" || ram.size() <= FV2_ADV_LIST_AT + 1) return;
+	ram[FV2_ADV_LIST_AT ^ 3] = FV2_ADV_LAST_ENTRY;
+	ram[FV2_ADV_TIMER ^ 3] = 0x7F;                       // (a halfword, big-endian: 0x7FFF)
+	ram[(FV2_ADV_TIMER + 1) ^ 3] = 0xFF;
+}
+
 } // namespace m3
