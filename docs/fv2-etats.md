@@ -188,6 +188,45 @@ de la région qui diffère est en flottants — des coordonnées, pas des blocs 
 `0x00700000` et `0x00700100` sont `entry1` et `entry2`, les tâches d'une partie ; forcer `entry1` fait dérailler
 le jeu (essayé en août). Elles sont éteintes dans l'attraction de toute façon.
 
+### Qui éteint ces tâches, et quand — relevé au `--watch`
+
+`vf3run --watch 700200 --modes` nomme l'instruction qui écrit, sans rien décompiler :
+
+```
+store32 00700200 = 0 at PC FFF018DC (LR FFF0153C)     l'amorce, au démarrage
+store32 00700200 = 0 at PC 0000779C (LR 000076AC)     idem
+store32 00700200 = 0 at PC 000390F0 (LR 00038C38)     idem
+store32 00700200 = 0 at PC 0000B240 (LR 00039068)     entre les images 998 et 999
+```
+
+La quatrième est la seule qui compte : elle tombe **entre le sous-état 1 (`DONT_RECYCLE_DSP`) et le sous-état
+2 (`ADV_SEGA_INT`)**, c'est-à-dire au **redémarrage de la boucle d'attraction**. `LR 0x00039068` est le site
+d'appel de la machine à modes (`0x00039064` est `bl 0x0000ABC4`).
+
+**Le jeu n'éteint donc jamais ces tâches pendant une démonstration ni pendant un replay.** Il attend que la
+boucle reparte. C'est pour ça qu'un effacement à la main ne tient pas en plein replay : ce qui les rallume,
+c'est le replay lui-même, qui n'est pas fini.
+
+### Comment la boucle repart : la liste du séquenceur
+
+`vf3run --watch 580DFC` montre le séquenceur marcher :
+
+```
+store8 00580DFC = 0 at PC 00072EB4 (LR 00072E7C)      posé sur l'écran titre
+store8 00580DFC = 1..F at PC 00073178 (LR 00072E7C)   un pas à la fois, pendant la démonstration
+   5866  ADV_SEGA_INT                                 sorti de la liste : la boucle repart
+```
+
+La liste va de 0 à 15, et c'est `0x00073178` qui l'avance. Écrire 14 et vider le minuteur fait franchir la fin
+au pas suivant — le levier de §6 bis, et on voit ici pourquoi il marche.
+
+**Et pourquoi il ne marche pas depuis le replay** : pendant le replay (`sub 10`), plus aucune écriture de
+`0x00580DFC` n'apparaît. Le séquenceur n'avance plus sa liste là ; le replay court sur sa propre durée. Pousser
+la liste n'a donc rien à pousser.
+
+La question suivante est donc précise : **qu'est-ce qui met fin au replay ?** Tant qu'elle n'a pas de réponse,
+Start n'a pas de route propre depuis cet écran-là.
+
 ### Ce que ça donne, et où ça bute
 
 Éteindre le bit 0 avant de demander l'écran titre **range presque tout, depuis la démonstration** : l'écran
