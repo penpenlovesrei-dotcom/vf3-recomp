@@ -880,6 +880,8 @@ struct Game
 	bool sound_busy = false, sound_quit = false, sound_job_on = false;
 	std::vector<uint8_t> sound_midi;
 	std::vector<int16_t> sound_out;
+	uint8_t music_last = 0;      // the index of the last A0 10 nn the game asked for
+	bool music_known = false;
 	void sound_wait()
 	{
 		std::unique_lock<std::mutex> lk(sound_m);
@@ -968,6 +970,11 @@ struct Game
 		sound_wait();   // (the frame before's sound, made meanwhile)
 		audio.insert(audio.end(), sound_out.begin(), sound_out.end());
 		sound_out.clear();
+		// The last music the game asked for (A0 10 nn). The console's list of modes stops the music while it is
+		// up and puts that one back if the player backs out, and the game is the only one who knows which it
+		// was (docs/fv2-console.md).
+		for (size_t i = 0; i + 2 < board.midi.size(); i++)
+			if (board.midi[i] == 0xA0 && board.midi[i + 1] == 0x10) { music_last = board.midi[i + 2]; music_known = true; }
 		{
 			std::lock_guard<std::mutex> lk(sound_m);
 			sound_midi.assign(board.midi.begin(), board.midi.end());
@@ -2199,6 +2206,10 @@ int main(int argc, char **argv)
 	if (cplay.on) modes.load(ren, find_assets(), stderr);
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
+	// the music put back a few frames after the list closes, so it starts after the closing sound and not over
+	// it (0: nothing to put back)
+	int music_back_in = 0;
+	uint8_t music_back = 0;
 	pad_state pstate[2];
 
 	// ---- the governor ----
@@ -2808,9 +2819,15 @@ int main(int argc, char **argv)
 				const int chose = modes.handle_event(e, cfg.ctl);
 				if (chose >= 0) choose_mode(chose);
 				else if (chose == fv2_mode_list::CANCELLED) {
-					// backed out: the list goes, the game comes back where it was -- on its own title screen
+					// Backed out: the list goes, the game comes back where it was -- on its own title screen --
+					// and the music it was playing comes back with it, after the closing sound rather than
+					// over it. Only on backing out: on a mode chosen the game changes screen and asks for its
+					// own music, and putting the old one back arrives too late and overwrites it (measured on
+					// the owner's build: the select screen inherited the demo's music).
+					const bool put_music_back = modes.music_stopped() && game.music_known;
 					modes.hide();
 					flush_list_midi();
+					if (put_music_back) { music_back_in = 20; music_back = game.music_last; }
 					cplay.swallow_start = true;   // (as when a line is chosen: the press stays ours)
 					cplay.start_was = true;
 					fprintf(stderr, "the console's list: backed out\n");
@@ -2887,21 +2904,42 @@ int main(int argc, char **argv)
 		// The sound board, kept running under the list while the game is frozen: a frame's worth of it on the
 		// game's own clock, with whatever the list has to say (moving, choosing, backing out). Without this the
 		// board is never stepped, so the list is silent and the title screen's music stops in mid-note.
+		// the list's own sound clock, started afresh each time it opens
+		static uint64_t list_sound_t = 0, list_sound_open = 0;
+		static int list_sound_n = 0;
+		static bool list_sound_on = false;
+		if (!modes.shown) list_sound_on = false;
 		if (modes.shown) {
-			static uint64_t list_sound_t = 0;
+			// How many frames of sound are owed, by the clock. It has to be an accumulator and it has to catch
+			// up: asking "has a frame's time passed since the last one?" once a pass makes a frame every OTHER
+			// pass, because a frame is 17.38 ms and a pass is a refresh at 16.67 -- the board then runs at
+			// thirty frames a second instead of 57.5, the queue empties, and that is heard as the sound slowing
+			// down and crackling.
 			const uint64_t now_sound = SDL_GetTicksNS();
-			if (now_sound - list_sound_t >= uint64_t(1e9 / FRAME_HZ)) {
-				list_sound_t = now_sound;
-				const std::vector<uint8_t> said = modes.take_midi();
+			const uint64_t step = uint64_t(1e9 / FRAME_HZ);
+			if (!list_sound_on) { list_sound_on = true; list_sound_t = list_sound_open = now_sound; list_sound_n = 0; }
+			if (now_sound - list_sound_t > 500000000ull) list_sound_t = now_sound;   // (a long stall: start again from here)
+			int owed = 0;
+			while (now_sound - list_sound_t >= step && owed < 4) { list_sound_t += step; owed++; }
+			// and the queue running low gets one anyway, as the game's own pacing does
+			if (!owed && audio && SDL_GetAudioStreamQueued(audio) < 2 * frame_bytes) owed = 1;
+			for (int k = 0; k < owed; k++) {
+				const std::vector<uint8_t> said = modes.frame_midi();
 				game.sound_only_frame(said);
 				// (tests: what was said to the board, and what the board made of it -- a run with no ears can
 				// still say that the bytes went out and that the board was running to hear them)
-				if (static const bool say = getenv("VF3_LIST_SOUND_LOG") != nullptr; say && (!said.empty() || !game.audio.empty())) {
-					std::string hex;
-					for (uint8_t b : said) { char t[8]; snprintf(t, sizeof t, "%02X ", b); hex += t; }
-					int peak = 0;
-					for (int16_t s : game.audio) peak = std::max(peak, std::abs(int(s)));
-					fprintf(stderr, "list sound: %-12s %zu samples, peak %d\n", hex.empty() ? "-" : hex.c_str(), game.audio.size(), peak);
+				if (static const bool say = getenv("VF3_LIST_SOUND_LOG") != nullptr; say) {
+					list_sound_n++;
+					const double secs = double(now_sound - list_sound_open) / 1e9;
+					if (!said.empty() || list_sound_n % 60 == 0) {
+						std::string hex;
+						for (uint8_t b : said) { char t[8]; snprintf(t, sizeof t, "%02X ", b); hex += t; }
+						int peak = 0;
+						for (int16_t s : game.audio) peak = std::max(peak, std::abs(int(s)));
+						fprintf(stderr, "list sound: %-12s %zu samples, peak %5d  (%d frames in %.2f s, %.1f a second; %d bytes queued)\n",
+								hex.empty() ? "-" : hex.c_str(), game.audio.size(), peak, list_sound_n, secs,
+								secs > 0 ? list_sound_n / secs : 0.0, audio ? SDL_GetAudioStreamQueued(audio) : -1);
+					}
 				}
 				if (audio && !game.audio.empty() && rec.dir.empty())
 					SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
@@ -3086,6 +3124,11 @@ int main(int argc, char **argv)
 			} else { game.run_frame(!ff, true); pass_kind = 3; }
 			game.publish();
 			game_frame++;
+			if (music_back_in > 0 && --music_back_in == 0) {
+				const uint8_t again[3] = { 0xA0, 0x10, music_back };
+				board.midi.insert(board.midi.end(), again, again + 3);
+				fprintf(stderr, "the console's list: the music the game was playing put back (A0 10 %02X)\n", music_back);
+			}
 			game.hold_roster();   // (nothing to do unless the player asked for the hidden fighters)
 			// a boot the player watches: the same check, once it is over
 			if (!game.rebuilt_after_boot && game_frame >= BOOT_FRAMES) { game.rebuilt_after_boot = true; game.rebuild_from_ram_if_stale(); }

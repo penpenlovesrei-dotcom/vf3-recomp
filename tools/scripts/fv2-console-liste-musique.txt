@@ -1,0 +1,10 @@
+# Fighting Vipers 2, the console way: the list opened on a title screen that comes AFTER a demonstration, so
+# that the demo's music is still playing under it. That is the case the first title screen cannot test -- the
+# one right after the SEGA logo has only the announcer's voice, which ends by itself, and a run that opens the
+# list there cannot tell a music that was stopped from a music that had finished.
+#
+# Two presses of Start, and they do different things, which is the whole point of the one button:
+#   1450  during the demonstration  -> the game is asked for its title screen (it is up one frame later)
+#   1520  on that title screen      -> the list of modes opens over it
+1450 press p1.start
+1520 press p1.start

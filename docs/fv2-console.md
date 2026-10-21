@@ -239,8 +239,54 @@ long as the list is up. Without it the list is mute and the music the title scre
 the middle of a note. The last sound, the one that closes the list, goes in with the game's own bytes instead,
 because the list's own sound frames stop with it.
 
-Nothing here sends the MIDI system reset (`FF`) to stop the music. The owner's menu had to -- its game kept
-running behind it and kept firing sounds -- but this one freezes the game, so it fires none.
+**The music stops while the list is up**, which is one byte: `FF`, the MIDI system reset. The game sends it
+itself at the head of every block of sound commands, so it is a driver built to be reset.
+
+It goes out LATE, 80 frames after the list opens, and the delay is not a matter of taste: `FF` restarts a
+sound still playing before cutting it, measured four ways on the real board, so the reset has to outlast the
+opening bip or the bip is heard twice. Sending it first stops the music at once but makes the bip wait for the
+driver to come back, which was measured and rejected.
+
+On the way out the music comes back, and **only when the player backs out**: on a mode chosen the game changes
+screen and asks for its own, and putting the old one back arrives too late and overwrites it -- the select
+screen inherited the demo's music, measured on the owner's build. Which music it was is the game's own
+business, so the host keeps the last `A0 10 nn` the game asked for and plays that one, 20 frames after the
+list closes so it starts after the closing sound rather than over it.
+
+### Measured, and the first measurement was not good enough
+
+`VF3_LIST_SOUND_LOG=1` says what went to the board, what the board made of it, and at what rate the board is
+being run. The run below opens the list on a title screen that comes **after a demonstration**
+(`tools/scripts/fv2-console-liste-musique.txt`), and that matters: the first title screen, the one right after
+the SEGA logo, has only the announcer's voice, which ends by itself -- a run that opens the list there cannot
+tell a music that was stopped from a music that had finished. The first attempt here did exactly that and
+proved nothing.
+
+```
+frame 1450: Start off the title screen (sub-state 11): the game asked for its title screen
+frame 1520: Start on the title screen: the console's list of modes is up
+list sound: A0 2E 23   peak 5926   (1 frame)        the opening bip, over the demo's music
+list sound: -          peak 4871   (60 frames in 1.03 s, 58.2 a second)
+list sound: FF         peak 6201   (80 frames in 1.38 s, 58.0 a second)   the reset goes out
+list sound: -          peak    0   (120 frames in 2.08 s, 57.7 a second)  and the music is gone
+list sound: -          peak    0   (180 frames in 3.11 s, 57.8 a second)  ... and stays gone
+52.0 s: key Down sent
+list sound: A0 2E 26   peak    0   (740 frames in 12.85 s, 57.6 a second)
+56.0 s: key C sent
+the console's list, closing: A0 2E 27 goes in with the game's own bytes
+the console's list: backed out
+the console's list: the music the game was playing put back (A0 10 07)
+```
+
+`A0 10 07` is one of the two the owner's own MIDI log had going past in the attract loop, which is a second
+reading of the same thing from a different side.
+
+**And the rate is the point of the second column.** The board has to be run at the game's own 57.52 frames a
+second; the first version asked once a pass whether a frame's time had passed, and since a frame is 17.38 ms
+and a pass is a refresh at 16.67, that made a frame every OTHER pass -- thirty a second, the queue emptying,
+and that is what a player hears as the sound slowing down and crackling. It is an accumulator now, and it
+catches up: 57.5 to 57.8 a second measured over nineteen seconds, with the device's queue holding between 4
+and 9.5 kB (a frame is 3 kB).
 
 Measured, with `VF3_LIST_SOUND_LOG=1` saying what went to the board and what the board made of it, on a run
 driven by `VF3_KEYS_S`:

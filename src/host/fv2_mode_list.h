@@ -87,9 +87,16 @@ struct fv2_mode_list
 	static constexpr uint8_t SND_MOVE[3]   = { 0xA0, 0x2E, 0x26 };   // sd_ketsu_00   391
 	static constexpr uint8_t SND_CHOOSE[3] = { 0xA0, 0x2E, 0x23 };   // sd_sign_16    388 (the same as opening)
 	static constexpr uint8_t SND_CANCEL[3] = { 0xA0, 0x2E, 0x27 };   // sd_sonic00_11 392
-	// Nothing here sends the MIDI system reset (FF) to stop the music. The owner's menu had to -- its game kept
-	// running behind it and kept firing sounds -- but the game is frozen behind this one, so it fires none, and
-	// the title screen's own music goes on playing under the list, which is what a console does.
+	// And the music stops while the list is up, which is the MIDI system reset, one byte: FF. The game sends it
+	// itself at the head of every block of sound commands, so it is a driver built to be reset.
+	//
+	// It is sent LATE, 80 frames after the list opens, and that delay is not a matter of taste. FF restarts a
+	// sound still playing before cutting it, measured four ways on the real board: sent 40 frames after the
+	// opening bip, the bip is heard twice; at 60, the second copy is much shorter; a whole second after, there
+	// is nothing left to restart. So the reset has to outlast the opening sound. Sending it first instead stops
+	// the music at once but makes the bip wait for the driver to come back, which was measured and rejected.
+	static constexpr uint8_t SND_STOP = 0xFF;
+	static constexpr int STOP_DELAY_FRAMES = 80;
 
 	// what handle_event returns when the player backed out, as against a line chosen (0..LINES-1) or -1
 	static constexpr int CANCELLED = -2;
@@ -102,8 +109,17 @@ struct fv2_mode_list
 	int stick_y = 0;
 	uint64_t blink_t0 = 0;   // when the list went up, in SDL's nanoseconds: the blink is read from the clock
 	std::vector<uint8_t> midi;   // the bytes waiting for the sound board (the host hands them over each frame)
+	int stop_in = -1;            // frames before the music is stopped; 0 once it has been, -1 if it never was
 
 	void play(const uint8_t (&s)[3]) { midi.insert(midi.end(), s, s + 3); }
+	// Once a sound frame, while the list is up: the delayed stop comes due here, and whatever is waiting goes.
+	std::vector<uint8_t> frame_midi()
+	{
+		if (stop_in > 0 && --stop_in == 0) midi.push_back(SND_STOP);
+		return take_midi();
+	}
+	// The music was actually stopped, so there is something to put back if the player backs out.
+	bool music_stopped() const { return stop_in == 0; }
 	// What the host hands the sound board on the next of its frames, and empties here.
 	std::vector<uint8_t> take_midi()
 	{
@@ -163,6 +179,7 @@ struct fv2_mode_list
 		stick_y = 0;
 		blink_t0 = SDL_GetTicksNS();   // (so the chosen line starts at full, and the blink starts there)
 		play(SND_OPEN);
+		stop_in = STOP_DELAY_FRAMES;
 	}
 	void hide() { shown = false; }
 
