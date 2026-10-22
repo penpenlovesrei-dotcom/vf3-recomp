@@ -125,6 +125,8 @@
 #include "input_script.h"
 #include "console_play.h"
 #include "fv2_mode_list.h"
+#include "fv2_options.h"
+#include "fv2_texte.h"
 #include "menu.h"
 #include "controls.h"
 #include "sysinfo.h"
@@ -2202,6 +2204,16 @@ int main(int argc, char **argv)
 	// distinction is the whole point -- a page of the menu is a page of this port's settings whatever is in it.
 	fv2_mode_list modes;
 	if (cplay.on) modes.load(ren, find_assets(), stderr);
+	// And the OPTIONS page behind that list's last line, which is a surface of its own for the same reason.
+	// Unlike the six others it EDITS something: the arcade's GAME ASSIGNMENTS, in the backup RAM where they
+	// last, so a change restarts the game when the page closes -- as the Arcade settings page does for Virtua
+	// Fighter 3 (src/host/fv2_options.h, docs/fv2-console-options.md).
+	fv2_texte console_font;
+	fv2_options options;
+	if (cplay.on) {
+		console_font.load(ren, find_assets(), stderr);
+		options.load(ren, find_assets(), &console_font, stderr);
+	}
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
 	pad_state pstate[2];
@@ -2386,7 +2398,12 @@ int main(int argc, char **argv)
 				cplay = console_play();   // (a style changed mid-session: nothing of the last one is carried over)
 				cplay.on = cfg.console && console_known;
 				modes.hide();
-				if (cplay.on) modes.load(ren, find_assets(), stderr);   // (read once: the second call is free)
+				options.hide();
+				if (cplay.on) {   // (read once: the second call is free)
+					modes.load(ren, find_assets(), stderr);
+					console_font.load(ren, find_assets(), stderr);
+					options.load(ren, find_assets(), &console_font, stderr);
+				}
 				g_pc_mode = !cfg.arcade;
 				cfg_dirty = true;
 				reset_game();
@@ -2607,7 +2624,7 @@ int main(int argc, char **argv)
 	bool sound_paused = false;
 	auto sync_menu_sound = [&] {
 		// the game is frozen behind the menu and behind the console's list of modes alike, and so is its sound
-		const bool quiet_now = menu.is_open() || modes.shown;
+		const bool quiet_now = menu.is_open() || modes.shown || options.shown;
 		if (!audio || quiet_now == sound_paused) return;
 		sound_paused = quiet_now;
 		if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
@@ -2618,6 +2635,21 @@ int main(int argc, char **argv)
 	// V.S. want the select screen's own timing, which has not been measured here, and NETWORK, TRAINING and
 	// OPTIONS have no lever in this port at all. A line that does nothing leaves the list up: closing it would
 	// say something happened.
+	// Leaving the page. The game reads these settings only as it starts, so one that moved means a restart --
+	// and only one that really moved: a value stepped there and back, or held at its limit, changes nothing.
+	auto close_options = [&] {
+		const bool changed = options.changed;
+		options.changed = false;
+		options.hide();
+		cplay.swallow_start = true;
+		cplay.start_was = true;
+		sync_menu_sound();
+		if (changed) {
+			fprintf(stderr, "the console's OPTIONS: a setting changed -- the game restarts to read it\n");
+			reset_game();
+		} else
+			fprintf(stderr, "the console's OPTIONS: closed, nothing changed\n");
+	};
 	auto choose_mode = [&](int line) {
 		fprintf(stderr, "the console's list: %s chosen\n", fv2_mode_list::name(line));
 		if (line == fv2_mode_list::ARCADE) cplay.choose_arcade();
@@ -2633,6 +2665,16 @@ int main(int argc, char **argv)
 		// out, health that comes back, the dummy's behaviour -- is still to be read, in the owner's draft in
 		// the summer's patched ROM and in the Dreamcast version.
 		else if (line == fv2_mode_list::TRAINING) cplay.choose_training();
+		// OPTIONS starts nothing: the list gives way to a page of its own and the game stays frozen behind it,
+		// exactly where it was. Nothing is injected, so the press is swallowed below as for the others.
+		else if (line == fv2_mode_list::OPTIONS && options.ready) {
+			modes.hide();
+			options.show();
+			cplay.swallow_start = true;
+			cplay.start_was = true;
+			sync_menu_sound();
+			return;
+		}
 		else {
 			fprintf(stderr, "the console's list: %s has no lever in this port yet -- nothing done\n", fv2_mode_list::name(line));
 			return;
@@ -2767,7 +2809,11 @@ int main(int argc, char **argv)
 		make_2d(tex_above, video::W);
 		if (glass) { SDL_DestroyTexture(glass); glass = nullptr; glass_w = glass_h = 0; }
 		menu.textures_lost();
-		if (cplay.on) modes.textures_lost(ren, find_assets());   // (nothing of this exists in the other styles)
+		if (cplay.on) {   // (nothing of this exists in the other styles)
+			modes.textures_lost(ren, find_assets());
+			console_font.textures_lost(ren, find_assets());
+			options.textures_lost(ren, find_assets());
+		}
 		new_frame = true;   // (the next picture sends the 2D again)
 	};
 	// Started from a terminal, the window can open behind it or without the keyboard (the keys go to the terminal):
@@ -2829,6 +2875,12 @@ int main(int argc, char **argv)
 					cplay.start_was = true;
 					fprintf(stderr, "the console's list: backed out\n");
 				}
+				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
+					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
+			}
+			// The OPTIONS page, the same way, and Escape left alone for the same reason.
+			if (options.shown && !(e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE)) {
+				if (options.handle_event(e, cfg.ctl, board) == fv2_options::CANCELLED) close_options();
 				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
 					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
 			}
@@ -2897,7 +2949,8 @@ int main(int argc, char **argv)
 		// on lasts 192 frames of its own (measured), and a list that let the game walk on to the demo would be
 		// a list over a demonstration
 		if (modes.shown && menu.is_open()) modes.hide();   // (Escape opened this port's menu over it)
-		const bool stopped = paused || menu.is_open() || modes.shown;
+		if (options.shown && menu.is_open()) close_options();
+		const bool stopped = paused || menu.is_open() || modes.shown || options.shown;
 		const bool ff = !stopped && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB];
 		int due = 0;
 		if (stopped) {
@@ -3225,6 +3278,13 @@ int main(int argc, char **argv)
 			SDL_FRect list_all, list_mid;
 			picture_rect(list_all, list_mid);
 			modes.render(ren, list_all, list_mid);
+		}
+		// the OPTIONS page, over that same picture. Its backdrop covers the 4:3 screen and NOTHING IS DIMMED:
+		// the Dreamcast does not dim this one, measured (docs/fv2-dreamcast-menus.md section 3bis).
+		if (options.shown) {
+			SDL_FRect opt_all, opt_mid;
+			picture_rect(opt_all, opt_mid);
+			options.render(ren, opt_mid, board);
 		}
 		// the frame rate: the pictures shown a second, over the game (not the menu or a pause, where no new
 		// pictures are made: hidden there, as VF1's and VF2's)

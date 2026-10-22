@@ -185,6 +185,50 @@ public:
 		if (coin_setting() != COIN_FREE_PLAY) return false;
 		return coin_offset() != 0x1E033 || backup[0x1E03B] == 1;
 	}
+	// Fighting Vipers 2's GAME ASSIGNMENTS -- its operator settings -- WHERE THEY LAST, which is the backup RAM.
+	//
+	// The block the game reads them from at 0x00120520 is only a working copy; it is loaded from the backup when
+	// the game starts, so writing it does not survive a restart. Watching who writes it (vf3run --watch 120540)
+	// gives a memcpy, and its two callers give the whole picture: 0x00020D80 loads the block from the backup at
+	// 0xFE0C0000, 0x00020F38 loads it from a factory table at 0x00120D24, and 0x00020F98 chooses between them on
+	// three fields at the head of a first block -- "SEGA", 0x8221, 0x0312. Four blocks in all, contiguous in RAM
+	// from 0x0011F024, on four separate pages of the backup. docs/fv2-console-options.md has the reading.
+	//
+	// The loader reads one 32-bit word of backup per 16-bit halfword of settings (lwbrx then sthu), so each value
+	// sits in two of every four bytes. For the live byte at 0x00120520 + k that works out as below -- and the
+	// formula gives back this port's own coin byte, 0x17, which had been found by hand: k = 11, which is
+	// 0x0012052B, in the COIN ASSIGNMENTS where it belongs.
+	//
+	// Measured end to end, not just read: a run with the backup poked and a control beside it changed five
+	// settings through the backup and the game loaded all five.
+	static int fv2_option_index(int k) { return k % 2 == 0 ? 2 * k + 2 : 2 * k + 1; }
+	static constexpr int FV2_OPTIONS_LIVE = 0x00120520;
+	int fv2_option(int live, int bytes) const
+	{
+		if (set != "fvipers2") return -1;
+		int v = 0;
+		for (int i = 0; i < bytes; i++) {
+			const size_t at = size_t(fv2_option_index(live - FV2_OPTIONS_LIVE + i));
+			if (at >= backup.size()) return -1;
+			v = v << 8 | backup[at];
+		}
+		return v;
+	}
+	// True if it wrote anything -- which is what tells the caller to restart the game, since the game reads
+	// these only as it starts.
+	bool fv2_set_option(int live, int bytes, int v)
+	{
+		if (set != "fvipers2") return false;
+		bool changed = false;
+		for (int i = 0; i < bytes; i++) {
+			const size_t at = size_t(fv2_option_index(live - FV2_OPTIONS_LIVE + i));
+			if (at >= backup.size()) return changed;
+			const uint8_t was = backup[at], now = uint8_t(v >> (8 * (bytes - 1 - i)));
+			backup[at] = now;
+			changed = changed || was != now;
+		}
+		return changed;
+	}
 	// Blanks the FREE PLAY notices (the PC way: always free play, nothing to say), in the fixed CROM the boot copies
 	// the program from (so from the next boot). Checked against the known data around them first; returns how many
 	// it changed (2; 0: not the data known). show_free_play_text puts them back.

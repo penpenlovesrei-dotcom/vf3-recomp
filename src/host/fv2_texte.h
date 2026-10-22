@@ -62,11 +62,30 @@ struct fv2_texte
 	};
 
 	// The two set by eye (above), in cells so they follow the drawn size
-	static constexpr float TRACK = 7.0f / CELL;    // the gap between two ink boxes
+	static constexpr float TRACK = 5.0f / CELL;    // the gap between two ink boxes
 	static constexpr float SPACE = 16.0f / CELL;   // the space's own advance, which has no ink
 
-	// Where the baseline and the capitals sit in a cell, for placing a line against something else
-	static constexpr float BASELINE = 46.0f / CELL, CAP_TOP = 13.0f / CELL;
+	// The capitals and the digits all occupy y 16..46 in the cell -- the 35 of them share one box, the Q's
+	// tail apart -- so this is the whole of what a line of this page needs to place itself.
+	static constexpr float CAP_TOP = 16.0f / CELL, CAP = 31.0f / CELL;
+
+	// THE DREAMCAST'S OWN TWO FACES, measured from a capture of its OPTIONS screen and written up in
+	// docs/fv2-dreamcast-menus.md section 3bis. They are two, and this sheet is one of them.
+	//
+	// Its settings rows LEAN. Deskewing each line and keeping the angle that makes the stems sharpest gives
+	// 7.0 to 8.25 degrees, median about 7.5. And the sheet is that face: the weight, as the median run of ink
+	// across a row at half height over the cap height, is 0.194 here (the I, 6 px on 31) against the disc's
+	// 0.195 (8 on 41). The same face without the slant, so SLANT puts the slant back.
+	static constexpr float SLANT = 0.1316f;   // tan(7.5 degrees)
+	//
+	// Its title does NOT lean, and is a condensed bold this sheet has no weight for: "OPTIONS" is 4.143 cap
+	// heights wide at a weight of 0.254, where this sheet is 6.000 and 0.194. Condensing by c and thickening
+	// HORIZONTALLY by s cap-heights solves both at once -- a horizontal thickening leaves the height alone --
+	//     6.000*c + s = 4.143 ;  0.194*c + s = 0.254
+	// giving the two below. Horizontally and not with a square growth: that was tried first and dropped,
+	// because it rounds the corners and closes the counters, which the disc has sharp and open. A condensed
+	// bold carries its weight on the vertical stems anyway.
+	static constexpr float COND = 0.6698f, THICK = 0.1241f;
 
 	bool ready = false, tried = false;
 	SDL_Texture *tex = nullptr;
@@ -120,46 +139,75 @@ struct fv2_texte
 	static int cell_of(unsigned char c) { return c >= FIRST && c <= LAST ? int(c) - FIRST : 0; }
 
 	// How wide a line comes out, at a line height of `h` pixels (that is, `h` for the whole 64-row cell).
-	float width(const char *s, float h) const
+	float width(const char *s, float h) const { return width(s, h, 1.0f, 0.0f); }
+
+	// One glyph as a parallelogram: the top edge slid right by `slant` of the height. SDL has no sheared blit,
+	// and a rotation is not a shear, so the four corners go through RenderGeometry. With slant 0 this is the
+	// same rectangle SDL_RenderTexture would draw.
+	void quad(SDL_Renderer *ren, const SDL_FRect &src, const SDL_FRect &dst, float slant, SDL_FColor c)
 	{
-		float x = 0;
-		bool first = true;
+		const float u0 = src.x / IMG_W, u1 = (src.x + src.w) / IMG_W;
+		const float v0 = src.y / IMG_H, v1 = (src.y + src.h) / IMG_H;
+		const float d = slant * dst.h;
+		SDL_Vertex v[4] = {
+			{ { dst.x + d,         dst.y         }, c, { u0, v0 } },
+			{ { dst.x + d + dst.w, dst.y         }, c, { u1, v0 } },
+			{ { dst.x + dst.w,     dst.y + dst.h }, c, { u1, v1 } },
+			{ { dst.x,             dst.y + dst.h }, c, { u0, v1 } },
+		};
+		static const int IDX[6] = { 0, 1, 2, 0, 2, 3 };
+		SDL_RenderGeometry(ren, tex, v, 4, IDX, 6);
+	}
+
+	// One line, its left edge at x and its cell's top at y, the cell drawn h tall. The sheet is white, so the
+	// colour is a tint. `slant` leans it (SLANT for the disc's settings rows, 0 upright), `squeeze` narrows it
+	// and `thicken` smears it sideways in cap-heights -- the last two are the title's, and both are 0/1 here.
+	void draw(SDL_Renderer *ren, const char *s, float x, float y, float h, SDL_Color col, uint8_t alpha = 255,
+			  float slant = 0, float squeeze = 1, float thicken = 0)
+	{
+		if (!ready || !tex) return;
+		const SDL_FColor c = { col.r / 255.0f, col.g / 255.0f, col.b / 255.0f, alpha / 255.0f };
+		const float smear = thicken * CAP * h;              // in pixels
+		const int copies = smear > 0 ? int(smear) + 1 : 1;  // one a pixel, which fills it
 		for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
 			const int i = cell_of(*p);
-			if (!first) x += TRACK * h;
-			first = false;
-			x += (INK[i][1] ? INK[i][1] / float(CELL) : SPACE) * h;
+			if (p != (const unsigned char *)s) x += TRACK * h * squeeze;
+			if (!INK[i][1]) { x += SPACE * h * squeeze; continue; }
+			const SDL_FRect src = { float((i % COLS) * CELL + INK[i][0]), float((i / COLS) * CELL),
+									float(INK[i][1]), float(CELL) };
+			const float w = INK[i][1] / float(CELL) * h * squeeze;
+			for (int k = 0; k < copies; k++)
+				quad(ren, src, { x + smear * k / float(copies > 1 ? copies - 1 : 1), y, w, h }, slant, c);
+			x += w + smear;
+		}
+	}
+
+	// How wide `draw` comes out with the same arguments.
+	float width(const char *s, float h, float squeeze, float thicken) const
+	{
+		const float smear = thicken * CAP * h;
+		float x = 0;
+		for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+			const int i = cell_of(*p);
+			if (p != (const unsigned char *)s) x += TRACK * h * squeeze;
+			x += INK[i][1] ? INK[i][1] / float(CELL) * h * squeeze + smear : SPACE * h * squeeze;
 		}
 		return x;
 	}
 
-	// One line, its left edge at x and its cell's top at y, the cell drawn h tall. The sheet is white, so the
-	// colour is a tint; alpha rides on top of it.
-	void draw(SDL_Renderer *ren, const char *s, float x, float y, float h, SDL_Color col, uint8_t alpha = 255)
+	// The disc's title: condensed, thickened sideways, upright, centred on x. `cap` is the height of the
+	// capitals, which is what was measured, rather than the cell's.
+	void draw_title(SDL_Renderer *ren, const char *s, float x_mid, float cap_top, float cap, SDL_Color col,
+					uint8_t alpha = 255)
 	{
-		if (!ready || !tex) return;
-		SDL_SetTextureColorMod(tex, col.r, col.g, col.b);
-		SDL_SetTextureAlphaMod(tex, alpha);
-		bool first = true;
-		for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
-			const int i = cell_of(*p);
-			if (!first) x += TRACK * h;
-			first = false;
-			if (!INK[i][1]) { x += SPACE * h; continue; }
-			const SDL_FRect src = { float((i % COLS) * CELL + INK[i][0]), float((i / COLS) * CELL),
-									float(INK[i][1]), float(CELL) };
-			const float w = INK[i][1] / float(CELL) * h;
-			const SDL_FRect dst = { x, y, w, h };
-			SDL_RenderTexture(ren, tex, &src, &dst);
-			x += w;
-		}
-		SDL_SetTextureColorMod(tex, 255, 255, 255);
-		SDL_SetTextureAlphaMod(tex, 255);
+		const float h = cap / CAP;
+		draw(ren, s, x_mid - width(s, h, COND, THICK) * 0.5f, cap_top - CAP_TOP * h, h, col, alpha, 0, COND, THICK);
 	}
 
-	// The same, ending at x instead of starting there -- what a column of values needs to line up on its right.
-	void draw_right(SDL_Renderer *ren, const char *s, float x, float y, float h, SDL_Color col, uint8_t alpha = 255)
+	// Centred on x -- what the disc does with this page's values, which sit on a column of their own.
+	void draw_mid(SDL_Renderer *ren, const char *s, float x_mid, float y, float h, SDL_Color col,
+				  uint8_t alpha = 255, float slant = 0)
 	{
-		draw(ren, s, x - width(s, h), y, h, col, alpha);
+		draw(ren, s, x_mid - width(s, h) * 0.5f, y, h, col, alpha, slant);
 	}
 };
