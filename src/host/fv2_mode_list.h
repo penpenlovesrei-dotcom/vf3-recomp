@@ -76,6 +76,11 @@ struct fv2_mode_list
 	// what handle_event returns when the player backed out, as against a line chosen (0..LINES-1) or -1
 	static constexpr int CANCELLED = -2;
 
+	// What the last event should be heard as. This surface says WHAT happened; the host, which owns the sound
+	// board, says what that sounds like and when it can be played (src/host/main.cpp, play_effect).
+	enum { SND_NONE, SND_MOVE, SND_VALIDATE, SND_CANCEL };
+	int want_sound = SND_NONE;
+
 	bool shown = false;      // the list is up, and the game is frozen behind it
 	int sel = ARCADE;
 	bool ready = false, tried = false;
@@ -139,7 +144,7 @@ struct fv2_mode_list
 
 	// The cursor goes round. The owner's own list does not, and for a reason that is not ours: its last line is
 	// QUIT GAME, and going round put quitting the emulator one press above ARCADE. Nothing here quits anything.
-	void move(int d) { sel = (sel + LINES + d) % LINES; }
+	void move(int d) { sel = (sel + LINES + d) % LINES; want_sound = SND_MOVE; }
 
 	// One event while the list is up. Returns the line chosen, CANCELLED, or -1 for anything else.
 	//
@@ -168,9 +173,9 @@ struct fv2_mode_list
 			else if (sc == SDL_SCANCODE_DOWN || bound(C_DOWN, sc)) move(+1);
 			else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER || sc == SDL_SCANCODE_SPACE
 					 || bound(C_START, sc) || bound(C_PUNCH, sc))
-				return sel;
+				{ want_sound = SND_VALIDATE; return sel; }
 			else if (sc == SDL_SCANCODE_BACKSPACE || bound(C_KICK, sc))
-				return CANCELLED;
+				{ want_sound = SND_CANCEL; return CANCELLED; }
 			return -1;
 		}
 		case SDL_EVENT_KEY_UP:
@@ -179,8 +184,8 @@ struct fv2_mode_list
 			switch (e.gbutton.button) {
 			case SDL_GAMEPAD_BUTTON_DPAD_UP: move(-1); break;
 			case SDL_GAMEPAD_BUTTON_DPAD_DOWN: move(+1); break;
-			case SDL_GAMEPAD_BUTTON_START: case SDL_GAMEPAD_BUTTON_SOUTH: return sel;
-			case SDL_GAMEPAD_BUTTON_EAST: return CANCELLED;
+			case SDL_GAMEPAD_BUTTON_START: case SDL_GAMEPAD_BUTTON_SOUTH: want_sound = SND_VALIDATE; return sel;
+			case SDL_GAMEPAD_BUTTON_EAST: want_sound = SND_CANCEL; return CANCELLED;
 			default: break;
 			}
 			return -1;

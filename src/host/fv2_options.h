@@ -109,6 +109,11 @@ struct fv2_options
 
 	static constexpr int CANCELLED = -2;   // what handle_event returns when the player backed out
 
+	// What the last event should be heard as. The surface decides WHAT happened; the host, which owns the
+	// sound board, decides what that sounds like and when it can be played. Read and cleared by the host.
+	enum { SND_NONE, SND_MOVE, SND_VALIDATE, SND_CANCEL };
+	int want_sound = SND_NONE;
+
 	// ---- the tree, rebuilt from the summer's own ----
 	//
 	// August 2026's OPTIONS was not a flat page of settings, and neither is the Dreamcast's: both carry the
@@ -291,7 +296,7 @@ struct fv2_options
 		if (!n) return;
 		for (int k = 0; k < n; k++) {
 			sel() = (sel() + n + d) % n;
-			if (!skipped(at, sel())) return;
+			if (!skipped(at, sel())) { want_sound = SND_MOVE; return; }
 		}
 	}
 
@@ -340,14 +345,22 @@ struct fv2_options
 		auto act = [&] {
 			if (sel() < 0 || sel() >= lines()) return -1;
 			const line &l = page(at)[size_t(sel())];
-			if (l.what == line::BUTTON) initialize(board);
-			else if (l.what == line::OWN && own[at][size_t(l.which)].act) own[at][size_t(l.which)].act();
-			else if (l.what == line::DOOR) { at = l.which; sel() = 0; if (skipped(at, 0)) move(+1); }
+			if (l.what == line::BUTTON) { initialize(board); want_sound = SND_VALIDATE; }
+			else if (l.what == line::OWN && own[at][size_t(l.which)].act) {
+				own[at][size_t(l.which)].act();
+				want_sound = SND_VALIDATE;
+			} else if (l.what == line::DOOR) {
+				at = l.which;
+				sel() = 0;
+				if (skipped(at, 0)) move(+1);
+				want_sound = SND_VALIDATE;
+			}
 			return -1;
 		};
 		// Backing out goes UP ONE SCREEN, which is August's own back stack rather than aiming at the modes
 		// list by hand. From OPTIONS itself there is nowhere above, so it closes the page.
 		auto back = [&] {
+			want_sound = SND_CANCEL;
 			if (at == SCR_OPTIONS) return CANCELLED;
 			at = SCR_OPTIONS;
 			return -1;
@@ -355,8 +368,11 @@ struct fv2_options
 		auto sideways = [&](int d) {
 			if (sel() < 0 || sel() >= lines()) return;
 			const line &l = page(at)[size_t(sel())];
-			if (l.what == line::SETTING) step(board, size_t(l.which), d);
-			else if (l.what == line::OWN && own[at][size_t(l.which)].step) own[at][size_t(l.which)].step(d);
+			if (l.what == line::SETTING) { step(board, size_t(l.which), d); want_sound = SND_MOVE; }
+			else if (l.what == line::OWN && own[at][size_t(l.which)].step) {
+				own[at][size_t(l.which)].step(d);
+				want_sound = SND_MOVE;
+			}
 		};
 		switch (e.type) {
 		case SDL_EVENT_KEY_DOWN: {

@@ -223,3 +223,69 @@ sur ce chantier.
 5. La musique, **si** l'étape 2 dit que c'est tenable. Mesure : la musique joue avant, ne joue plus après, et
    revient là où le tableau dit qu'elle revient.
 6. `verifier-vf3.cmd` à chaque étape, et une partie jouée à la main par Frédéric avant de passer à la suivante.
+
+
+## Étape 4, faite le 2026-10-22 : les trois bruitages, sans toucher à la musique
+
+Frédéric a demandé de **sauter l'étape 3** — le tableau des quatre sorties — et de poser les bruitages. C'est
+exactement l'étape qui n'en dépend pas : elle ne touche pas à la musique, donc aucune case de ce tableau ne
+la commande.
+
+### Ce qu'il a fallu d'abord : faire tourner la carte sous l'écran gelé
+
+Une surface de la console gèle le PowerPC. Un PowerPC gelé ne lance aucune image de son, donc **rien ne sort**,
+pas même une note qu'on lui tend. Il a donc fallu que l'hôte tourne la carte lui-même : `Game::sound_only_frame`,
+qui est la moitié sonore de `finish_frame` sans rien toucher à l'état de la carte.
+
+**Par un accumulateur, et c'est tout l'enjeu.** La version défaite lançait une image de son par passe, condition
+sur 17,38 ms écoulées, ce qui donnait trente par seconde sur un écran à 60 Hz là où la carte en veut 57,5 : la
+file se vidait et ça grésillait. Ici le temps est mesuré et les images dues sont faites, quel que soit le
+nombre de passes — avec un plafond de quatre, pour qu'une fenêtre traînée ne déclenche pas un flot.
+
+Et **seulement sous les surfaces de la console** : jamais sous le menu de la touche Échap ni sous une pause, qui
+sont ceux du portage et ont toujours été muets.
+
+### Les trois sons
+
+Ceux du jeu, trouvés en août en envoyant des notes et en écoutant. Leurs numéros sont ceux de `GameFV2.h` :
+
+| ce qui arrive | la note | le son |
+|---|---|---|
+| déplacement | `A0 2E 26` | `sd_ketsu_00`, n° 391 |
+| choix, et ouverture | `A0 2E 23` | `sd_sign_16`, n° 388 |
+| annulation | `A0 2E 27` | `sd_sonic00_11`, n° 392 |
+
+Chaque surface dit **ce qui est arrivé** (`want_sound`) ; l'hôte, qui possède la carte, dit **à quoi ça
+ressemble**. Aucune des deux n'a à connaître le métier de l'autre. Le drain se fait une fois par passe et non
+là où les événements sont distribués, parce que ces blocs-là font `continue` sur chaque touche : une note
+remise à l'intérieur ne serait partie qu'à l'événement suivant.
+
+### La mesure, qui est la règle de ce chantier
+
+`VF3_MENU_SOUND=1` relate ce que la carte produit sous la surface. Trois `Down` envoyés à l'horloge, liste
+ouverte :
+
+```
+menu sound: 11.45 s,  660 images (57.6/s), pic 0
+menu sound: 12.32 s,  710 images (57.6/s), pic 2880
+menu sound: 12.33 s,  711 images (57.6/s), pic 4417
+menu sound: 12.35 s,  712 images (57.6/s), pic 4289
+menu sound: 12.37 s,  713 images (57.6/s), pic 3110
+menu sound: 12.38 s,  714 images (57.6/s), pic 678
+menu sound: 12.40 s,  715 images (57.6/s), pic 279
+menu sound: 12.48 s,  720 images (57.6/s), pic 0
+```
+
+Les deux autres pressions donnent **la même bouffée, au même chiffre près**. Donc :
+
+- **la cadence est 57,6/s**, celle de la carte, et non les 30/s de la version défaite ;
+- **le pic monte sur le déplacement là où il était à zéro**, qui est mot pour mot la mesure que l'étape 4
+  exigeait ;
+- **le silence revient**, donc rien ne reste accroché.
+
+### Ce qui n'est toujours pas fait
+
+L'étape 3 et l'étape 5 : **la musique n'est pas touchée**. Elle ne s'arrête pas à l'ouverture, elle n'est pas
+remise à la sortie, et `A0 00 01` n'est envoyé nulle part. Le tableau des sorties reste à remplir, et il lui
+faut maintenant six cases de plus que lorsqu'il a été écrit : se déplacer dans `OPTIONS`, franchir une porte,
+remonter d'un écran, changer une valeur, `INITIALIZE`, et sortir d'un écran enfant.

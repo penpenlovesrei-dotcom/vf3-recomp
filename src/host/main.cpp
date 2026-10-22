@@ -949,6 +949,32 @@ struct Game
 		sysinfo::note_frame();   // (on the thread that ran it: the game's own, when it has one)
 	}
 	void start_frame() { board.run_frame_start(); }
+	// ONE SOUND FRAME WITHOUT A GAME FRAME, for the console's own surfaces: they freeze the PowerPC, and a
+	// frozen PowerPC runs no sound frames, so a menu that beeps has to turn the board over itself. This is
+	// exactly finish_frame's sound half, with nothing touching the board's state.
+	//
+	// Safe only where the game says nothing to its sound board, which is where these surfaces open: between
+	// frames 1247 and 1385 -- the whole title screen -- the game sends not one byte (docs/fv2-console-son.md
+	// step 2). It is not an interrupted conversation, it is a prolonged silence. During a FIGHT it would be
+	// another matter, 55 blocks in 1700 frames, and that is noted there for the day a pause menu is written.
+	void sound_only_frame()
+	{
+		if (!sound_thread.joinable()) sound_start();
+		sound_wait();
+		audio.insert(audio.end(), sound_out.begin(), sound_out.end());
+		sound_out.clear();
+		{
+			std::lock_guard<std::mutex> lk(sound_m);
+			sound_midi.assign(board.midi.begin(), board.midi.end());
+			board.midi.clear();
+			sound_job_on = true;
+			sound_busy = true;
+		}
+		sound_cv.notify_all();
+	}
+	// A note handed to the sound board as if the game had written it: A0 <bank> <index>, the shape established
+	// by the owner by sending them and listening. Bank 0x2E is the effects'.
+	void play_effect(uint8_t index) { for (uint8_t b : { uint8_t(0xA0), uint8_t(0x2E), index }) board.midi.push_back(b); }
 	void finish_frame(bool sound_on, bool picture)
 	{
 		board.run_frame_end();
@@ -3005,6 +3031,68 @@ int main(int argc, char **argv)
 		const bool stopped = paused || menu.is_open() || modes.shown || options.shown;
 		const bool ff = !stopped && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB];
 		int due = 0;
+		// ---- the console's surfaces keep the sound board turning ----
+		//
+		// The list and the OPTIONS page freeze the PowerPC, so no game frame runs and no sound frame with it:
+		// a menu that beeps has to turn the board over itself. BY AN ACCUMULATOR, AND THAT IS THE WHOLE POINT.
+		// The version undone on the 2026-10-21 ran one sound frame per pass, gated on 17.38 ms having gone by,
+		// which on a 60 Hz screen gave thirty a second where the board wants 57.5 -- the queue starved and it
+		// rasped. Time is measured and the frames owed are made, however many passes it takes.
+		//
+		// This runs only under the console's own surfaces, never under this port's Escape menu or a pause:
+		// those two are its, and have always been silent.
+		// The three menu sounds, which are the game's own. The owner found them by sending notes and listening,
+		// and the numbers are his: sd_ketsu_00 no. 391 moves, sd_sign_16 no. 388 decides (and is also the one
+		// that opens), sd_sonic00_11 no. 392 backs out. Each surface says WHAT happened and this says what that
+		// sounds like, so neither has to know the other's job.
+		//
+		// Drained here, once a pass, rather than where the events are dispatched: those blocks `continue` on
+		// every key and pad event, so a note handed over inside them would not leave until the event after.
+		//
+		// This is step 4 of docs/fv2-console-son.md and nothing more -- the EFFECTS, with the music left
+		// exactly alone. The step before it, the table of what the music does on each of the four ways out,
+		// is deliberately skipped for now and will be filled in later.
+		{
+			auto heard = [&](int want) {
+				switch (want) {
+				case fv2_options::SND_MOVE: game.play_effect(0x26); break;
+				case fv2_options::SND_VALIDATE: game.play_effect(0x23); break;
+				case fv2_options::SND_CANCEL: game.play_effect(0x27); break;
+				default: break;
+				}
+			};
+			if (modes.want_sound) { heard(modes.want_sound); modes.want_sound = fv2_mode_list::SND_NONE; }
+			if (options.want_sound) { heard(options.want_sound); options.want_sound = fv2_options::SND_NONE; }
+		}
+		if (stopped && cplay.on && (modes.shown || options.shown)) {
+			static uint64_t last_ns = 0;
+			static double owed = 0;
+			const uint64_t now = SDL_GetTicksNS();
+			if (last_ns) owed += double(now - last_ns) / 1e9 * FRAME_HZ;
+			last_ns = now;
+			owed = std::min(owed, 4.0);   // (a window dragged or a breakpoint: catch up a little, never a flood)
+			int made = 0;
+			while (owed >= 1.0) { owed -= 1.0; game.sound_only_frame(); made++; }
+			// (tests: VF3_MENU_SOUND=1 reports what the board made under the surface, which is the measure the
+			// plan asks for -- the peak rises on a move where it was at zero -- and the rate, which is what
+			// the undone version got wrong: 30 a second where the board wants 57.5.)
+			if (static const bool say = getenv("VF3_MENU_SOUND") != nullptr; say && made) {
+				static int frames = 0;
+				static double since = 0;
+				static uint64_t t0 = 0;
+				int peak = 0;
+				for (int16_t s : game.audio) peak = std::max(peak, std::abs(int(s)));
+				frames += made;
+				if (!t0) t0 = now;
+				since = double(now - t0) / 1e9;
+				if (peak > 0 || frames % 60 == 0)
+					fprintf(stderr, "menu sound: %.2f s, %d sound frames (%.1f/s), peak %d\n",
+							since, frames, since > 0 ? frames / since : 0.0, peak);
+			}
+			if (audio && !game.audio.empty() && rec.dir.empty())
+				SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
+			game.audio.clear();
+		}
 		if (stopped) {
 			pace.stopped_s += double(SDL_GetTicksNS() - clock_t) / 1e9;   // (the menu's time isn't the game's)
 			restart_clock_real();
