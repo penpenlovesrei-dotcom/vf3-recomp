@@ -118,6 +118,81 @@ Et la question qui en dépend, celle qui nous occupe depuis deux jours : **comme
 marquée ?** Un second motif, une couleur, un clignotement, un cadre ? Notre portage fait clignoter la ligne
 (alpha 1 → 0,5 sur 45 images), ce qui vient du menu Supermodel du propriétaire, pas de la Dreamcast.
 
+### 3bis. L'écran OPTIONS de la Dreamcast : **relevé le 2026-10-22**
+
+Frédéric a fourni une capture Flycast de cet écran. Elle est mesurée ci-dessous, pas commentée à l'œil. Image
+du jeu extraite de la fenêtre : 1878 × 1405, rapport 1,3367 — du 4:3. Toutes les fractions sont rapportées à
+cette image.
+
+#### Le fond : **aucun voile**
+
+C'était la question posée. Les médianes de quatre zones sans interface, comparées à `option_bg.png` mis à la
+même taille :
+
+| zone | capture Dreamcast | `option_bg.png` tel quel | rapport |
+|---|---|---|---|
+| haut-gauche | (39, 38, 37) | (35, 33, 32) | 1,11 — 1,16 |
+| bord gauche | (41, 39, 38) | (36, 34, 33) | 1,15 |
+| bas gauche | (44, 41, 40) | (38, 36, 35) | 1,14 — 1,16 |
+| haut-droit | (49, 47, 46) | (39, 37, 36) | 1,26 — 1,28 |
+
+Le fond du disque **est** `option_bg.png`, à la compression et au gamma de l'émulateur près. Il n'est pas
+assombri du tout. À ne pas confondre avec la liste des modes, où la moitié mesurée s'applique à l'image vivante
+du jeu : ici le fond est une image préparée, déjà sombre par construction.
+
+#### Les deux polices, et elles sont deux
+
+Mesurées en cisaillant chaque ligne et en gardant l'angle qui rend les jambages verticaux les plus nets :
+
+| | pente |
+|---|---|
+| `OPTIONS`, le titre | **0,00°** |
+| `SOUNDS`, `CONTROLLER` | **0,00°** |
+| `MATCH COUNT`, `ROUND TIME`, `SURVIVAL TIME`, `ENERGY MAX -1P-`, `ENERGY MAX -2P-` | **−7,0° à −8,25°**, médiane ≈ 7,5° |
+
+Donc : un gras étroit **droit** pour le titre et les trois sous-écrans, et une **oblique** de ~7,5° pour les
+sept lignes de réglages. `police.png` n'est ni l'un ni l'autre — elle est droite et de graisse normale — mais
+ses formes collent à celles des lignes (même `R`, même `G`, mêmes chiffres) : c'est plausiblement la même
+famille sans la pente, et un cisaillement de 7,5° l'en rapprocherait. Pour le titre, non : trop claire et trop
+large.
+
+#### La disposition
+
+| | |
+|---|---|
+| titre `OPTIONS` | encre de `y = 0,0996` à `0,1438`, centré |
+| les sept réglages | hauteur de capitale **0,0292**, pas **0,0584**, première ligne à `y = 0,2128` |
+| libellés | **calés à gauche sur `x = 0,3136`** |
+| valeurs | **centrées sur `x ≈ 0,665`** — et non alignées à droite |
+| `SOUNDS` / `CONTROLLER` / `RESULT` | capitales plus hautes (0,0377), même pas de 0,0584, à partir de `y = 0,644` |
+| `INITIALIZE` | `y = 0,848..0,873`, l'image peinte |
+| le pied | deux lignes, `y = 0,902` et `y = 0,940` |
+
+#### Comment la ligne choisie est marquée
+
+**Par la couleur, et par le filet.** L'encre de la ligne choisie est `(252, 252, 10)` — jaune franc — quand
+les six autres sont `(247, 246, 246)`, blanc. Et le filet rose `(254, 170, 255)` court sous elle, de
+`x = 0,2913` à `x = 0,7295` : il déborde à peine des libellés et des valeurs, **il ne traverse pas l'écran**.
+C'est exactement `option_cursor.png`, ergot compris.
+
+Rien ne clignote. Le clignotement de `fv2_mode_list.h` vient du menu Supermodel du propriétaire, et cet écran-ci
+ne le fait pas.
+
+#### Et ce ne sont pas les treize réglages de la borne
+
+Le point qui compte pour `docs/fv2-console-options.md`. L'écran du disque montre **sept** réglages —
+`DIFFICULTY`, `MATCH COUNT`, `ROUND TIME`, `SURVIVAL TIME`, `ENERGY MAX -1P-`, `ENERGY MAX -2P-`,
+`SUPER K.O.` — puis trois sous-écrans (`SOUNDS`, `CONTROLLER`, `RESULT`), `INITIALIZE`, et un encart d'aide en
+bas à droite qui explique l'entrée courante. Ce n'est pas la liste des `GAME ASSIGNMENTS` : la borne sépare
+`MATCH COUNT 1P` et `VS`, le disque n'en montre qu'un ; la borne a `ADVERTISE SOUND`, `VS FINISH`, `BIKE LOGO`
+et `COUNTRY`, que le disque ne montre pas.
+
+Une **hypothèse**, pas un fait : `SURVIVAL TIME` vaut 180 sec. sur la capture, et l'un des octets non nommés du
+bloc de la borne, `0x12054A`, porte `0x00B4` = 180. À vérifier avant d'y toucher.
+
+Et un indice sur la plage de `DIFFICULTY` : la capture montre `VERY EASY`, ce qui va dans le sens de 0 à 4 =
+`VERY EASY` … `VERY HARD`, avec 2 = `NORMAL` comme l'usine.
+
 ### 4. Ce que chaque ligne déclenche
 
 Les cinq lignes de notre menu qui ne font rien : `RANDOM`, `V.S.`, `NETWORK`, `TRAINING`, `OPTIONS`. La
