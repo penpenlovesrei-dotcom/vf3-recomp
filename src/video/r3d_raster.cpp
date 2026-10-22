@@ -231,6 +231,8 @@ void Raster::gather(const Viewport &vp, int layer, bool overlay, std::vector<int
 		for (auto &mesh : *m.meshes) {
 			if (!mesh.in_layer(layer, m.alpha) || mesh.high_priority != overlay)
 				continue;
+			if (drop_game_shadows && mesh.colour_index == SHADOW_COLOUR_INDEX)
+				continue;
 			items.push_back(int(draws.size()));
 			draws.push_back({ &vp, &m, &mesh, x0, y0, x1, y1, sx0, sy0, sw, sh, vp.left * corr, vp.right * corr, vp.bottom, vp.top });
 		}

@@ -29,6 +29,12 @@ public:
 	int game_x() const { return gx; }
 	int game_width() const { return gw; }
 
+	// Fighting Vipers 2: leave the game's own shadows out (the meshes whose colour comes from entry 16 of its
+	// colour table -- SHADOW_COLOUR_INDEX). For replacing them with a shadow of this port's own; false, so
+	// nothing changes unless it is asked for. It is read where a mesh becomes a draw, so both renderers see
+	// the same scene.
+	bool drop_game_shadows = false;
+
 	void render(const Scene &scene, const uint16_t *tex_ram);
 
 	// The 3D over `under` (RGBA8, the tile generator's lower layer at this size), into out (may be `under`)

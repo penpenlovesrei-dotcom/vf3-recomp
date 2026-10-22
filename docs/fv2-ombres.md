@@ -651,6 +651,35 @@ Mesuré sur l'image 3101 en comptant les pixels marqués : **1 775 pixels d'ombr
 dans une bande de 342 x 35. Tout traitement qui ne touche que l'ombre travaille donc sur moins d'un
 centième de l'écran.
 
+### Ce que la carte permet vraiment
+
+Une idée reçue à écarter avant de classer : **le portage tourne déjà en Direct3D 12.** Relevé dans le journal
+d'une partie jouée ici :
+
+```
+renderer: gpu
+SDL_GPU: direct3d12, NVIDIA GeForce RTX 3070 Laptop GPU
+```
+
+SDL_GPU est une couche mince sur Direct3D 12, Vulkan et Metal. « Le faire en DirectX 12 » n'est donc pas un
+autre chemin : c'est **le chemin actuel**. La question utile est ce que SDL_GPU laisse passer. Lu dans
+l'en-tête installé (`SDL3/SDL_gpu.h`) :
+
+| | |
+|---|---|
+| nuanceurs de calcul | **oui** |
+| cibles de profondeur, formats `D16`, `D24`, `D32_FLOAT` | **oui** |
+| échantillonneur de comparaison (`enable_compare`, `compare_op`) | **oui** — le filtrage PCF matériel, la primitive des ombres douces |
+| lancer de rayons, structures d'accélération, nuanceurs de maillage | **aucun** |
+
+Et le portage **fait déjà** ce qu'une carte d'ombre demanderait : il écrit la profondeur **comme une couleur**
+(`o.depth` dans `r3d.hlsl`) et la relit dans une passe suivante (`odepth.Load`) pour les couches translucides.
+
+**Donc : tout ce qui améliore les ombres, sauf le lancer de rayons, se fait dans le chemin existant, sans une
+ligne de Direct3D 12 ni de Vulkan.** Seul le lancer de rayons demanderait un troisième chemin de rendu --
+Windows seulement en D3D 12, sans les Macs en Vulkan -- avec le contrôle GPU/processeur du démarrage à
+repenser.
+
 ### a — mieux dessiner l'ombre que le jeu dessine
 
 Elle se sépare en trois, de la plus petite à la plus grande.
@@ -678,18 +707,38 @@ qui s'ouvre avec la hauteur.
 |---|---|
 | cacher celle du jeu | **gratuit** : ne pas dessiner les maillages d'index 16 |
 | la lumière | **on l'a**, et par son nom : angles par décor, ou calculés depuis la position aux décors 3, 10 et 11 |
+| l'API | **tout est là** : cible de profondeur, texture de profondeur échantillonnable, échantillonneur de comparaison pour le PCF, nuanceurs de calcul. Rien à écrire hors de SDL_GPU |
 | le coût | une passe de profondeur depuis la lumière, ~20 000 sommets par combattant, **sur la carte** — la seule part qui dort (0,75 ms d'attente sur 4,5) |
+| ce qu'on y gagne en plus | la carte d'ombre voit les **vrais modèles** des combattants, pas les pièces simplifiées de la ROM : la silhouette est la bonne, et l'ombre peut tomber sur la cage, sur l'autre combattant, et sur le combattant lui-même |
 | ce qui coince | la lumière est **ponctuelle et par combattant** aux décors 3, 10 et 11 : deux cartes d'ombre, pas une. Et les décors 13 à 17, où le jeu **coupe** l'ombre : respecter son choix, ou non, est une décision |
 
 ### c — éclairer la scène autrement
 
-L'obstacle mesuré tient toujours, et il n'a pas bougé : à l'image 3101, **424 maillages sur 485 sont texturés
-avec une couleur de sommet blanche**. La texture **est** la couleur finale ; il n'y a ni albédo ni rugosité à
-en extraire. L'éclairage du Real3D, lui, travaille déjà.
+Cette voie avait été expédiée en deux lignes de jargon. En clair.
 
-La seule sous-voie qui tienne debout est l'**occlusion ambiante en espace écran**, dont l'entrée existe (le
-nuanceur écrit déjà la profondeur comme une couleur). Mais elle assombrirait un décor déjà ombré par sa
-texture, et elle recouvre en partie ce que a2 ferait mieux, sur une surface cent fois plus petite.
+Pour chaque pixel, le jeu calcule :
+
+```
+couleur = texture x ( soleil·normale x intensite + ambiante )
+```
+
+L'**ambiante** vaut **0,6**, mesuré dans toutes les vues. C'est la lumière que reçoit une surface qui ne voit
+pas le soleil -- et c'est une **constante** : le dessous d'une plateforme, le fond d'une cage, un recoin de mur
+et un sol en plein air reçoivent exactement les mêmes 60 %.
+
+**Ce qui est faisable, et c'est une seule chose : faire varier ce 0,6 selon l'enfermement du pixel.** C'est
+l'occlusion ambiante. Ce n'est pas inventer une matière, c'est affiner un terme que le matériel applique déjà,
+et son entrée existe (la profondeur est déjà écrite comme une couleur).
+
+**Ce qui n'a aucune base : l'illumination globale et les trajets de lumière.** Pour calculer un rebond, il faut
+savoir ce que la surface *fait* de la lumière qu'elle reçoit -- mate, brillante, métallique, et de quelle
+couleur de base. Le jeu n'a qu'une texture, et cette texture est l'**apparence finale** voulue par le
+dessinateur : en 1998, avec une seule lumière directionnelle, les reflets et les ombrages se peignaient dedans.
+Une lumière calculée posée par-dessus éclairerait donc ce qui est déjà éclairé, et laisserait briller des
+reflets peints là où rien n'arrive. Dans un texel, on ne peut pas séparer la matière de l'éclairage peint.
+
+Et le prix : l'occlusion ambiante touche **toute l'image**, là où a2 touche **0,93 %**. Deux ordres de
+grandeur, pour un effet moins visible que le défaut que a1 corrige.
 
 ### Ce qui vaut pour les trois
 

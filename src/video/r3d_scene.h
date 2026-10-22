@@ -64,6 +64,11 @@ struct Mesh
 	}
 };
 
+// Fighting Vipers 2's shadows: their polygons take their colour from this entry of the table, which the game
+// rewrites every frame with the stage's shadow colour (docs/fv2-ombres.md). It is the game's own marker for
+// them -- every other mesh of a fight frame carries its own RGB.
+constexpr int SHADOW_COLOUR_INDEX = 16;
+
 using Meshes = std::shared_ptr<std::vector<Mesh>>;
 
 struct Model

@@ -206,6 +206,9 @@ int main(int argc, char **argv)
 	if (getenv("VF3_WIDEN")) scene_builder.widen = float(atof(getenv("VF3_WIDEN")));
 	static video::Scene scene;
 	static video::Raster raster;
+	// VF3_NO_GAME_SHADOWS=1: the game's own shadows left out, to see what is underneath and to check that
+	// entry 16 of its colour table really is all of them and only them (docs/fv2-ombres.md)
+	raster.drop_game_shadows = getenv("VF3_NO_GAME_SHADOWS") != nullptr;
 	raster.resize(video::W, video::H);
 	// HD 2D: the pack is read once the scale is known, because every image in it must be at that scale
 	static video::TilePack tile_pack;

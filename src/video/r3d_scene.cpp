@@ -192,9 +192,9 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// the viewport's light: the sun direction as the Real3D receives it, its intensity and the
 				// ambient -- to compare with what the shadows' matrices do
 				fprintf(stderr, "view f%llu st%02X vp%zu  sun [%.5f %.5f %.5f] intensity %.4f ambient %.4f"
-				        "  models %zu\n",
+				        "  models %zu  root_matrix %d\n",
 				        (unsigned long long)board.frame, stage, iv, p.sun[0], p.sun[1], p.sun[2],
-				        p.sun_intensity, p.ambient, p.models.size());
+				        p.sun_intensity, p.ambient, p.models.size(), p.root_matrix);
 				for (const Model &m : p.models) {
 					// VF3_MESH_AUDIT: the model's matrix as well, the 3x3 by rows then the translation: a linear part
 					// of rank 2 would mean the matrix itself flattens what it places
