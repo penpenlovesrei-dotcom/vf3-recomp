@@ -151,10 +151,33 @@ Mesurées en cisaillant chaque ligne et en gardant l'angle qui rend les jambages
 | `MATCH COUNT`, `ROUND TIME`, `SURVIVAL TIME`, `ENERGY MAX -1P-`, `ENERGY MAX -2P-` | **−7,0° à −8,25°**, médiane ≈ 7,5° |
 
 Donc : un gras étroit **droit** pour le titre et les trois sous-écrans, et une **oblique** de ~7,5° pour les
-sept lignes de réglages. `police.png` n'est ni l'un ni l'autre — elle est droite et de graisse normale — mais
-ses formes collent à celles des lignes (même `R`, même `G`, mêmes chiffres) : c'est plausiblement la même
-famille sans la pente, et un cisaillement de 7,5° l'en rapprocherait. Pour le titre, non : trop claire et trop
-large.
+sept lignes de réglages.
+
+Et la graisse, mesurée comme la médiane des suites d'encre sur une rangée à mi-hauteur, rapportée à la
+hauteur de capitale :
+
+| | graisse |
+|---|---|
+| `police.png` (le `I`, qui est un jambage pur : 6 px sur 31) | **0,194** |
+| les lignes de réglages du disque (8 px sur 41) | **0,195** |
+| le titre du disque (16 px sur 63) | **0,254** |
+
+`police.png` et les lignes du disque tombent au millième. **C'est la même fonte**, sans la pente — ce que les
+formes laissaient déjà penser, et que la graisse confirme.
+
+Le titre, lui, est un gras étroit : largeur du mot `OPTIONS` = **4,143** capitales, quand `police.png` en vaut
+**6,000**. On l'approche en condensant puis en épaississant **horizontalement** — pas avec une dilatation
+carrée, essayée d'abord et écartée parce qu'elle arrondit les angles et ferme les contrepoinçons, alors que le
+disque les a francs et ouverts ; un gras étroit porte de toute façon sa graisse sur les jambages verticaux.
+L'épaississement horizontal ne touche pas la hauteur, d'où un système à deux inconnues :
+
+```
+6,000*cap*c + s = 4,143*cap      (la largeur)
+0,194*cap*c + s = 0,254*cap      (la graisse)
+```
+
+soit `c = 0,6698` et `s = 0,1241*cap`. Rendu ainsi, le titre du portage mesure 4,129 capitales de large pour
+une graisse de 0,258, contre 4,143 et 0,254 au disque. `tools/fv2/maquette_options.py` le fait.
 
 #### La disposition
 

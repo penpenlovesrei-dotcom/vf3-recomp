@@ -8,13 +8,29 @@ sont dits a leur place. L'image fait exactement la taille de la capture (1878 x
 """
 import math
 import sys
-from PIL import Image
+from PIL import Image, ImageChops
 
 A = "assets/menu-console/"
 CELL, COLS = 64, 16
 TRACK, SPACE = 5.0 / CELL, 16.0 / CELL
 CAP = 31.0 / CELL           # la hauteur de capitale dans la case : y 16 a 46, mesure
 OBLIQUE = math.radians(7.5)  # la pente des lignes de reglages du disque, mesuree
+# Le titre du disque est un gras ETROIT, que police.png ne porte pas. Quatre nombres
+# mesures sur la capture : sa largeur vaut 4.143 capitales et ses jambages 0.254 de la
+# capitale, quand police.png vaut 6.000 et 0.194.
+#
+# On l'approche en condensant d'un facteur c puis en EPAISSISSANT HORIZONTALEMENT de s
+# pixels -- pas avec une dilatation carree, essayee d'abord : elle arrondit les angles
+# et ferme les contrepoincons, alors que le disque les a francs et ouverts. Un gras
+# etroit porte de toute facon sa graisse sur les jambages verticaux. L'epaississement
+# horizontal ne touche pas la hauteur, donc on rend a la capitale voulue :
+#     6.000*cap*c + s = 4.143*cap        (la largeur)
+#     0.194*cap*c + s = 0.254*cap        (la graisse)
+# -> c = 0.6698 et s = 0.1241*cap.
+LARG_DC, LARG_POLICE = 4.143, 6.000
+GRAS_DC, GRAS_POLICE = 0.254, 0.194
+COND = (LARG_DC - GRAS_DC) / (LARG_POLICE - GRAS_POLICE)
+EPAIS = GRAS_DC - GRAS_POLICE * COND        # en fractions de la capitale
 
 POLICE = Image.open(A + "police.png").convert("RGBA")
 INK = []
@@ -104,9 +120,27 @@ HAUT = 0.185 * H            # la premiere ligne (le disque la met a 0.2128, mais
 # cette disposition qui ne vienne pas de la capture.
 PAS = (0.800 * H - HAUT) / (len(LIGNES) - 1)
 
+def titre(img, s, cap, cy, col, grossir=True):
+    """Le gras etroit du disque, approche sur police.png (voir en tete)."""
+    ep = round(EPAIS * cap) if grossir else 0
+    c = COND if grossir else LARG_DC / LARG_POLICE
+    h = cap / CAP                            # la case qui donne cette capitale
+    couche = Image.new("RGBA", (int(largeur(s, h)) + 8, int(h) + 8), (0, 0, 0, 0))
+    ecrire(couche, s, 4, 4, h, (255, 255, 255))
+    couche = couche.resize((max(1, int(couche.width * c)), couche.height), Image.LANCZOS)
+    a = couche.split()[3]
+    if ep:
+        large = Image.new("L", (a.width + ep, a.height), 0)
+        for dx in range(ep + 1):
+            large.paste(ImageChops.lighter(large.crop((dx, 0, dx + a.width, a.height)), a), (dx, 0))
+        a = large
+    plein = Image.new("RGBA", a.size, col + (255,))
+    plein.putalpha(a)
+    # cy est le haut de l'ENCRE, qui commence a 16/64 de la case
+    img.alpha_composite(plein, (int(W * 0.5 - a.width / 2), int(cy - 4 - h * (16.0 / CELL))))
+
 if TITRE:
-    ht = (0.0442 / CAP) * H
-    ecrire(img, "OPTIONS", W * 0.5 - largeur("OPTIONS", ht) / 2, 0.0996 * H, ht, BLANC)
+    titre(img, "OPTIONS", 0.0442 * H, 0.0996 * H, BLANC, TITRE == 1)
 
 curseur = Image.open(A + "option_cursor.png").convert("RGBA")
 
