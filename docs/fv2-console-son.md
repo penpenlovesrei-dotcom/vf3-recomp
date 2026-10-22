@@ -289,3 +289,54 @@ L'étape 3 et l'étape 5 : **la musique n'est pas touchée**. Elle ne s'arrête 
 remise à la sortie, et `A0 00 01` n'est envoyé nulle part. Le tableau des sorties reste à remplir, et il lui
 faut maintenant six cases de plus que lorsqu'il a été écrit : se déplacer dans `OPTIONS`, franchir une porte,
 remonter d'un écran, changer une valeur, `INITIALIZE`, et sortir d'un écran enfant.
+
+
+## Ce que Start fait vraiment à la démonstration — mesuré le 2026-10-23
+
+Frédéric a corrigé le cadrage de tout ce document : « *ce n'est pas que la musique qui doit être arrêtée
+quand on passe de la démo à l'écran titre en appuyant sur Start, c'est toute la démo qui est coupée, dont la
+musique. Au sortir de l'écran titre, la démo et sa musique doivent recommencer au début.* »
+
+Mesuré, témoin compris, avec `VF3_MIDI_LOG` et `VF3_RAMLOG=580DFC:1,58FD99:1`.
+
+### La première moitié est déjà vraie, et ce n'est pas nous qui la faisons
+
+| image | sous-état | ce que le jeu envoie |
+|---|---|---|
+| 1385 | `0B` démo | `A0 10 07`, la musique de la démo |
+| **1450** | | **Start : le portage demande l'écran titre** |
+| 1453 | `02` | `A0 00 01  A0 30 00` — **son propre silence**, puis la voix « SEGA » |
+| 1455 | `05` titre | `A0 2B 00`, « Fighting » |
+| 1523 | `05` titre | `A0 2B 05`, « Vipers 2 » |
+
+Le pic avant l'image 1453 est 6816 — la musique de la démo — et zéro après. **La démo est bien coupée, musique
+comprise, trois images après Start, et c'est le jeu lui-même qui le fait** en redémarrant sa boucle. Il n'y a
+donc rien à écrire pour ça, et l'étape 5 de ce plan avait mal posé la question : elle parlait d'arrêter une
+musique là où le jeu coupe une démonstration.
+
+### La seconde moitié est fausse, et c'est un vrai défaut
+
+Les sous-états, témoin contre essai :
+
+```
+témoin (sans Start)   01 02 03 04 05(titre) 0B(démo) ... et la démo court
+avec Start à 1450     01 02 03 04 05(titre) 0B(démo) 00 01 02 03 04 05(titre) 08 09 0A
+```
+
+Après notre redémarrage, le jeu sort de l'écran titre vers les sous-états **08, 09 puis 0A** — et envoie
+`A0 10 11` à l'image 1673, une autre musique. Un passage naturel sort du titre vers **0B**, la démo, avec
+`A0 10 07`.
+
+**Ce n'est pas l'index de la liste d'attraction.** `0x00580DFC` vaut 0 dans les deux cas tout du long ; dans le
+témoin il ne se met à grimper (1, 2, 3, 4, toutes les ~203 images) qu'une fois la démo lancée. Ce qui diffère
+est donc **la branche prise en sortant du titre**, pas la position dans une liste.
+
+### Ce que ça laisse à faire
+
+Trouver ce qui choisit `0B` plutôt que `08` en sortant de l'écran titre. Par la règle de ce chantier, on ouvre
+`docs/fv2-flux-de-match.md` et `docs/fv2-etats.md` **avant** de mesurer quoi que ce soit d'autre : la question
+est un « pourquoi le jeu fait ça », et la machine à états est décompilée.
+
+À ne pas confondre avec l'étape 5 : celle-ci concerne la **musique sous la liste**, qui continue de jouer
+pendant que la liste est ouverte. Les deux sont distinctes et celle-ci vient d'abord, puisqu'elle décrit ce que
+le jeu doit faire tout seul.
