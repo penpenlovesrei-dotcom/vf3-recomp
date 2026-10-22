@@ -350,6 +350,17 @@ choisit est juste avant :
 
 **Un seul octet, `0x00292915`, commande l'alternance.** À 1 c'est la démonstration, sinon c'est le replay.
 
+Et il **bascule tout seul, à l'entrée de l'écran titre** (sous-état 4), ce qui est l'alternance même.
+`VF3_RAMLOG=292915:1,58FD99:1`, les deux passages d'un même run :
+
+```
+image 1193  octet = 01  sous-etat 04   premier titre   -> 1386  sous-etat 0B  la demo
+image 1647  octet = 00  sous-etat 04   second titre    -> 1850  sous-etat 08  le replay
+```
+
+Le jeu le retourne lui-même à chaque fois qu'il arrive sur son titre. Notre redémarrage n'y touche pas et n'a
+pas à y toucher.
+
 Et un voisin, pour le dossier : juste au-dessus, `0x0000B444` lit l'octet 55 du bloc des réglages — soit
 `0x00120557`, **`COUNTRY`** — et s'il vaut 1 (`U.S.A.`) part sur le sous-état 6, `ADV_RATING_INT`, l'écran de
 classification. La région commande donc un écran d'attraction de plus, ce qui n'était écrit nulle part.
