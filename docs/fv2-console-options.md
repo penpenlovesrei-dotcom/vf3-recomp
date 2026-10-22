@@ -244,7 +244,7 @@ dit qu'aucun des treize n'est verrouillé plus tôt. Un réglage qui ne bougerai
 ## Ce que le travail d'août avait déjà appris — relu le 2026-10-22
 
 Frédéric a signalé qu'« il y avait un sous-menu avant cet écran ». Le travail d'été est dans
-`Documents\SEGA Model 3\Sauvegardes6-08-20_23h04\Docs\MenuConsole.md`, et il dit beaucoup plus que ça.
+`Documents/SEGA Model 3/Sauvegardes/2026-08-20_23h04/Docs/MenuConsole.md`, et il dit beaucoup plus que ça.
 
 ### La forme d'OPTIONS en août
 
