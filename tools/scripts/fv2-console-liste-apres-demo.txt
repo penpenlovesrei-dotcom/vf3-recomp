@@ -1,0 +1,9 @@
+# Fighting Vipers 2, the console way: the road Frederic reported the menu sounds wrong on.
+#
+# Start during the demonstration (frame 1450, measured) cuts it and brings the game back to its title screen,
+# which is up by frame 1455. Start again on that title screen opens the list of modes -- and from there the
+# game is frozen, so nothing else can be driven from this file: a script runs on the game's frames and there
+# are no more. The moves inside the list go by the clock instead (VF3_KEYS_S), which is the only thing that
+# reaches a surface drawn over a frozen game.
+1450 press p1.start
+1500 press p1.start

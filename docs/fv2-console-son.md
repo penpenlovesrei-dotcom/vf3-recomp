@@ -369,3 +369,51 @@ classification. La région commande donc un écran d'attraction de plus, ce qui 
 
 **Rien sur ce chemin.** Start coupe la démo, le jeu fait son ménage, et ce qui repart ensuite est ce qui devait
 repartir. L'étape 5 garde son seul vrai sujet : **la musique qui continue de jouer sous la liste ouverte**.
+
+
+## Deux défauts entendus, et pourquoi la question était mal posée — 2026-10-23
+
+Frédéric a joué et rapporté deux choses : « *si on interrompt la démo ou le replay en appuyant sur start,
+l'écran titre apparaît mais avec le son du logo SEGA* », et « *les bruitages du menu ne se jouent pas en
+direct mais en décalé* ». Les deux sont réels, et aucun n'était dans mes mesures — parce que mes mesures
+lisent ce que la carte **produit**, pas ce qui sort des haut-parleurs.
+
+### 1. La voix du logo arrivait sur l'écran titre
+
+Elle était dans mon propre relevé depuis la veille, sans que je l'entende : à l'image 1453, trois images après
+Start, le jeu envoie `A0 00 01  A0 30 00` — son silence, **puis la voix « SEGA »**. Le portage saute l'image du
+logo et demande le titre ; il ne sautait pas sa voix. **Sauter une image et garder son son, c'est sauter à
+moitié.**
+
+Corrigé en retirant les notes de la banque `0x30` **sur la seule route où le logo est sauté** — `skip_logo > 0`
+dans `console_play`, c'est-à-dire exactement là et nulle part ailleurs. Les voix du titre (`A0 2B 00`
+« Fighting », `A0 2B 05` « Vipers 2 ») ne sont pas touchées : cet écran-là est bien montré.
+
+Mesuré, liste ouverte juste après : le pic passe de **8190, 10588, 10396, 8128… soutenu** à **2585 qui retombe
+à 200 en 0,13 s** — ce qui reste étant la fin de « Fighting », qui doit rester.
+
+### 2. Les bruitages étaient en retard, et ce n'était pas la carte
+
+La carte les faisait à l'heure : mesuré à 57,6 images par seconde, le pic monte sur l'image de la touche. Ce
+qui était en retard, c'est **la file audio de SDL**, dans laquelle le jeu avait pris de l'avance avant de
+geler. Un bip placé derrière une seconde de retard sort une seconde plus tard, et rien ne vide ce retard
+pendant le gel, puisque la pompe ne fabrique que ce que le temps réel demande.
+
+Corrigé en **vidant la file à l'entrée de la surface** : le menu part d'un silence, et ses sons sont immédiats.
+
+### 3. Et la musique : la question était bien mal posée
+
+Mesuré sur la route que Frédéric décrit — Start coupe la démo, la liste s'ouvre sur l'écran titre qui suit :
+
+```
+aucune ligne « the console's music » : rien ne jouait, donc rien n'a ete arrete
+```
+
+**Il n'y a pas de musique à arrêter sous la liste.** Le jeu l'a déjà coupée en redémarrant sa boucle, trois
+images après Start. Tout l'échafaudage « arrêter, puis remettre à la sortie » répond à une question qui ne se
+pose pas sur ce chemin.
+
+Il est écrit et mesuré, et il **se tait** : il suit la musique dans les octets du jeu (`A0 10 nn` la pose,
+`A0 00 01` l'efface), et si rien ne joue il ne fait rien et le dit dans le journal. Il resterait utile le jour
+où la liste s'ouvrirait sur un écran où une musique tourne. Sur la boucle d'attraction telle qu'elle est, il
+ne se déclenche jamais.

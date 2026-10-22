@@ -963,6 +963,7 @@ struct Game
 		sound_wait();
 		audio.insert(audio.end(), sound_out.begin(), sound_out.end());
 		sound_out.clear();
+		note_music();
 		{
 			std::lock_guard<std::mutex> lk(sound_m);
 			sound_midi.assign(board.midi.begin(), board.midi.end());
@@ -973,8 +974,37 @@ struct Game
 		sound_cv.notify_all();
 	}
 	// A note handed to the sound board as if the game had written it: A0 <bank> <index>, the shape established
-	// by the owner by sending them and listening. Bank 0x2E is the effects'.
+	// by the owner by sending them and listening. Bank 0x2E is the effects', bank 0x10 the music's.
 	void play_effect(uint8_t index) { for (uint8_t b : { uint8_t(0xA0), uint8_t(0x2E), index }) board.midi.push_back(b); }
+	void play_music(uint8_t index) { for (uint8_t b : { uint8_t(0xA0), uint8_t(0x10), index }) board.midi.push_back(b); }
+	// The game's own silence, measured: it never sends FF except once at boot, and A0 00 01 is what it puts at
+	// the head of its own blocks. Both were measured to take the music to a peak of 0.
+	void stop_music() { for (uint8_t b : { uint8_t(0xA0), uint8_t(0x00), uint8_t(0x01) }) board.midi.push_back(b); }
+
+	// WHICH MUSIC IS PLAYING, which is the whole of what "put back what was playing" needs. Read off the bytes
+	// as they go past, never guessed: a music command sets it, the game's own silence clears it. -1 means
+	// nothing is playing, and then there is nothing to stop and nothing to put back -- which is the case on a
+	// title screen reached straight from the SEGA logo, where the first measurement of this job went wrong by
+	// proving silence where there had been nothing to cut.
+	int music_now = -1;
+	// Set by the host on the road where the SEGA logo is skipped: its voice is dropped before the board hears
+	// it, so the skip is whole rather than half (see where it is set).
+	bool mute_voices = false;
+	void note_music()
+	{
+		if (mute_voices)
+			for (size_t i = 0; i + 2 < board.midi.size();)
+				if (board.midi[i] == 0xA0 && board.midi[i + 1] == 0x30)
+					board.midi.erase(board.midi.begin() + long(i), board.midi.begin() + long(i) + 3);
+				else
+					i++;
+		for (size_t i = 0; i + 2 < board.midi.size(); i++) {
+			if (board.midi[i] != 0xA0) continue;
+			if (board.midi[i + 1] == 0x10) music_now = board.midi[i + 2];
+			else if (board.midi[i + 1] == 0x00 && board.midi[i + 2] == 0x01) music_now = -1;
+		}
+		for (uint8_t b : board.midi) if (b == 0xFF) music_now = -1;
+	}
 	void finish_frame(bool sound_on, bool picture)
 	{
 		board.run_frame_end();
@@ -999,6 +1029,7 @@ struct Game
 						(unsigned long long)frame, board.fv2_mode(), board.fv2_submode(), "-", peak);
 			}
 		}
+		note_music();
 		{
 			std::lock_guard<std::mutex> lk(sound_m);
 			sound_midi.assign(board.midi.begin(), board.midi.end());
@@ -2236,6 +2267,9 @@ int main(int argc, char **argv)
 	// Fighter 3 (src/host/fv2_options.h, docs/fv2-console-options.md).
 	fv2_texte console_font;
 	fv2_options options;
+	// What was playing under the console's surface, and whether a mode was chosen on the way out (above).
+	int music_held = -1;
+	bool music_mode_chosen = false;
 	if (cplay.on) {
 		console_font.load(ren, find_assets(), stderr);
 		options.load(ren, find_assets(), &console_font, stderr);
@@ -2755,6 +2789,7 @@ int main(int argc, char **argv)
 			return;
 		}
 		modes.hide();
+		music_mode_chosen = true;   // the select screen lays its own music: nothing to put back
 		// The press that chose must not reach the game as a player's Start as well: the mode's own injection is
 		// what hands the game one, and it goes on last (frame_inputs below).
 		cplay.swallow_start = true;
@@ -3041,6 +3076,53 @@ int main(int argc, char **argv)
 		//
 		// This runs only under the console's own surfaces, never under this port's Escape menu or a pause:
 		// those two are its, and have always been silent.
+		// ---- the music under the console's surfaces ----
+		//
+		// THE WHOLE TREE IS ONE STATE, which is Frederic's own reading and what makes this writable at all.
+		// The list and the OPTIONS tree are one surface: the music stops on going in and is decided on coming
+		// out, so moving about inside -- a line, a door, a screen backed out of, a value changed -- decides
+		// nothing, because nothing has been left. Without that, every move the tree added would have wanted a
+		// case of its own in the table of docs/fv2-console-son.md, and the table is held over.
+		//
+		// What happens on the way out is that table, and each cell was measured there:
+		//   a mode chosen      NOTHING. The select screen lays its own (A0 00 01 then A0 10 00, frame 1257),
+		//                      so putting the demo's back would be worse than leaving it -- it is what made
+		//                      August's select screen inherit the demo's music;
+		//   backed out with B  put back what was playing;
+		//   Escape over it     put back too. That was hole no. 1 of the version undone on the 2026-10-21;
+		//   a line with no lever  nothing happens and the list stays up, so there is no way out to speak of.
+		//
+		// And nothing is stopped that was not playing. On a title screen reached straight from the SEGA logo
+		// there is no music at all, and music_now says so -- which is the trap the first measurement of this
+		// job fell into, proving a silence where there had been nothing to cut.
+		{
+			static bool was_up = false;
+			const bool up = modes.shown || options.shown;
+			if (up && !was_up) {
+				// THE QUEUE IS EMPTIED ON THE WAY IN, and that is what makes the menu's sounds prompt.
+				// Frederic heard them "en decale" -- late, and only once the game started again. The board
+				// was making them on time all along, measured: what was late was the SDL queue, which the
+				// game had run ahead into before it froze. A beep put behind a second of backlog comes out a
+				// second later. Nothing drains that backlog while the game is stopped, since the pump below
+				// makes exactly as much as real time asks for.
+				if (audio) SDL_ClearAudioStream(audio);
+				game.audio.clear();
+				music_held = game.music_now;
+				if (music_held >= 0) {
+					game.stop_music();
+					fprintf(stderr, "the console's music: A0 10 %02X was playing, stopped\n", music_held);
+				}
+			} else if (!up && was_up) {
+				if (music_held >= 0 && !music_mode_chosen) {
+					game.play_music(uint8_t(music_held));
+					fprintf(stderr, "the console's music: A0 10 %02X put back\n", music_held);
+				} else if (music_held >= 0)
+					fprintf(stderr, "the console's music: a mode was chosen, the select screen lays its own\n");
+				music_held = -1;
+				music_mode_chosen = false;
+			}
+			was_up = up;
+		}
 		// The three menu sounds, which are the game's own. The owner found them by sending notes and listening,
 		// and the numbers are his: sd_ketsu_00 no. 391 moves, sd_sign_16 no. 388 decides (and is also the one
 		// that opens), sd_sonic00_11 no. 392 backs out. Each surface says WHAT happened and this says what that
@@ -3202,6 +3284,13 @@ int main(int argc, char **argv)
 						script_ctl.start[0] = script_ctl.start[1] = false;
 					}
 				}
+				// THE LOGO'S VOICE GOES WITH THE LOGO. Start off the title screen restarts the attract loop and
+				// asks for the title at the SEGA logo, so the logo is never seen -- but the game says "SEGA"
+				// (A0 30 00) on the very frame it would have drawn it, and that voice was arriving over the
+				// title screen. Frederic heard it before this was measured. Skipping the picture and keeping
+				// its voice is half a skip; `skip_logo` is exactly the road where the picture is skipped, so
+				// the voice is dropped on the same road and nowhere else.
+				game.mute_voices = cplay.skip_logo > 0;
 				cplay.step(board, console_ctl);
 				m3::Controls &c = board.controls;
 				auto mix = [](bool *a, const bool *b, const bool *d) { a[0] = b[0] || d[0]; a[1] = b[1] || d[1]; };
