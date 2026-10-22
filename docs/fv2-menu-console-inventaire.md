@@ -85,7 +85,15 @@ test-menu tables. `0x0012054E` difficulty, `0x00120550` survival, `0x00120557` r
 `MenuConsole.md` §9 with a byte each.
 
 This port already reads and writes that block for Virtua Fighter 3's Arcade settings page, and already knows
-that changing one restarts the game when the menu closes. The work is the page, not the mechanism.
+that changing one restarts the game when the menu closes.
+
+"The work is the page, not the mechanism" was half wrong, and the half that was wrong is that this block is
+only a WORKING COPY: the game loads it from its backup RAM at start-up, so writing it does not last. The
+2026-10-22 found where the backup keeps it -- `docs/fv2-console-options.md` has the thirteen offsets, the
+formula they come from, the three fields that make the backup valid, and an end-to-end check against a
+control. Writing the backup byte makes the game load the value, exactly as Virtua Fighter 3's page does.
+What is left is the page, and the one thing that blocks it: `option_bg.png` carries no labels at all, so the
+thirteen names and values have to be DRAWN, and this port has no text outside RmlUi.
 
 
 ## 4. STATS -- the VS DIAGRAM
