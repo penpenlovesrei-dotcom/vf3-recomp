@@ -314,29 +314,47 @@ comprise, trois images après Start, et c'est le jeu lui-même qui le fait** en 
 donc rien à écrire pour ça, et l'étape 5 de ce plan avait mal posé la question : elle parlait d'arrêter une
 musique là où le jeu coupe une démonstration.
 
-### La seconde moitié est fausse, et c'est un vrai défaut
+### La seconde moitié n'est pas un défaut — **corrigé le 2026-10-23**
 
-Les sous-états, témoin contre essai :
+J'avais consigné ici un « vrai défaut ». Il n'y en a pas : Frédéric a répondu que **l'alternance entre le
+replay et la démo à la sortie de l'écran titre est normale**. C'est ce que fait la borne, et ce que faisait
+déjà le jeu avant qu'on y touche.
+
+Ce que la mesure avait vu est donc exact mais mal interprété :
 
 ```
-témoin (sans Start)   01 02 03 04 05(titre) 0B(démo) ... et la démo court
-avec Start à 1450     01 02 03 04 05(titre) 0B(démo) 00 01 02 03 04 05(titre) 08 09 0A
+témoin (sans Start)   01 02 03 04 05(titre) 0B(démo)
+avec Start à 1450     01 02 03 04 05(titre) 0B(démo) 00 01 02 03 04 05(titre) 08 09 0A(replay)
 ```
 
-Après notre redémarrage, le jeu sort de l'écran titre vers les sous-états **08, 09 puis 0A** — et envoie
-`A0 10 11` à l'image 1673, une autre musique. Un passage naturel sort du titre vers **0B**, la démo, avec
-`A0 10 07`.
+Le deuxième passage par l'écran titre donne le replay parce que c'est **au tour** du replay, pas parce que
+notre redémarrage aurait dérangé quelque chose. Et `0x00580DFC`, l'index de la liste, vaut bien 0 dans les
+deux cas : il n'avait rien à voir avec ce choix non plus.
 
-**Ce n'est pas l'index de la liste d'attraction.** `0x00580DFC` vaut 0 dans les deux cas tout du long ; dans le
-témoin il ne se met à grimper (1, 2, 3, 4, toutes les ~203 images) qu'une fois la démo lancée. Ce qui diffère
-est donc **la branche prise en sortant du titre**, pas la position dans une liste.
+### Ce qui décide, puisqu'on l'a trouvé en chemin
+
+La table de ce document disait déjà où regarder — « *`a FV2_TITLE_DSP = B ou = 8` : vers la démonstration, ou
+vers le replay* » — et la règle d'ouvrir les documents avant de mesurer a tenu : il a suffi de deux
+instructions à trouver, pas d'une soirée.
+
+`vf3run --watch 58FD98` donne les deux sites : `0x0000B480` écrit `0B`, `0x0000B4C4` écrit `08`. Et le test qui
+choisit est juste avant :
+
+```
+0000B450  lis   r3,0x0029
+0000B454  lbz   r3,10517(r3)      ; l'octet 0x00292915
+0000B458  cmpwi r3,1
+0000B45C  bne   0x0000B4B8        ; different de 1 -> REPLAY, qui ecrit 08
+                                  ; egal a 1      -> DEMO,   qui ecrit 0B
+```
+
+**Un seul octet, `0x00292915`, commande l'alternance.** À 1 c'est la démonstration, sinon c'est le replay.
+
+Et un voisin, pour le dossier : juste au-dessus, `0x0000B444` lit l'octet 55 du bloc des réglages — soit
+`0x00120557`, **`COUNTRY`** — et s'il vaut 1 (`U.S.A.`) part sur le sous-état 6, `ADV_RATING_INT`, l'écran de
+classification. La région commande donc un écran d'attraction de plus, ce qui n'était écrit nulle part.
 
 ### Ce que ça laisse à faire
 
-Trouver ce qui choisit `0B` plutôt que `08` en sortant de l'écran titre. Par la règle de ce chantier, on ouvre
-`docs/fv2-flux-de-match.md` et `docs/fv2-etats.md` **avant** de mesurer quoi que ce soit d'autre : la question
-est un « pourquoi le jeu fait ça », et la machine à états est décompilée.
-
-À ne pas confondre avec l'étape 5 : celle-ci concerne la **musique sous la liste**, qui continue de jouer
-pendant que la liste est ouverte. Les deux sont distinctes et celle-ci vient d'abord, puisqu'elle décrit ce que
-le jeu doit faire tout seul.
+**Rien sur ce chemin.** Start coupe la démo, le jeu fait son ménage, et ce qui repart ensuite est ce qui devait
+repartir. L'étape 5 garde son seul vrai sujet : **la musique qui continue de jouer sous la liste ouverte**.
