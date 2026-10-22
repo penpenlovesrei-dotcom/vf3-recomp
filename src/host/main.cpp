@@ -2635,8 +2635,11 @@ int main(int argc, char **argv)
 	// V.S. want the select screen's own timing, which has not been measured here, and NETWORK, TRAINING and
 	// OPTIONS have no lever in this port at all. A line that does nothing leaves the list up: closing it would
 	// say something happened.
-	// Leaving the page. The game reads these settings only as it starts, so one that moved means a restart --
-	// and only one that really moved: a value stepped there and back, or held at its limit, changes nothing.
+	// Leaving the page. NOTHING RESTARTS, and that is deliberate: the page writes both the backup, which makes
+	// a setting last, and the working copy the running game reads, which makes it take effect. The first draft
+	// wrote only the backup and restarted the game to have it read -- which is what Virtua Fighter 3's Arcade
+	// settings page does, and which, on a console's options screen, looks exactly like a crash: the picture
+	// goes black and the window sits silent for seconds while the board boots again.
 	auto close_options = [&] {
 		const bool changed = options.changed;
 		options.changed = false;
@@ -2644,11 +2647,7 @@ int main(int argc, char **argv)
 		cplay.swallow_start = true;
 		cplay.start_was = true;
 		sync_menu_sound();
-		if (changed) {
-			fprintf(stderr, "the console's OPTIONS: a setting changed -- the game restarts to read it\n");
-			reset_game();
-		} else
-			fprintf(stderr, "the console's OPTIONS: closed, nothing changed\n");
+		fprintf(stderr, "the console's OPTIONS: closed, %s\n", changed ? "a setting changed" : "nothing changed");
 	};
 	auto choose_mode = [&](int line) {
 		fprintf(stderr, "the console's list: %s chosen\n", fv2_mode_list::name(line));
@@ -2880,6 +2879,9 @@ int main(int argc, char **argv)
 			}
 			// The OPTIONS page, the same way, and Escape left alone for the same reason.
 			if (options.shown && !(e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE)) {
+				// This page reads and writes the game's own RAM, so not while a frame runs alongside. The page
+				// freezes the game, but the frame that was in flight when it opened may not have finished.
+				if (game.emu_thread.joinable()) game.job_wait();
 				if (options.handle_event(e, cfg.ctl, board) == fv2_options::CANCELLED) close_options();
 				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
 					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;

@@ -3,9 +3,12 @@
 // Like fv2_mode_list.h and for the same reason, this is a surface of its own and goes nowhere near game_menu:
 // the menu under Escape is this port's settings, and a page added to it is a page of settings whatever is
 // written in it. What it edits, though, is not this port's anything -- it is the arcade's GAME ASSIGNMENTS,
-// written WHERE THEY LAST, in the game's backup RAM (Model3::fv2_set_option, and docs/fv2-console-options.md
-// for how that was found and proved). The game reads them as it starts, so a change restarts it, exactly as
-// this port's Arcade settings page does for Virtua Fighter 3.
+// written in BOTH the places they live: the backup RAM, which is what makes them LAST across a restart -- and
+// which nobody had decoded, docs/fv2-console-options.md says how it was found and proved -- and the working
+// copy the running game reads, which is what makes them TAKE EFFECT at once. Writing only the backup means
+// restarting the game to have it read, which is what this port's Arcade settings page does for Virtua Fighter
+// 3; on a console's options screen that reads as a crash rather than as a setting, the picture going black and
+// the window sitting silent while the board boots again.
 //
 // EVERY NUMBER OF THE LAYOUT IS MEASURED, off a Flycast capture of the Dreamcast version's own OPTIONS screen
 // (docs/fv2-dreamcast-menus.md section 3bis), in fractions of the 4:3 picture:
@@ -105,7 +108,7 @@ struct fv2_options
 	bool shown = false;
 	int sel = 0;
 	bool ready = false, tried = false;
-	bool changed = false;        // something was written: the caller restarts the game
+	bool changed = false;        // something was really written, as against stepped there and back
 	SDL_Texture *bg = nullptr, *cursor = nullptr, *init = nullptr;
 	int init_w = 0, init_h = 0;
 	int stick_x = 0, stick_y = 0;

@@ -197,10 +197,32 @@ Trois conséquences, et elles sont nettes :
 Rien dans ce portage ni dans le travail d'été ne se servait de cette feuille : la seule fonte du portage est
 celle de RmlUi.
 
-### 3. Qu'est-ce qu'une modification doit faire ?
+### 3. Qu'est-ce qu'une modification doit faire ? — **tranchée le 2026-10-22, et pas comme prévu**
 
-Pour Virtua Fighter 3, elle **redémarre la partie** à la fermeture du menu, et seulement si la valeur a
-vraiment changé. C'est le comportement à reprendre, pas à réinventer.
+Le plan disait : « pour Virtua Fighter 3, elle redémarre la partie à la fermeture du menu. C'est le
+comportement à reprendre, pas à réinventer. » **C'était faux**, et c'est Frédéric qui l'a vu en jouant : le
+redémarrage passe l'écran au noir et laisse la fenêtre muette plusieurs secondes pendant que la carte réamorce.
+Il l'a d'abord pris pour un plantage, et il avait raison de le prendre pour tel — sur un écran d'options de
+console, ça n'a aucun sens.
+
+La bonne réponse est d'écrire **les deux copies** :
+
+| | ce qu'elle apporte |
+|---|---|
+| la **sauvegarde** (`board.backup`, par la formule ci-dessus) | le réglage **dure** : le jeu le relira au prochain démarrage |
+| la **copie de travail** (`0x00120520 + k`, directement en RAM) | le réglage **prend effet tout de suite** : c'est celle-là, et elle seule, que le jeu lit en tournant |
+
+Écrire la seule sauvegarde oblige à redémarrer pour être lu ; écrire la seule copie de travail ne survit pas à
+la partie suivante. Les deux ensemble, et il n'y a plus rien à redémarrer.
+
+Mesuré : deux `Right` sur `ROUND TIME 1P` et la sortie de la page, sans redémarrage — l'octet `0x6B` de la
+sauvegarde écrite sur disque passe de 40 à 50, et la page affiche la nouvelle valeur parce qu'elle lit la copie
+vivante.
+
+**Ce qui reste à vérifier**, et qui demande de jouer : chaque réglage ne prend effet qu'au moment où le jeu le
+relit. `ROUND TIME` et `MATCH COUNT` sont a priori lus au début d'un match, `ENERGY MAX` aussi ; mais rien ne
+dit qu'aucun des treize n'est verrouillé plus tôt. Un réglage qui ne bougerait qu'après un redémarrage doit
+être relevé ici plutôt que supposé.
 
 
 ## L'ordre

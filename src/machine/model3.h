@@ -201,31 +201,34 @@ public:
 	//
 	// Measured end to end, not just read: a run with the backup poked and a control beside it changed five
 	// settings through the backup and the game loaded all five.
+	// BOTH COPIES ARE WRITTEN, and that is the whole point of writing this down. The backup is what makes a
+	// setting LAST; the working copy is what makes it TAKE EFFECT, because the running game reads that one and
+	// nothing else. Writing only the backup would mean restarting the game to be read -- which is what Virtua
+	// Fighter 3's Arcade settings page does here, and what a console's options screen must not do.
 	static int fv2_option_index(int k) { return k % 2 == 0 ? 2 * k + 2 : 2 * k + 1; }
 	static constexpr int FV2_OPTIONS_LIVE = 0x00120520;
+	// Read from the working copy: that is the game's own truth while it runs. Before the game has loaded it --
+	// the first frames -- it reads as zeros, and the caller's range check turns that into a dash rather than a
+	// number nobody can account for.
 	int fv2_option(int live, int bytes) const
 	{
-		if (set != "fvipers2") return -1;
+		if (set != "fvipers2" || ram.size() <= size_t(live) + size_t(bytes)) return -1;
 		int v = 0;
-		for (int i = 0; i < bytes; i++) {
-			const size_t at = size_t(fv2_option_index(live - FV2_OPTIONS_LIVE + i));
-			if (at >= backup.size()) return -1;
-			v = v << 8 | backup[at];
-		}
+		for (int i = 0; i < bytes; i++) v = v << 8 | ram[(uint32_t(live + i)) ^ 3];
 		return v;
 	}
-	// True if it wrote anything -- which is what tells the caller to restart the game, since the game reads
-	// these only as it starts.
+	// True if it wrote anything, so the caller can tell a real change from a value stepped there and back.
 	bool fv2_set_option(int live, int bytes, int v)
 	{
-		if (set != "fvipers2") return false;
+		if (set != "fvipers2" || ram.size() <= size_t(live) + size_t(bytes)) return false;
 		bool changed = false;
 		for (int i = 0; i < bytes; i++) {
+			const uint8_t now = uint8_t(v >> (8 * (bytes - 1 - i)));
+			uint8_t &live_byte = ram[(uint32_t(live + i)) ^ 3];
+			changed = changed || live_byte != now;
+			live_byte = now;
 			const size_t at = size_t(fv2_option_index(live - FV2_OPTIONS_LIVE + i));
-			if (at >= backup.size()) return changed;
-			const uint8_t was = backup[at], now = uint8_t(v >> (8 * (bytes - 1 - i)));
-			backup[at] = now;
-			changed = changed || was != now;
+			if (at < backup.size()) backup[at] = now;
 		}
 		return changed;
 	}
