@@ -276,7 +276,8 @@ struct fv2_options
 			const float ink_top = mid.y + ROWS_TOP * mid.h + i * pitch;
 			const float y = ink_top - fv2_texte::CAP_TOP * h;        // the cell's top, the ink starting at 16/64
 			const bool on = i == sel;
-			if (on) rule(ren, mid, y + h * 0.72f, h);
+			// the rule's line just under the capitals, which end at (16 + 31) / 64 of the cell
+			if (on) rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_texte::CELL + 0.24f), h);
 			const SDL_Color col = on ? CHOSEN : (read_only(size_t(i)) ? MUTED : PLAIN);
 			font->draw(ren, table()[size_t(i)].name, mid.x + LABEL_X * mid.w, y, h, col, 255, fv2_texte::SLANT);
 			font->draw_mid(ren, value_text(board, size_t(i)).c_str(), mid.x + VALUE_MID * mid.w, y, h, col, 255,
@@ -288,7 +289,7 @@ struct fv2_options
 		const float ih = INIT_HEIGHT * mid.h * 1.45f;
 		const float iw = ih * float(init_w) / float(init_h ? init_h : 1);
 		const SDL_FRect idst = { mid.x + mid.w * 0.5f - iw * 0.5f, mid.y + INIT_TOP * mid.h, iw, ih };
-		if (sel == INITIALIZE) rule(ren, mid, idst.y + ih * 1.05f, h);
+		if (sel == INITIALIZE) rule(ren, mid, idst.y + ih * 1.30f, h);
 		SDL_SetTextureAlphaMod(init, uint8_t(sel == INITIALIZE ? 255 : 190));
 		SDL_RenderTexture(ren, init, nullptr, &idst);
 		SDL_SetTextureAlphaMod(init, 255);
@@ -299,12 +300,19 @@ struct fv2_options
 	}
 
 private:
-	// The rule under the chosen line. It is stretched to the column and SQUASHED in height: at its own
-	// proportions (1005 x 50) it would stand taller than a row and bite into the next one. It stays a rule;
-	// only its tick flattens.
-	void rule(SDL_Renderer *ren, const SDL_FRect &mid, float y, float h)
+	// The rule under the chosen line. `bottom` is where its VISIBLE LINE goes, and the picture is HUNG FROM
+	// THERE rather than placed from its top. That is the one thing to know about this image, and it cost the
+	// owner a session in August: option_cursor.png carries a small vertical tick that RISES ABOVE the line, so
+	// the line itself is at the picture's bottom. Placed from the top, it underlines the next row -- which is
+	// exactly what the first draft here did, and which was "fixed" by nudging a constant until it looked
+	// right. That is not the same as fixing it: at another size it would have come back.
+	//
+	// It is also stretched to the column and SQUASHED in height: at its own proportions (1005 x 50) it would
+	// stand taller than a row and bite into the next one. It stays a rule; only its tick flattens.
+	void rule(SDL_Renderer *ren, const SDL_FRect &mid, float bottom, float h)
 	{
-		const SDL_FRect dst = { mid.x + RULE_L * mid.w, y, (RULE_R - RULE_L) * mid.w, h * 0.26f };
+		const float rh = h * 0.26f;
+		const SDL_FRect dst = { mid.x + RULE_L * mid.w, bottom - rh, (RULE_R - RULE_L) * mid.w, rh };
 		SDL_RenderTexture(ren, cursor, nullptr, &dst);
 	}
 };

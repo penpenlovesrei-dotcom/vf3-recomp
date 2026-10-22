@@ -239,3 +239,56 @@ dit qu'aucun des treize n'est verrouillé plus tôt. Un réglage qui ne bougerai
   redémarrage n'est pas un réglage.
 - **Il ne borne rien au hasard** : les plages sont celles du §9, mesurées.
 - **Il ne touche pas au menu de la touche Échap**, qui garde sa page de réglages du portage.
+
+
+## Ce que le travail d'août avait déjà appris — relu le 2026-10-22
+
+Frédéric a signalé qu'« il y avait un sous-menu avant cet écran ». Le travail d'été est dans
+`Documents\SEGA Model 3\Sauvegardes6-08-20_23h04\Docs\MenuConsole.md`, et il dit beaucoup plus que ça.
+
+### La forme d'OPTIONS en août
+
+Ce n'était pas une page plate de treize lignes. `OPTIONS` était **une page de seize lignes** : les treize
+`GAME ASSIGNMENTS`, un `INITIALIZE`, et deux entrées menant ailleurs —
+
+- **`SOUNDS`** : le test des bruitages, celui des vingt musiques, les deux volumes et le choix du pack ;
+- **`STATS`** : le VS DIAGRAM, dessiné à partir des compteurs de la sauvegarde.
+
+Et la **Dreamcast a exactement cette forme** : sept réglages, puis `SOUNDS`, `CONTROLLER`, `RESULT`, puis
+`INITIALIZE`. Les trois sources concordent — la page porte des réglages *et* des portes.
+
+Notre page n'a que les treize et `INITIALIZE`. Ce qui manque, ce sont les portes, et elles ne mènent nulle
+part aujourd'hui : la couche sonore a été défaite (`docs/fv2-console-son.md`), et le VS DIAGRAM n'est pas
+dessiné ici.
+
+### La densité, que le propriétaire avait mesurée avant moi
+
+Son relevé des choses en suspens, mot pour mot : « *densité d'`OPTIONS` : seize lignes ne peuvent pas être
+grosses. Deux sorties : sortir les treize `GAME ASSIGNMENTS` sur leur propre page, ou passer à deux
+colonnes.* » C'est précisément le problème rencontré ici, où le pas des lignes a dû être resserré sous celui
+de la Dreamcast parce qu'elle en tient sept et nous treize. **Sortir les treize sur leur propre page le
+résout des deux côtés à la fois** : la page des réglages respire, et `OPTIONS` redevient une courte liste de
+portes, comme sur le disque.
+
+### Trois règles de dessin, payées en août
+
+1. **Le filet de sélection s'ancre par le bas.** `option_cursor.png` porte un ergot vertical qui *monte
+   au-dessus* du trait, donc le trait visible est en bas de l'image. Placée par le haut, elle souligne la
+   ligne suivante. **Ce portage avait exactement ce défaut**, et je l'avais « corrigé » en déplaçant une
+   constante jusqu'à ce que ça tombe bien — ce qui n'est pas la même chose : à une autre taille il serait
+   revenu. Corrigé le 2026-10-22, le filet est maintenant suspendu à la position voulue de son trait.
+2. **Un bloc se centre sur la largeur qu'il *peut* occuper, jamais sur celle qu'il occupe.** Sinon la page
+   glisse sous l'œil dès qu'une valeur s'allonge — mesuré en août sur `DIFFICULTY` passant de `HARD` à
+   `VERY HARD`. D'où son `SetValueRoom`, où chaque page déclare sa largeur réservée : neuf caractères pour
+   `OPTIONS` (`VERY HARD`), quatorze pour `SOUNDS` (`BRAIN CLEANSER`). **Ce portage ne le fait pas** : chaque
+   valeur est centrée sur la sienne, donc elle se recentre quand on la change. La Dreamcast, elle, centre bien
+   ses valeurs — la tension est réelle et n'est pas tranchée.
+3. **Une page trop longue cherche de la place avant de rétrécir** : on élargit la bande (jusqu'à 0,20 en haut
+   et 0,96 en bas) avant de réduire le texte. Sans cet ordre, toute augmentation de la police est annulée par
+   le resserrement, « deux effets qui s'annulent exactement, et une correction qui semble ne rien faire ».
+
+### Et une chose qu'on a faite mieux
+
+Son relevé portait aussi : « *police italique : la référence Dreamcast est en italique, notre atlas ne l'est
+pas. Un second atlas le permettrait.* » Il n'en a pas fallu un second : la pente est mesurée à 7,5° et posée
+par cisaillement au dessin (`src/host/fv2_texte.h`).
