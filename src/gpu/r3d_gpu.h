@@ -37,6 +37,14 @@ public:
 
 	double last_cpu_ms = 0;   // the CPU's share of the last picture (setting it up)
 
+	// Fighting Vipers 2's shadows, this port's own (docs/fv2-ombres.md). False: nothing of it runs and the
+	// picture is the one the checks compare. True: the fighters are drawn once more from the light the game
+	// lights them with, their distance to it kept in a map -- which is all this step does; what reads the map
+	// comes after.
+	bool shadows = false;
+	// The shadow map read back, to look at it (tests): side x side distances, 1 where nothing was drawn
+	bool read_shadow_map(std::vector<float> &px, int &side);
+
 private:
 	SDL_GPUDevice *dev = nullptr;
 	std::string err;
@@ -45,6 +53,13 @@ private:
 	SDL_GPUTextureFormat ds_format = SDL_GPU_TEXTUREFORMAT_INVALID;
 	int w = 0, h = 0, ss = 1;
 	SDL_GPUTexture *base = nullptr, *t1 = nullptr, *t2 = nullptr, *odepth = nullptr, *ds = nullptr, *out = nullptr;
+	// the shadow map: a fixed size, having nothing to do with the output's
+	static constexpr int SMAP = 1024;
+	SDL_GPUTexture *smap = nullptr, *smap_ds = nullptr;
+	SDL_GPUGraphicsPipeline *p_shadow = nullptr;
+	float light_m[16] = {};      // view space -> the light's clip space, by rows (fit_light)
+	bool light_ok = false;
+	bool caster_vp[64] = {};     // the viewports that carry the game's own shadows: their models cast
 	SDL_GPUBuffer *vbuf = nullptr, *dbuf = nullptr, *pbuf = nullptr, *texram = nullptr;
 	uint32_t vbuf_size = 0, dbuf_size = 0, pbuf_size = 0;
 	SDL_GPUTransferBuffer *tb = nullptr;
@@ -59,4 +74,8 @@ private:
 	void free_targets();
 	bool make_targets(int w, int h, int ss);
 	bool ensure_buffer(SDL_GPUBuffer *&b, uint32_t &size, uint32_t need, SDL_GPUBufferUsageFlags usage);
+	bool make_shadow_map();
+	// The light to draw the shadow map from, and the box it covers, worked out from the scene: the stage's
+	// sun for the direction, and the game's own shadows for where on the ground they fall
+	void fit_light(const video::Scene &scene);
 };

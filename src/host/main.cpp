@@ -1668,6 +1668,9 @@ int main(int argc, char **argv)
 			if (software && r3d_mode == R3D_AUTO)
 				fprintf(stderr, "the 3D on the GPU: %s draws on the CPU, so Auto uses the CPU's 3D (faster here)\n", name);
 			else if (gpu3d.init(gd)) {
+				// VF3_SHADOW_MAP=<game frame>: this port's own shadow map made, and written to
+				// build/shadow_map.png at that frame, to be looked at before anything reads it
+				gpu3d.shadows = getenv("VF3_SHADOW_MAP") != nullptr;
 				g3.on = true;
 				fprintf(stderr, "the 3D on the GPU: started in %.0f ms (checked against the CPU's picture before it's trusted)\n",
 						std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
@@ -1891,6 +1894,25 @@ int main(int argc, char **argv)
 				// (checked: the CPU's drawing buffers let go, made again if it ever draws: at 2x with 3x antialiasing on
 				// a Steam Deck they were near 500 MB of its shared memory, kept for nothing)
 				if (on_gpu && g3.checked) raster.drop_buffers();
+				if (const char *sm = getenv("VF3_SHADOW_MAP"); sm && game_frame == strtoull(sm, nullptr, 10)) {
+					std::vector<float> dm;
+					int side = 0;
+					if (gpu3d.read_shadow_map(dm, side) && side > 0) {
+						std::vector<uint32_t> px(dm.size());
+						size_t drawn = 0;
+						for (size_t i = 0; i < dm.size(); i++) {
+							const float v = std::clamp(dm[i], 0.0f, 1.0f);
+							if (v < 0.999f) drawn++;
+							const uint32_t g = uint32_t(v * 255.0f + 0.5f);
+							px[i] = 0xFF000000u | (g << 16) | (g << 8) | g;
+						}
+						write_png("build/shadow_map.png", px.data(), side, side);
+						fprintf(stderr, "shadow map at frame %llu: %zu x %zu, %zu texels drawn (%.2f %%)\n",
+						        (unsigned long long)game_frame, size_t(side), size_t(side), drawn,
+						        100.0 * double(drawn) / double(dm.size()));
+					} else fprintf(stderr, "shadow map at frame %llu: could not be read back\n",
+					               (unsigned long long)game_frame);
+				}
 			}
 		}
 		if (!on_gpu) {

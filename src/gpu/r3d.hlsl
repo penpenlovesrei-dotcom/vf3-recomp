@@ -292,6 +292,51 @@ FsOut main(PolyV i)
 }
 #endif
 
+// The shadow map (Fighting Vipers 2, docs/fv2-ombres.md): the fighters drawn once more, seen from the light the
+// game lights them with, their distance to it kept. Nothing else is written. It works on the SAME vertex buffer
+// as the picture, because a vertex already carries its position in the camera's space (VsIn's view) and every
+// viewport of a scene shares that camera -- so one matrix, view space to the light's clip space, is enough.
+#if defined(VS_SHADOW) || defined(FS_SHADOW)
+struct ShadowV
+{
+	float4 pos : SV_Position;
+	float dist : TEXCOORD0;
+};
+#endif
+
+#ifdef VS_SHADOW
+BIND(0, 1) cbuffer Light : register(b0, space1)
+{
+	float4 lrow0, lrow1, lrow2, lrow3;   // view space -> the light's clip space, by rows
+};
+struct ShadowIn
+{
+	float4 clip : TEXCOORD0;
+	float3 view : TEXCOORD1;
+	float3 normal : TEXCOORD2;
+	float4 misc : TEXCOORD3;
+	float lodbase : TEXCOORD4;
+	uint draw : TEXCOORD5;
+};
+ShadowV main(ShadowIn i)
+{
+	ShadowV o;
+	const float4 v = float4(i.view, 1);
+	o.pos = float4(dot(lrow0, v), dot(lrow1, v), dot(lrow2, v), dot(lrow3, v));
+	o.dist = o.pos.z;
+	return o;
+}
+#endif
+
+#ifdef FS_SHADOW
+// The distance kept as a colour, as the opaque layer keeps its own depth: a target that can be read back and
+// looked at, which a depth buffer cannot.
+float4 main(ShadowV i) : SV_Target0
+{
+	return float4(i.dist, 0, 0, 1);
+}
+#endif
+
 #ifdef VS_QUAD
 BIND(0, 1) cbuffer Quad : register(b0, space1)
 {

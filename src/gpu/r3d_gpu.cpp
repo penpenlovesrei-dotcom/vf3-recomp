@@ -48,13 +48,13 @@ void R3dGpu::shutdown()
 	if (!dev) return;
 	SDL_WaitForGPUIdle(dev);
 	free_targets();
-	for (SDL_GPUGraphicsPipeline *p : { p_opq, p_opq_l, p_tr, p_tr_l, p_fog, p_out })
+	for (SDL_GPUGraphicsPipeline *p : { p_opq, p_opq_l, p_tr, p_tr_l, p_fog, p_out, p_shadow })
 		if (p) SDL_ReleaseGPUGraphicsPipeline(dev, p);
 	for (SDL_GPUBuffer *b : { vbuf, dbuf, pbuf, texram })
 		if (b) SDL_ReleaseGPUBuffer(dev, b);
 	if (tb) SDL_ReleaseGPUTransferBuffer(dev, tb);
 	if (sampler) SDL_ReleaseGPUSampler(dev, sampler);
-	p_opq = p_opq_l = p_tr = p_tr_l = p_fog = p_out = nullptr;
+	p_opq = p_opq_l = p_tr = p_tr_l = p_fog = p_out = p_shadow = nullptr;
 	vbuf = dbuf = pbuf = texram = nullptr;
 	tb = nullptr;
 	sampler = nullptr;
@@ -95,12 +95,14 @@ bool R3dGpu::init(SDL_GPUDevice *device)
 	SDL_GPUShader *vs_quad = shader(SH(vs_quad), SDL_GPU_SHADERSTAGE_VERTEX, 0, 0, 1);
 	SDL_GPUShader *fs_fog = shader(SH(fs_fog), SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 1);
 	SDL_GPUShader *fs_out = shader(SH(fs_out), SDL_GPU_SHADERSTAGE_FRAGMENT, 3, 0, 1);
+	SDL_GPUShader *vs_shadow = shader(SH(vs_shadow), SDL_GPU_SHADERSTAGE_VERTEX, 0, 0, 1);
+	SDL_GPUShader *fs_shadow = shader(SH(fs_shadow), SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0);
 #undef SH
 	auto release = [&] {
-		for (SDL_GPUShader *s : { vs_poly, fs_opq, fs_tr, vs_quad, fs_fog, fs_out })
+		for (SDL_GPUShader *s : { vs_poly, fs_opq, fs_tr, vs_quad, fs_fog, fs_out, vs_shadow, fs_shadow })
 			if (s) SDL_ReleaseGPUShader(dev, s);
 	};
-	if (!vs_poly || !fs_opq || !fs_tr || !vs_quad || !fs_fog || !fs_out) { release(); return false; }
+	if (!vs_poly || !fs_opq || !fs_tr || !vs_quad || !fs_fog || !fs_out || !vs_shadow || !fs_shadow) { release(); return false; }
 
 	// the depth and stencil format: 32-bit float depth if it's here, else 24-bit
 	for (SDL_GPUTextureFormat f : { SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT, SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT })
@@ -169,8 +171,10 @@ bool R3dGpu::init(SDL_GPUDevice *device)
 	p_tr_l = pipeline(vs_poly, fs_tr, { F16 }, true, true, SDL_GPU_COMPAREOP_GREATER, true, false);
 	p_fog = pipeline(vs_quad, fs_fog, { F16, F16, F16 }, false, false, SDL_GPU_COMPAREOP_ALWAYS, false, true);
 	p_out = pipeline(vs_quad, fs_out, { SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM }, false, false, SDL_GPU_COMPAREOP_ALWAYS, false, true);
+	// the shadow map: the same vertex buffer, the nearest to the light kept (its depth runs 0 at the light to 1)
+	p_shadow = pipeline(vs_shadow, fs_shadow, { F32 }, true, true, SDL_GPU_COMPAREOP_LESS, false, false);
 	release();
-	if (!p_opq || !p_opq_l || !p_tr || !p_tr_l || !p_fog || !p_out) return false;
+	if (!p_opq || !p_opq_l || !p_tr || !p_tr_l || !p_fog || !p_out || !p_shadow) return false;
 	SDL_GPUSamplerCreateInfo si = {};
 	si.min_filter = si.mag_filter = SDL_GPU_FILTER_NEAREST;
 	si.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
@@ -455,6 +459,43 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 		d.clear_stencil = 0;
 		return d;
 	};
+	// Fighting Vipers 2's shadow map, before anything is drawn: the fighters seen from the light. Its only
+	// reader for now is read_shadow_map, which is how it is checked before anything leans on it.
+	if (shadows) {
+		fit_light(scene);
+		if (light_ok && make_shadow_map()) {
+			SDL_GPUColorTargetInfo sc = {};
+			sc.texture = smap;
+			sc.load_op = SDL_GPU_LOADOP_CLEAR;
+			sc.store_op = SDL_GPU_STOREOP_STORE;
+			sc.clear_color = { 1, 1, 1, 1 };
+			SDL_GPUDepthStencilTargetInfo sd = {};
+			sd.texture = smap_ds;
+			sd.clear_depth = 1.0f;
+			sd.load_op = SDL_GPU_LOADOP_CLEAR;
+			sd.store_op = SDL_GPU_STOREOP_DONT_CARE;
+			sd.stencil_load_op = SDL_GPU_LOADOP_CLEAR;
+			sd.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+			SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(cmd, &sc, 1, &sd);
+			SDL_GPUBufferBinding vb = { vbuf, 0 };
+			SDL_BindGPUVertexBuffers(rp, 0, &vb, 1);
+			SDL_BindGPUGraphicsPipeline(rp, p_shadow);
+			SDL_PushGPUVertexUniformData(cmd, 0, light_m, sizeof(light_m));
+			const SDL_GPUViewport gv = { 0, 0, float(SMAP), float(SMAP), 0, 1 };
+			SDL_SetGPUViewport(rp, &gv);
+			const SDL_Rect rc = { 0, 0, SMAP, SMAP };
+			SDL_SetGPUScissor(rp, &rc);
+			for (const Range &rg : ranges) {
+				const Raster::Draw &dr = prep.draws[rg.draw];
+				const size_t iv = size_t(dr.vp - scene.viewports.data());
+				if (iv >= 64 || !caster_vp[iv]) continue;
+				if (dr.mesh->colour_index == video::SHADOW_COLOUR_INDEX) continue;
+				if (!dr.mesh->in_layer(0, dr.model->alpha)) continue;
+				SDL_DrawGPUPrimitives(rp, uint32_t(rg.count), 1, uint32_t(rg.first), 0);
+			}
+			SDL_EndGPURenderPass(rp);
+		}
+	}
 	const float frame_u[4] = { float(prep.game_x()), prep.game_xscale(), prep.game_yscale(), 0 };
 	// the fog layers first, into the cleared layers
 	{
@@ -607,6 +648,139 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 	if (!SDL_SubmitGPUCommandBuffer(cmd)) { err = std::string("submitting: ") + SDL_GetError(); return false; }
 	texram_full = false;
 	return true;
+}
+
+
+bool R3dGpu::make_shadow_map()
+{
+	if (smap && smap_ds) return true;
+	SDL_GPUTextureCreateInfo ci = {};
+	ci.type = SDL_GPU_TEXTURETYPE_2D;
+	ci.width = ci.height = uint32_t(SMAP);
+	ci.layer_count_or_depth = 1;
+	ci.num_levels = 1;
+	ci.sample_count = SDL_GPU_SAMPLECOUNT_1;
+	ci.format = SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
+	ci.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+	smap = SDL_CreateGPUTexture(dev, &ci);
+	ci.format = ds_format;
+	ci.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+	smap_ds = SDL_CreateGPUTexture(dev, &ci);
+	if (!smap || !smap_ds) { err = std::string("the shadow map: ") + SDL_GetError(); return false; }
+	return true;
+}
+
+// Where the light is, and what the map has to cover. Both are read from the scene rather than invented: the
+// direction is the stage's sun -- the one the game projects its own shadows along, measured to five decimals
+// (docs/fv2-ombres.md) -- and the ground to cover is where those shadows fall, which the game has already
+// worked out for us. The fighters' own viewports carry a different sun (the light seen from each fighter),
+// so they are not the ones to ask.
+void R3dGpu::fit_light(const video::Scene &scene)
+{
+	light_ok = false;
+	for (bool &b : caster_vp) b = false;
+	float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+	const video::Viewport *stage = nullptr;
+	int n = 0;
+	for (size_t iv = 0; iv < scene.viewports.size() && iv < 64; iv++) {
+		const video::Viewport &vp = scene.viewports[iv];
+		bool any = false;
+		for (const video::Model &m : vp.models) {
+			bool sh = false;
+			for (const video::Mesh &me : *m.meshes)
+				if (me.colour_index == video::SHADOW_COLOUR_INDEX) { sh = true; break; }
+			if (!sh) continue;
+			any = true;
+			const float *M = m.matrix.m;
+			const float p[3] = { M[12], M[13], M[14] };
+			for (int k = 0; k < 3; k++) { lo[k] = std::min(lo[k], p[k]); hi[k] = std::max(hi[k], p[k]); }
+			n++;
+		}
+		if (any) caster_vp[iv] = true;
+		else if (!stage && !vp.models.empty()) stage = &vp;
+	}
+	if (!n || !stage) return;
+	float d[3] = { stage->sun[0], stage->sun[1], stage->sun[2] };
+	const float dl = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+	if (!(dl > 1e-6f)) return;
+	for (int k = 0; k < 3; k++) d[k] /= dl;
+	// the box: where the shadows fall, widened, and up to the height of what casts them
+	const float PAD = 0.6f, HIGH = 2.5f;
+	lo[0] -= PAD; lo[2] -= PAD; hi[0] += PAD; hi[2] += PAD;
+	hi[1] = std::max(hi[1], lo[1]) + HIGH;
+	lo[1] -= 0.2f;
+	// the light looks along -d, with a frame around it
+	const float z[3] = { -d[0], -d[1], -d[2] };
+	float up[3] = { 0, 1, 0 };
+	if (std::fabs(z[1]) > 0.99f) { up[1] = 0; up[2] = 1; }
+	float x[3] = { up[1] * z[2] - up[2] * z[1], up[2] * z[0] - up[0] * z[2], up[0] * z[1] - up[1] * z[0] };
+	const float xl = std::sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+	if (!(xl > 1e-6f)) return;
+	for (int k = 0; k < 3; k++) x[k] /= xl;
+	const float y[3] = { z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0] };
+	const float c[3] = { (lo[0] + hi[0]) * 0.5f, (lo[1] + hi[1]) * 0.5f, (lo[2] + hi[2]) * 0.5f };
+	float ex[2] = { 1e30f, -1e30f }, ey[2] = { 1e30f, -1e30f }, ez[2] = { 1e30f, -1e30f };
+	for (int i = 0; i < 8; i++) {
+		const float p[3] = { (i & 1) ? hi[0] : lo[0], (i & 2) ? hi[1] : lo[1], (i & 4) ? hi[2] : lo[2] };
+		const float q[3] = { p[0] - c[0], p[1] - c[1], p[2] - c[2] };
+		const float qx = x[0] * q[0] + x[1] * q[1] + x[2] * q[2];
+		const float qy = y[0] * q[0] + y[1] * q[1] + y[2] * q[2];
+		const float qz = z[0] * q[0] + z[1] * q[1] + z[2] * q[2];
+		ex[0] = std::min(ex[0], qx); ex[1] = std::max(ex[1], qx);
+		ey[0] = std::min(ey[0], qy); ey[1] = std::max(ey[1], qy);
+		ez[0] = std::min(ez[0], qz); ez[1] = std::max(ez[1], qz);
+	}
+	const float hx = std::max(1e-3f, (ex[1] - ex[0]) * 0.5f), hy = std::max(1e-3f, (ey[1] - ey[0]) * 0.5f);
+	const float cx = (ex[0] + ex[1]) * 0.5f, cy = (ey[0] + ey[1]) * 0.5f;
+	const float z0 = ez[0] - 0.5f, dz = std::max(1e-3f, (ez[1] + 0.5f) - z0);
+	const float dxc = x[0] * c[0] + x[1] * c[1] + x[2] * c[2];
+	const float dyc = y[0] * c[0] + y[1] * c[1] + y[2] * c[2];
+	const float dzc = z[0] * c[0] + z[1] * c[1] + z[2] * c[2];
+	auto row = [&](int r, const float a[3], float sc, float off) {
+		light_m[r * 4 + 0] = a[0] * sc; light_m[r * 4 + 1] = a[1] * sc;
+		light_m[r * 4 + 2] = a[2] * sc; light_m[r * 4 + 3] = off;
+	};
+	row(0, x, 1.0f / hx, (-dxc - cx) / hx);
+	row(1, y, 1.0f / hy, (-dyc - cy) / hy);
+	row(2, z, 1.0f / dz, (-dzc - z0) / dz);
+	light_m[12] = light_m[13] = light_m[14] = 0;
+	light_m[15] = 1;
+	light_ok = true;
+}
+
+bool R3dGpu::read_shadow_map(std::vector<float> &px, int &side)
+{
+	side = SMAP;
+	if (!smap) return false;
+	SDL_GPUTransferBufferCreateInfo ti = {};
+	ti.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
+	ti.size = uint32_t(SMAP) * uint32_t(SMAP) * 4;
+	SDL_GPUTransferBuffer *dl = SDL_CreateGPUTransferBuffer(dev, &ti);
+	if (!dl) return false;
+	SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(dev);
+	if (!cmd) { SDL_ReleaseGPUTransferBuffer(dev, dl); return false; }
+	SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+	SDL_GPUTextureRegion src = {};
+	src.texture = smap;
+	src.w = uint32_t(SMAP);
+	src.h = uint32_t(SMAP);
+	src.d = 1;
+	SDL_GPUTextureTransferInfo dst = { dl, 0, uint32_t(SMAP), uint32_t(SMAP) };
+	SDL_DownloadFromGPUTexture(cp, &src, &dst);
+	SDL_EndGPUCopyPass(cp);
+	SDL_GPUFence *f = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+	bool ok = f && SDL_WaitForGPUFences(dev, true, &f, 1);
+	if (f) SDL_ReleaseGPUFence(dev, f);
+	if (ok) {
+		const void *m = SDL_MapGPUTransferBuffer(dev, dl, false);
+		if (m) {
+			px.resize(size_t(SMAP) * SMAP);
+			memcpy(px.data(), m, px.size() * 4);
+			SDL_UnmapGPUTransferBuffer(dev, dl);
+		} else ok = false;
+	}
+	SDL_ReleaseGPUTransferBuffer(dev, dl);
+	return ok;
 }
 
 bool R3dGpu::read_output(std::vector<uint32_t> &px)
