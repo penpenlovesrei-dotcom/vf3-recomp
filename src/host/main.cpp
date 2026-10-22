@@ -2640,6 +2640,56 @@ int main(int argc, char **argv)
 	// wrote only the backup and restarted the game to have it read -- which is what Virtua Fighter 3's Arcade
 	// settings page does, and which, on a console's options screen, looks exactly like a crash: the picture
 	// goes black and the window sits silent for seconds while the board boots again.
+	// ---- the console's DISPLAY and SOUNDS pages ----
+	//
+	// These two screens are August's, line for line (OptionsEntries / SoundEntries in the 2026-08-20 backup),
+	// but what they switch belongs to THIS PORT, so they are registered from here rather than built inside
+	// fv2_options.h, which has no business knowing about cfg.
+	//
+	// A LINE WITH NOTHING TO SWITCH KEEPS ITS PLACE AND IS STEPPED OVER, which is August's own rule and his
+	// reason: a page whose lines slide up and down as settings come and go is misread at a glance. That is
+	// what the lines this port cannot do yet are -- drawn, dimmed, and passed by -- rather than quietly
+	// missing. Each says below why it is one.
+	if (cplay.on) {
+		auto fixed = [](const char *v) { return [v] { return std::string(v); }; };
+		options.own[fv2_options::SCR_DISPLAY] = {
+			// August's WIDESCREEN was a switch because its fork had two shapes; this port has five, so the
+			// line steps through them and shows the one in force. Same line, more of it.
+			{ "WIDESCREEN", [&] { return std::string(aspect_i ? ASPECT_NAMES[aspect_i] : "FIT"); },
+			  [&](int d) { set_shape(wrap(aspect_i + d, N_ASPECTS)); }, {}, {}, 0, false, 0 },
+			// The 3D texture pack is read once as the port starts and there is no way to let go of it again,
+			// so this says whether one is in and does not pretend to switch it.
+			{ "HD ART", [&] { return std::string(video::hd3d().replacing() ? "ON" : "NONE"); },
+			  {}, {}, {}, 0, false, 0 },
+			{ "FPS COUNTER", [&] { return std::string(cfg.show_fps ? "ON" : "OFF"); },
+			  [&](int) { cfg.show_fps = !cfg.show_fps; cfg_dirty = true; }, {}, {}, 0, false, 0 },
+			// The fork's own ending, its illustrations over the replays. Nothing of it exists here.
+			{ "ENDING", fixed("-"), {}, {}, {}, 0, false, 0 },
+		};
+		options.own[fv2_options::SCR_SOUNDS] = {
+			// The sound test and the music test both need a note handed to the sound board, which is the very
+			// layer that was undone on the 2026-10-21 and is waiting on docs/fv2-console-son.md being agreed.
+			// Until then they are lines, not levers.
+			{ "SE", fixed("-"), {}, {}, {}, 0, false, 0 },
+			{ "SE VOLUME", {}, [&](int d) {
+				  cfg.effects = std::clamp(cfg.effects + 5 * d, 0, 100); cfg_dirty = true;
+				  game.sound.set_volumes(cfg.music / 100.0f, cfg.effects / 100.0f);
+			  }, {}, [&] { return (cfg.effects + 4) / 5; }, 20, false, 0 },
+			// August drew this one "BGM" and dispatched on "BGM TEST", because two lines called VOLUME could
+			// not be told apart. The break before it is his too: a third of a step, read off the original.
+			{ "BGM", fixed("-"), {}, {}, {}, 0, false, 0.32f },
+			{ "BGM SET", fixed("-"), {}, {}, {}, 0, false, 0 },
+			{ "BGM VOLUME", {}, [&](int d) {
+				  cfg.music = std::clamp(cfg.music + 5 * d, 0, 100); cfg_dirty = true;
+				  game.sound.set_volumes(cfg.music / 100.0f, cfg.effects / 100.0f);
+			  }, {}, [&] { return (cfg.music + 4) / 5; }, 20, false, 0 },
+			{ "INITIALIZE", {}, {}, [&] {
+				  cfg.music = cfg.effects = 100; cfg_dirty = true;
+				  game.sound.set_volumes(1.0f, 1.0f);
+			  }, {}, 0, true, 1.2f },
+		};
+		options.build_pages();
+	}
 	auto close_options = [&] {
 		const bool changed = options.changed;
 		options.changed = false;

@@ -33,6 +33,7 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cstdio>
+#include <functional>
 #include <string>
 #include <vector>
 #include "../machine/model3.h"
@@ -144,26 +145,46 @@ struct fv2_options
 												  "CONTROLLER", "STATS" };
 		return s >= 0 && s < SCR_COUNT ? N[s] : "?";
 	}
-	// A line of a screen: a setting, a door, or the INITIALIZE button.
+	// A line of a screen: a setting of the game's, one of this port's own, a door, or the INITIALIZE button.
 	struct line {
-		enum kind { SETTING, DOOR, BUTTON } what;
-		int which;        // the setting's index, or the screen a door opens
+		enum kind { SETTING, OWN, DOOR, BUTTON } what;
+		int which;        // the setting's index, the own line's index, or the screen a door opens
 		float gap;        // blank space before it, in lines
 	};
-	static const std::vector<line> &page(int s)
+
+	// A line that belongs to THIS PORT rather than to the game: what DISPLAY and SOUNDS are made of. The host
+	// fills these in, because they read and write its own settings and this file has no business knowing them.
+	//
+	// A line whose `step` is null is DRAWN AND STEPPED OVER, which is August's own idiom and its reason: "une
+	// ligne avec rien a basculer est enjambee plutot que retiree : une page dont les lignes glissent de haut en
+	// bas selon ce qui est la serait mal lue d'un coup d'oeil". That is how the lines this port cannot do yet
+	// keep their place without pretending.
+	struct own_line {
+		std::string name;
+		std::function<std::string()> text;   // the value as text, or null for none
+		std::function<void(int)> step;       // left and right; null, with no act either: stepped over
+		std::function<void()> act;           // A instead of left and right, for a button
+		std::function<int()> lit;            // a gauge instead of a value: how many arrows are lit
+		int total = 0;                       // how many arrows in all
+		bool as_button = false;              // drawn as INITIALIZE's painted label rather than as text
+		float gap = 0;
+	};
+	std::vector<own_line> own[SCR_COUNT];
+
+	const std::vector<line> &page(int s) const { return built[s]; }
+	std::vector<line> built[SCR_COUNT];
+	void build_pages()
 	{
-		static const std::vector<line> NONE;
-		static const std::vector<line> OPTIONS_P = {
+		for (int s = 0; s < SCR_COUNT; s++) built[s].clear();
+		built[SCR_OPTIONS] = {
 			{ line::DOOR, SCR_SETTINGS, 0 }, { line::DOOR, SCR_DISPLAY, 0 }, { line::DOOR, SCR_SOUNDS, 0 },
 			{ line::DOOR, SCR_CONTROLLER, 0 }, { line::DOOR, SCR_STATS, 0 },
 		};
-		static const std::vector<line> SETTINGS_P = [] {
-			std::vector<line> p;
-			for (int i = 0; i < int(table().size()); i++) p.push_back({ line::SETTING, i, 0 });
-			p.push_back({ line::BUTTON, 0, 1.2f });   // August's own gap before the button
-			return p;
-		}();
-		return s == SCR_OPTIONS ? OPTIONS_P : s == SCR_SETTINGS ? SETTINGS_P : NONE;
+		for (int i = 0; i < int(table().size()); i++) built[SCR_SETTINGS].push_back({ line::SETTING, i, 0 });
+		built[SCR_SETTINGS].push_back({ line::BUTTON, 0, 1.2f });   // August's own gap before the button
+		for (int s = 0; s < SCR_COUNT; s++)
+			for (int i = 0; i < int(own[s].size()); i++)
+				built[s].push_back({ line::OWN, i, own[s][size_t(i)].gap });
 	}
 
 	bool shown = false;
@@ -173,7 +194,8 @@ struct fv2_options
 	bool ready = false, tried = false;
 	bool changed = false;        // something was really written, as against stepped there and back
 	SDL_Texture *bg = nullptr, *cursor = nullptr, *init = nullptr;
-	int init_w = 0, init_h = 0;
+	SDL_Texture *vol_on = nullptr, *vol_off = nullptr, *vs_table = nullptr;
+	int init_w = 0, init_h = 0, vs_w = 0, vs_h = 0;
 	int stick_x = 0, stick_y = 0;
 	fv2_texte *font = nullptr;   // the sheet, loaded once by the host and shared
 
@@ -219,14 +241,21 @@ struct fv2_options
 		if (!one("option_bg.png", bg, nullptr, nullptr, BG_W, BG_H)) return false;
 		if (!one("option_cursor.png", cursor, nullptr, nullptr, 0, 0)) return false;
 		if (!one("option_initialize.png", init, &init_w, &init_h, 0, 0)) return false;
+		// The gauge's arrow, lit and unlit, which SOUNDS' two volumes are drawn with -- the owner's own, and
+		// the reason the volumes are a row of twenty marks here rather than a number.
+		one("option_vol_up_on.png", vol_on, nullptr, nullptr, 0, 0);
+		one("option_vol_up_off.png", vol_off, nullptr, nullptr, 0, 0);
+		// The VS DIAGRAM's table, which STATS fills in. Its own grid is measured on the file.
+		one("vs_global.png", vs_table, &vs_w, &vs_h, 0, 0);
 		ready = true;
-		if (log) fprintf(log, "the console's OPTIONS: its three pictures and the glyph sheet are in\n");
+		build_pages();
+		if (log) fprintf(log, "the console's OPTIONS: its pictures and the glyph sheet are in\n");
 		return true;
 	}
 
 	void textures_lost(SDL_Renderer *ren, const std::string &assets)
 	{
-		for (SDL_Texture **t : { &bg, &cursor, &init })
+		for (SDL_Texture **t : { &bg, &cursor, &init, &vol_on, &vol_off, &vs_table })
 			if (*t) { SDL_DestroyTexture(*t); *t = nullptr; }
 		ready = false;
 		tried = false;
@@ -246,7 +275,25 @@ struct fv2_options
 	int lines() const { return int(page(at).size()); }
 	int &sel() { return sel_of[at]; }
 	int sel() const { return sel_of[at]; }
-	void move(int d) { if (lines()) sel() = (sel() + lines() + d) % lines(); }
+	// A line with nothing to switch is stepped OVER, never dropped: August's rule, and its reason is that a
+	// page whose lines slide up and down as settings come and go is misread at a glance.
+	bool skipped(int s, int i) const
+	{
+		const std::vector<line> &P = page(s);
+		if (i < 0 || i >= int(P.size())) return false;
+		if (P[size_t(i)].what != line::OWN) return false;
+		const own_line &o = own[s][size_t(P[size_t(i)].which)];
+		return !o.step && !o.act;
+	}
+	void move(int d)
+	{
+		const int n = lines();
+		if (!n) return;
+		for (int k = 0; k < n; k++) {
+			sel() = (sel() + n + d) % n;
+			if (!skipped(at, sel())) return;
+		}
+	}
 
 	// What a line reads as now. -1 means the backup does not hold a usable value, and then the line shows "-"
 	// and will not step: better a dash than a number nobody can account for.
@@ -294,7 +341,8 @@ struct fv2_options
 			if (sel() < 0 || sel() >= lines()) return -1;
 			const line &l = page(at)[size_t(sel())];
 			if (l.what == line::BUTTON) initialize(board);
-			else if (l.what == line::DOOR) { at = l.which; sel() = 0; }
+			else if (l.what == line::OWN && own[at][size_t(l.which)].act) own[at][size_t(l.which)].act();
+			else if (l.what == line::DOOR) { at = l.which; sel() = 0; if (skipped(at, 0)) move(+1); }
 			return -1;
 		};
 		// Backing out goes UP ONE SCREEN, which is August's own back stack rather than aiming at the modes
@@ -308,6 +356,7 @@ struct fv2_options
 			if (sel() < 0 || sel() >= lines()) return;
 			const line &l = page(at)[size_t(sel())];
 			if (l.what == line::SETTING) step(board, size_t(l.which), d);
+			else if (l.what == line::OWN && own[at][size_t(l.which)].step) own[at][size_t(l.which)].step(d);
 		};
 		switch (e.type) {
 		case SDL_EVENT_KEY_DOWN: {
@@ -361,7 +410,8 @@ struct fv2_options
 		font->draw_title(ren, screen_name(at), mid.x + mid.w * 0.5f, mid.y + TITLE_TOP * mid.h,
 						 TITLE_CAP * mid.h, PLAIN);
 
-		if (page(at).empty()) render_child(ren, mid);
+		if (at == SCR_STATS) render_stats(ren, mid, board);
+		else if (page(at).empty()) render_child(ren, mid);
 		else render_lines(ren, mid, board);
 
 		// The foot the Dreamcast puts on this very screen, in three lines there and two here.
@@ -372,6 +422,103 @@ struct fv2_options
 
 private:
 	float foot_cell(const SDL_FRect &mid) const { return ROW_CAP * mid.h / fv2_texte::CAP * 0.62f; }
+
+	// ---- STATS: the VS DIAGRAM, drawn rather than the game's own screen opened ----
+	//
+	// WHERE THE COUNTERS LIVE. They are not in RAM: the game keeps them in the backup, in the same spaced
+	// coding as the settings -- one 16-bit big-endian value every four bytes, three bytes in four wasted. The
+	// layout is August's §12, measured there and not re-derived here:
+	//
+	//     block(character) = VS_BASE + n * 0x1A8
+	//       + 0x000               KO
+	//       + 0x018               JUDGE
+	//       + 0x028 + opponent*8  FIGHT      (sixteen opponents, not fourteen: the row is 0x80 wide)
+	//       + 0x0A8 + opponent*8  WIN
+	//       + 0x128 + opponent*8  LOSE
+	//
+	// DRAW is not stored anywhere: it is FIGHT - WIN - LOSE, and the table's figures are the sum of each row,
+	// worked out as it is drawn. That is why looking for them in memory found nothing.
+	//
+	// ITS BASE HAD TO BE MOVED, and this is the one number not taken from August. Its offsets are into ITS
+	// NVRAM dump, not this port's `backup`. The two are related by a constant, found from the fingerprint it
+	// prints: at its 0x188 it reads 210 210 120 120 69 180, which is the GAME ASSIGNMENTS block, and that same
+	// run of six sits at 0x42 here. So ours is theirs less 0x146, which puts the first character's block at
+	// 0x3006 -- a few bytes into the backup's third page, which is exactly where the third block starts. Two
+	// independent checks agreeing. NOT CONFIRMED AGAINST LIVE FIGURES, though, because the counters are all
+	// zero in a backup where no match has ever been played through.
+	static constexpr uint32_t VS_BASE = 0x3006, VS_STRIDE = 0x1A8;
+	static constexpr uint32_t VS_KO = 0x000, VS_JUDGE = 0x018, VS_FIGHT = 0x028, VS_WIN = 0x0A8, VS_LOSE = 0x128;
+	// Which block holds which of the screen's rows. August's own table, every line of it measured by playing.
+	static const int *vs_block_of_row()
+	{
+		static const int B[14] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 13, 14, 9 };
+		return B;
+	}
+	// The grid of vs_global.png, in fractions of the file, found by its white rules. Fractions and not pixels,
+	// so re-exporting the picture at another size changes nothing.
+	static constexpr float VS_L = 327.0f / 2240.0f, VS_R = 2219.0f / 2240.0f;
+	static constexpr float VS_T = 99.0f / 1504.0f, VS_B = 1391.0f / 1504.0f;
+	static constexpr int VS_COLS = 8;    // FIGHT WIN LOSE DRAW KO SKO1 SKO2 JUDGE
+	static constexpr int VS_ROWS = 14;
+
+	struct vs_row { uint32_t fight, win, lose, draw, ko, judge; };
+	vs_row read_vs(m3::Model3 &board, int row) const
+	{
+		vs_row r = { 0, 0, 0, 0, 0, 0 };
+		const int block = vs_block_of_row()[row];
+		auto u16 = [&](uint32_t off) -> uint32_t {
+			return off + 1 < board.backup.size() ? uint32_t(board.backup[off]) << 8 | board.backup[off + 1] : 0;
+		};
+		const uint32_t base = VS_BASE + uint32_t(block) * VS_STRIDE;
+		for (int adv = 0; adv < 16; adv++) {
+			r.fight += u16(base + VS_FIGHT + uint32_t(adv) * 8);
+			r.win += u16(base + VS_WIN + uint32_t(adv) * 8);
+			r.lose += u16(base + VS_LOSE + uint32_t(adv) * 8);
+		}
+		r.draw = r.fight - r.win - r.lose;
+		r.ko = u16(base + VS_KO);
+		r.judge = u16(base + VS_JUDGE);
+		return r;
+	}
+
+	void render_stats(SDL_Renderer *ren, const SDL_FRect &mid, m3::Model3 &board)
+	{
+		if (!vs_table) { render_child(ren, mid); return; }
+		// The table fills the picture under the title and above the foot, keeping its own proportions.
+		const float top = 0.165f * mid.h, bot = 0.885f * mid.h;
+		float th = bot - top, tw = th * float(vs_w) / float(vs_h ? vs_h : 1);
+		if (tw > mid.w * 0.98f) { tw = mid.w * 0.98f; th = tw * float(vs_h) / float(vs_w ? vs_w : 1); }
+		const SDL_FRect dst = { mid.x + (mid.w - tw) * 0.5f, mid.y + top + (bot - top - th) * 0.5f, tw, th };
+		SDL_RenderTexture(ren, vs_table, nullptr, &dst);
+
+		// A row of the grid is a fifteenth of it: the fourteen characters and TOTAL underneath.
+		const float gl = dst.x + VS_L * tw, gr = dst.x + VS_R * tw;
+		const float gt = dst.y + VS_T * th, gb = dst.y + VS_B * th;
+		const float cw = (gr - gl) / VS_COLS, rh = (gb - gt) / VS_ROWS;
+		const float h = rh * 0.62f / fv2_texte::CAP;
+		vs_row total = { 0, 0, 0, 0, 0, 0 };
+		for (int r = 0; r < VS_ROWS; r++) {
+			const vs_row v = read_vs(board, r);
+			total.fight += v.fight; total.win += v.win; total.lose += v.lose;
+			total.draw += v.draw; total.ko += v.ko; total.judge += v.judge;
+			draw_vs_row(ren, v, gl, gt + r * rh, cw, rh, h, PLAIN);
+		}
+		draw_vs_row(ren, total, gl, gt + VS_ROWS * rh, cw, rh, h, CHOSEN);
+	}
+
+	// SKO 1 and SKO 2 are left blank, and that is deliberate: August's own list of loose ends has them
+	// "affichés à zéro sans qu'on sache où ils vivent -- le seul chiffre du tableau qu'on ne puisse pas
+	// justifier". An empty cell says that; a zero would claim it.
+	void draw_vs_row(SDL_Renderer *ren, const vs_row &v, float gl, float y, float cw, float rh, float h,
+					 SDL_Color col)
+	{
+		const uint32_t n[VS_COLS] = { v.fight, v.win, v.lose, v.draw, v.ko, 0, 0, v.judge };
+		for (int c = 0; c < VS_COLS; c++) {
+			if (c == 5 || c == 6) continue;
+			const std::string s = std::to_string(n[c]);
+			font->draw_mid(ren, s.c_str(), gl + (c + 0.5f) * cw, y + rh * 0.5f - h * 0.5f, h, col);
+		}
+	}
 
 	// A screen behind a door. Nothing is drawn but its title and the way out -- which is exactly what August's
 	// CONTROLLER page was, and all that is honest for the other three until their contents are built. A page
@@ -412,15 +559,7 @@ private:
 			const float y = ink_top - fv2_texte::CAP_TOP * h;   // the cell's top, the ink starting at 16/64
 			const bool on = int(i) == sel();
 			if (l.what == line::BUTTON) {
-				// INITIALIZE is a painted label, not text, and it is the game's own idea: 0x00020F74 puts the
-				// factory values back and 0x00021008 writes them to the backup. This does the same by the table.
-				const float bh = cap * 1.45f;
-				const float bw = bh * float(init_w) / float(init_h ? init_h : 1);
-				const SDL_FRect dst = { mid.x + mid.w * 0.5f - bw * 0.5f, ink_top, bw, bh };
-				if (on) rule(ren, mid, dst.y + bh * 1.30f, h);
-				SDL_SetTextureAlphaMod(init, uint8_t(on ? 255 : 190));
-				SDL_RenderTexture(ren, init, nullptr, &dst);
-				SDL_SetTextureAlphaMod(init, 255);
+				button_at(ren, mid, ink_top, cap, h, on);
 				continue;
 			}
 			// the rule's line just under the capitals, which end at (16 + 31) / 64 of the cell
@@ -434,11 +573,54 @@ private:
 						   on ? CHOSEN : PLAIN, 255, fv2_texte::SLANT, 1.0f, fv2_texte::THICK);
 				continue;
 			}
+			if (l.what == line::OWN) {
+				const own_line &o = own[at][size_t(l.which)];
+				const SDL_Color col = on ? CHOSEN : ((o.step || o.act) ? PLAIN : MUTED);
+				if (o.as_button) { button_at(ren, mid, ink_top, cap, h, on); continue; }
+				font->draw(ren, o.name.c_str(), mid.x + LABEL_X * mid.w, y, h, col, 255, fv2_texte::SLANT);
+				if (o.lit && o.total > 0) gauge(ren, mid, y, h, o.lit(), o.total);
+				else if (o.text) font->draw_mid(ren, o.text().c_str(), mid.x + VALUE_MID * mid.w, y, h, col,
+												255, fv2_texte::SLANT);
+				continue;
+			}
 			const size_t k = size_t(l.which);
 			const SDL_Color col = on ? CHOSEN : (read_only(k) ? MUTED : PLAIN);
 			font->draw(ren, table()[k].name, mid.x + LABEL_X * mid.w, y, h, col, 255, fv2_texte::SLANT);
 			font->draw_mid(ren, value_text(board, k).c_str(), mid.x + VALUE_MID * mid.w, y, h, col, 255,
 						   fv2_texte::SLANT);
+		}
+	}
+
+	// INITIALIZE is a painted label, not text. On the settings page it is the game's own idea -- 0x00020F74
+	// puts the factory values back and 0x00021008 writes them to the backup -- and this does the same by the
+	// table; on SOUNDS it is the volumes'.
+	void button_at(SDL_Renderer *ren, const SDL_FRect &mid, float top, float cap, float h, bool on)
+	{
+		if (!init) return;
+		const float bh = cap * 1.45f;
+		const float bw = bh * float(init_w) / float(init_h ? init_h : 1);
+		const SDL_FRect dst = { mid.x + mid.w * 0.5f - bw * 0.5f, top, bw, bh };
+		if (on) rule(ren, mid, dst.y + bh * 1.30f, h);
+		SDL_SetTextureAlphaMod(init, uint8_t(on ? 255 : 190));
+		SDL_RenderTexture(ren, init, nullptr, &dst);
+		SDL_SetTextureAlphaMod(init, 255);
+	}
+
+	// A volume, drawn as the owner drew it: a row of arrows, lit up to the setting. One per ten, nought to two
+	// hundred, which is where his twenty steps come from.
+	// The segments keep the owner's own colours: they are drawn lit or unlit, not tinted to the line. Tinting
+	// them to the chosen line's yellow was the first try and it said nothing, the lit segment being yellow
+	// already.
+	static constexpr float GAUGE_L = 0.560f, GAUGE_R = 0.790f;   // between the labels and the rule's right end
+	void gauge(SDL_Renderer *ren, const SDL_FRect &mid, float y, float h, int lit, int total)
+	{
+		if (!vol_on || !vol_off || total <= 0) return;
+		const float step = (GAUGE_R - GAUGE_L) * mid.w / float(total);
+		const float ah = h * 0.60f, aw = std::min(step * 0.92f, ah * 28.0f / 64.0f);
+		float x = mid.x + GAUGE_L * mid.w;
+		for (int i = 0; i < total; i++, x += step) {
+			const SDL_FRect dst = { x, y + h * 0.22f, aw, ah };
+			SDL_RenderTexture(ren, i < lit ? vol_on : vol_off, nullptr, &dst);
 		}
 	}
 

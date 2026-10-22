@@ -369,3 +369,65 @@ bloc se centre dans sa bande. Sans quoi `OPTIONS`, avec ses cinq lignes, aurait 
 
 Il reste 21 % d'écart, et il vient de ce que le disque n'affiche que **sept** réglages là où la borne en a
 treize. Les réduire voudrait dire en cacher, ce qui n'est pas la même chose que les ranger.
+
+
+## Les pages derrière les portes, portées — le 2026-10-22
+
+Frédéric a dû le demander deux fois : la première livraison était la charpente, avec quatre portes qui ne
+menaient nulle part. Les voici remplies, ligne pour ligne d'après `Src/OSD/SDL/Main.cpp` du 20 août.
+
+### `DISPLAY` — `DISPLAY_LINES`
+
+| ligne | ici |
+|---|---|
+| `WIDESCREEN` | **la forme de l'image**, qui défile sur les cinq du portage (`FIT`, `4:3`, `16:10`, `16:9`, `21:9`). Août n'en avait que deux, d'où son `ON`/`OFF` ; la ligne est la même, elle en fait plus |
+| `HD ART` | `ON` ou `NONE`. **Enjambée** : le pack de textures 3D est lu une fois au démarrage et rien ne sait le relâcher |
+| `FPS COUNTER` | **réel**, le compteur du portage |
+| `ENDING` | **enjambée** : la fin à la Dreamcast est du fork, rien de tel ici |
+
+### `SOUNDS` — `SOUND_LINES`
+
+| ligne | ici |
+|---|---|
+| `SE` | **enjambée** |
+| `SE VOLUME` | **réelle**, jauge de vingt segments |
+| `BGM` | **enjambée** (août l'affichait `BGM` et l'aiguillait sur `BGM TEST`, deux lignes `VOLUME` étant indiscernables) |
+| `BGM SET` | **enjambée** |
+| `BGM VOLUME` | **réelle**, jauge de vingt segments |
+| `INITIALIZE` | **réelle**, remet les deux volumes à fond |
+
+Les quatre lignes enjambées de `SOUNDS` demandent toutes de **tendre une note à la carte son**, c'est-à-dire
+la couche défaite le 2026-10-21 et qui attend que `docs/fv2-console-son.md` soit validé. Elles sont dessinées
+et passées, jamais retirées : « *une ligne avec rien à basculer est enjambée plutôt que retirée* ».
+
+Les jauges sont `option_vol_up_on.png` et `option_vol_up_off.png`, vingt segments, **dans leurs couleurs à
+lui** : les teinter au jaune de la ligne choisie ne disait rien, le segment allumé étant déjà jaune.
+
+### `CONTROLLER`
+
+Titre et rien d'autre, comme en août où elle fut demandée ainsi le 18. **Complète.**
+
+### `STATS` — le VS DIAGRAM
+
+Le tableau du jeu, `vs_global.png`, avec les chiffres posés dans ses cases : quatorze personnages, un `TOTAL`
+en jaune, et huit colonnes. La grille est relevée sur l'image par ses filets blancs — `x` de 327 à 2219 en
+huit parts égales, `y` de 99 à 1391 — ce qui retombe exactement sur la mesure d'août.
+
+Les compteurs viennent de la sauvegarde, dans le même codage espacé que les réglages, par la disposition de
+son §12 : `bloc = base + n × 0x1A8`, `KO` à +0x000, `JUDGE` à +0x018, puis `FIGHT`, `WIN` et `LOSE` par
+adversaire tous les 8 octets — **seize adversaires et non quatorze**, parce que la rangée fait 0x80 et que Del
+Sol est l'adversaire 14. `DRAW` n'est rangé nulle part : c'est `FIGHT − WIN − LOSE`, calculé au dessin, ce
+qui explique qu'aucune recherche en mémoire ne l'ait jamais trouvé.
+
+**Une seule chose a dû être retrouvée** : ses offsets sont dans *son* vidage de NVRAM, pas dans le `backup`
+de ce portage. L'empreinte qu'il imprime les relie — à son `0x188` il lit `210 210 120 120 69 180`, qui est
+le bloc `GAME ASSIGNMENTS`, et la même suite est à `0x42` ici. Donc **le nôtre est le sien moins `0x146`**, ce
+qui place le premier bloc à `0x3006` — quelques octets dans la troisième page de la sauvegarde, qui est
+précisément là où commence le troisième bloc. Deux contrôles indépendants qui concordent.
+
+**Non confirmé sur des chiffres vivants** : tous les compteurs sont à zéro dans une sauvegarde où aucun match
+n'a jamais été joué. Il faudra en jouer un pour le dire.
+
+`SKO 1` et `SKO 2` restent **vides**, et c'est voulu : la liste des points en suspens d'août les donne
+« *affichés à zéro sans qu'on sache où ils vivent — le seul chiffre du tableau qu'on ne puisse pas
+justifier* ». Une case vide le dit ; un zéro le prétendrait.
