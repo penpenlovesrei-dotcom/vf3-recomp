@@ -3167,9 +3167,15 @@ int main(int argc, char **argv)
 				frames += made;
 				if (!t0) t0 = now;
 				since = double(now - t0) / 1e9;
+				// The queue is in the line too, and it is the only thing left that can make a sound late: the
+				// board was measured making them on the key's own frame, so a beep heard late is a beep sitting
+				// behind something. frame_bytes is one sound frame's worth, so the figure reads as frames of
+				// delay.
+				const int q = audio ? SDL_GetAudioStreamQueued(audio) : -1;
 				if (peak > 0 || frames % 60 == 0)
-					fprintf(stderr, "menu sound: %.2f s, %d sound frames (%.1f/s), peak %d\n",
-							since, frames, since > 0 ? frames / since : 0.0, peak);
+					fprintf(stderr, "menu sound: %.2f s, %d sound frames (%.1f/s), peak %d, queued %d bytes (%.1f frames)\n",
+							since, frames, since > 0 ? frames / since : 0.0, peak, q,
+							frame_bytes > 0 ? double(q) / frame_bytes : 0.0);
 			}
 			if (audio && !game.audio.empty() && rec.dir.empty())
 				SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
