@@ -9,10 +9,26 @@ rem   sur l'ecran titre du jeu  -> Start ouvre la liste des sept modes
 rem   partout ailleurs          -> Start ramene le jeu a son ecran titre
 rem Dans les deux cas le jeu ne voit pas l'appui.
 rem
-rem Dans la liste : haut et bas deplacent, Start (ou Entree) choisit, et la
-rem ligne choisie clignote. ARCADE et SURVIVAL lancent la partie ; les cinq
-rem autres lignes sont dessinees et ne font encore rien. Echap ouvre toujours le
-rem menu de reglages de ce portage, et referme la liste au passage.
+rem Dans la liste : haut et bas deplacent, Start (ou Entree) choisit, B (ou
+rem Retour arriere) ressort, et la ligne choisie clignote. Echap ouvre toujours
+rem le menu de reglages de ce portage, et referme la liste au passage.
+rem
+rem SIX LIGNES SUR SEPT FONT QUELQUE CHOSE :
+rem   ARCADE    la partie, telle quelle
+rem   V.S.      la partie avec le deuxieme joueur deja dedans
+rem   RANDOM    le drapeau RANDOM_CHARA du jeu : personnage tire au sort
+rem   SURVIVAL  le mode survie
+rem   TRAINING  pour l'instant : le combat dans MARBLE ARENA
+rem   OPTIONS   une page a elle, par-dessus l'image du jeu (voir plus bas)
+rem   NETWORK   n'existe pas sur la borne et ne fait rien
+rem
+rem LA PAGE OPTIONS : les treize reglages d'exploitation du jeu, ceux de son
+rem menu de test. Haut et bas deplacent, GAUCHE et DROITE changent la valeur,
+rem B ressort. INITIALIZE remet les valeurs d'usine. Ils sont ecrits dans la
+rem sauvegarde du jeu, la ou ils durent, et le jeu ne les lit qu'en demarrant :
+rem CHANGER UN REGLAGE REDEMARRE DONC LA PARTIE en sortant de la page. Rien ne
+rem redemarre si vous n'avez rien change. COUNTRY est affiche en gris : il est
+rem en lecture seule. Voir docs\fv2-console-options.md.
 rem
 rem PAS BESOIN DE PIECE : le mode console est en FREE PLAY, comme une console.
 rem Le portage pose le reglage COIN/CREDIT du jeu lui-meme au demarrage (un
