@@ -24,11 +24,12 @@ rem   NETWORK   n'existe pas sur la borne et ne fait rien
 rem
 rem LA PAGE OPTIONS : les treize reglages d'exploitation du jeu, ceux de son
 rem menu de test. Haut et bas deplacent, GAUCHE et DROITE changent la valeur,
-rem B ressort. INITIALIZE remet les valeurs d'usine. Ils sont ecrits dans la
-rem sauvegarde du jeu, la ou ils durent, et le jeu ne les lit qu'en demarrant :
-rem CHANGER UN REGLAGE REDEMARRE DONC LA PARTIE en sortant de la page. Rien ne
-rem redemarre si vous n'avez rien change. COUNTRY est affiche en gris : il est
-rem en lecture seule. Voir docs\fv2-console-options.md.
+rem B ressort. INITIALIZE remet les valeurs d'usine. RIEN NE REDEMARRE : chaque
+rem reglage est ecrit a la fois dans la sauvegarde du jeu, ou il dure, et dans
+rem la copie que le jeu lit en tournant, ou il prend effet tout de suite. Il
+rem prend effet au moment ou le jeu relit ce reglage -- en general au debut du
+rem match suivant. COUNTRY est affiche en gris : il est en lecture seule.
+rem Voir docs\fv2-console-options.md.
 rem
 rem PAS BESOIN DE PIECE : le mode console est en FREE PLAY, comme une console.
 rem Le portage pose le reglage COIN/CREDIT du jeu lui-meme au demarrage (un
