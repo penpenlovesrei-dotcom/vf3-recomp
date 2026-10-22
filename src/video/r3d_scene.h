@@ -49,6 +49,11 @@ struct Mesh
 	int flip_x = 0, flip_y = 0;
 	std::vector<Vertex> verts;    // triangles
 	uint64_t key = 0;             // the polygon header bits that made it
+	// Where its colour came from: an entry of the colour table the game keeps in polygon RAM, or -1 when the
+	// polygon carried its own RGB. The game rewrites that table every frame, which is how Fighting Vipers 2
+	// gives its shadows the stage's colour: theirs is entry 16 (docs/fv2-ombres.md). A mesh holds one colour,
+	// so one entry; two entries that resolve to the same RGB share a mesh and the first one's index is kept.
+	int colour_index = -1;
 	// Which of the passes draws it: 0 the opaque layer, 1 and 2 the two translucent layers
 	bool in_layer(int layer, float node_alpha) const
 	{

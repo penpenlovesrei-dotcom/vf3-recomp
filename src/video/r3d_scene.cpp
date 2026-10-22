@@ -229,10 +229,10 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						         me.high_priority ? "hiprio " : "", me.trans_select ? "tsel " : "",
 						         me.layered ? "LAYERED " : "");
 						fprintf(stderr, "mesh f%llu st%02X vp%zu model %06X mesh %zu  verts %zu  tex %d fmt %d  rgba %02X%02X%02X%02X"
-						        "  node_alpha %.2f  [%s] %s  view x %.2f..%.2f y %.2f..%.2f z %.2f..%.2f\n",
+						        "  node_alpha %.2f  [%s] %s  view x %.2f..%.2f y %.2f..%.2f z %.2f..%.2f  ci %d\n",
 						        (unsigned long long)board.frame, stage, iv, m.addr, im, me.verts.size(), int(me.textured), me.format,
 						        c ? c[0] : 0, c ? c[1] : 0, c ? c[2] : 0, c ? c[3] : 0, m.alpha, fl, m.addr < 0x100000 ? "ram" : "rom",
-						        lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]);
+						        lo[0], hi[0], lo[1], hi[1], lo[2], hi[2], me.colour_index);
 					}
 				}
 			}
@@ -645,8 +645,10 @@ Meshes SceneBuilder::parse(const uint32_t *h, bool dynamic)
 		if (h + 7 > limit || h[6] == 0)
 			break;
 		uint8_t colour[4];
+		int colour_index = -1;
 		if (!(h[1] & 2)) {
-			const uint32_t ci = (colour_table + ((h[4] >> 8) & 0xFFF)) & 0xFFFFF;
+			colour_index = int((h[4] >> 8) & 0xFFF);
+			const uint32_t ci = (colour_table + uint32_t(colour_index)) & 0xFFFFF;
 			uint32_t c = poly[ci];
 			if (colour_refs) colour_refs->push_back({ ci, c });
 			colour[0] = uint8_t(c >> 16); colour[1] = uint8_t(c >> 8); colour[2] = uint8_t(c);
@@ -667,6 +669,7 @@ Meshes SceneBuilder::parse(const uint32_t *h, bool dynamic)
 				out->emplace_back();
 				mesh = &out->back();
 				mesh->key = key;
+				mesh->colour_index = colour_index;
 				mesh_state(*mesh, h);
 			} else {
 				mesh = &(*out)[it->second];
