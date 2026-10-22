@@ -224,9 +224,28 @@ the MIDI reset behind the game's back and put the music back by hand, and it was
 on three reports rather than from a plan. What a second attempt has to answer, before a line of it is written,
 is in `docs/fv2-console-son.md`.
 
-ARCADE, SURVIVAL, **RANDOM** and **V.S.** act, and that is **every mode the arcade game has**. The three
-others are drawn and leave the list up rather than pretending something happened -- and they are not waiting
-for a lever to be found, because there is none to find.
+ARCADE, SURVIVAL, **RANDOM** and **V.S.** act, and that is every mode the arcade game has. **TRAINING** acts
+too, as far as it has been built: it fights in Marble Arena. NETWORK and OPTIONS are drawn and leave the list
+up rather than pretending something happened -- and they are not waiting for a lever to be found, because
+there is none to find.
+
+### TRAINING's arena, and the lever that is NOT the one from August
+
+There is no training mode on this board, so there is nothing to switch on: it is a mode this port builds, and
+what exists of it today is which arena it fights in. Frédéric's choice for now is **MARBLE ARENA**, scene 3.
+
+The first lever tried was the stage picker at `0x0007111C`, the one the owner's `CHANGE STAGE` patches to
+`li r3,<scene> ; blr`. **It does not command this.** Patched and held -- the words read back out of the
+running game -- the game picked stage 9 all the same. That picker is reached only by a rematch going THROUGH
+the select screen, which is how `CHANGE STAGE` uses it.
+
+What commands a game's first arena is the game's own **route table**, found by watching who writes the scene
+index and reading the dozen instructions above that write (`docs/fv2-etats.md`): eight bytes a match, four
+(arena, opponent) pairs, the pair chosen by `0x0058145D`. One byte of it -- `0x000B4100`, route 0, first
+match -- set to 3 puts the fight in Marble Arena, and it is put back when the game ends.
+
+Measured both ways: the scene index reads 3 where it read 9, and the picture is the marble floor instead of
+the dam.
 
 ### NETWORK, TRAINING and OPTIONS do not exist on the arcade board
 
@@ -245,7 +264,7 @@ So the three lines are the Dreamcast's, and each would have to be BUILT rather t
 | line | what the arcade actually has |
 |---|---|
 | `NETWORK` | nothing. The disc's `INTERNET` and `RANDOM NETWORK` have no counterpart in this program |
-| `TRAINING` | a **stage**, not a mode: the Training Zone, MDL 75 / TEX 112, internal name `TEST`. A training mode would be this port's own, built out of the game's levers -- the stage at `0x0007111C`, the round timer, the health bytes |
+| `TRAINING` | a **stage**, not a mode. A training mode is this port's own, and its first half is built: it fights in **MARBLE ARENA**, by one byte of the game's route table (below). The rest -- a timer that does not run out, health that comes back, the dummy -- is still to be read |
 | `OPTIONS` | the operator's own page, `GAME ASSIGNMENTS` at `0x00120540`-`0x0012055F`. This port already reads and writes that block for Virtua Fighter 3's Arcade settings page, so what is missing is the page, not the mechanism |
 
 That settles what the list can be. It is **complete for the game underneath it**; what is left is work this

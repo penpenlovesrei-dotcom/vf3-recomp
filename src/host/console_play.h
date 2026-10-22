@@ -89,6 +89,29 @@ struct console_play
 	int random_armed = 0;
 	int random_was = 0;
 
+	// ---- TRAINING, first half: the arena ----
+	// There is no training MODE on this board -- Sega's twenty-four hold none, and the arcade notes say so --
+	// so this is not a switch to find but a thing this port builds. The first half is which arena the fight
+	// happens in, and Frédéric's choice for now is MARBLE ARENA, scene 3.
+	//
+	// It is a patch on the function that draws the stage (Model3::fv2_hold_stage), so it is HELD, not written
+	// once: the game unpacks and reloads its own code, and the patch has to be put back whenever Sega's words
+	// come back. That is the roster patch's discipline. It is released when the game ends.
+	//
+	// The first lever tried was the stage picker at 0x0007111C, the one the owner's CHANGE STAGE uses, and it
+	// does NOT command this: patched and held -- `li r3,3 ; blr` read back out of the running game -- the game
+	// picked stage 9 all the same. The picker is reached only by a rematch THROUGH the select screen. What
+	// commands a game's first arena is one byte of the game's own route table (Model3::fv2_hold_training_stage),
+	// found by watching who writes the scene index and reading the dozen instructions above that write.
+	//
+	// What is NOT here either, and should not be mistaken for it: everything else a training mode is -- the
+	// timer that does not run out, the health that comes back, the dummy's behaviour. The owner has a draft
+	// of that in the patched ROM of the summer, and the Dreamcast version has the real thing; neither has
+	// been read yet.
+	static constexpr int MARBLE_ARENA = 3;
+	enum { T_OFF, T_ARMED, T_HELD } training = T_OFF;
+	int training_armed = 0;
+
 	enum { SEL_NOTHING, SEL_RANDOM, SEL_VERSUS } at_select = SEL_NOTHING;
 	int sel_frames = -1;          // frames since the select screen appeared; -1 until it does
 	int since_choice = -1;        // frames since the fighter was chosen; -1 until it is
@@ -96,6 +119,7 @@ struct console_play
 	void choose_arcade() { inject_start = 8; swallow_start = true; }
 	void choose_survival(m3::Model3 &b) { survival = ARMED; armed_frames = 0; survival_was = b.fv2_survival(); choose_arcade(); }
 	void choose_random() { random_mode = R_ARMED; random_armed = 0; random_was = 0; choose_arcade(); }
+	void choose_training() { training = T_ARMED; training_armed = 0; choose_arcade(); }
 	void choose_versus() { at_select = SEL_VERSUS; sel_frames = -1; since_choice = -1; choose_arcade(); }
 
 	// ---- what Start does, and it is two jobs told apart by one question ----
@@ -233,6 +257,20 @@ struct console_play
 			if (b.fv2_in_attract()) { b.fv2_set_random_chara(random_was > 0); random_mode = R_OFF; }
 			break;
 		case R_OFF: break;
+		}
+		switch (training) {
+		case T_ARMED:
+			// nothing touched yet: the same wait as Survival, for the same reason -- the game is still in its
+			// attract loop when the line is chosen. The arena is read when a match starts, well after this.
+			if (!b.fv2_in_attract()) { b.fv2_hold_training_stage(MARBLE_ARENA); training = T_HELD; }
+			else if (++training_armed > 300) training = T_OFF;   // (the game never started: give up)
+			break;
+		case T_HELD:
+			// Given back when the game ends: left in place it would send the NEXT game to the same arena too.
+			if (b.fv2_in_attract()) { b.fv2_release_training_stage(); training = T_OFF; }
+			else b.fv2_hold_training_stage(MARBLE_ARENA);
+			break;
+		case T_OFF: break;
 		}
 	}
 };

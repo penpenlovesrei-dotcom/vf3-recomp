@@ -68,7 +68,7 @@ static const char *fv2_sub_name(int mode, int sub)
 int main(int argc, char **argv)
 {
 	std::string rom, script_path, state_path, shots, wav_path, coverage_path, portraits;
-	long frames = -1, ram_at = -1;
+	long frames = -1, ram_at = -1, poly_at = -1;
 	bool modes_log = false;
 	uint32_t watch = 0xFFFFFFFF, trace_pc = 0xFFFFFFFF;
 	bool quiet = false, rec = false, full_roster = false;
@@ -111,6 +111,7 @@ int main(int argc, char **argv)
 		else if (a == "--hd-flats") hd_flats = true;
 		else if (a == "--hd-pack" && i + 1 < argc) hd_pack = argv[++i];
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
+		else if (a == "--poly-at" && i + 1 < argc) poly_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--modes") modes_log = true;
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
 		else if (a == "--trace-pc" && i + 1 < argc) trace_pc = uint32_t(strtoul(argv[++i], nullptr, 16));
@@ -309,6 +310,7 @@ int main(int argc, char **argv)
 				if (console_mode == "survival") cplay.choose_survival(board);
 				else if (console_mode == "random") cplay.choose_random();
 				else if (console_mode == "versus") cplay.choose_versus();
+				else if (console_mode == "training") cplay.choose_training();
 				else cplay.choose_arcade();
 				if (!quiet) printf("frame %llu: console mode %s chosen\n", (unsigned long long)f, console_mode.c_str());
 			}
@@ -884,6 +886,15 @@ int main(int argc, char **argv)
 		if (long(board.frame) == ram_at) {
 			std::string p = "ram_" + std::to_string(board.frame) + ".bin";
 			if (FILE *rf = fopen(p.c_str(), "wb")) { fwrite(board.ram.data(), 1, board.ram.size(), rf); fclose(rf); }
+		}
+		// --poly-at : la RAM de polygones, ou vit la table de couleurs des
+		// polygones sans texture (src/video/r3d_scene.cpp).
+		if (long(board.frame) == poly_at) {
+			std::string p = "poly_" + std::to_string(board.frame) + ".bin";
+			if (FILE *pf = fopen(p.c_str(), "wb")) {
+				fwrite(board.poly_ram.data(), 4, board.poly_ram.size(), pf);
+				fclose(pf);
+			}
 		}
 		if (board.cpu.s.fatal) {
 			fprintf(stderr, "vf3run: frame %llu: CPU stopped: %s\n", (unsigned long long)board.frame, board.cpu.fatal_message);

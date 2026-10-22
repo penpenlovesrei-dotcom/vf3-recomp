@@ -273,6 +273,48 @@ son séquenceur installe l'écran titre, et qui arrête ces tâches pour de bon.
 demande de décompiler cette branche du séquenceur.
 
 
+## La route fixe de l'arcade : une table, relevée le 2026-10-22
+
+Cherchée parce que le mode Training avait besoin de choisir son arène, et trouvée sans décompilateur : le
+`--watch` nomme qui écrit l'index de scène, et les douze instructions qui précèdent disent d'où il sort.
+
+```
+000716B8  stb r0,-609(r9)      r9 = 0x00590000, donc 0x0058FD9F : l'index de scene
+000716B4  mr  r0,r30           et r30 vient de :
+
+000715F0  lbz    r9,5213(r11)  [0x0058145D], qui choisit la route
+000715F8  addi   r11,r11,16640 la table, 0x000B4100
+000715FC  addi   r0,r8,-1      le numero du combat, moins un
+00071600  rlwinm r0,r0,3,0,28  fois 8
+00071604  rlwinm r9,r9,1,0,30  la route, fois 2
+0007160C  lbzx   r30,r11,r9    <- L'ARENE
+00071614  lbz    r3,1(r9)      et l'octet suivant : l'adversaire
+```
+
+**Huit octets par combat, quatre paires (arène, adversaire), la paire choisie par `0x0058145D`.** Relevé dans
+un jeu en marche :
+
+```
++00 : 09 0A 00 09 00 09 00 09      combat 1 : arene 9,  adversaire 0x0A
++08 : 01 0B 00 09 00 09 00 09      combat 2 : arene 1,  adversaire 0x0B
++10 : 07 00 0B 06 00 09 00 09
++18 : 02 02 0A 07 00 09 00 09
+```
+
+« 9 puis 1 pour le second adversaire » : c'est exactement ce que `docs/fv2-flux-de-match.md` avait mesuré de
+l'autre côté, sans savoir d'où ça venait.
+
+**Et ce n'est pas le même levier que `CHANGE STAGE`.** La fonction `0x0007111C`, que le menu d'août patche en
+`li r3,<scène> ; blr`, ne commande **pas** l'arène du premier combat : patchée et tenue, le jeu a choisi 9
+quand même. Elle n'est atteinte que par un rematch **passant par l'écran de sélection**. Pour un combat qui
+démarre, c'est la table.
+
+Les douze arènes, numérotées par le propriétaire et mesurées à l'écran : 1 Old Armstone Town, 2 Deck of the
+Dark Royal, **3 Marble Arena**, 4 The Great B.M, 5 Terror Furnace, 6 Serpent's Cage, 7 Hanger of the Dark
+Royal, 8 Secret Chemical Plant, 9 Cross River Damsite, 10 Neo Armstone City Tower, 11 The Skies of Armstone,
+12 Great Museum.
+
+
 ## La liste des modes, et sa géométrie
 
 `assets/menu-console/title_list.png`, 709 x 897, RGBA, sept lignes : ARCADE, V.S., RANDOM, SURVIVAL, NETWORK,

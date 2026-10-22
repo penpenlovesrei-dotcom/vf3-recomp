@@ -1422,6 +1422,108 @@ void Model3::show_free_play_text()
 //
 // Known limit, and it is the game's, not the port's: past cursor 10 the names and portraits are wrong or missing.
 // The routine that draws them stops there and its table of positions holds eleven entries.
+// TRAINING, first half: which arena the game fights in.
+//
+// It is not a byte to force. The scene index was tried twice over on Supermodel and rejected both times --
+// forcing it gives one arena's geometry under another's textures, because two consumers read the stage at two
+// different moments. What works is one step earlier: 0x0007111C is the FUNCTION that draws the stage, and
+// made to return ours, the game genuinely chooses it. The scene index and the dozen tables indexed by it then
+// agree, because there is nothing left to disagree about.
+//
+//     0x0007111C   stwu r1,-0x20(r1)   ->   li r3,<scene>
+//     0x00071120   mflr r0             ->   blr
+//
+// Read before written, every time, and the caller keeps calling: the program is unpacked into RAM by the
+// game's own boot and reloaded as it goes, so a blind write lands in memory that is not code yet. That is the
+// roster patch's discipline (unlock_roster above), and it is not optional here either.
+//
+// Scene 3 is MARBLE ARENA. The numbering is the owner's, measured on screen stage by stage: 1 Old Armstone
+// Town, 2 Deck of the Dark Royal, 3 Marble Arena, 4 The Great B.M, 5 Terror Furnace, 6 Serpent's Cage,
+// 7 Hanger of the Dark Royal, 8 Secret Chemical Plant, 9 Cross River Damsite, 10 Neo Armstone City Tower,
+// 11 The Skies of Armstone, 12 Great Museum.
+//
+// Returns 1 if it wrote the patch just now, 0 if there was nothing to do (already there, or the words are
+// neither Sega's nor ours), -1 for a game this isn't known for. False is a fact worth having, not a silence.
+int Model3::fv2_hold_stage(int scene)
+{
+	if (set != "fvipers2" || scene < 1 || scene > 12) return -1;
+	constexpr uint32_t PICKER = 0x0007111C;
+	constexpr uint32_t AS_SEGA_WROTE_IT_0 = 0x9421FFE0;   // stwu r1,-0x20(r1)
+	constexpr uint32_t AS_SEGA_WROTE_IT_1 = 0x7C0802A6;   // mflr r0
+	constexpr uint32_t BLR = 0x4E800020;
+	const uint32_t li = 0x38600000u | uint32_t(scene);    // li r3,scene
+	if (ram.size() <= PICKER + 7) return -1;
+	if (word(ram, PICKER) == li && word(ram, PICKER + 4) == BLR) return 0;        // (already ours)
+	if (word(ram, PICKER) != AS_SEGA_WROTE_IT_0 || word(ram, PICKER + 4) != AS_SEGA_WROTE_IT_1) return 0;
+	word(ram, PICKER) = li;
+	word(ram, PICKER + 4) = BLR;
+	cpu.ram_written(PICKER);         // (the recompiler's native code was made from the instructions that were there)
+	cpu.ram_written(PICKER + 4);
+	return 1;
+}
+
+// TRAINING's arena, the half that actually commands it: the game's own ROUTE TABLE.
+//
+// The picker above is not what chooses a game's FIRST arena -- patched and held, the game still picked stage
+// 9. Watching who writes the scene index gave the real place (vf3run --watch 58FD9C):
+//
+//     000716B8  stb r0,-609(r9)        r9 = 0x00590000, so 0x0058FD9F, the scene index
+//     000716B4  mr  r0,r30             and r30 comes from, a few instructions earlier:
+//
+//     000715F0  lbz   r9,5213(r11)     [0x0058145D], which picks the route
+//     000715F4  lis   r11,0x000B
+//     000715F8  addi  r11,r11,16640    the table at 0x000B4100
+//     000715FC  addi  r0,r8,-1         the match number, less one
+//     00071600  rlwinm r0,r0,3,0,28    times 8
+//     00071604  rlwinm r9,r9,1,0,30    the route, times 2
+//     00071608  add   r9,r9,r0
+//     0007160C  lbzx  r30,r11,r9       <- the arena
+//     00071614  lbz   r3,1(r9)         and the byte after it, the opponent
+//
+// So the arcade's fixed road is a table of eight bytes a match, four (arena, opponent) pairs, the pair chosen
+// by 0x0058145D. Read out of a running game it says 09 0A / 01 0B for the first two matches on route 0, which
+// is exactly the "0x09 then 0x01 for the second opponent" the match flow measured from the other side.
+//
+// Measured: the byte at 0x000B4100 set to 3 puts the first fight in MARBLE ARENA. Only the first match is
+// touched -- the rest of the route is left as Sega wrote it -- and the byte is put back when the game ends.
+int Model3::fv2_hold_training_stage(int scene)
+{
+	if (set != "fvipers2" || scene < 1 || scene > 12) return -1;
+	constexpr uint32_t ROUTE = 0x000B4100;   // route 0, first match: the arena
+	if (ram.size() <= ROUTE + 1) return -1;
+	uint8_t &here = ram[ROUTE ^ 3];
+	if (here == scene) return 0;
+	if (!fv2_route_held) { fv2_route_was = here; fv2_route_held = true; }
+	here = uint8_t(scene);
+	return 1;
+}
+
+// Gives the first match's arena back to the game, and only if we took it.
+int Model3::fv2_release_training_stage()
+{
+	if (set != "fvipers2" || !fv2_route_held) return 0;
+	constexpr uint32_t ROUTE = 0x000B4100;
+	if (ram.size() <= ROUTE + 1) return -1;
+	ram[ROUTE ^ 3] = fv2_route_was;
+	fv2_route_held = false;
+	return 1;
+}
+
+// Gives the stage back to the game: Sega's two instructions, and only where ours are.
+int Model3::fv2_release_stage()
+{
+	if (set != "fvipers2") return -1;
+	constexpr uint32_t PICKER = 0x0007111C;
+	constexpr uint32_t BLR = 0x4E800020;
+	if (ram.size() <= PICKER + 7) return -1;
+	if (word(ram, PICKER + 4) != BLR || (word(ram, PICKER) & 0xFFFF0000u) != 0x38600000u) return 0;
+	word(ram, PICKER) = 0x9421FFE0;
+	word(ram, PICKER + 4) = 0x7C0802A6;
+	cpu.ram_written(PICKER);
+	cpu.ram_written(PICKER + 4);
+	return 1;
+}
+
 int Model3::unlock_roster()
 {
 	// Measured on the Japan Revision A set. The other Fighting Vipers 2 set is a different build and its own

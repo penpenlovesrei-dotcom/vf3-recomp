@@ -197,6 +197,19 @@ public:
 	// now, 0 if there was nothing to do (already there, or the program isn't unpacked yet), -1 for a game this
 	// isn't known for.
 	int unlock_roster();
+	// TRAINING's arena: 0x0007111C is the function that draws the stage, and made to return `scene` the game
+	// genuinely chooses it -- forcing the scene index instead was measured twice and gives one arena's
+	// geometry under another's textures. Scene 3 is MARBLE ARENA. Read before written and the caller keeps
+	// calling, as the roster patch does. model3.cpp carries the numbering and the two instructions.
+	int fv2_hold_stage(int scene);
+	int fv2_release_stage();
+	// And the half that actually commands a game's FIRST arena, which the picker above does not: one byte of
+	// the game's own route table, 0x000B4100 -- eight bytes a match, four (arena, opponent) pairs, the pair
+	// chosen by 0x0058145D. model3.cpp carries the instructions it was read from.
+	int fv2_hold_training_stage(int scene);
+	int fv2_release_training_stage();
+	uint8_t fv2_route_was = 0;
+	bool fv2_route_held = false;
 	// Honey's other costume, the one Sega gated behind thirty straight wins (docs/fv2-honey.md). Two
 	// instructions in her own cloth handler, turned always-true, in the same shape as the roster patch above:
 	// read before every write, and the caller keeps calling. 1 if it wrote just now, 0 if there was nothing to

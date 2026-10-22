@@ -2627,6 +2627,12 @@ int main(int argc, char **argv)
 		// here to do nothing at all (console_play.h, model3.cpp).
 		else if (line == fv2_mode_list::RANDOM) cplay.choose_random();
 		else if (line == fv2_mode_list::VERSUS) cplay.choose_versus();
+		// TRAINING is not a mode this board has -- Sega's twenty-four hold none -- so it is one this port
+		// builds, and what exists of it today is its arena: MARBLE ARENA, by one byte of the game's own route
+		// table (console_play.h, model3.cpp). Everything else a training mode is -- a timer that does not run
+		// out, health that comes back, the dummy's behaviour -- is still to be read, in the owner's draft in
+		// the summer's patched ROM and in the Dreamcast version.
+		else if (line == fv2_mode_list::TRAINING) cplay.choose_training();
 		else {
 			fprintf(stderr, "the console's list: %s has no lever in this port yet -- nothing done\n", fv2_mode_list::name(line));
 			return;
