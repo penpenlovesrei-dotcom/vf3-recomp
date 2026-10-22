@@ -155,16 +155,47 @@ d'autres énergies ou d'autres durées. On n'y touche pas.
 assombri — sans un seul libellé. Les treize noms et leurs valeurs doivent donc être du **texte**, et ce
 portage n'a pas de moteur de texte en dehors de RmlUi, qui est celui du menu de la touche Échap.
 
-Trois voies, et c'est à Frédéric de trancher parce que c'est une question de goût autant que de technique :
+Trois voies étaient ouvertes : un document RmlUi à elle, la police du jeu par le générateur de tuiles, ou la
+police de la Dreamcast à sortir de `TEX_DAT.AFS`.
 
-| voie | ce qu'elle donne | ce qu'elle coûte |
-|---|---|---|
-| **a.** RmlUi, mais un document à elle, plein écran, sur le fond du disque | rapide, lisible, et ça se juge sur une capture | le risque que ça ressemble encore au menu de réglages — la faute payée deux fois |
-| **b.** la police du jeu, dessinée par le générateur de tuiles | le seul rendu qui soit vraiment « du jeu » | il faut trouver la police et sa table de glyphes : un chantier |
-| **c.** la police de la Dreamcast, tirée de `TEX_DAT.AFS` | l'habillage du disque, cohérent avec la liste | elle n'est pas dans les 45 fichiers extraits ; il faut la sortir de l'archive |
+**Tranchée le 2026-10-22, et par un fichier plutôt que par un arbitrage** : Frédéric a déposé `police.png`
+**parmi les images du menu**, dans `texture_remplacement_2d/fvipers2/`, et non parmi les tuiles nommées par
+leur empreinte. C'est donc une quatrième voie, qui est la bonne : sa propre feuille de glyphes, dessinée
+directement comme `fv2_mode_list.h` dessine déjà la liste des modes. Ni RmlUi, ni le générateur de tuiles, ni
+l'archive du disque.
 
-**Recommandation** : **a**, parce qu'elle se juge en une capture et se défait en une. Si elle ressemble trop au
-menu Échap, on le voit tout de suite et on passe à **c**.
+### Ce que porte `police.png`, mesuré
+
+| | |
+|---|---|
+| image | 1024 × 384, RGBA, glyphes **blancs sur transparent** |
+| grille | **16 colonnes × 6 rangées**, cases de **64 × 64** |
+| correspondance | **ASCII `0x20` à `0x7F`**, dans l'ordre, une case par code |
+| cases vides | exactement deux : `0x20` (espace) et `0x7F` — ce qui confirme la correspondance |
+| position | les glyphes sont **centrés dans leur case**, horizontalement *et verticalement* |
+| capitales et chiffres | tous exactement de `y = 16` à `y = 46`, le seul écart étant la queue du `Q` (13 à 49) |
+| chasses de l'encre | de 6 px (`'`) à 41 px (`W`), médiane 22 |
+
+Et la trouvaille qui compte, parce qu'elle décide de ce qu'on peut écrire avec cette feuille : **elle n'a pas
+de ligne de base**. Chaque glyphe est centré dans sa case, verticalement aussi. `O` occupe `y = 16..46`, `o`
+occupe `20..42`, le point `29..33`, la virgule `26..37`, les deux-points `21..41` — tous de milieu 31. Une
+fonte pose ces quatre-là sur une même ligne ; celle-ci les empile autour d'un centre.
+
+Trois conséquences, et elles sont nettes :
+
+- un rendu proportionnel doit passer par **la boîte d'encre de chaque case**, pas par la case, puisque les
+  glyphes ne sont pas calés à gauche. D'où la table des 96 boîtes dans `src/host/fv2_texte.h`, relevée par
+  `tools/fv2/mesurer_police.py` ;
+- **verticalement, il n'y a rien à calculer** : on dessine la case entière, et les glyphes gardent l'alignement
+  que la feuille leur donne déjà. Pour une page en **capitales et chiffres** — ce que sont les treize réglages
+  et leurs valeurs — c'est *exact*, puisque les 35 partagent la même boîte ;
+- en revanche les **minuscules et la ponctuation sont fausses** sur une ligne de texte ordinaire : le `o` flotte
+  4 px au-dessus du `O`, et le point se lit comme un point médian — `SUPER K.O.` sort en `SUPER K·O·`. Ce n'est
+  pas un défaut du dessin, c'est la feuille qui est ainsi. La corriger demanderait de **choisir** une ligne de
+  base que la feuille ne donne pas, c'est-à-dire d'inventer : à Frédéric de dire s'il la veut, et laquelle.
+
+Rien dans ce portage ni dans le travail d'été ne se servait de cette feuille : la seule fonte du portage est
+celle de RmlUi.
 
 ### 3. Qu'est-ce qu'une modification doit faire ?
 
@@ -176,7 +207,7 @@ vraiment changé. C'est le comportement à reprendre, pas à réinventer.
 
 1. ~~**Question 1** : les treize adresses dans la sauvegarde.~~ **Close le 2026-10-22**, relevé ci-dessus,
    vérifiée par un essai contre témoin.
-2. **Question 2** tranchée par Frédéric, sur une capture. **C'est ce qui bloque.**
+2. ~~**Question 2**.~~ **Close le 2026-10-22** : `police.png`, mesurée ci-dessus.
 3. La page, les treize lignes, les plages comme garde.
 4. `verifier-vf3.cmd`, et une partie jouée.
 
