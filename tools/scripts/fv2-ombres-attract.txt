@@ -1,0 +1,46 @@
+# Fighting Vipers 2 : les ombres, vues dans la boucle d attraction -- plusieurs decors et
+# plusieurs combattants, sans credit et sans manette. Une marque de rendu toutes les 200
+# images a partir de 1400 (la premiere demonstration part a 1386, mesure).
+#
+# Le rendu est ce qui batit la scene : sans marque, VF3_MESH_AUDIT ne voit rien.
+# Genere ; ne pas editer a la main.
+1400 shot a001400
+1600 shot a001600
+1800 shot a001800
+2000 shot a002000
+2200 shot a002200
+2400 shot a002400
+2600 shot a002600
+2800 shot a002800
+3000 shot a003000
+3200 shot a003200
+3400 shot a003400
+3600 shot a003600
+3800 shot a003800
+4000 shot a004000
+4200 shot a004200
+4400 shot a004400
+4600 shot a004600
+4800 shot a004800
+5000 shot a005000
+5200 shot a005200
+5400 shot a005400
+5600 shot a005600
+5800 shot a005800
+6000 shot a006000
+6200 shot a006200
+6400 shot a006400
+6600 shot a006600
+6800 shot a006800
+7000 shot a007000
+7200 shot a007200
+7400 shot a007400
+7600 shot a007600
+7800 shot a007800
+8000 shot a008000
+8200 shot a008200
+8400 shot a008400
+8600 shot a008600
+8800 shot a008800
+9000 shot a009000
+9100 quit

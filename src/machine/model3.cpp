@@ -1008,6 +1008,14 @@ void Model3::r3d_dma_write32(unsigned reg, uint32_t data)
 	case 0x04: dma_dst = data; break;
 	case 0x08:
 		dma_len = data;
+		// VF3_DMA_LOG=<frame>: every Real3D DMA of that frame -- where it reads in RAM, where it writes, how
+		// long -- for tracing a model in polygon RAM back to the code that built it (debugging)
+		if (const char *dl = getenv("VF3_DMA_LOG")) {
+			const unsigned long long want = strtoull(dl, nullptr, 10);
+			if (want == 0 || frame == want)   // 0: every frame
+				fprintf(stderr, "dma f%llu src %08X dst %08X len %u words  PC %08X LR %08X\n",
+				        (unsigned long long)frame, dma_src, dma_dst, data, cpu.s.pc, cpu.s.lr);
+		}
 		while (dma_len) {
 			uint32_t v = read32(dma_src);
 			write32(dma_dst, (dma_config & 0x80) ? bswap32(v) : v);

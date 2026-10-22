@@ -1,0 +1,484 @@
+# Les ombres de Fighting Vipers 2 : ce qu'elles sont
+
+Mesuré le 2026-10-22 dans `C:\Temp\fv2-ombres` (branche `fv2-ombres`), sur **l'image 3101** de
+`tools/scripts/fv2-fight.txt` — décor 1, Picky contre Charlie, sans fenêtre (`vf3run`, rasteriseur logiciel).
+Rien ici n'est déduit : chaque ligne renvoie à une mesure, et la section « ce qui n'est pas établi » dit où
+s'arrête ce qui a été vu.
+
+## La réponse
+
+L'ombre d'un combattant est **un jeu de modèles 3D à part**, que le jeu bâtit **en RAM de polygones à chaque
+image**, **aplatis** sur le plan du sol, **sans texture**, **sans éclairage**, et peints d'**une seule couleur
+opaque** — celle du décor.
+
+Ce n'est donc ni un disque texturé, ni une couche de polygones noirs translucides, ni le modèle du combattant
+réutilisé avec une matrice d'aplatissement.
+
+## Ce qui le dit, mesure par mesure
+
+| ce qui a été mesuré | comment |
+|---|---|
+| **37 maillages** de l'image portent la couleur de sommet `#051A26` | `VF3_MESH_AUDIT=3101` |
+| **les 37 sont en RAM de polygones** (adresse < `0x100000`), aucun en ROM | idem |
+| **aucun n'est texturé** (`tex 0`), **aucun n'est éclairé** (drapeau `lighting` absent) | idem |
+| **aucun n'est translucide** : alpha `FF`, ni `poly_alpha` ni `texture_alpha` | idem |
+| **ils sont plats** : étendue verticale de **0,000 à 0,020** en espace caméra, pour une emprise au sol de 1,44 sur 1,52 | idem |
+| **ils sont au niveau du sol** : y de −1,31 à −1,26, quand les corps sont de −0,29 à +0,35 | idem |
+| **aucune de leurs adresses de modèle n'apparaît ailleurs** dans l'image | comparaison des adresses |
+| **386 pixels sur 576** pris dans l'ombre de Charlie valent exactement `#051A26` | relevé sur le PNG |
+| **peints en magenta, ces 37 maillages couvrent les deux ombres et rien d'autre** | `VF3_MARK_RGB=051A26` |
+| **aucun polygone `layered` dans l'image** : 0 sur 485 | `VF3_MESH_AUDIT` |
+
+La valeur des pixels est le témoin le plus net : si ces polygones étaient éclairés, la couleur à l'écran
+vaudrait la couleur de sommet multipliée par `soleil + ambiante` et ne tomberait pas sur `#051A26` au bit près.
+S'ils étaient translucides, le sol se mêlerait dedans. Ni l'un ni l'autre.
+
+## Combien, et de quelle taille
+
+L'image porte **485 maillages**. Les ombres s'y répartissent sur deux vues :
+
+| | ombres | ce qui se tient au-dessus de leur emprise |
+|---|---|---|
+| vue 5 | 17 modèles, **3 324 sommets** | 52 modèles, 25 482 sommets |
+| vue 9 | 19 modèles, **4 566 sommets** | 75 modèles, 18 924 sommets |
+
+Donc **une ombre par partie du corps**, et de l'ordre du **cinquième à un septième** des sommets de ce qui se
+tient dessus. C'est bien une version simplifiée du modèle du personnage — simplifiée en nombre de parties
+(19 contre 75) autant qu'en sommets — et non un décalque aplati du modèle complet, puisque aucune adresse
+n'est partagée.
+
+Le plus gros maillage d'ombre fait 864 sommets, soit 144 polygones ; le plus petit 72 sommets, soit 12.
+
+## Ce qui n'est pas établi
+
+- **Une seule image, un seul décor, deux combattants.** Rien ne dit encore que `#051A26` est la couleur
+  d'ombre de tous les décors, ni que le compte tient ailleurs. C'est la question 2.
+- **Ce que sont les vues 5 et 9** n'a pas été cherché. Les deux portent des ombres ; pourquoi la scène est
+  découpée ainsi n'est pas mesuré.
+- **Le chemin GPU n'a pas été regardé.** `VF3_MARK_RGB` est dans le rasteriseur logiciel seulement. Rien ne
+  laisse attendre une différence — les deux chemins sont comparés au démarrage — mais ce n'est pas mesuré.
+- **Qui fabrique ces modèles dans la RAM de polygones**, et par quelle projection, n'a pas été cherché dans le
+  code du jeu.
+- **Les ombres des décors** (peintes dans les textures ou non) n'ont pas été regardées.
+
+## Les instruments, tous éteints par défaut
+
+Deux interrupteurs ajoutés à côté de ce qui existait, rien remplacé :
+
+| | |
+|---|---|
+| `VF3_MESH_AUDIT=<image>` | tous les maillages de cette image : sommets, adresse, RAM ou ROM, texture, couleur, alpha des nœuds, les neuf drapeaux, et l'étendue en espace caméra (`src/video/r3d_scene.cpp`) |
+| `VF3_MARK_RGB=<RRGGBB>` | tout maillage dont la couleur de polygone est celle-là est peint en magenta (`src/video/r3d_raster.cpp`) |
+
+L'auditeur qui existait, `VF3_TRANS_AUDIT`, ne montre que les maillages translucides : il ne pouvait pas voir
+ces ombres, qui sont opaques.
+
+`montrer-ombres-fv2.cmd` refait les deux images et l'audit.
+
+## Combien, et qui les produit
+
+Mesuré sur **36 images de la boucle d'attraction** (`tools/scripts/fv2-ombres-attract.txt`, une image toutes
+les 200 entre 1400 et 9000 — pas un crédit, pas une touche), **19 968 maillages** en tout, plus l'image 3101
+du combat. Un maillage est compté comme ombre quand il est **plat, sans texture, sans éclairage, et bâti en
+RAM de polygones** ; la couleur n'entre pas dans le test, pour qu'elle puisse être un résultat.
+
+| image | décor | ombres | par amas | couleur |
+|---|---|---|---|---|
+| 3101, un combat | `09` | 37 | **17** (vue 5) + **20** (vue 9) | `#051A26` |
+| 7001, une démonstration | `01` | 30 | **15** (vue 4) + **15** (vue 7) | `#302010` |
+| 5001, une présentation de personnage | `15` | 16 | **16** (vue 5) | `#000000` |
+
+**Qui** : **chaque combattant, dans sa propre vue.** Les amas se séparent exactement en deux quand les deux
+combattants sont écartés, et chacun tient dans une seule vue du Real3D — vues 5 et 9 au combat, 4 et 7 (ou 8)
+dans la démonstration. Le jeu donne donc une vue par combattant, et l'ombre suit son combattant.
+
+**Combien** : **une par partie du corps**, 15 à 20 selon le combattant — et **le compte ne bouge pas d'une
+image à l'autre pour un même combattant** : 15 maillages / 2 682 sommets d'un côté, 15 / 2 802 de l'autre,
+inchangés sur les treize images échantillonnées du décor `01`. Ce n'est donc pas une ombre recalculée pose par
+pose avec un nombre variable de morceaux : c'est un jeu de pièces fixe, que le jeu replace.
+
+**La couleur appartient à la scène** : trois situations, trois couleurs, et jamais deux dans la même image.
+`#051A26` bleu nuit sur le décor `09`, `#302010` brun sur le décor `01`, `#000000` sur la présentation. La
+marque magenta, refaite sur le décor `01` avec `VF3_MARK_RGB=302010`, tombe là encore sur les deux ombres et
+nulle part ailleurs.
+
+**Aucun objet du décor n'a d'ombre de cette sorte.** Sur les 19 968 maillages des 36 images, les seuls qui
+portent la signature sont les amas des combattants. Rien sous les grillages, les bâtiments ou les objets.
+
+**Ce que le décor a à la place : ses textures.** À l'image 3101, **424 maillages sur 485 sont texturés et
+portent la couleur de sommet blanche** (`#FFFFFF`) ; 16 sont texturés et colorés, 45 non texturés et colorés —
+dont les 37 ombres. Ce qui assombrit un décor vient donc de sa texture et de la lumière, pas d'un polygone
+d'ombre posé devant.
+
+### Ce que cette mesure ne dit pas
+
+- **Trois décors seulement** (`09`, `01`, `15`), et le `15` est une présentation de personnage, pas une arène.
+  Rien ne dit que les 23 autres décors tiennent la même règle.
+- **La règle de reconnaissance est la mienne**, pas celle du jeu : plat + sans texture + sans éclairage + en
+  RAM. Elle attrape bien les ombres sur ces images, et elle a laissé de côté deux maillages plats et sombres
+  **en ROM** sur le décor `15` (`#002628`, `#001406`) qui n'ont pas été identifiés.
+- **D'où vient la couleur** — une table par décor, une couleur de sommet écrite par la tâche qui bâtit
+  l'ombre — n'a pas été cherché dans le code du jeu.
+- **Le chemin GPU** n'est toujours pas regardé.
+
+## Ce que coûte une image aujourd'hui
+
+Mesuré le 2026-10-22 **dans la fenêtre**, sur la machine de Frédéric, par `mesurer-budget-fv2.cmd`
+(`VF3_PACE_LOG=1`, voie PC) : une partie jouée à la main, de l'écran titre jusqu'à un combat. Les lignes sont
+dans `log.txt`. Une course sans fenêtre ne peut pas répondre à cette question : le gouverneur y est éteint et
+rien n'est présenté à l'écran.
+
+```
+i7-11800H, 8 coeurs (16 fils), RTX 3070 Laptop, ecran 60 Hz, vsync on
+fenetre 1366 x 768, rendu GPU (Direct3D 12), mouvement lisse, une image par rafraichissement
+```
+
+### Le fait principal
+
+**L'émulation seule dépasse le temps d'une image du jeu.** En combat, mesuré et stable sur une vingtaine de
+lignes :
+
+| | |
+|---|---|
+| une image du jeu (le PowerPC) | **17,6 à 18,1 ms** |
+| le temps dont elle dispose à 57,524 Hz | **17,38 ms** |
+| images par seconde réellement tenues | **43**, au lieu de 57,5 |
+| une image affichée | **4,4 à 4,8 ms** |
+| échelle de rendu | **1x (682 x 384)**, baissée par le gouverneur |
+
+Le gouverneur a bougé **une fois**, et il ne l'a plus jamais défait :
+
+```
+governor: pictures take 4.3 ms, over a frame's time: the render scale lowered to 1x for now
+```
+
+À ce moment l'image du jeu coûtait 13,3 ms. Le budget d'une image affichée est `1000/60 − émulation x 0,959`,
+soit **moins de 4 ms** — et il devient **négatif** quand l'image du jeu atteint 17,9 ms. Le gouverneur a donc
+coupé l'échelle de moitié, et le jeu tourne quand même sous sa vitesse nominale.
+
+### Où part le temps d'une image affichée
+
+Sur 4,5 ms, en combat, à 1x :
+
+| | |
+|---|---|
+| les téléversements | 1,25 à 1,32 ms |
+| les triangles préparés (processeur) | 1,06 à 1,18 ms |
+| l'entre-deux du mouvement lisse (processeur) | 0,61 à 0,66 ms |
+| le rendu GPU | 1,34 à 1,47 ms, dont **0,60 à 0,67 de préparation** |
+
+Donc **environ 0,75 ms à attendre la carte graphique**, et tout le reste sur le processeur. La RTX 3070 ne
+fait presque rien ; c'est le processeur qui tient la laisse, et d'abord l'émulation du PowerPC.
+
+### Ce que ça dit pour la suite
+
+Il n'y a **pas de budget disponible** sur cette machine en combat : l'image est déjà en retard, l'échelle est
+déjà tombée à 1x, et le gouverneur ne la remonte pas. Toute technique ajoutée se heurterait à lui — et sa
+deuxième règle dit exactement ce qui arriverait d'un coût posé sur le processeur : quand l'essentiel d'une
+image est processeur, il **garde l'échelle et ne fait rien**, parce que la baisser n'y changerait rien.
+
+### Ce que cette mesure ne dit pas
+
+- **Ce n'est pas la charge de la machine.** C'était l'explication que je tenais, et elle est fausse : la
+  mesure a été refaite machine au calme, les autres sessions fermées, et elle donne **les mêmes chiffres**
+  — une image du jeu de 17,7 à 18,3 ms, 42 à 44 images par seconde, et le gouverneur qui coupe l'échelle à
+  1x au même endroit (3,9 ms contre 4,3). Hors fenêtre, en revanche, la charge se voit : les mêmes 1300
+  images ont pris 17,9 s puis 20,9 s pour un calcul identique (même empreinte de RAM,
+  `47062ED87FD9228A`).
+- **Pourquoi ces 43 images par seconde n'est pas établi.** Le propriétaire dit que ce n'est pas son
+  ordinaire. La seule piste restante n'a pas été instruite : son exécutable à lui n'est pas celui-ci — sa
+  copie de travail porte du travail non commité sur `model3.cpp`, `main.cpp` et `tex3d_hd.*` — et la
+  comparaison des deux sur le même travail a été lancée puis arrêtée. **On fait avec**, décision du
+  propriétaire.
+- **Une seule séance, une seule fenêtre.**
+- **Un seul décor**, celui du premier adversaire.
+- Que ces 43 images par seconde soient l'ordinaire de cette machine ou non **n'est pas établi ici** : c'est le
+  propriétaire qui le sait.
+- Le coût **du 3D seul** n'a pas été isolé de celui de l'émulation : les deux chiffres sont donnés côte à
+  côte, pas séparés par une expérience.
+
+## Ce qu'on remplacerait, et ce que chaque voie demande
+
+Rien ici n'est une recommandation : c'est le classement de ce que les trois mesures autorisent à dire, et de
+ce qu'il faudrait mesurer ensuite. Le choix est au propriétaire.
+
+### a. Mieux dessiner l'ombre que le jeu dessine
+
+| | |
+|---|---|
+| ce que ça demande | reconnaître les polygones d'ombre |
+| ce que la mesure dit | on sait les reconnaître : la signature **plat + sans texture + sans éclairage + en RAM** les attrape sur 36 images de l'attraction et sur l'image 3101 du combat, et la marque par couleur les isole exactement |
+| ce qui reste inconnu | le coût ; et surtout **le contrôle du démarrage**, qui compare l'image du GPU à celle du processeur. Un adoucissement posé sur un seul des deux chemins les ferait diverger |
+
+Le contrôle en question n'est pas théorique : il tourne à chaque lancement et il est déjà bavard — mesuré ce
+soir, `1 049 087 pixels de 3D, 68 401 pixels diffèrent (1 dessiné d'un seul côté, 6 de plus de 8, couleurs de
+40 au plus)`, et le portage garde la version GPU. Une option allumée d'un seul côté changerait ce bilan.
+
+### b. Remplacer l'ombre du jeu par une ombre calculée
+
+| | |
+|---|---|
+| ce que ça demande | cacher celle du jeu, et en calculer une |
+| ce que la mesure dit | **la cacher est le point facile** : 15 à 20 maillages reconnaissables par combattant, qu'il suffit de ne pas dessiner. Et **chaque combattant est dans sa propre vue**, donc chacun a son éclairage de vue |
+| ce qui reste inconnu | **la direction du soleil de ces vues n'a jamais été relevée** — ni si elle correspond à l'ombre que le jeu dessine. Et le coût d'une seconde passe de géométrie sur les ~20 000 sommets d'un combattant |
+
+C'est la mesure suivante la moins chère, et elle décide de cette voie à elle seule : relever `sun.xyz`,
+`sun.w` et l'ambiante des vues qui portent les combattants, et les comparer à l'orientation de l'ombre que le
+jeu pose au sol. L'auditeur existe déjà, il ne lui manque que l'éclairage de la vue.
+
+### c. Éclairer la scène autrement
+
+Une idée reçue tombe ici, et elle est mesurée. On dit de ce jeu que sa couleur est **peinte dans les
+sommets**, donc qu'un éclairage ajouté éclairerait deux fois. À l'image 3101 :
+
+| | |
+|---|---|
+| texturés, couleur de sommet **blanche** | **424 maillages sur 485** |
+| texturés et colorés | 16 |
+| non texturés et colorés | 45, dont **37 sont les ombres** |
+
+Donc l'immense majorité de la scène est **texture x (soleil·normale + ambiante)** : l'éclairage du Real3D est
+réel et il travaille. Ce qui manque n'est pas la lumière, ce sont **les matières** — la texture *est* la
+couleur finale, sans albédo ni rugosité à en extraire.
+
+L'occlusion ambiante en espace écran, elle, a déjà son entrée : le nuanceur **écrit déjà la profondeur comme
+une couleur** (`o.depth`, couche opaque de `r3d.hlsl`).
+
+## Le contrat de fidélité
+
+Il ne se discute pas, il se lit : le portage a déjà le patron, et c'est celui du pack de textures 3D.
+
+```
+bool hd_3d = false;                                     faux par defaut            (main.cpp:458)
+flag("hd_3d", hd_3d);                                   lu de settings.ini         (main.cpp:503)
+if (hd_3d) fprintf(f, "hd_3d = %d\n", int(hd_3d));      ECRIT seulement si allume  (main.cpp:562)
+else if (a == "--hd-3d") arg_hd_3d = 1;                 et son contraire --no-hd-3d (main.cpp:1145)
+if (cfg.hd_3d) { ... }                                  rien ne tourne sans lui    (main.cpp:1347)
+```
+
+Toute ombre ajoutée suit ce patron : **une option, éteinte par défaut**, dont rien ne tourne tant qu'elle
+n'est pas demandée, et `verifier-vf3.cmd` passe sans elle — ses cinq contrôles IDENTIQUE et ses 2231 images
+en pas à pas. C'est ce qui a été vérifié ce soir pour les deux interrupteurs de mesure, qui suivent la même
+règle.
+
+## Ce que le jeu en dit lui-même
+
+Tout ce qui précède a été *mesuré*. Ce qui suit est *lu* — dans les noms de mise au point de Sega
+(`C:\Temp\fv2-ghidra\symbols_dbg.csv`, 745 adresses tirées du programme), dans la RAM du jeu aux images 3101
+et 7001, et dans le décompilateur (projet `FV2`, `fv2_prog.bin`). La lecture confirme les mesures et donne ce
+qu'aucune mesure ne pouvait donner.
+
+### La couleur d'ombre : une table par décor, et le code qui la pose
+
+`FUN_000224EC` :
+
+```c
+if ((DAT_00591d14 & 0x4000000) == 0) {
+    p = FUN_000225b8(PTR_ROB0_INFO__FLAG_INFO_0007511c);   // la tache du combattant 0
+    SHADOW_COLOR__B0 = p[0];  SHADOW_COLOR__B1 = p[1];
+    p = FUN_000225b8(PTR_ROB1_rob_flag__BIT_00075120);     // celle du combattant 1
+    SHADOW_COLOR__B2 = p[0];  SHADOW_COLOR__B3 = p[1];
+    SHADOW_COLOR__B16 = *(u32 *)(&DAT_00111318 + STAGE_TEST__STAGE * 4);
+}
+FUN_000333f4(0x98001000, &SHADOW_COLOR__B0, 0x20);
+```
+
+- `0x98000000` est **la RAM de polygones** du Real3D (`src/machine/model3.cpp`, le `case 0x98`). Ces couleurs
+  sont donc écrites dans la **table de couleurs** où les en-têtes de polygones vont chercher la leur par
+  index (`src/video/r3d_scene.cpp`, `ci = colour_table + ((h[4] >> 8) & 0xFFF)`).
+- **Les entrées 0 à 3 viennent des tâches des deux combattants**, pas d'une palette de mise au point, ce que
+  leurs valeurs changeantes laissaient croire.
+- **L'entrée 16 est la couleur du décor**, prise dans la table `0x00111318` indexée par `STAGE_TEST__STAGE`.
+
+Lue dans la RAM, cette table donne **les treize décors d'un coup** :
+
+| décor | couleur | décor | couleur | décor | couleur |
+|---|---|---|---|---|---|
+| 0 | `#000000` | 5 | `#37170B` | 10 | `#00061B` |
+| 1 | `#302010` | 6 | `#1B1B14` | 11 | `#000B13` |
+| 2 | `#3B444B` | 7 | `#354049` | 12 | `#201711` |
+| 3 | `#0A0A1A` | 8 | `#214B68` | 13 et au-delà | `#000000` |
+| 4 | `#1F1529` | 9 | `#051A26` | | |
+
+Les deux valeurs mesurées à l'écran — `#051A26` au décor 9, `#302010` au décor 1 — sont celles de la table,
+à l'octet près. Et tout décor au-delà de 12 donne du noir, ce qui explique le `#000000` de l'écran de
+présentation (qui annonce le décor `0x15`).
+
+### La lumière : elle n'est PAS par décor
+
+C'est la réponse à « comment la lumière est gérée dans tous les décors », et elle est négative.
+
+`ROB_LIGHT` est posé **une fois**, à partir de constantes fixes (désassemblé à `0x00018F30`) :
+
+```
+lfs  f2, 0x13C8(0x11)  ->  0.6    ->  ROB_LIGHT__ambient
+lfs  f1, 0x1504(0)     ->  1.0    ->  ROB_LIGHT__ambient_fog  et  __intensity
+lfs  f1, 0x13CC(0x11)  -> 30.0    ->  ROB_LIGHT__distance
+lis/subi               -> 0x9A00  ->  ROB_LIGHT__xang  ET  __yang
+```
+
+Aucun index de décor nulle part. Puis, **à chaque image**, `FUN_0001A124` :
+
+| | |
+|---|---|
+| `ROB_LIGHT__yang` | `= (champ +0x0C d'une tâche) + 0x7038` — **l'azimut suit ce champ**, pas le décor |
+| `ROB_LIGHT__xang` | forcé à `0xC000` (distance 2,0) ou `0x9A00` (distance 30,0) selon des bits de mode — **deux élévations fixes** |
+| le vecteur | une position (`r14+0x94..0x9C`) **moins** le point à `distance` dans la direction `xang`/`yang` |
+| puis | recopié dans `STAGE_TEST__VEC_X/Y/Z`, `__AMBIENT`, `__AMB_FOG`, `__INTENSITY`, et le brouillard depuis `ROB_LIGHT__red/green/blue/den/atn/ofs` |
+
+Ce qui se vérifie dans la RAM : au combat (décor 9) `xang 0x9A00`, `yang 0x6D58`, `distance 30`, `ambient 0,6`,
+`intensity 1,0` ; dans la démonstration (décor 1) `xang 0x9A00`, `yang 0x9A00`, **les mêmes** ambiante,
+intensité et distance. Le vecteur mesure 29,79 pour une `distance` de 30 : **`ROB_LIGHT` est une position de
+lumière ponctuelle**, pas une direction de soleil à l'infini.
+
+**Donc : l'ambiante et l'intensité sont les mêmes dans tous les décors.** Ce qui change d'un décor à l'autre,
+c'est la couleur de l'ombre, et seulement elle. Ce qui change en cours de partie, c'est l'azimut de la
+lumière, qui suit un champ de tâche — le même mécanisme qui fait tourner le décor d'une manche à l'autre
+(`fv2_game_SET_INT`, `docs/fv2-flux-de-match.md`).
+
+### Ce que la lecture n'a pas encore donné
+
+- **La routine qui bâtit la géométrie des ombres** n'est pas trouvée. On sait où va la couleur, pas qui
+  aplatit les modèles.
+- ~~Le transfert ne porte que 32 octets~~ — **faux, et démenti par la mesure** : `VF3_DMA_LOG` montre
+  `dma src 003C2D04 dst 98001000 len 32 words`, soit **128 octets**, les entrées 0 à 31. Le `0x20` passé
+  à `FUN_000333F4` est un compte de **mots**, pas d'octets, et l'entrée 16 est donc bien transmise.
+- **`ADV_INFO__SHADOW_ROB`** vaut `0x00707500` aux deux images lues — un pointeur dans le bloc du joueur 2,
+  jamais suivi.
+- Ce que vaut le champ `+0x0C` de la tâche dont dépend l'azimut n'a pas été regardé.
+
+## La routine qui bâtit les ombres : il n'y en a pas
+
+Cherchée, et la réponse est négative — ce qui est la réponse la plus utile de la soirée.
+
+**La géométrie d'ombre est une donnée de la ROM.** Elle n'est calculée par rien : elle est dessinée par les
+auteurs, rangée dans la CROM, et téléversée une fois dans la RAM de polygones pendant l'amorce.
+
+### Comment on le sait
+
+`VF3_DMA_LOG`, ajouté à `src/machine/model3.cpp`, journalise chaque transfert du Real3D avec son PC et son LR.
+Sur la course de combat (3105 images) :
+
+| | |
+|---|---|
+| transferts vers la RAM de polygones **depuis la RAM** | 37 996 |
+| transferts vers la RAM de polygones **depuis la ROM** | **450**, un par image à partir de l'image 547 |
+| ce que les transferts venus de la ROM couvrent | les mots **010000 à 058FC6** |
+
+Les 36 modèles d'ombre relevés par l'audit tombent tous dans cet intervalle — ceux de la vue 9 entre `011350`
+et `01A409`, ceux de la vue 5 entre `04F0D2` et `050815`. Et l'un d'eux se lit en clair dans le journal :
+
+```
+f556  src FFA87278  dst 98045278  (mot 01149E)  848 mots
+```
+
+`01149E` est le modèle d'ombre de 588 sommets de la vue 9.
+
+### La chaîne, lue dans le décompilateur
+
+```
+FUN_00056B50          _DAT_00580D44 = 0x10000          le pointeur d'allocation en RAM de polygones
+                      nombre d'entrees lu en ROM
+                      pour chaque entree non vide ->
+FUN_00056814(i)       lit (longueur, source) dans une table de la ROM
+                      relocalise les noeuds de culling sur la nouvelle base    (FUN_000569A0)
+                      les envoie en RAM de culling                             (0x8C......)
+                      avance le pointeur d'allocation
+                      puis envoie le modele en RAM de polygones  ->
+FUN_00056A98          decoupe en tranches de 0x8000 mots  ->
+FUN_000333F4          l'aide de copie vers le Real3D -- la meme que pour SHADOW_COLOR
+```
+
+**`_DAT_00580D44 = 0x10000`** est le témoin le plus net : le code part du mot `0x010000`, et la mesure trouve
+les transferts venus de la ROM à partir du mot `010000`. Deux relevés indépendants sur le même nombre.
+
+### Ce qui fait qu'un modèle est une ombre
+
+Puisque rien ne la fabrique, ce qui distingue une ombre tient en trois choses, toutes déjà établies :
+
+1. **Ses polygones portent un index de couleur, pas une couleur** — et l'index tombe sur `SHADOW_COLOR[16]`,
+   la couleur du décor, que `FUN_000224EC` réécrit à chaque image dans la table de couleurs de la RAM de
+   polygones.
+2. **Ils sont sans texture et sans éclairage** (mesuré : drapeau `lighting` absent, `tex 0`).
+3. **Ils sont posés à plat au sol** par leur matrice — et c'est là, dans la matrice, que se trouve la dernière
+   question ouverte.
+
+C'est aussi pourquoi ces modèles sont en **RAM de polygones** et non laissés en ROM : un modèle de la RAM de
+polygones peut prendre sa couleur par index dans une table que le jeu réécrit, un modèle de la ROM non.
+
+### Ce qui reste ouvert
+
+- **Qui pose la matrice qui aplatit l'ombre**, et si `ROB_LIGHT` y entre. C'est le travail par image sur les
+  nœuds et les matrices, pas sur la géométrie.
+- Les adresses des tables de la ROM (`0xFFDC5000` pour le compte, et les deux tables indexées) sont les
+  déplacements du décompilateur lus comme des adresses absolues ; elles n'ont pas été relues dans la ROM.
+
+## La matrice qui aplatit, et oui, ROB_LIGHT y entre
+
+C'était la dernière question ouverte. Elle est tranchée, et par deux chemins qui se rejoignent au
+cinq-millième.
+
+### C'est la matrice qui aplatit, pas le modèle
+
+L'audit imprime maintenant, pour chaque modèle, sa matrice et le **déterminant** de sa partie linéaire
+(`VF3_MESH_AUDIT`, `src/video/r3d_scene.cpp`). À l'image 3101 :
+
+| | |
+|---|---|
+| les modèles du **corps** | `det 1.000000` — des rotations pures |
+| les modèles d'**ombre** | `det 0.000000` — des matrices **singulières** |
+
+Le modèle d'ombre de la ROM n'est donc pas plat : c'est la matrice qui l'écrase. Et **chaque membre a son
+orientation** — 17 matrices distinctes pour les 20 pièces d'ombre de la vue 9 — donc l'ombre suit bien la
+pose, membre par membre.
+
+### La direction de l'aplatissement, extraite des matrices
+
+Une matrice d'ombre vaut `S = C · P · R` : la caméra, la projection, la rotation du membre. `C` et `R` étant
+orthonormales, **`S · Sᵀ = C · P · Pᵀ · Cᵀ` ne dépend plus du membre**. Mesuré sur les 37 pièces :
+
+```
+S.S^T identique d'un membre a l'autre : ecart maximum 0.00014
+```
+
+Une seule projection, donc, partagée par toutes les pièces des deux combattants. En écrivant
+`P = I − k·Nᵀ` (la forme d'une projection sur un plan de normale `N` le long d'une direction `d`, avec
+`k = d/(d·N)`), l'ajustement donne :
+
+```
+residu final 0.000019      k.N = 1.0000
+verticale du monde, vue camera   N = [0.0000  0.9994  0.0345]
+direction de projection          d = [0.2673  0.8443  0.4645]
+```
+
+Le résidu dit que c'est **exactement** une projection sur un plan, pas un écrasement approximatif. Et `N`
+redonne le léger tangage de la caméra, que la première mesure avait vu comme une « épaisseur » de 0,02.
+
+### Et cette direction est celle de ROB_LIGHT
+
+```
+direction de projection, tiree des matrices     d = [0.2673   0.8443   0.4645 ]
+soleil que le Real3D recoit pour le decor       s = [0.26734  0.84427  0.46448]
+```
+
+**Les mêmes cinq décimales.** La direction selon laquelle le jeu aplatit ses ombres est le vecteur de lumière
+du décor, celui que `FUN_0001A124` calcule depuis `ROB_LIGHT` et que `FUN_0000619C` normalise et écrit dans la
+vue du Real3D.
+
+La projection fait **30,7°** avec la verticale du monde.
+
+Un détail qui a failli m'égarer : les vues des deux combattants ont **chacune leur propre soleil**, à 36° et
+40° de la direction de projection. C'est attendu, et c'est même une confirmation : `ROB_LIGHT` est une
+**position** à distance 30, donc chaque combattant la voit sous un autre angle, alors que l'ombre est
+projetée selon la direction du décor.
+
+Au passage, l'ambiante et l'intensité relevées dans **toutes** les vues valent `0.6000` et `1.0000` — les deux
+constantes lues dans l'initialisation de `ROB_LIGHT`, retrouvées à l'autre bout de la chaîne.
+
+### Ce qui reste ouvert
+
+- **Par quel chemin la direction arrive dans la matrice n'est pas lu.** La géométrie le prouve au
+  cinq-millième, mais les références absolues du décompilateur ne montrent qu'un seul lecteur de
+  `STAGE_TEST__VEC` (`FUN_0000619C`, qui sert la vue). Le code qui bâtit la matrice d'ombre y accède donc
+  autrement — par un pointeur, ou depuis la même valeur calculée — et ce chemin n'a pas été trouvé.
+- La hauteur du plan de projection (le sol) n'a pas été cherchée dans le code.

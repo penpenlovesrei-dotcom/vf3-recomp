@@ -478,6 +478,14 @@ void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 	const Vertex &pv = mesh.verts[0];
 	C4 poly = { pv.colour[0] / 255.0f, pv.colour[1] / 255.0f, pv.colour[2] / 255.0f, pv.colour[3] / 255.0f * model.alpha };
 	if (mesh.translator_map) { poly.r *= 16; poly.g *= 16; poly.b *= 16; }
+	// VF3_MARK_RGB=<RRGGBB>: every mesh whose polygon colour is that one is painted magenta instead, so that a
+	// picture shows which pixels those polygons own, and only those (debugging)
+	static const char *mark_env = getenv("VF3_MARK_RGB");
+	if (mark_env) {
+		static const uint32_t mark_rgb = uint32_t(strtoul(mark_env, nullptr, 16));
+		const uint32_t here = uint32_t(pv.colour[0]) << 16 | uint32_t(pv.colour[1]) << 8 | uint32_t(pv.colour[2]);
+		if (here == mark_rgb) { poly.r = 1; poly.g = 0; poly.b = 1; }
+	}
 	// the nodes' texture offset moves where on the sheet the mesh reads from (Step 1.5 and later; 0 on Step 1.0,
 	// which has no such word, so the two lines below are then exactly what they were)
 	const int tx = model.tex_x, ty = model.tex_y;

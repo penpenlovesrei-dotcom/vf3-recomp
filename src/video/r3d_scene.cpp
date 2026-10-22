@@ -174,6 +174,70 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				}
 		}
 	}
+	// VF3_MESH_AUDIT=<frame>, =<from>-<to> or =<from>-<to>/<step>: every mesh of those scenes -- its flags, its
+	// colour and how big it is in the camera's space -- for naming the polygons a picture of the same frame
+	// shows (debugging; each line carries the frame and the stage the game says it is on, a fight's scene
+	// being some hundreds of models)
+	if (const char *ma = getenv("VF3_MESH_AUDIT")) {
+		uint64_t from = strtoull(ma, nullptr, 10), to = from, step = 1;
+		if (const char *dash = strchr(ma, '-')) {
+			to = strtoull(dash + 1, nullptr, 10);
+			if (const char *slash = strchr(dash, '/')) step = std::max<uint64_t>(1, strtoull(slash + 1, nullptr, 10));
+		}
+		if (board.frame >= from && board.frame <= to && (board.frame - from) % step == 0) {
+			// STAGE_TEST *STAGE (0x0058FD9F); a byte at address A sits at index A ^ 3 in host-order words
+			const unsigned stage = board.ram.size() > (0x0058FD9F ^ 3) ? board.ram[0x0058FD9F ^ 3] : 0xFFu;
+			for (size_t iv = 0; iv < scene.viewports.size(); iv++) {
+				const Viewport &p = scene.viewports[iv];
+				// the viewport's light: the sun direction as the Real3D receives it, its intensity and the
+				// ambient -- to compare with what the shadows' matrices do
+				fprintf(stderr, "view f%llu st%02X vp%zu  sun [%.5f %.5f %.5f] intensity %.4f ambient %.4f"
+				        "  models %zu\n",
+				        (unsigned long long)board.frame, stage, iv, p.sun[0], p.sun[1], p.sun[2],
+				        p.sun_intensity, p.ambient, p.models.size());
+				for (const Model &m : p.models) {
+					// VF3_MESH_AUDIT: the model's matrix as well, the 3x3 by rows then the translation: a linear part
+					// of rank 2 would mean the matrix itself flattens what it places
+					{
+						const float *M = m.matrix.m;
+						const float det = M[0] * (M[5] * M[10] - M[9] * M[6])
+						                - M[4] * (M[1] * M[10] - M[9] * M[2])
+						                + M[8] * (M[1] * M[6] - M[5] * M[2]);
+						fprintf(stderr, "matx f%llu st%02X vp%zu model %06X  det %.6f  rows"
+						        " [%.4f %.4f %.4f] [%.4f %.4f %.4f] [%.4f %.4f %.4f]  t [%.3f %.3f %.3f]\n",
+						        (unsigned long long)board.frame, stage, iv, m.addr, det,
+						        M[0], M[4], M[8], M[1], M[5], M[9], M[2], M[6], M[10], M[12], M[13], M[14]);
+					}
+					for (size_t im = 0; im < m.meshes->size(); im++) {
+						const Mesh &me = (*m.meshes)[im];
+						float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+						for (const Vertex &v : me.verts) {
+							const float *M = m.matrix.m;
+							const float t[3] = {
+								M[0] * v.pos[0] + M[4] * v.pos[1] + M[8] * v.pos[2] + M[12],
+								M[1] * v.pos[0] + M[5] * v.pos[1] + M[9] * v.pos[2] + M[13],
+								M[2] * v.pos[0] + M[6] * v.pos[1] + M[10] * v.pos[2] + M[14],
+							};
+							for (int k = 0; k < 3; k++) { lo[k] = std::min(lo[k], t[k]); hi[k] = std::max(hi[k], t[k]); }
+						}
+						const uint8_t *c = me.verts.empty() ? nullptr : me.verts[0].colour;
+						char fl[80];
+						snprintf(fl, sizeof(fl), "%s%s%s%s%s%s%s%s%s",
+						         me.lighting ? "lit " : "", me.fixed_shading ? "fix " : "",
+						         me.smooth_shading ? "smooth " : "", me.poly_alpha ? "palpha " : "",
+						         me.texture_alpha ? "talpha " : "", me.alpha_test ? "atest " : "",
+						         me.high_priority ? "hiprio " : "", me.trans_select ? "tsel " : "",
+						         me.layered ? "LAYERED " : "");
+						fprintf(stderr, "mesh f%llu st%02X vp%zu model %06X mesh %zu  verts %zu  tex %d fmt %d  rgba %02X%02X%02X%02X"
+						        "  node_alpha %.2f  [%s] %s  view x %.2f..%.2f y %.2f..%.2f z %.2f..%.2f\n",
+						        (unsigned long long)board.frame, stage, iv, m.addr, im, me.verts.size(), int(me.textured), me.format,
+						        c ? c[0] : 0, c ? c[1] : 0, c ? c[2] : 0, c ? c[3] : 0, m.alpha, fl, m.addr < 0x100000 ? "ram" : "rom",
+						        lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]);
+					}
+				}
+			}
+		}
+	}
 }
 
 void SceneBuilder::mult_matrix(uint32_t index)
