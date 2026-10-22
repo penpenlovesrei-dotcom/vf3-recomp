@@ -49,9 +49,54 @@ struct console_play
 	int armed_frames = 0;         // given up after 300: the game never started
 	int survival_was = 0;         // what the flag was before the menu touched it
 
+	// ---- RANDOM and VERSUS: both hang off the select screen's own timing ----
+	// Which is why neither could be wired until the game's state machine was read: what was missing was not
+	// the lever but knowing WHEN the select screen comes up and WHEN the fighter is chosen. Both are states:
+	// the mode is SEL (4 or 5), and the choice is its sub-state reaching SEL_SUB_DECIDE, 4 (fv2-etats.md,
+	// fv2-flux-de-match.md).
+	//
+	// The levers themselves are the owner's, recorded by hand in August and not deduced (MenuConsole.md §8):
+	//
+	//   RANDOM   Start is HELD, from 30 frames after the select screen appears until 90 frames after the
+	//            player's choice. The recorded manoeuvre is 109 frames of Start before the fighter is
+	//            validated and 89 after -- and the part that counts is the one BEFORE. A first attempt over
+	//            there waited for the choice to start holding, and so missed it entirely.
+	//
+	//            MEASURED HERE ON THE 2026-10-22, AND IT DOES NOTHING. Held by this machinery over that
+	//            window, the game's whole memory at the frame of the choice is byte-identical to a run that
+	//            held nothing. The control says it is not this code: an input script holding Start over the
+	//            same window gives the same zero. So the hold reaches the game and the game ignores it, and
+	//            something else is missing -- as Survival needed its operator setting beside its flag. The
+	//            menu's RANDOM line is left doing nothing until that half is found.
+	//   VERSUS   one press of Start player 2, 30 frames after that same appearance. Nothing else.
+	//
+	// The thirty frames are there to clear the transition and the Start that opened the screen, and the hold
+	// is renewed every frame rather than asked for once, because how long the player takes is not known in
+	// advance. It is held, not forced: nothing is written to the game's memory on either road.
+	// RANDOM, laid out like Survival: armed when it is chosen, written once a game is actually running, put
+	// back when the game ends. Two things were measured about it, and both are the opposite of Survival's:
+	//
+	//   it does NOT have to be held      written once at frame 2000, the select screen still says RANDOM MODE
+	//                                    a hundred frames later;
+	//   and it has no attract-loop trap  written from frame 1800, in the middle of the attract loop, the game
+	//                                    still starts (GAME_INT at 2296), where Survival's flag there stops it
+	//                                    starting at all.
+	//
+	// The arming is kept all the same: it costs nothing, it is the shape Survival already uses, and it is what
+	// gives a moment to put the flag back when the game ends. The flag itself is Sega's own RANDOM_CHARA
+	// (model3.cpp says how it was found).
+	enum { R_OFF, R_ARMED, R_SET } random_mode = R_OFF;
+	int random_armed = 0;
+	int random_was = 0;
+
+	enum { SEL_NOTHING, SEL_RANDOM, SEL_VERSUS } at_select = SEL_NOTHING;
+	int sel_frames = -1;          // frames since the select screen appeared; -1 until it does
+	int since_choice = -1;        // frames since the fighter was chosen; -1 until it is
+
 	void choose_arcade() { inject_start = 8; swallow_start = true; }
 	void choose_survival(m3::Model3 &b) { survival = ARMED; armed_frames = 0; survival_was = b.fv2_survival(); choose_arcade(); }
-	void choose_versus() { inject_start = 8; inject_start_p2 = 0; swallow_start = true; }
+	void choose_random() { random_mode = R_ARMED; random_armed = 0; random_was = 0; choose_arcade(); }
+	void choose_versus() { at_select = SEL_VERSUS; sel_frames = -1; since_choice = -1; choose_arcade(); }
 
 	// ---- what Start does, and it is two jobs told apart by one question ----
 	// Is the game's own title screen on screen? Model3::fv2_on_title answers it: the mode is ADV and the
@@ -141,6 +186,26 @@ struct console_play
 		}
 		if (inject_start > 0) { out.start[0] = true; inject_start--; }
 		if (inject_start_p2 > 0) { out.start[1] = true; inject_start_p2--; }
+		if (at_select != SEL_NOTHING) {
+			const int mode = b.fv2_mode();
+			const bool on_select = mode == 4 || mode == 5;   // SEL_INT, SEL_DSP
+			if (!on_select) {
+				// Before the screen: wait. After it: the work is done either way, and a hold that outlived
+				// its screen would be a hold on whatever came next.
+				if (sel_frames >= 0) at_select = SEL_NOTHING;
+			} else {
+				sel_frames++;
+				if (at_select == SEL_VERSUS) {
+					if (sel_frames == 30) { inject_start_p2 = 8; at_select = SEL_NOTHING; }
+				} else {
+					constexpr int SEL_SUB_DECIDE = 4;
+					if (since_choice >= 0) since_choice++;
+					else if (b.fv2_submode() >= SEL_SUB_DECIDE) since_choice = 0;
+					if (since_choice > 90) at_select = SEL_NOTHING;        // (90 frames past the choice: let go)
+					else if (sel_frames >= 30) out.start[0] = true;        // held, every frame
+				}
+			}
+		}
 		switch (survival) {
 		case ARMED:
 			// nothing written yet: waiting for the game to actually be running
@@ -152,6 +217,22 @@ struct console_play
 			else b.fv2_set_survival(true);
 			break;
 		case OFF: break;
+		}
+		switch (random_mode) {
+		case R_ARMED:
+			// nothing written yet: waiting for the game to actually be running, as Survival does
+			if (!b.fv2_in_attract()) {
+				random_was = b.fv2_random_chara();
+				b.fv2_set_random_chara(true);
+				random_mode = R_SET;
+			}
+			else if (++random_armed > 300) random_mode = R_OFF;   // (the game never started: give up)
+			break;
+		case R_SET:
+			// written once and not held; put back when the game ends, so it does not carry into the next one
+			if (b.fv2_in_attract()) { b.fv2_set_random_chara(random_was > 0); random_mode = R_OFF; }
+			break;
+		case R_OFF: break;
 		}
 	}
 };

@@ -37,8 +37,8 @@ it fell out of owning the host.
 |---|---|---|
 | `ARCADE` | inject Start, 8 frames | **done** (`console_play::choose_arcade`) |
 | `SURVIVAL` | `0x0058145F` the flag, `0x00120550` the operator setting; armed on choosing, written only once a game runs, held, put back at the end | **done** (`Model3::fv2_set_survival`) |
-| `RANDOM` | Start *held* from 30 frames after the select screen appears until 90 frames after the player's choice. The hold is what matters: an earlier attempt waited for the choice and so missed the part that counts | measured in `MenuConsole.md` §8, **not wired** |
-| `VERSUS` | one press of Start player 2, 30 frames after the select screen appears | measured §8, **not wired** |
+| `RANDOM` | `0x0058145E`, which Sega's debug tables call `RANDOM_CHARA` -- one line below Survival's flag. The hold recorded in `MenuConsole.md` §8 was measured here to do nothing at all; the flag is what the hold was asking for | **done** (`Model3::fv2_set_random_chara`) |
+| `VERSUS` | one press of Start player 2, 30 frames after the select screen appears -- the two moments read off the game's state machine: the mode becoming SEL, then thirty frames | **done** (`console_play`, and the select screen comes up with two players) |
 | the full roster | `0x0005F3BC`, `cmpwi r0,192` -> `cmpwi r0,0` | **done** (`Model3::unlock_roster`) |
 | the region | `0x00120557`, 0 Japan 1 U.S.A. 2 Export 3 Asia, written when the settings have just been read from the NVRAM | **readable and writable** (`Model3::fv2_region`), not called |
 
@@ -108,11 +108,13 @@ shape, the 3D renderer, the scale, the HD packs. A page over them, not new machi
 
 Four gaps, and it is worth being exact about which block anything.
 
-- **The second player was never got in.** `0x0058145A == 3` -- 1 for player 1 having entered plus 2 for player
-  two -- gates the cut-in, the consecutive-win counter and the two-player half of `NEXT_PROG_SEL`. All of it is
-  read in the code and none of it has been watched running. This is a *harness* gap, not a knowledge one: it
-  needs a second player's coin and Start at the right moment. Closing it would serve the Versus loop, Honey's
-  real unlock condition, and whatever `NEXT_PROG_SEL` does with two players.
+- ~~**The second player was never got in.**~~ **Got in the 2026-10-22**, and it was the harness gap this page
+  said it was: a second player's Start at the right moment, which is thirty frames after the select screen
+  appears. The select screen comes up with two players on it, 1P and 2P with their own cursors, and the
+  player-2 task `0x00700100` reads 5 where it read 0 in every run before. What is still not watched is what
+  `0x0058145A == 3` gates -- the cut-in, the consecutive-win counter, the two-player half of `NEXT_PROG_SEL`:
+  that byte read 0 on the select screen, so it is set later, and a two-player match has yet to be played
+  through.
 - **The ending, the name entry, the ranking and the Super K.O. states** were never reached. Named from Sega's
   table, never run.
 - **What *decides* to rebuild a fighter** -- the test at `0x00060288` -- is unknown. What *commands* it is known

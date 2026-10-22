@@ -72,7 +72,8 @@ int main(int argc, char **argv)
 	bool modes_log = false;
 	uint32_t watch = 0xFFFFFFFF, trace_pc = 0xFFFFFFFF;
 	bool quiet = false, rec = false, full_roster = false;
-	// --console-mode arcade|survival at --console-at N: the console way's mode machinery (src/host/console_play.h)
+	// --console-mode arcade|survival|random|versus at --console-at N: the console way's mode machinery
+	// (src/host/console_play.h)
 	// without a menu or a window, so what it does to the game can be measured. It injects Start exactly as the
 	// menu does; the credit is still the game's business, so the script has to put a coin in first.
 	std::string console_mode;
@@ -88,6 +89,7 @@ int main(int argc, char **argv)
 	// chosen from the list hands the game a Start of its own.
 	std::vector<long> console_start;
 	std::string hd_dump, hd_pack;
+	bool hd_flats = false;
 	int tile_scale = 1;   // HD 2D: 1 is the hardware's own, and then nothing of it runs (src/video/tilehd.h)
 	std::string tile_pack_dir, tile_dump_dir;
 	for (int i = 1; i < argc; i++) {
@@ -106,6 +108,7 @@ int main(int argc, char **argv)
 		else if (a == "--console-start" && i + 1 < argc) console_start.push_back(strtol(argv[++i], nullptr, 10));
 		else if (a == "--portraits" && i + 1 < argc) portraits = argv[++i];
 		else if (a == "--hd-dump" && i + 1 < argc) hd_dump = argv[++i];
+		else if (a == "--hd-flats") hd_flats = true;
 		else if (a == "--hd-pack" && i + 1 < argc) hd_pack = argv[++i];
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--modes") modes_log = true;
@@ -146,6 +149,11 @@ int main(int argc, char **argv)
 		std::string report;
 		video::hd3d().load(hd_pack, report);
 		if (!quiet) printf("%s\n", report.c_str());
+	}
+	// --hd-flats : lever le refus des textures unies, pour cette course seulement (src/video/tex3d_hd.cpp).
+	if (hd_flats) {
+		video::hd3d().allow_flat_textures(true);
+		if (!quiet) printf("3D texture dump: les textures unies sont acceptees (--hd-flats)\n");
 	}
 	if (!hd_dump.empty()) {
 		std::string why;
@@ -299,6 +307,8 @@ int main(int argc, char **argv)
 			cplay.on = true;
 			if (long(f) == console_at) {
 				if (console_mode == "survival") cplay.choose_survival(board);
+				else if (console_mode == "random") cplay.choose_random();
+				else if (console_mode == "versus") cplay.choose_versus();
 				else cplay.choose_arcade();
 				if (!quiet) printf("frame %llu: console mode %s chosen\n", (unsigned long long)f, console_mode.c_str());
 			}

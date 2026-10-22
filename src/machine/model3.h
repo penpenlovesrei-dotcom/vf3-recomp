@@ -224,6 +224,11 @@ public:
 	// only writes once a game is running, then holds it (docs/fv2-console.md).
 	int fv2_survival() const;            // 1 on, 0 off, -1 not this game
 	void fv2_set_survival(bool on);
+	// RANDOM: the game's own flag for it, which Sega's debug tables name RANDOM_CHARA (0x0058145E, beside the
+	// Survival flag). Set, the select screen says RANDOM MODE. It does not need holding; model3.cpp says what
+	// it replaces and why.
+	int fv2_random_chara() const;        // 1 on, 0 off, -1 not this game
+	void fv2_set_random_chara(bool on);
 	// The region byte. Measured 0 on this Japanese revision; 0 Japan, 1 U.S.A., 2 Export, 3 Asia. The game does
 	// not write it back, so one write holds.
 	int fv2_region() const;              // -1: not this game

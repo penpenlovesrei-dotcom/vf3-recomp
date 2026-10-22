@@ -2622,6 +2622,11 @@ int main(int argc, char **argv)
 		fprintf(stderr, "the console's list: %s chosen\n", fv2_mode_list::name(line));
 		if (line == fv2_mode_list::ARCADE) cplay.choose_arcade();
 		else if (line == fv2_mode_list::SURVIVAL) cplay.choose_survival(board);
+		// RANDOM asks the game for its own flag, RANDOM_CHARA, rather than reproducing the hand manoeuvre
+		// that was recorded in August -- that one, Start held across the fighter's validation, was measured
+		// here to do nothing at all (console_play.h, model3.cpp).
+		else if (line == fv2_mode_list::RANDOM) cplay.choose_random();
+		else if (line == fv2_mode_list::VERSUS) cplay.choose_versus();
 		else {
 			fprintf(stderr, "the console's list: %s has no lever in this port yet -- nothing done\n", fv2_mode_list::name(line));
 			return;

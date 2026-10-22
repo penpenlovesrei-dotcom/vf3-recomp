@@ -224,9 +224,50 @@ the MIDI reset behind the game's back and put the music back by hand, and it was
 on three reports rather than from a plan. What a second attempt has to answer, before a line of it is written,
 is in `docs/fv2-console-son.md`.
 
-ARCADE and SURVIVAL act; the five other lines are drawn and do nothing yet, and leave the list up rather than
-pretending something happened. RANDOM and V.S. want the select screen's own timing, which this port has not
-measured; NETWORK, TRAINING and OPTIONS have no lever here at all.
+ARCADE, SURVIVAL, **RANDOM** and **V.S.** act. The three other lines -- NETWORK, TRAINING, OPTIONS -- are
+drawn and do nothing yet, and leave the list up rather than pretending something happened.
+
+### V.S., and the second player who had never been got in
+
+The lever is the owner's, recorded in August: **one press of Start player 2, 30 frames after the select screen
+appears**. Nothing else, and nothing written to the game's memory. What this port was missing was not the
+lever but the two moments: the select screen appearing is the mode becoming SEL (4 or 5), and the thirty
+frames clear the transition and the Start that opened the screen.
+
+Measured: the select screen comes up with **two players on it**, 1P and 2P with their own cursors, and the
+player-2 task `0x00700100` reads 5 -- the select screen's value -- where it reads 0 in every run before this
+one. That closes a hole open since August: `docs/fv2-menu-console-inventaire.md` called the second player a
+harness gap, not a knowledge one, and said it needed a coin and a Start at the right moment. It did.
+
+### RANDOM: the game's own flag, after the hand manoeuvre refused to work
+
+The lever recorded in August is Start **held** from 30 frames after the select screen until 90 past the
+player's choice. Held here over exactly that window, it does **nothing at all**: the game's whole memory at
+the frame of the choice is byte-identical to a run that held nothing, all 8 MB. And the control says it is
+not this port's doing -- an input script holding Start over the same window gives the same zero. The hold
+reaches the game, and the game ignores it.
+
+So the question was asked the other way round, which is what the decompilation is for: **what does the game
+set when it goes into that mode?** Section 5 of `docs/fv2-flux-de-match.md` lists the variables under Sega's
+own names, and there it is, one line below Survival's flag:
+
+```
+0x0058145E   MODE_INFO   RANDOM_CHARA
+```
+
+Set, the select screen prints RANDOM MODE beside the fighter -- the same thing the hand manoeuvre produced
+over there. The hold was a way of asking the game to set that byte; asking for the byte is shorter, and it is
+measurable.
+
+Two measurements decide how it is written, and both are the opposite of Survival's:
+
+| | |
+|---|---|
+| does it have to be held? | **no** -- written once at frame 2000, RANDOM MODE is still up a hundred frames later |
+| does writing it in the attract loop stop the game starting? | **no** -- written from frame 1800 the game still starts (`GAME_INT` at 2296), where Survival's flag there stops it dead |
+
+It is armed on choosing and written once a game is running all the same: that shape costs nothing, it is the
+one Survival already uses, and it is what gives a moment to put the flag back when the game ends.
 
 ### What was measured, and how
 

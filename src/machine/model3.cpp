@@ -1528,6 +1528,7 @@ void Model3::fv2_redo_fighter_model(int player)
 namespace {
 constexpr uint32_t FV2_TASK_ENTRY1 = 0x00700000;
 constexpr uint32_t FV2_SURVIVAL_FLAG = 0x0058145F;
+constexpr uint32_t FV2_RANDOM_CHARA = 0x0058145E;
 constexpr uint32_t FV2_SURVIVAL_SETTING = 0x00120550;
 constexpr uint32_t FV2_REGION = 0x00120557;
 }
@@ -1577,6 +1578,33 @@ void Model3::fv2_set_survival(bool on)
 	if (set != "fvipers2") return;
 	ram[FV2_SURVIVAL_FLAG ^ 3] = on ? 1 : 0;
 	ram[FV2_SURVIVAL_SETTING ^ 3] = on ? 1 : 0;
+}
+
+// RANDOM: the game's own flag, and it is Sega's own name for it.
+//
+// Found by reading rather than by playing: the game's debug tables name 0x0058145E `RANDOM_CHARA` on the
+// `MODE_INFO` page, right beside `SURVIVAL FLAG` at 0x0058145F (docs/fv2-flux-de-match.md, section 5). Set,
+// the select screen prints RANDOM MODE beside the fighter -- which is exactly what the owner's recorded
+// manoeuvre produced in August by HOLDING Start across the fighter's validation.
+//
+// And that manoeuvre does not reproduce here: held over its own window, by this port or by an input script,
+// the game's whole memory at the frame of the choice is byte-identical to a run that held nothing. The flag
+// is the lever; the hold was a way of asking the game to set it, and the game does not listen to it in this
+// build. Asking for the flag directly is both shorter and measurable.
+//
+// Unlike Survival's, it does NOT have to be held: written once at frame 2000, RANDOM MODE is still up a
+// hundred frames later. It is still written only once a game is running, for Survival's reason -- a flag of
+// this block written during the attract loop stopped the game starting at all -- and put back at the end.
+int Model3::fv2_random_chara() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_RANDOM_CHARA) return -1;
+	return ram[FV2_RANDOM_CHARA ^ 3] ? 1 : 0;
+}
+
+void Model3::fv2_set_random_chara(bool on)
+{
+	if (set != "fvipers2" || ram.size() <= FV2_RANDOM_CHARA) return;
+	ram[FV2_RANDOM_CHARA ^ 3] = on ? 1 : 0;
 }
 
 int Model3::fv2_region() const
