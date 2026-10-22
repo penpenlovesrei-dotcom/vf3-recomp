@@ -224,8 +224,32 @@ the MIDI reset behind the game's back and put the music back by hand, and it was
 on three reports rather than from a plan. What a second attempt has to answer, before a line of it is written,
 is in `docs/fv2-console-son.md`.
 
-ARCADE, SURVIVAL, **RANDOM** and **V.S.** act. The three other lines -- NETWORK, TRAINING, OPTIONS -- are
-drawn and do nothing yet, and leave the list up rather than pretending something happened.
+ARCADE, SURVIVAL, **RANDOM** and **V.S.** act, and that is **every mode the arcade game has**. The three
+others are drawn and leave the list up rather than pretending something happened -- and they are not waiting
+for a lever to be found, because there is none to find.
+
+### NETWORK, TRAINING and OPTIONS do not exist on the arcade board
+
+This is not a gap in what has been read: it is what the game is. Sega's own twenty-four modes
+(`docs/fv2-etats.md`) are WARNING, ADV, SEL, GAME, CONTINUE, INTRUDE, ENDING, NAME, RANKING, OVER, TEST and
+RESULT. No training, no network, no options. And the owner's arcade notes say it in as many words:
+
+> Le mode Versus n'existe pas comme mode distinct : dans Fighting Vipers 2, c'est le mode arcade avec un
+> second joueur qui s'incruste. Il n'y a pas de mode Training.
+
+Which also says that V.S., as this port does it -- a second player's Start into an arcade game -- is not an
+approximation of a Versus mode. It **is** what Versus is on this board.
+
+So the three lines are the Dreamcast's, and each would have to be BUILT rather than switched on:
+
+| line | what the arcade actually has |
+|---|---|
+| `NETWORK` | nothing. The disc's `INTERNET` and `RANDOM NETWORK` have no counterpart in this program |
+| `TRAINING` | a **stage**, not a mode: the Training Zone, MDL 75 / TEX 112, internal name `TEST`. A training mode would be this port's own, built out of the game's levers -- the stage at `0x0007111C`, the round timer, the health bytes |
+| `OPTIONS` | the operator's own page, `GAME ASSIGNMENTS` at `0x00120540`-`0x0012055F`. This port already reads and writes that block for Virtua Fighter 3's Arcade settings page, so what is missing is the page, not the mechanism |
+
+That settles what the list can be. It is **complete for the game underneath it**; what is left is work this
+port would do itself, and it should be decided as such rather than listed as a hole.
 
 ### V.S., and the second player who had never been got in
 

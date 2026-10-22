@@ -74,8 +74,16 @@ nous. Deux lectures possibles, et une seule est vraie :
 - notre image vient d'une **autre** version ou d'un autre écran que celui que ces rangs servent ;
 - ou les rangs 10-18 ne sont pas tous du même menu, et la liste verticale n'en utilise qu'une partie.
 
-**Tant que ce n'est pas tranché, les cinq lignes sans levier de notre menu ne peuvent pas être câblées** : on
-ne saurait pas quelle ligne est quoi.
+**Une partie de la question est tombée le 2026-10-22**, et elle réduit la divergence : `NETWORK`, `TRAINING` et
+`OPTIONS` **n'existent pas sur la borne**. Les 24 modes nommés par Sega n'en contiennent aucun, et les notes
+arcade l'écrivent : « il n'y a pas de mode Training ». Ces lignes sont donc celles de la Dreamcast, et elles ne
+peuvent pas être « câblées » — il n'y a rien à câbler. Soit ce portage les **construit** lui-même (une zone
+d'entraînement à partir du décor `TEST` et des leviers du jeu, une page d'options par-dessus les
+`GAME ASSIGNMENTS`), soit elles sortent de la liste.
+
+Ce qui reste de la divergence est donc plus net : **notre image porte sept lignes dont trois que le jeu
+dessous ne sait pas faire**, et la Dreamcast en a neuf, composées autrement. La question n'est plus « quel
+levier pour ces lignes » mais « que doit contenir la liste d'un menu console posé sur une borne ».
 
 
 ## Les questions, dans l'ordre

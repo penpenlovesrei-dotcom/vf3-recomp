@@ -33,6 +33,14 @@ it fell out of owning the host.
 
 ## 1. The modes
 
+**Four of the seven lines are every mode this board has.** Sega's own twenty-four modes hold no training, no
+network and no options page, and the arcade notes say it outright: Versus is not a distinct mode either, it is
+the arcade mode with a second player joining -- which is exactly how this port does it. So `NETWORK`,
+`TRAINING` and `OPTIONS` are the Dreamcast's lines, and each would have to be BUILT here rather than switched
+on: nothing at all for NETWORK, a stage and not a mode for TRAINING (the Training Zone, MDL 75 / TEX 112,
+internal name `TEST`), and the operator's `GAME ASSIGNMENTS` for OPTIONS -- where the mechanism already
+exists in this port and only the page is missing. See `docs/fv2-console.md`.
+
 | line | lever | state |
 |---|---|---|
 | `ARCADE` | inject Start, 8 frames | **done** (`console_play::choose_arcade`) |
