@@ -42,6 +42,8 @@ Tout est derrière un lanceur `.cmd` à la racine, et tous épinglent `VF3_DATA`
 | les modes console, et la liste sur l'écran titre | `jouer-fv2-console.cmd` | `docs/fv2-console.md` |
 | mesurer ce que fait Start | `mesurer-fv2-start.cmd` | `docs/fv2-etats.md` |
 | les captures de la liste | `capturer-fv2-liste.cmd` | `docs/fv2-console.md` |
+| les ombres : ce qu'elles sont | `montrer-ombres-fv2.cmd` | `docs/fv2-ombres.md` |
+| ce que coûte une image | `mesurer-budget-fv2.cmd` | `docs/fv2-ombres.md` |
 | construire la fenêtre aussi | `construire-hote.cmd` | |
 | construire | `construire.cmd` | |
 | vérifier | `verifier-vf3.cmd` | |
@@ -156,7 +158,54 @@ VF3_MIDI_SEND=h@F      poser une question à la carte son à l'image F ; la rép
 ```
 
 
+## Les ombres, le 2026-10-22 : ce qui est acquis
+
+Rien n'a été ajouté au rendu. Le dossier complet est `docs/fv2-ombres.md` (619 lignes, le **mesuré** et le
+**lu** tenus séparés, avec les limites de chaque mesure). Branche `fv2-ombres`, trois commits, non poussée.
+
+**Le portage n'a pas de code d'ombre, et n'en a pas besoin : le jeu dessine les siennes, en polygones.**
+
+- **La géométrie est une donnée de la ROM**, dessinée par les auteurs : un jeu de pièces simplifiées par
+  combattant (15 à 20 selon le personnage), téléversé une fois en RAM de polygones par `FUN_00056B50`, un bloc
+  par image à partir de l'image 547, depuis le mot `0x010000`. Rien ne la calcule.
+- **La couleur vient d'une table indexée par décor** (`0x00111318`). `FUN_000224EC` en écrit l'entrée 16 à
+  chaque image dans la table de couleurs de la RAM de polygones ; les polygones d'ombre portent **l'index 16**,
+  pas une couleur. C'est pourquoi la teinte change avec le décor sans que la géométrie bouge.
+- **L'aplatissement est une vraie projection**, bâtie par `FUN_00012D68` depuis les **angles** de la lumière
+  (pas son vecteur) : tourner de l'azimut, échelle `(1, 0, 1/sin(élévation))`, basculer, retourner. La
+  direction extraite des matrices de la scène et celle lue dans le jeu tombent sur le même angle — **30,7°**
+  de la verticale au décor 9.
+- **Les angles sont ceux du décor**, recopiés dans chaque combattant par `FUN_000717FC` — sauf aux décors
+  **3, 10 et 11**, où ils sont calculés depuis la **position** du combattant : ces trois-là ont une lumière
+  locale.
+- **`STAGE_TEST__ROB_LIGHT` n'est pas une lumière** : c'est la **fiche du décor**, prise dans la table de
+  pointeurs `0x0008D118`. L'octet `+0x6E` y commande l'ombre. Sur les **vingt-sept décors** : 0 à 12 les
+  arènes, chacune sa couleur ; **13 à 17 sans ombre du tout** ; 18 à 25 en noir ; 26 traité à part.
+- **Reconnaître une ombre est désormais le critère du jeu** : `Mesh::colour_index == 16`. Vérifié sur l'image
+  de référence, 37 sur 37, et rien d'autre dans l'image n'est indexé.
+
+Trois interrupteurs de mise au point, **éteints par défaut**, et les cinq contrôles passent avec eux :
+
+```
+VF3_MESH_AUDIT=<image>|<a>-<b>[/<n>]   tous les maillages : drapeaux, couleur, index de couleur,
+                                       memoire, matrice et determinant, et le soleil de chaque vue
+VF3_MARK_RGB=<RRGGBB>                  les maillages de cette couleur peints en magenta
+VF3_DMA_LOG=<image>|0                  chaque transfert du Real3D, avec son PC et son LR
+```
+
+**Ce qui n'est pas fait** : aucune décision sur ce qu'on ferait des ombres. Les trois ambitions (mieux dessiner
+celle du jeu, la remplacer par une ombre calculée, éclairer autrement) sont instruites dans le document, avec
+le budget en main — et le budget dit qu'il n'y en a pas, voir ci-dessous.
+
 ## Ce qui reste ouvert, et qui bloque quoi
+
+- **Le jeu tient 43 images par seconde en combat, au lieu de 57,5, et on ne sait pas pourquoi.** Mesuré dans
+  la fenêtre sur un i7-11800H et une RTX 3070 : une image du jeu coûte **17,7 à 18,3 ms** quand elle en vaut
+  17,38, le gouverneur a déjà baissé l'échelle à **1x**, et une image affichée ne coûte que 4,5 ms dont
+  **0,75 ms d'attente de la carte** — c'est donc le processeur, et d'abord l'émulation. Refait machine au
+  calme : **les mêmes chiffres**. Le propriétaire dit que ce n'est pas son ordinaire. La seule piste non
+  instruite est que son exécutable à lui porte du travail non commité (`model3.cpp`, `main.cpp`,
+  `tex3d_hd.*`). **Ça bloque toute idée d'ajouter quoi que ce soit au rendu.**
 
 - **Sortir vraiment d'un combat.** L'écran revient, la partie non (ci-dessus). La route du jeu — finir le match
   sans le montrer ni l'entendre, `0x00581455 = MATCH COUNT−1`, `0x00581406 = 64` une fois par manche, vie du

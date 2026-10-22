@@ -199,6 +199,10 @@ image est processeur, il **garde l'échelle et ne fait rien**, parce que la bais
 
 ## Ce qu'on remplacerait, et ce que chaque voie demande
 
+> **Écrit avant la lecture du jeu, et dépassé par elle.** Gardé parce que les mesures qu'il porte
+> tiennent toujours ; pour le classement des voies, voir « a / b / c, repris après la lecture du jeu »
+> en fin de document.
+
 Rien ici n'est une recommandation : c'est le classement de ce que les trois mesures autorisent à dire, et de
 ce qu'il faudrait mesurer ensuite. Le choix est au propriétaire.
 
@@ -617,3 +621,78 @@ Lue en entier, la table donne les vingt-sept décors (0 à 26 ; la 28e entrée v
 
 Ma lecture précédente — « au-delà de 12 la table est vide » — était donc incomplète : chaque décor a son
 réglage, et cinq d'entre eux **coupent l'ombre**.
+
+## a / b / c, repris après la lecture du jeu
+
+Le premier classement a été écrit quand on ne savait que ce que la mesure montrait. Depuis, le programme a
+été lu, et ce qu'on y a trouvé change ce que chaque voie veut dire. Rien ici n'est une recommandation : le
+choix est au propriétaire.
+
+### Ce que la lecture a changé
+
+L'ombre du jeu n'est pas une approximation d'époque. C'est **une projection planaire exacte depuis une lumière
+nommée**, dont on connaît la direction, le plan, la couleur, et jusqu'à l'interrupteur par décor. Il n'y a donc
+rien à « corriger » dans sa géométrie : elle est juste.
+
+Ce qui lui manque tient en deux choses, et une seule est un défaut.
+
+**Un défaut mesuré : l'ombre est opaque, donc elle efface le sol.** Dans l'ombre de Charlie, 386 pixels sur
+576 valent exactement la couleur de la table : la texture du sol **n'y paraît pas du tout**. Une ombre devrait
+assombrir le sol, pas le repeindre. C'est le seul endroit où le jeu fait moins bien que ce que le matériel
+permettait.
+
+**Une limite, qui n'est pas un défaut : la projection est sur un plan.** L'ombre ne monte pas sur les murs,
+ne tombe pas sur l'autre combattant, et le combattant ne s'ombre pas lui-même. C'était le choix de 1998, et
+il est cohérent.
+
+### Ce que coûte la surface
+
+Mesuré sur l'image 3101 en comptant les pixels marqués : **1 775 pixels d'ombre, soit 0,93 % de l'image**,
+dans une bande de 342 x 35. Tout traitement qui ne touche que l'ombre travaille donc sur moins d'un
+centième de l'écran.
+
+### a — mieux dessiner l'ombre que le jeu dessine
+
+Elle se sépare en trois, de la plus petite à la plus grande.
+
+| | ce que c'est | ce qu'il faut | ce qui coince |
+|---|---|---|---|
+| **a1** | **multiplier au lieu de peindre** : même géométrie, même couleur, mais l'ombre assombrit le sol au lieu de le remplacer | un changement de mélange, rien d'autre | **l'union**. Les 37 pièces se chevauchent ; multipliées pièce par pièce, elles assombriraient deux fois aux recouvrements, ce que l'opacité empêche aujourd'hui |
+| **a2** | **adoucir les bords** : dessiner l'union dans un tampon, la flouter, la composer | le tampon, un flou sur 0,93 % de l'image | le chemin CPU et le chemin GPU doivent rester d'accord quand l'option est éteinte |
+| **a3** | le contact | rien | il est déjà exact : la projection tombe sur le plan |
+
+**a1 est le plus petit changement pour le défaut le plus visible**, et il force la question de l'union, sur
+laquelle a2 s'appuie ensuite. Et l'union, le matériel sait déjà la faire : c'est le **stencil `layered`**, que
+le portage reproduit (`r3d_raster.cpp`, `r3d_gpu.cpp`) et qui est à **zéro** dans toutes les images
+regardées — donc disponible.
+
+Reconnaître les polygones à traiter ne demande plus rien : `mesh.colour_index == 16`.
+
+### b — remplacer l'ombre du jeu par une ombre calculée
+
+Maintenant qu'on sait que celle du jeu est juste, b ne gagne que ce qu'une projection plane ne sait pas
+faire : l'ombre sur autre chose que le sol (murs, cage, l'autre combattant), l'auto-ombrage, et une pénombre
+qui s'ouvre avec la hauteur.
+
+| | |
+|---|---|
+| cacher celle du jeu | **gratuit** : ne pas dessiner les maillages d'index 16 |
+| la lumière | **on l'a**, et par son nom : angles par décor, ou calculés depuis la position aux décors 3, 10 et 11 |
+| le coût | une passe de profondeur depuis la lumière, ~20 000 sommets par combattant, **sur la carte** — la seule part qui dort (0,75 ms d'attente sur 4,5) |
+| ce qui coince | la lumière est **ponctuelle et par combattant** aux décors 3, 10 et 11 : deux cartes d'ombre, pas une. Et les décors 13 à 17, où le jeu **coupe** l'ombre : respecter son choix, ou non, est une décision |
+
+### c — éclairer la scène autrement
+
+L'obstacle mesuré tient toujours, et il n'a pas bougé : à l'image 3101, **424 maillages sur 485 sont texturés
+avec une couleur de sommet blanche**. La texture **est** la couleur finale ; il n'y a ni albédo ni rugosité à
+en extraire. L'éclairage du Real3D, lui, travaille déjà.
+
+La seule sous-voie qui tienne debout est l'**occlusion ambiante en espace écran**, dont l'entrée existe (le
+nuanceur écrit déjà la profondeur comme une couleur). Mais elle assombrirait un décor déjà ombré par sa
+texture, et elle recouvre en partie ce que a2 ferait mieux, sur une surface cent fois plus petite.
+
+### Ce qui vaut pour les trois
+
+Le contrat de fidélité ne change pas : **une option, éteinte par défaut**, sur le patron de `hd_3d`, et
+`verifier-vf3.cmd` qui passe sans elle. Et le budget ne change pas non plus : **rien côté processeur**,
+0,75 ms d'attente côté carte — donc toute voie qui coûte doit coûter **sur la carte**.
