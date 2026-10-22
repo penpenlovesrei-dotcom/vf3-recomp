@@ -70,6 +70,9 @@ struct Model
 	int page = 0;          // the texture sheet flip from the nodes
 	int tex_x = 0, tex_y = 0;   // the texture offset from the nodes (Step 1.5 and later; 0 on Step 1.0)
 	uint32_t node_path = 0;   // a hash of the culling nodes above it (for matching between frames)
+	// debugging (VF3_MESH_AUDIT): the last matrix index applied on the way down to this model, and the
+	// viewport's matrix table, so that the matrix's own address in culling memory can be worked out
+	uint32_t matrix_index = 0, matrix_table = 0;
 };
 
 struct Viewport
@@ -141,6 +144,7 @@ private:
 	// 13.11 and texture NP 10.14. Everything after the first word is at an index two higher on those boards,
 	// which is what node_shift is.
 	int node_shift = 0;
+	uint32_t mat_table = 0, last_matrix = 0;   // debugging (VF3_MESH_AUDIT)
 	float vertex_scale = 1.0f / 128.0f;
 	float np_scale = 1.0f / 4096.0f;
 	int depth = 0;

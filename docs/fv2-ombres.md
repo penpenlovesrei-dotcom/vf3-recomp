@@ -482,3 +482,138 @@ constantes lues dans l'initialisation de `ROB_LIGHT`, retrouvées à l'autre bou
   `STAGE_TEST__VEC` (`FUN_0000619C`, qui sert la vue). Le code qui bâtit la matrice d'ombre y accède donc
   autrement — par un pointeur, ou depuis la même valeur calculée — et ce chemin n'a pas été trouvé.
 - La hauteur du plan de projection (le sol) n'a pas été cherchée dans le code.
+
+## Par quel chemin la lumière arrive dans la matrice
+
+C'était la dernière inconnue, et la réponse explique pourquoi je ne la trouvais pas : **le jeu n'utilise pas
+le vecteur, il utilise les angles.** Le Real3D reçoit un vecteur normalisé ; l'ombre, elle, est bâtie depuis
+`LIGHTANG_X` et `LIGHTANG_Y`. Même lumière, deux expressions, et une seule référence absolue au vecteur --
+d'où mon impasse.
+
+### La chaîne, maillon par maillon
+
+```
+FUN_00012D68(param_1, dst)        batit la matrice de projection :
+    uVar1 = ADV_INFO__LIGHTANG_X              elevation
+    uVar2 = ADV_INFO__LIGHTANG_Y              azimut
+    si (ADV_INFO__STATUS & 0x20) == 0   ->    les angles PROPRES au combattant,
+                                              a r14+0x6E18 et r14+0x6E1A
+    si elevation > 0x8000 : elevation = 0x4000          (ecretee)
+    d = sin(elevation) ; si d < 0.0001 : d = 0.0001     (plancher)
+    tourner de  azimut                        FUN_00002470
+    echelle (1.0, 0.0, 1/d)                   FUN_000025E8   <- Y ECRASE
+    basculer de -(elevation - 90 deg)         FUN_000023F0
+    tourner de -azimut                        FUN_00002470
+    ranger a dst                              FUN_000020D4
+
+FUN_0006B6D4(partie)              dessine une partie du corps, puis :
+    FUN_00006B3C(noeud du membre)                       le membre
+    si *(char *)(STAGE_TEST__ROB_LIGHT + 0x6E) == 0 : return     <- l'interrupteur d'ombre
+    FUN_00002078(r14 + 0x1B6E)                          charge la matrice de projection
+    FUN_000021C0(&UNK_005819BC)                         la multiplie par celle du membre
+    ... puis le noeud de l'ombre
+```
+
+`DAT_00001504` vaut 1,0 et `DAT_00001500` vaut 0,0 : l'échelle `(1, 0, 1/sin)` est bien l'écrasement, et le
+`1/sin(élévation)` est l'étirement que donne une lumière basse. C'est la projection faite à la main, telle
+qu'on l'écrivait en 1998.
+
+### Ce que vaut r14, et comment on le sait
+
+`r14` est **la structure du combattant**. Ce n'est pas une déduction : tracé à l'exécution, l'appel
+`FUN_00002078(r14 + 0x1B6E)` reçoit `007072B8` et `0070E2B8`, soit exactement `0x00700500 + 0x6DB8` et
+`0x00707500 + 0x6DB8` -- les deux pointeurs rangés en `[0007511C]` et `[00075120]`, ceux-là mêmes dont
+`FUN_000224EC` tire les couleurs d'ombre par combattant.
+
+La matrice d'aplatissement appartient donc **au combattant**, à `+0x6DB8`, et c'est `FUN_00012D68` qui
+l'écrit (996 écritures sur la course, toutes depuis `PC 000020E0`, `LR 00012E4C`).
+
+### La vérification, par deux routes qui ne se parlent pas
+
+À l'image 3101, `ADV_INFO STATUS` vaut 0 : le bit `0x20` est clair, donc ce sont les angles du combattant qui
+servent.
+
+| | |
+|---|---|
+| lu dans la RAM, `combattant + 0x6E18` | `xang 2A2A`, soit **59,29°** d'élévation |
+| donc la projection fait, de la verticale | **30,71°** |
+| mesuré dans les matrices de la scène (section précédente) | **30,7°** |
+
+Et l'octet d'ombre, `ROB_LIGHT + 0x6E` (`000755CA`), vaut **1** pendant le combat.
+
+Les deux combattants portent les mêmes angles (`xang 2A2A`, `yang 9393`), ce qui est cohérent avec le fait
+mesuré que `S·Sᵀ` est identique pour les 37 pièces : **une seule projection, pour tout le monde.**
+
+### Ce qui reste ouvert
+
+- **Qui écrit `combattant + 0x6E18`**, les angles propres au combattant, et avec quoi. `FUN_0001A124` tient
+  `ROB_LIGHT__xang`/`__yang` ; que ce soit la même valeur recopiée n'a pas été vérifié -- à l'image 3101,
+  `ROB_LIGHT__xang` vaut `9A00` et le combattant `2A2A`, donc **ce n'est pas une simple recopie**.
+- Le rôle de `param_1` de `FUN_00012D68`, et celui de `ADV_INFO__STATUS & 0x20` (quel mode prend les angles
+  globaux plutôt que ceux du combattant).
+
+## Les trois lectures qui ferment le dossier
+
+### 1. D'où viennent les angles du combattant
+
+`FUN_000717FC`, appelée par combattant (`r14` = le combattant) :
+
+```c
+if (STAGE_TEST__STAGE == 3) { ... angle calcule depuis la POSITION du combattant ... }
+else if (decor < 3 || decor > 11 || decor < 10) {
+    combattant[0x6E18] = STAGE_TEST__XANG;    // le cas ordinaire : les angles DU DECOR,
+    combattant[0x6E1A] = STAGE_TEST__YANG;    // recopies tels quels
+    return;
+}
+... decors 10 et 11 : angle calcule depuis la position, lui aussi ...
+```
+
+**Les angles d'ombre d'un combattant sont ceux de son décor, recopiés** — sauf sur les décors **3, 10 et 11**,
+où ils sont calculés depuis la position du combattant (`r14+0x94` et `r14+0x9C`, son x et son z). Ces trois
+décors ont donc une **lumière locale**, et l'ombre de chacun s'écarte selon l'endroit où il se tient.
+
+Mesuré, et la recopie se voit :
+
+| image | décor | `STAGE_TEST` | les deux combattants |
+|---|---|---|---|
+| 3101, un combat | `09` | XANG `2A2A`, YANG `9393` | `2A2A` / `9393` |
+| 7001, une démonstration | `01` | XANG `2800`, YANG `0000` | `2800` / `0000` |
+
+Et **l'élévation change avec le décor** : `2A2A` = 59,29° au décor 9, `2800` = 56,25° au décor 1, soit 30,7°
+et 33,8° de la verticale.
+
+### 2. Ce que choisit `ADV_INFO STATUS & 0x20`
+
+Le bit marque une **scène de présentation de l'attraction** : `FUN_00072E8C`, qui pose `ACTIVE_ROB` et
+`SHADOW_ROB`, le met. Quand il est mis, `FUN_00012D68` prend les angles **globaux**
+`ADV_INFO__LIGHTANG_X/Y` au lieu de ceux du combattant.
+
+Mesuré à l'image 5001, une présentation de personnage :
+
+```
+ADV_INFO STATUS 00000020      le bit est mis
+ADV_INFO LIGHTANG_X 8800  LIGHTANG_Y 5900
+```
+
+Et c'est là que l'écrêtage de `FUN_00012D68` prend son sens : `if (0x8000 < elevation) elevation = 0x4000`.
+`0x8800` dépasse, donc l'élévation retenue est **0x4000 = 90°** : dans ces scènes **l'ombre tombe exactement
+à la verticale**, sans étirement. Au combat, le bit est clair aux deux images lues.
+
+### 3. Les vingt-sept décors, et leur ombre
+
+`FUN_0001809C` prend la fiche du décor dans une table de pointeurs à `0x0008D118`, indexée par
+`STAGE_TEST__STAGE`, et la range dans `STAGE_TEST__ROB_LIGHT`. **Ce pointeur n'est donc pas une lumière :
+c'est la fiche du décor** — ce qui explique qu'il vaille `0007555C` au décor 9 et `000751DC` au décor 1. Et
+l'octet d'ombre, `+0x6E`, est **un champ de cette fiche**.
+
+Lue en entier, la table donne les vingt-sept décors (0 à 26 ; la 28e entrée vaut `FFFFFFFF`) :
+
+| décors | octet `+0x6E` | couleur | |
+|---|---|---|---|
+| **0 à 12** | 1 | chacun la sienne | les treize arènes |
+| **13 à 17** | **0** | — | **pas d'ombre du tout** |
+| 18 à 25 | 1 | `#000000` | ombre noire |
+| 26 | 0 | — | le décor que `FUN_0001809C` traite à part |
+
+Ma lecture précédente — « au-delà de 12 la table est vide » — était donc incomplète : chaque décor a son
+réglage, et cinq d'entre eux **coupent l'ombre**.

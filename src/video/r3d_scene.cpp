@@ -203,9 +203,9 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						const float det = M[0] * (M[5] * M[10] - M[9] * M[6])
 						                - M[4] * (M[1] * M[10] - M[9] * M[2])
 						                + M[8] * (M[1] * M[6] - M[5] * M[2]);
-						fprintf(stderr, "matx f%llu st%02X vp%zu model %06X  det %.6f  rows"
+						fprintf(stderr, "matx f%llu st%02X vp%zu model %06X  mat %06X+%u  det %.6f  rows"
 						        " [%.4f %.4f %.4f] [%.4f %.4f %.4f] [%.4f %.4f %.4f]  t [%.3f %.3f %.3f]\n",
-						        (unsigned long long)board.frame, stage, iv, m.addr, det,
+						        (unsigned long long)board.frame, stage, iv, m.addr, m.matrix_table, m.matrix_index, det,
 						        M[0], M[4], M[8], M[1], M[5], M[9], M[2], M[6], M[10], M[12], M[13], M[14]);
 					}
 					for (size_t im = 0; im < m.meshes->size(); im++) {
@@ -244,6 +244,7 @@ void SceneBuilder::mult_matrix(uint32_t index)
 {
 	if (!matrix_base)
 		return;
+	last_matrix = index;   // debugging (VF3_MESH_AUDIT)
 	const float *s = matrix_base + index * 12;
 	Mat4 m = {};
 	m.m[0] = s[3]; m.m[4] = s[4]; m.m[8] = s[5]; m.m[12] = s[0];
@@ -272,6 +273,7 @@ void SceneBuilder::viewport(uint32_t addr, Scene &scene, int guard)
 		p.full_screen = p.vp_x == 0 && p.vp_w >= 495 && p.vp_y == 0 && p.vp_h >= 383;
 		p.intensity_clamp = !node_shift;   // Step 1.0 only (r3d_scene.h)
 		matrix_base = reinterpret_cast<const float *>(culling(v[0x16] & 0xFFFFFF));
+		mat_table = v[0x16] & 0xFFFFFF;   // debugging (VF3_MESH_AUDIT)
 		lod_table = reinterpret_cast<const float *>(culling(v[0x17] & 0xFFFFFF));
 		float cv = as_float(v[8]), cw = as_float(v[9]), io = as_float(v[10]), jo = as_float(v[11]);
 		planes = { as_float(v[0xC]), as_float(v[0xD]), as_float(v[0xE]), as_float(v[0xF]),
@@ -507,6 +509,8 @@ void SceneBuilder::draw_model(uint32_t addr)
 	m.tex_x = attr.tex_x;
 	m.tex_y = attr.tex_y;
 	m.node_path = path;
+	m.matrix_index = last_matrix;   // debugging (VF3_MESH_AUDIT)
+	m.matrix_table = mat_table;
 	// ROM models without colour table indexes are the same every frame
 	bool dynamic = addr < 0x100000;
 	if (!dynamic) {
