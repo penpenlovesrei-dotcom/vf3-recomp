@@ -292,3 +292,51 @@ portes, comme sur le disque.
 Son relevé portait aussi : « *police italique : la référence Dreamcast est en italique, notre atlas ne l'est
 pas. Un second atlas le permettrait.* » Il n'en a pas fallu un second : la pente est mesurée à 7,5° et posée
 par cisaillement au dessin (`src/host/fv2_texte.h`).
+
+
+## L'arborescence, refaite sur celle d'août — le 2026-10-22
+
+Demandé par Frédéric : refaire l'arborescence des sous-menus d'OPTIONS en prenant pour exemple août 2026.
+Elle a été relue dans `Src/OSD/SDL/Main.cpp` de la sauvegarde du 20 août (`OptionsEntries` et `OptionLines`),
+pas reconstituée de mémoire.
+
+```
+OPTIONS
+├─ les treize réglages        nom à gauche, valeur centrée
+├─ DISPLAY                    → un écran           (demi-ligne de blanc avant)
+├─ SOUNDS                     → un écran
+├─ CONTROLLER                 → un écran
+├─ STATS                      → un écran
+└─ INITIALIZE                 une action, en image  (1,2 ligne de blanc avant)
+```
+
+Les quatre portes sont dessinées **en gras et centrées**, comme en août et pour la raison qu'il donnait :
+elles mènent quelque part plutôt qu'elles ne règlent quelque chose. Le gras est l'épaississement du titre
+sans la condensation — la feuille n'a qu'une graisse, c'est ainsi qu'elle en gagne une seconde. Les deux
+blancs sont les siens. `B` **remonte d'un écran** au lieu de viser la liste des modes en dur : c'est sa pile
+de retour.
+
+La Dreamcast a les mêmes portes à deux noms près — `SOUNDS`, `CONTROLLER`, `RESULT`, puis `INITIALIZE`.
+`DISPLAY` et `STATS` sont du fork, `RESULT` est du disque ; on suit août, c'est ce qui était demandé.
+
+**Ce qu'il y a derrière chaque porte, honnêtement : rien encore**, sauf `CONTROLLER`, qui était déjà
+titre-et-rien-d'autre en août — « *LA PAGE CONTROLLER, VIDE POUR L'INSTANT. Demandée le 2026-08-18 : le
+titre et rien d'autre* ». Pour celle-là l'arbre est donc complet. Les trois autres portaient : `DISPLAY`
+`WIDESCREEN`, `HD ART`, `FPS COUNTER`, `ENDING` ; `SOUNDS` le test des bruitages, les vingt musiques, les
+deux volumes et le choix du pack ; `STATS` le VS DIAGRAM. Chacune affiche aujourd'hui son titre et, en
+sourdine, ce qu'elle tiendra.
+
+### La densité, annoncée en août et mesurée ici
+
+Le relevé d'août disait : « *seize lignes ne peuvent pas être grosses* ». La page en porte **dix-huit**.
+Mesuré sur une capture de 1440 × 1080 :
+
+| | la Dreamcast | cette page |
+|---|---|---|
+| hauteur de capitale | 0,0292 | **0,0176** — 60 % |
+| pas des lignes | 0,0584 | **0,0361** — 62 % |
+
+C'est exactement ce qu'il avait prévu, et ses deux sorties tiennent toujours : **sortir les treize réglages
+sur leur propre page** derrière une entrée `GAME ASSIGNMENTS`, ce qui ramènerait `OPTIONS` à cinq lignes et
+la page des réglages à treize ; ou **passer à deux colonnes**. La première rapproche aussi du disque, qui
+n'affiche que sept réglages. Non tranché.

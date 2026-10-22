@@ -94,7 +94,10 @@ struct fv2_options
 	static constexpr float LABEL_X = 0.3136f, VALUE_MID = 0.665f;
 	static constexpr float RULE_L = 0.2913f, RULE_R = 0.7295f;
 	static constexpr float ROW_CAP = 0.0292f;
-	static constexpr float ROWS_TOP = 0.185f, ROWS_BOTTOM = 0.800f;   // ours: thirteen where the disc has seven
+	// The band the lines live in. The disc puts seven settings at a pitch of 0.0584 from y 0.2128; this page
+	// carries eighteen lines -- the thirteen, four doors and INITIALIZE -- so the band is taken as wide as the
+	// page allows and the pitch falls out of it. August's rule, and its warning, are on render_options.
+	static constexpr float ROWS_TOP = 0.172f, ROWS_BOTTOM = 0.845f;
 	static constexpr float INIT_TOP = 0.848f, INIT_HEIGHT = 0.0242f;
 	static constexpr float FOOT1 = 0.902f, FOOT2 = 0.940f;
 
@@ -103,9 +106,54 @@ struct fv2_options
 	static constexpr SDL_Color MUTED  = { 150, 150, 150, 255 };   // COUNTRY: ours, not the disc's
 
 	static constexpr int CANCELLED = -2;   // what handle_event returns when the player backed out
-	static constexpr int INITIALIZE = 13;  // the line under the thirteen
+
+	// ---- the tree, rebuilt from the summer's own ----
+	//
+	// August 2026's OPTIONS was not a flat page of settings, and neither is the Dreamcast's: both carry the
+	// settings AND a short list of doors. Read back from
+	// Documents/SEGA Model 3/Sauvegardes/2026-08-20_23h04/Src/OSD/SDL/Main.cpp (OptionsEntries / OptionLines),
+	// its page was, in this order: the thirteen settings as name and value, then DISPLAY, SOUNDS, CONTROLLER
+	// and STATS -- drawn BOLD AND CENTRED "parce qu'elles mènent quelque part plutôt que de régler quelque
+	// chose" -- then INITIALIZE as a picture. The gaps are its own: half a line before the first door, and 1.2
+	// before INITIALIZE.
+	//
+	// The Dreamcast's four are SOUNDS, CONTROLLER, RESULT and INITIALIZE. DISPLAY and STATS are the fork's own,
+	// and RESULT is the disc's; we follow August, which is what was asked.
+	//
+	// What is behind each door, honestly: nothing yet, and that is the next piece of work rather than a
+	// pretence. CONTROLLER was title-only in August too -- "LA PAGE CONTROLLER, VIDE POUR L'INSTANT. Demandée
+	// le 2026-08-18 : le titre et rien d'autre" -- so for that one the tree is already complete. DISPLAY held
+	// WIDESCREEN, HD ART, FPS COUNTER and ENDING; SOUNDS the sound test, the twenty musics, the two volumes and
+	// the pack; STATS the VS DIAGRAM drawn from the backup's counters.
+	enum screen { SCR_OPTIONS, SCR_DISPLAY, SCR_SOUNDS, SCR_CONTROLLER, SCR_STATS, SCR_COUNT };
+	static const char *screen_name(int s)
+	{
+		static const char *const N[SCR_COUNT] = { "OPTIONS", "DISPLAY", "SOUNDS", "CONTROLLER", "STATS" };
+		return s >= 0 && s < SCR_COUNT ? N[s] : "?";
+	}
+	// A line of the OPTIONS page: a setting, a door, or the INITIALIZE button.
+	struct line {
+		enum kind { SETTING, DOOR, BUTTON } what;
+		int which;        // the setting's index, or the screen a door opens
+		float gap;        // blank space before it, in lines
+	};
+	static const std::vector<line> &page()
+	{
+		static const std::vector<line> P = [] {
+			std::vector<line> p;
+			for (int i = 0; i < int(table().size()); i++) p.push_back({ line::SETTING, i, 0 });
+			p.push_back({ line::DOOR, SCR_DISPLAY, 0.5f });
+			p.push_back({ line::DOOR, SCR_SOUNDS, 0 });
+			p.push_back({ line::DOOR, SCR_CONTROLLER, 0 });
+			p.push_back({ line::DOOR, SCR_STATS, 0 });
+			p.push_back({ line::BUTTON, 0, 1.2f });
+			return p;
+		}();
+		return P;
+	}
 
 	bool shown = false;
+	int at = SCR_OPTIONS;        // the screen now up; B goes back up the tree, as August's back stack does
 	int sel = 0;
 	bool ready = false, tried = false;
 	bool changed = false;        // something was really written, as against stepped there and back
@@ -170,11 +218,11 @@ struct fv2_options
 		load(ren, assets, font, nullptr);
 	}
 
-	void show() { if (ready) { shown = true; sel = 0; stick_x = stick_y = 0; } }
-	void hide() { shown = false; }
+	void show() { if (ready) { shown = true; at = SCR_OPTIONS; sel = 0; stick_x = stick_y = 0; } }
+	void hide() { shown = false; at = SCR_OPTIONS; }
 
-	int lines() const { return int(table().size()) + 1; }   // the thirteen, then INITIALIZE
-	void move(int d) { sel = (sel + lines() + d) % lines(); }
+	int lines() const { return at == SCR_OPTIONS ? int(page().size()) : 0; }
+	void move(int d) { if (lines()) sel = (sel + lines() + d) % lines(); }
 
 	// What a line reads as now. -1 means the backup does not hold a usable value, and then the line shows "-"
 	// and will not step: better a dash than a number nobody can account for.
@@ -216,30 +264,50 @@ struct fv2_options
 			for (int p = 0; p < 2; p++) if (ctl[p].key[action] == sc) return true;
 			return false;
 		};
-		auto act = [&] { if (sel == INITIALIZE) initialize(board); return -1; };
+		// Choosing: a door opens its screen, INITIALIZE puts the factory values back, a setting does nothing
+		// (it is changed with left and right).
+		auto act = [&] {
+			if (at != SCR_OPTIONS || sel < 0 || sel >= lines()) return -1;
+			const line &l = page()[size_t(sel)];
+			if (l.what == line::BUTTON) initialize(board);
+			else if (l.what == line::DOOR) at = l.which;
+			return -1;
+		};
+		// Backing out goes UP ONE SCREEN, which is August's own back stack rather than aiming at the modes
+		// list by hand. From OPTIONS itself there is nowhere above, so it closes the page.
+		auto back = [&] {
+			if (at == SCR_OPTIONS) return CANCELLED;
+			at = SCR_OPTIONS;
+			return -1;
+		};
+		auto sideways = [&](int d) {
+			if (at != SCR_OPTIONS || sel < 0 || sel >= lines()) return;
+			const line &l = page()[size_t(sel)];
+			if (l.what == line::SETTING) step(board, size_t(l.which), d);
+		};
 		switch (e.type) {
 		case SDL_EVENT_KEY_DOWN: {
 			if (e.key.repeat) return -1;
 			const SDL_Scancode sc = e.key.scancode;
 			if (sc == SDL_SCANCODE_UP || bound(C_UP, sc)) move(-1);
 			else if (sc == SDL_SCANCODE_DOWN || bound(C_DOWN, sc)) move(+1);
-			else if (sc == SDL_SCANCODE_LEFT || bound(C_LEFT, sc)) { if (sel < INITIALIZE) step(board, size_t(sel), -1); }
-			else if (sc == SDL_SCANCODE_RIGHT || bound(C_RIGHT, sc)) { if (sel < INITIALIZE) step(board, size_t(sel), +1); }
+			else if (sc == SDL_SCANCODE_LEFT || bound(C_LEFT, sc)) sideways(-1);
+			else if (sc == SDL_SCANCODE_RIGHT || bound(C_RIGHT, sc)) sideways(+1);
 			else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER || sc == SDL_SCANCODE_SPACE
 					 || bound(C_START, sc) || bound(C_PUNCH, sc))
 				return act();
 			else if (sc == SDL_SCANCODE_BACKSPACE || bound(C_KICK, sc))
-				return CANCELLED;
+				return back();
 			return -1;
 		}
 		case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
 			switch (e.gbutton.button) {
 			case SDL_GAMEPAD_BUTTON_DPAD_UP: move(-1); break;
 			case SDL_GAMEPAD_BUTTON_DPAD_DOWN: move(+1); break;
-			case SDL_GAMEPAD_BUTTON_DPAD_LEFT: if (sel < INITIALIZE) step(board, size_t(sel), -1); break;
-			case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: if (sel < INITIALIZE) step(board, size_t(sel), +1); break;
+			case SDL_GAMEPAD_BUTTON_DPAD_LEFT: sideways(-1); break;
+			case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: sideways(+1); break;
 			case SDL_GAMEPAD_BUTTON_START: case SDL_GAMEPAD_BUTTON_SOUTH: return act();
-			case SDL_GAMEPAD_BUTTON_EAST: return CANCELLED;
+			case SDL_GAMEPAD_BUTTON_EAST: return back();
 			default: break;
 			}
 			return -1;
@@ -249,7 +317,7 @@ struct fv2_options
 				if (dir && dir != stick_y) move(dir);
 				stick_y = dir;
 			} else if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
-				if (dir && dir != stick_x && sel < INITIALIZE) step(board, size_t(sel), dir);
+				if (dir && dir != stick_x) sideways(dir);
 				stick_x = dir;
 			}
 			return -1;
@@ -266,40 +334,88 @@ struct fv2_options
 		const SDL_FRect src = { float(BG_L), 0, float(BG_R - BG_L), float(BG_H) };
 		SDL_RenderTexture(ren, bg, &src, &mid);
 
-		font->draw_title(ren, "OPTIONS", mid.x + mid.w * 0.5f, mid.y + TITLE_TOP * mid.h, TITLE_CAP * mid.h, PLAIN);
+		font->draw_title(ren, screen_name(at), mid.x + mid.w * 0.5f, mid.y + TITLE_TOP * mid.h,
+						 TITLE_CAP * mid.h, PLAIN);
 
-		const float cap = ROW_CAP * mid.h;
-		const float h = cap / fv2_texte::CAP;                        // the cell that gives that capital
-		const int n = int(table().size());
-		const float pitch = (ROWS_BOTTOM - ROWS_TOP) * mid.h / float(n - 1);
-		for (int i = 0; i < n; i++) {
-			const float ink_top = mid.y + ROWS_TOP * mid.h + i * pitch;
-			const float y = ink_top - fv2_texte::CAP_TOP * h;        // the cell's top, the ink starting at 16/64
-			const bool on = i == sel;
-			// the rule's line just under the capitals, which end at (16 + 31) / 64 of the cell
-			if (on) rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_texte::CELL + 0.24f), h);
-			const SDL_Color col = on ? CHOSEN : (read_only(size_t(i)) ? MUTED : PLAIN);
-			font->draw(ren, table()[size_t(i)].name, mid.x + LABEL_X * mid.w, y, h, col, 255, fv2_texte::SLANT);
-			font->draw_mid(ren, value_text(board, size_t(i)).c_str(), mid.x + VALUE_MID * mid.w, y, h, col, 255,
-						   fv2_texte::SLANT);
-		}
+		if (at == SCR_OPTIONS) render_options(ren, mid, board);
+		else render_child(ren, mid);
 
-		// INITIALIZE is a painted label, not text, and it is the game's own idea: 0x00020F74 puts the factory
-		// values back and 0x00021008 writes them to the backup. This does the same by the table above.
-		const float ih = INIT_HEIGHT * mid.h * 1.45f;
-		const float iw = ih * float(init_w) / float(init_h ? init_h : 1);
-		const SDL_FRect idst = { mid.x + mid.w * 0.5f - iw * 0.5f, mid.y + INIT_TOP * mid.h, iw, ih };
-		if (sel == INITIALIZE) rule(ren, mid, idst.y + ih * 1.30f, h);
-		SDL_SetTextureAlphaMod(init, uint8_t(sel == INITIALIZE ? 255 : 190));
-		SDL_RenderTexture(ren, init, nullptr, &idst);
-		SDL_SetTextureAlphaMod(init, 255);
-
-		const float fh = h * 0.62f;
+		// The foot the Dreamcast puts on this very screen, in three lines there and two here.
+		const float fh = foot_cell(mid);
 		font->draw_mid(ren, "USE THE DIRECTION BUTTON TO SELECT", mid.x + mid.w * 0.5f, mid.y + FOOT1 * mid.h, fh, PLAIN);
 		font->draw_mid(ren, "A : DECIDE        B : BACK", mid.x + mid.w * 0.5f, mid.y + FOOT2 * mid.h, fh, PLAIN);
 	}
 
 private:
+	float foot_cell(const SDL_FRect &mid) const { return ROW_CAP * mid.h / fv2_texte::CAP * 0.62f; }
+
+	// A screen behind a door. Nothing is drawn but its title and the way out -- which is exactly what August's
+	// CONTROLLER page was, and all that is honest for the other three until their contents are built. A page
+	// that pretended to hold something would be worse than one that says it is empty.
+	void render_child(SDL_Renderer *ren, const SDL_FRect &mid)
+	{
+		const float h = ROW_CAP * mid.h / fv2_texte::CAP;
+		static const char *const SOON[SCR_COUNT] = {
+			"", "WIDESCREEN, HD ART, FPS COUNTER, ENDING", "SOUND TEST, MUSIC, VOLUMES, PACK",
+			"", "THE VS DIAGRAM",
+		};
+		const char *soon = at >= 0 && at < SCR_COUNT ? SOON[at] : "";
+		if (*soon) font->draw_mid(ren, soon, mid.x + mid.w * 0.5f, mid.y + 0.45f * mid.h, h * 0.8f, MUTED);
+	}
+
+	// The OPTIONS page: the thirteen settings, then the doors, then INITIALIZE.
+	//
+	// A PAGE TOO LONG LOOKS FOR ROOM BEFORE IT SHRINKS, which is August's rule and was paid for there: raise
+	// the band first and only then let the text give, "sinon toute augmentation de la police était annulée par
+	// le resserrement -- deux effets qui s'annulent exactement, et une correction qui semble ne rien faire".
+	// So the band is fixed here and the pitch falls out of it; the cap follows the pitch, capped at the
+	// Dreamcast's own so a short page never grows past the disc.
+	void render_options(SDL_Renderer *ren, const SDL_FRect &mid, m3::Model3 &board)
+	{
+		const std::vector<line> &P = page();
+		float slots = 0;
+		for (size_t i = 0; i < P.size(); i++) slots += (i ? 1.0f : 0.0f) + P[i].gap;
+		const float pitch = (ROWS_BOTTOM - ROWS_TOP) * mid.h / (slots > 0 ? slots : 1);
+		const float cap = std::min(ROW_CAP * mid.h, pitch * 0.50f);
+		const float h = cap / fv2_texte::CAP;
+
+		float ink_top = mid.y + ROWS_TOP * mid.h;
+		for (size_t i = 0; i < P.size(); i++) {
+			const line &l = P[i];
+			ink_top += (i ? pitch : 0) + l.gap * pitch;
+			const float y = ink_top - fv2_texte::CAP_TOP * h;   // the cell's top, the ink starting at 16/64
+			const bool on = int(i) == sel;
+			if (l.what == line::BUTTON) {
+				// INITIALIZE is a painted label, not text, and it is the game's own idea: 0x00020F74 puts the
+				// factory values back and 0x00021008 writes them to the backup. This does the same by the table.
+				const float bh = cap * 1.45f;
+				const float bw = bh * float(init_w) / float(init_h ? init_h : 1);
+				const SDL_FRect dst = { mid.x + mid.w * 0.5f - bw * 0.5f, ink_top, bw, bh };
+				if (on) rule(ren, mid, dst.y + bh * 1.30f, h);
+				SDL_SetTextureAlphaMod(init, uint8_t(on ? 255 : 190));
+				SDL_RenderTexture(ren, init, nullptr, &dst);
+				SDL_SetTextureAlphaMod(init, 255);
+				continue;
+			}
+			// the rule's line just under the capitals, which end at (16 + 31) / 64 of the cell
+			if (on) rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_texte::CELL + 0.24f), h);
+			if (l.what == line::DOOR) {
+				// The doors are drawn BOLD AND CENTRED, as August drew them, "parce qu'elles mènent quelque
+				// part plutôt que de régler quelque chose". Bold here is the title's own thickening, without
+				// the condensing: the sheet has one weight and this is how it gets another.
+				const float w = font->width(screen_name(l.which), h, 1.0f, fv2_texte::THICK);
+				font->draw(ren, screen_name(l.which), mid.x + mid.w * 0.5f - w * 0.5f, y, h,
+						   on ? CHOSEN : PLAIN, 255, fv2_texte::SLANT, 1.0f, fv2_texte::THICK);
+				continue;
+			}
+			const size_t k = size_t(l.which);
+			const SDL_Color col = on ? CHOSEN : (read_only(k) ? MUTED : PLAIN);
+			font->draw(ren, table()[k].name, mid.x + LABEL_X * mid.w, y, h, col, 255, fv2_texte::SLANT);
+			font->draw_mid(ren, value_text(board, k).c_str(), mid.x + VALUE_MID * mid.w, y, h, col, 255,
+						   fv2_texte::SLANT);
+		}
+	}
+
 	// The rule under the chosen line. `bottom` is where its VISIBLE LINE goes, and the picture is HUNG FROM
 	// THERE rather than placed from its top. That is the one thing to know about this image, and it cost the
 	// owner a session in August: option_cursor.png carries a small vertical tick that RISES ABOVE the line, so
