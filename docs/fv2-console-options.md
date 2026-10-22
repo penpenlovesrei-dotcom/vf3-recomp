@@ -336,7 +336,36 @@ Mesuré sur une capture de 1440 × 1080 :
 | hauteur de capitale | 0,0292 | **0,0176** — 60 % |
 | pas des lignes | 0,0584 | **0,0361** — 62 % |
 
-C'est exactement ce qu'il avait prévu, et ses deux sorties tiennent toujours : **sortir les treize réglages
-sur leur propre page** derrière une entrée `GAME ASSIGNMENTS`, ce qui ramènerait `OPTIONS` à cinq lignes et
-la page des réglages à treize ; ou **passer à deux colonnes**. La première rapproche aussi du disque, qui
-n'affiche que sept réglages. Non tranché.
+C'est exactement ce qu'il avait prévu. **Tranché le jour même par Frédéric** : la première de ses deux
+sorties, les treize réglages sur leur propre page.
+
+### L'arborescence telle qu'elle est
+
+```
+OPTIONS
+├─ GAME ASSIGNMENTS  → les treize réglages, puis INITIALIZE
+├─ DISPLAY           → un écran
+├─ SOUNDS            → un écran
+├─ CONTROLLER        → un écran (titre seul, comme en août)
+└─ STATS             → un écran
+```
+
+`OPTIONS` fait cinq lignes, `GAME ASSIGNMENTS` en fait quatorze. **`INITIALIZE` a suivi les réglages**, et
+c'est une divergence délibérée d'avec août et le disque, qui le gardent tous deux au pied d'`OPTIONS` : il
+ne remet que ces treize valeurs, donc sur une page qui ne les montre plus ce serait un bouton dont on ne peut
+pas voir l'effet. Eux pouvaient l'y laisser, les réglages y étaient.
+
+Et **une page courte ne s'étire pas** : le pas est celui du disque tant que les lignes le permettent, et le
+bloc se centre dans sa bande. Sans quoi `OPTIONS`, avec ses cinq lignes, aurait eu un pas trois fois celui de
+`GAME ASSIGNMENTS` et les deux écrans n'auraient pas eu l'air du même menu.
+
+### Ce que ça a rendu, mesuré
+
+| | capitale | pas | % du disque |
+|---|---|---|---|
+| dix-huit lignes | 0,0176 | 0,0361 | 60 % |
+| quatorze lignes | **0,0231** | **0,0472** | **79 %** |
+| la Dreamcast | 0,0292 | 0,0584 | 100 % |
+
+Il reste 21 % d'écart, et il vient de ce que le disque n'affiche que **sept** réglages là où la borne en a
+treize. Les réduire voudrait dire en cacher, ce qui n'est pas la même chose que les ranger.

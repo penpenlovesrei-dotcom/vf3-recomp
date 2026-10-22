@@ -95,9 +95,10 @@ struct fv2_options
 	static constexpr float RULE_L = 0.2913f, RULE_R = 0.7295f;
 	static constexpr float ROW_CAP = 0.0292f;
 	// The band the lines live in. The disc puts seven settings at a pitch of 0.0584 from y 0.2128; this page
-	// carries eighteen lines -- the thirteen, four doors and INITIALIZE -- so the band is taken as wide as the
-	// page allows and the pitch falls out of it. August's rule, and its warning, are on render_options.
+	// carries fourteen on its longest screen, so the band is taken as wide as the page allows and the pitch is
+	// as much of it as the lines want, never past the disc's. August's rule is on render_lines.
 	static constexpr float ROWS_TOP = 0.172f, ROWS_BOTTOM = 0.845f;
+	static constexpr float DISC_PITCH = 0.0584f;   // the Dreamcast's own, measured
 	static constexpr float INIT_TOP = 0.848f, INIT_HEIGHT = 0.0242f;
 	static constexpr float FOOT1 = 0.902f, FOOT2 = 0.940f;
 
@@ -125,36 +126,50 @@ struct fv2_options
 	// le 2026-08-18 : le titre et rien d'autre" -- so for that one the tree is already complete. DISPLAY held
 	// WIDESCREEN, HD ART, FPS COUNTER and ENDING; SOUNDS the sound test, the twenty musics, the two volumes and
 	// the pack; STATS the VS DIAGRAM drawn from the backup's counters.
-	enum screen { SCR_OPTIONS, SCR_DISPLAY, SCR_SOUNDS, SCR_CONTROLLER, SCR_STATS, SCR_COUNT };
+	//
+	// ONE DELIBERATE DIVERGENCE FROM AUGUST, decided by Frédéric on the 2026-10-22. There, the thirteen
+	// settings sat on the OPTIONS page itself, which made it eighteen lines long and drove the capitals down
+	// to 60 % of the Dreamcast's -- the very density his own notes had predicted could not work. They now sit
+	// behind a GAME ASSIGNMENTS door of their own, which is the first of the two ways out he had written down,
+	// and which brings OPTIONS back to five lines.
+	//
+	// INITIALIZE MOVED WITH THEM, and that part is this port's own reasoning: it puts back the factory values
+	// of those thirteen and nothing else, so on a page that no longer shows them it would be a button whose
+	// effect cannot be seen. August and the disc both keep it at the foot of OPTIONS; they could, because the
+	// settings were there.
+	enum screen { SCR_OPTIONS, SCR_SETTINGS, SCR_DISPLAY, SCR_SOUNDS, SCR_CONTROLLER, SCR_STATS, SCR_COUNT };
 	static const char *screen_name(int s)
 	{
-		static const char *const N[SCR_COUNT] = { "OPTIONS", "DISPLAY", "SOUNDS", "CONTROLLER", "STATS" };
+		static const char *const N[SCR_COUNT] = { "OPTIONS", "GAME ASSIGNMENTS", "DISPLAY", "SOUNDS",
+												  "CONTROLLER", "STATS" };
 		return s >= 0 && s < SCR_COUNT ? N[s] : "?";
 	}
-	// A line of the OPTIONS page: a setting, a door, or the INITIALIZE button.
+	// A line of a screen: a setting, a door, or the INITIALIZE button.
 	struct line {
 		enum kind { SETTING, DOOR, BUTTON } what;
 		int which;        // the setting's index, or the screen a door opens
 		float gap;        // blank space before it, in lines
 	};
-	static const std::vector<line> &page()
+	static const std::vector<line> &page(int s)
 	{
-		static const std::vector<line> P = [] {
+		static const std::vector<line> NONE;
+		static const std::vector<line> OPTIONS_P = {
+			{ line::DOOR, SCR_SETTINGS, 0 }, { line::DOOR, SCR_DISPLAY, 0 }, { line::DOOR, SCR_SOUNDS, 0 },
+			{ line::DOOR, SCR_CONTROLLER, 0 }, { line::DOOR, SCR_STATS, 0 },
+		};
+		static const std::vector<line> SETTINGS_P = [] {
 			std::vector<line> p;
 			for (int i = 0; i < int(table().size()); i++) p.push_back({ line::SETTING, i, 0 });
-			p.push_back({ line::DOOR, SCR_DISPLAY, 0.5f });
-			p.push_back({ line::DOOR, SCR_SOUNDS, 0 });
-			p.push_back({ line::DOOR, SCR_CONTROLLER, 0 });
-			p.push_back({ line::DOOR, SCR_STATS, 0 });
-			p.push_back({ line::BUTTON, 0, 1.2f });
+			p.push_back({ line::BUTTON, 0, 1.2f });   // August's own gap before the button
 			return p;
 		}();
-		return P;
+		return s == SCR_OPTIONS ? OPTIONS_P : s == SCR_SETTINGS ? SETTINGS_P : NONE;
 	}
 
 	bool shown = false;
 	int at = SCR_OPTIONS;        // the screen now up; B goes back up the tree, as August's back stack does
-	int sel = 0;
+	// One cursor per screen, so coming back up finds the door you went through rather than the first line.
+	int sel_of[SCR_COUNT] = { 0 };
 	bool ready = false, tried = false;
 	bool changed = false;        // something was really written, as against stepped there and back
 	SDL_Texture *bg = nullptr, *cursor = nullptr, *init = nullptr;
@@ -218,11 +233,20 @@ struct fv2_options
 		load(ren, assets, font, nullptr);
 	}
 
-	void show() { if (ready) { shown = true; at = SCR_OPTIONS; sel = 0; stick_x = stick_y = 0; } }
+	void show()
+	{
+		if (!ready) return;
+		shown = true;
+		at = SCR_OPTIONS;
+		for (int &s : sel_of) s = 0;
+		stick_x = stick_y = 0;
+	}
 	void hide() { shown = false; at = SCR_OPTIONS; }
 
-	int lines() const { return at == SCR_OPTIONS ? int(page().size()) : 0; }
-	void move(int d) { if (lines()) sel = (sel + lines() + d) % lines(); }
+	int lines() const { return int(page(at).size()); }
+	int &sel() { return sel_of[at]; }
+	int sel() const { return sel_of[at]; }
+	void move(int d) { if (lines()) sel() = (sel() + lines() + d) % lines(); }
 
 	// What a line reads as now. -1 means the backup does not hold a usable value, and then the line shows "-"
 	// and will not step: better a dash than a number nobody can account for.
@@ -267,10 +291,10 @@ struct fv2_options
 		// Choosing: a door opens its screen, INITIALIZE puts the factory values back, a setting does nothing
 		// (it is changed with left and right).
 		auto act = [&] {
-			if (at != SCR_OPTIONS || sel < 0 || sel >= lines()) return -1;
-			const line &l = page()[size_t(sel)];
+			if (sel() < 0 || sel() >= lines()) return -1;
+			const line &l = page(at)[size_t(sel())];
 			if (l.what == line::BUTTON) initialize(board);
-			else if (l.what == line::DOOR) at = l.which;
+			else if (l.what == line::DOOR) { at = l.which; sel() = 0; }
 			return -1;
 		};
 		// Backing out goes UP ONE SCREEN, which is August's own back stack rather than aiming at the modes
@@ -281,8 +305,8 @@ struct fv2_options
 			return -1;
 		};
 		auto sideways = [&](int d) {
-			if (at != SCR_OPTIONS || sel < 0 || sel >= lines()) return;
-			const line &l = page()[size_t(sel)];
+			if (sel() < 0 || sel() >= lines()) return;
+			const line &l = page(at)[size_t(sel())];
 			if (l.what == line::SETTING) step(board, size_t(l.which), d);
 		};
 		switch (e.type) {
@@ -337,8 +361,8 @@ struct fv2_options
 		font->draw_title(ren, screen_name(at), mid.x + mid.w * 0.5f, mid.y + TITLE_TOP * mid.h,
 						 TITLE_CAP * mid.h, PLAIN);
 
-		if (at == SCR_OPTIONS) render_options(ren, mid, board);
-		else render_child(ren, mid);
+		if (page(at).empty()) render_child(ren, mid);
+		else render_lines(ren, mid, board);
 
 		// The foot the Dreamcast puts on this very screen, in three lines there and two here.
 		const float fh = foot_cell(mid);
@@ -356,35 +380,37 @@ private:
 	{
 		const float h = ROW_CAP * mid.h / fv2_texte::CAP;
 		static const char *const SOON[SCR_COUNT] = {
-			"", "WIDESCREEN, HD ART, FPS COUNTER, ENDING", "SOUND TEST, MUSIC, VOLUMES, PACK",
+			"", "", "WIDESCREEN, HD ART, FPS COUNTER, ENDING", "SOUND TEST, MUSIC, VOLUMES, PACK",
 			"", "THE VS DIAGRAM",
 		};
 		const char *soon = at >= 0 && at < SCR_COUNT ? SOON[at] : "";
 		if (*soon) font->draw_mid(ren, soon, mid.x + mid.w * 0.5f, mid.y + 0.45f * mid.h, h * 0.8f, MUTED);
 	}
 
-	// The OPTIONS page: the thirteen settings, then the doors, then INITIALIZE.
+	// A screen that has lines: OPTIONS' five doors, or GAME ASSIGNMENTS' thirteen settings and its button.
 	//
 	// A PAGE TOO LONG LOOKS FOR ROOM BEFORE IT SHRINKS, which is August's rule and was paid for there: raise
 	// the band first and only then let the text give, "sinon toute augmentation de la police était annulée par
 	// le resserrement -- deux effets qui s'annulent exactement, et une correction qui semble ne rien faire".
-	// So the band is fixed here and the pitch falls out of it; the cap follows the pitch, capped at the
-	// Dreamcast's own so a short page never grows past the disc.
-	void render_options(SDL_Renderer *ren, const SDL_FRect &mid, m3::Model3 &board)
+	// So the band is the room available, the pitch is as much of it as the lines want up to the Dreamcast's
+	// own, and the cap follows the pitch, never past the disc's. A SHORT PAGE DOES NOT STRETCH: it keeps the
+	// disc's pitch and sits in the middle of the band, which is why both screens read as the same menu.
+	void render_lines(SDL_Renderer *ren, const SDL_FRect &mid, m3::Model3 &board)
 	{
-		const std::vector<line> &P = page();
+		const std::vector<line> &P = page(at);
 		float slots = 0;
 		for (size_t i = 0; i < P.size(); i++) slots += (i ? 1.0f : 0.0f) + P[i].gap;
-		const float pitch = (ROWS_BOTTOM - ROWS_TOP) * mid.h / (slots > 0 ? slots : 1);
+		const float band = (ROWS_BOTTOM - ROWS_TOP) * mid.h;
+		const float pitch = std::min(DISC_PITCH * mid.h, band / (slots > 0 ? slots : 1));
 		const float cap = std::min(ROW_CAP * mid.h, pitch * 0.50f);
 		const float h = cap / fv2_texte::CAP;
 
-		float ink_top = mid.y + ROWS_TOP * mid.h;
+		float ink_top = mid.y + ROWS_TOP * mid.h + (band - pitch * slots) * 0.5f;
 		for (size_t i = 0; i < P.size(); i++) {
 			const line &l = P[i];
 			ink_top += (i ? pitch : 0) + l.gap * pitch;
 			const float y = ink_top - fv2_texte::CAP_TOP * h;   // the cell's top, the ink starting at 16/64
-			const bool on = int(i) == sel;
+			const bool on = int(i) == sel();
 			if (l.what == line::BUTTON) {
 				// INITIALIZE is a painted label, not text, and it is the game's own idea: 0x00020F74 puts the
 				// factory values back and 0x00021008 writes them to the backup. This does the same by the table.
