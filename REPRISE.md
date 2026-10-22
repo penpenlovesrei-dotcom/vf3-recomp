@@ -5,6 +5,28 @@
 Le journal du jour est en bas. Ce qui suit est l'état, pas le récit.
 
 
+## La règle qui prime, posée le 2026-10-22
+
+**Pour toute question en « pourquoi le jeu fait ça », ouvrir `docs/fv2-flux-de-match.md` AVANT de mesurer.**
+C'est la décompilation du programme arcade : 759 lignes, les 81 gestionnaires d'état nommés par les tables du
+jeu, les variables sous les noms de Sega. On ne mesure qu'ensuite, pour confirmer, ou pour ce qu'il ne couvre
+pas — il dit lui-même ses limites (sa section 7) et marque ce qui a été **lu sans être vu tourner**.
+
+Pourquoi cette règle existe : la soirée du 21 a été passée à retrouver par différence de RAM ce que ce
+document nomme déjà.
+
+| cherché à tâtons le 21 | déjà écrit dans le flux |
+|---|---|
+| « le bloc `0x00700500` dessine la démo » | `[0x0007511C] → 0x00700500` : **fighter 0** ; `0x00700200` = `CPU0`, `0x00700300` = `CPU1`, 23 créneaux |
+| la routine `0x0003F874` vue sur l'écran titre | `FUN_0003F874` **est la tâche du combattant**, entrée par le `blrl` de l'ordonnanceur (`0x000391AC`) |
+| « `0x0000B7C0` met fin au replay » | `fv2_adv_ADV_REPLAY_DSP`, **`0x0000B764`, 100 octets** — l'adresse tombe dedans |
+| — | `fv2_adv_ADV_DEMO_DSP` demande le sous-mode 2 **quand `ADV_INFO SUBMODE` (`0x00580E08`) atteint 4** |
+
+`SupermodelSrc\Docs\MenuConsole.md` reste la source des **leviers** — chacun y a été mesuré en jouant. Le flux
+dit **pourquoi** ce sont les leviers, et jusqu'où ils portent. C'est l'absence de ce « jusqu'où » qui a rendu
+le levier du séquenceur inerte en replay sans qu'on puisse le prévoir.
+
+
 ## Ce qui marche aujourd'hui
 
 Tout est derrière un lanceur `.cmd` à la racine, et tous épinglent `VF3_DATA` sur le dossier du projet.
