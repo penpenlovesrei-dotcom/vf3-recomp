@@ -554,3 +554,65 @@ Deux choses se lisent en passant :
   ses cinq dernières images, pas des secondes.
 - **`ROUND TIME VS` est resté à 45**, la valeur de la sauvegarde que rien n'a touchée. L'écriture ne déborde
   pas sur le réglage voisin.
+
+## VS DIAGRAM : les vrais chiffres
+
+Le tableau était construit et lisait déjà la sauvegarde, mais sur rien : dans une sauvegarde où aucun match
+n'a été mené à terme, tous les compteurs sont à zéro, et un tableau de zéros ne dit pas si on lit au bon
+endroit. Quatre matchs joués en partie cachée, chacun contre la sauvegarde que le précédent avait écrite,
+l'ont rempli — et ont corrigé la description au passage.
+
+### Un match ARCADE n'écrit rien de tout ça
+
+Le round de vérification de la section précédente a bougé **quatorze octets**, tous ailleurs. Le tableau est
+un relevé de **versus** : c'est un versus qu'il faut. Les routes sont dans `tools/scripts/` :
+`fv2-console-vs-diagram.txt` (personne ne bouge), `fv2-console-vs-decide.txt` (le joueur 1 frappe sans
+arrêt), `fv2-console-vs-juge.txt` (il frappe huit secondes puis laisse le chrono finir) et
+`fv2-console-vs-sko.txt` (poing et pied alternés). Toutes passent par `ROUND TIME VS` au minimum, pour que les
+rounds expirent vite.
+
+### Ce que chaque match a déplacé
+
+| match | ce qui s'est passé | ce qui a bougé dans la table |
+|---|---|---|
+| 1 | quatre rounds, personne ne bouge → quatre nuls | `FIGHT` 0 → 4 et `0x020` 0 → 4, **dans les deux blocs** |
+| 2 | trois rounds décidés au KO | `FIGHT` 4 → 7, `LOSE` 0 → 3 d'un côté, `WIN` 0 → 3 de l'autre, `KO` 0 → 3 ; **`0x020` reste à 4** |
+| 3 | frappes puis chrono, à santé inégale | `FIGHT` 7 → 10, un `WIN` et un `LOSE`, **`0x018` 0 → 1**, `0x020` 4 → 6 |
+| 4 | poing et pied alternés | `FIGHT` 10 → 13, `LOSE`/`WIN` +3, `KO` 3 → 6 ; **rien à `0x008` ni `0x010`** |
+
+Cinq octets bougent par match, jamais un de plus : bloc 10 à `0x4096` et bloc 11 à `0x423E`, chacun portant
+l'autre comme adversaire, et chaque paire symétrique — le `LOSE` de CHARLIE contre EMI en face du `WIN` d'EMI
+contre CHARLIE. La base, le pas et la case par adversaire tombent juste **en même temps**, ce qu'aucun
+compteur isolé n'aurait pu montrer.
+
+### Trois choses apprises
+
+**`0x020` est DRAW**, que la note d'août donnait pour nulle part. Le match 1 l'a mis à 4 avec quatre nuls ;
+le match 2 l'a laissé à 4 en ajoutant trois combats décidés — un total de combats aurait suivi `FIGHT`
+jusqu'à 7. Et il s'accorde avec `FIGHT - WIN - LOSE` sur chaque ligne mesurée : 10 − 0 − 4 = 6, 10 − 4 − 0 = 6.
+C'est le chiffre stocké qui est lu maintenant, étant le compte du jeu lui-même plutôt qu'une soustraction
+entre trois de ses autres.
+
+**Le codage est contigu**, pas espacé comme celui des réglages : deux octets gros-boutiens en `+0` et `+1`
+d'une case de huit, donc six octets sur huit inutilisés. Un compte de 4 n'a bougé que l'octet de `+1`.
+
+**SKO 1 et SKO 2 sont presque trouvés, et restent vides.** Les scalaires vont de huit en huit : `0x000` KO,
+`0x008`, `0x010`, `0x018` JUDGE, `0x020` DRAW. Trois des cinq sont mesurés, ce qui fixe le pas, et l'écran
+nomme exactement cinq compteurs de cette espèce — KO, SKO 1, SKO 2, JUDGE — dans cet ordre. Les deux trous
+sont donc presque sûrement SKO 1 à `0x008` et SKO 2 à `0x010`. **Presque n'est pas mesuré** : le quatrième
+match est allé les chercher et n'a produit que des KO ordinaires. Il faut un vrai Super K.O. avant de
+remplir ces deux cases ; d'ici là une case vide dit ce qu'on sait, un zéro prétendrait savoir.
+
+### Ce que la page montre
+
+Photographiée sur la sauvegarde des trois premiers matchs (F12, qui traverse maintenant les surfaces de la
+console) :
+
+```
+CHARLIE   FIGHT 10   WIN 0   LOSE 4   DRAW 6   KO 0   JUDGE 0
+EMI       FIGHT 10   WIN 4   LOSE 0   DRAW 6   KO 3   JUDGE 1
+TOTAL           20         4        4       12      3         1
+```
+
+Les lignes tombent sur les bons personnages, et le total est la somme des colonnes — chaque combat y compte
+deux fois, une par participant, puisque les deux blocs l'enregistrent.

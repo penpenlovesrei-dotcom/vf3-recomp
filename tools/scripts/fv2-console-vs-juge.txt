@@ -1,0 +1,58 @@
+# Fighting Vipers 2, mode console : un versus qui va AU JUGE, le dernier champ du tableau a confirmer.
+#
+# Le joueur 1 frappe pendant huit secondes puis s arrete. Le round expire donc a sante inegale, ce qui
+# est exactement le cas ou le jeu tranche au juge au lieu de compter un KO ou un nul.
+# ROUND TIME VS est deja au minimum dans la sauvegarde de ce dossier : la liste suffit.
+1200 press p1.start
+1500 press p1.punch
+1520 press p2.punch
+1750 press p1.punch
+1760 press p1.punch
+1770 press p1.punch
+1780 press p1.punch
+1790 press p1.punch
+1800 press p1.punch
+1810 press p1.punch
+1820 press p1.punch
+1830 press p1.punch
+1840 press p1.punch
+1850 press p1.punch
+1860 press p1.punch
+1870 press p1.punch
+1880 press p1.punch
+1890 press p1.punch
+1900 press p1.punch
+1910 press p1.punch
+1920 press p1.punch
+1930 press p1.punch
+1940 press p1.punch
+1950 press p1.punch
+1960 press p1.punch
+1970 press p1.punch
+1980 press p1.punch
+1990 press p1.punch
+2000 press p1.punch
+2010 press p1.punch
+2020 press p1.punch
+2030 press p1.punch
+2040 press p1.punch
+2050 press p1.punch
+2060 press p1.punch
+2070 press p1.punch
+2080 press p1.punch
+2090 press p1.punch
+2100 press p1.punch
+2110 press p1.punch
+2120 press p1.punch
+2130 press p1.punch
+2140 press p1.punch
+2150 press p1.punch
+2160 press p1.punch
+2170 press p1.punch
+2180 press p1.punch
+2190 press p1.punch
+2200 press p1.punch
+2210 press p1.punch
+2220 press p1.punch
+2230 press p1.punch
+2240 press p1.punch

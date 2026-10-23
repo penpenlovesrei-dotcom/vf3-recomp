@@ -452,29 +452,62 @@ private:
 
 	// ---- STATS: the VS DIAGRAM, drawn rather than the game's own screen opened ----
 	//
-	// WHERE THE COUNTERS LIVE. They are not in RAM: the game keeps them in the backup, in the same spaced
-	// coding as the settings -- one 16-bit big-endian value every four bytes, three bytes in four wasted. The
-	// layout is August's §12, measured there and not re-derived here:
+	// WHERE THE COUNTERS LIVE. They are not in RAM: the game keeps them in the backup, each counter a 16-bit
+	// big-endian value in a slot of eight bytes, so six of the eight go unused (the coding was measured here,
+	// not assumed from the settings' -- see below). The layout is August's §12:
 	//
 	//     block(character) = VS_BASE + n * 0x1A8
 	//       + 0x000               KO
 	//       + 0x018               JUDGE
+	//       + 0x020               DRAW       (measured here; see below)
 	//       + 0x028 + opponent*8  FIGHT      (sixteen opponents, not fourteen: the row is 0x80 wide)
 	//       + 0x0A8 + opponent*8  WIN
 	//       + 0x128 + opponent*8  LOSE
 	//
-	// DRAW is not stored anywhere: it is FIGHT - WIN - LOSE, and the table's figures are the sum of each row,
-	// worked out as it is drawn. That is why looking for them in memory found nothing.
+	// AND DRAW IS STORED AFTER ALL, at 0x020, which August's note had as nowhere. Four versus matches played
+	// through, hidden, each against the backup the one before it wrote, said so. The first three:
+	//
+	//   * four rounds with neither player moving -- all draws -- put 4 at 0x020 in BOTH blocks, and nothing
+	//     at WIN or LOSE;
+	//   * three decided rounds then moved FIGHT 4 -> 7, LOSE 0 -> 3 in one block and WIN 0 -> 3 in the other,
+	//     KO 0 -> 3 for the winner, and LEFT 0x020 AT 4. A fight total would have followed FIGHT to 7;
+	//   * a third match, struck for eight seconds and then left to the clock, moved FIGHT 7 -> 10, one WIN and
+	//     one LOSE, 0x018 from 0 to 1 -- that is JUDGE, and the only round it could have come from is the one
+	//     that ran out at unequal health -- and 0x020 from 4 to 6, which is the two rounds that ended level.
+	//
+	// So 0x020 is the draws, and it agrees with FIGHT - WIN - LOSE on every row measured (10 - 0 - 4 = 6, and
+	// 10 - 4 - 0 = 6). The stored figure is what is read here, since it is the game's own count rather than a
+	// sum of three of its others.
+	//
+	// WHERE SKO 1 AND SKO 2 MUST BE, though they are still drawn blank. The scalars sit at a pitch of eight:
+	// 0x000 KO, 0x008, 0x010, 0x018 JUDGE, 0x020 DRAW. Three of those five are measured, which fixes the
+	// pitch, and the screen names exactly five counters of this kind -- KO, SKO 1, SKO 2, JUDGE -- in that
+	// order, with DRAW beside them. So the two gaps are almost certainly SKO 1 at 0x008 and SKO 2 at 0x010.
+	//
+	// ALMOST IS NOT MEASURED, so nothing is drawn there. A Super K.O. has to be played before either can be
+	// claimed, and the fourth match went looking: punch and kick alternating every eight frames for ten
+	// thousand frames gave three more fights and three more ORDINARY knockouts, and moved nothing at 0x008 or
+	// 0x010. An empty cell says that; a zero would claim it.
 	//
 	// ITS BASE HAD TO BE MOVED, and this is the one number not taken from August. Its offsets are into ITS
 	// NVRAM dump, not this port's `backup`. The two are related by a constant, found from the fingerprint it
 	// prints: at its 0x188 it reads 210 210 120 120 69 180, which is the GAME ASSIGNMENTS block, and that same
 	// run of six sits at 0x42 here. So ours is theirs less 0x146, which puts the first character's block at
-	// 0x3006 -- a few bytes into the backup's third page, which is exactly where the third block starts. Two
-	// independent checks agreeing. NOT CONFIRMED AGAINST LIVE FIGURES, though, because the counters are all
-	// zero in a backup where no match has ever been played through.
+	// 0x3006 -- a few bytes into the backup's third page, which is exactly where the third block starts.
+	//
+	// AND IT IS CONFIRMED NOW, on figures a played match wrote (docs/fv2-console-options.md keeps the runs).
+	// A versus between CHARLIE and EMI moved five bytes and no others: block 10 at 0x4096 and block 11 at
+	// 0x423E, each carrying the other as its opponent, and each pair symmetric -- CHARLIE's LOSE against EMI
+	// beside EMI's WIN against CHARLIE. That is the base, the stride and the per-opponent slot all landing at
+	// once, which no single counter could have shown.
+	//
+	// The 16-bit value is two CONTIGUOUS bytes, big-endian, at the slot's +0 and +1: a count of 4 moved the
+	// byte at +1 and left +0 alone. Opponents are eight bytes apart, so six of the eight go unused. An ARCADE
+	// match writes none of this -- the verification round moved fourteen bytes, all of them elsewhere -- which
+	// is the sense in which the screen is a VERSUS diagram.
 	static constexpr uint32_t VS_BASE = 0x3006, VS_STRIDE = 0x1A8;
-	static constexpr uint32_t VS_KO = 0x000, VS_JUDGE = 0x018, VS_FIGHT = 0x028, VS_WIN = 0x0A8, VS_LOSE = 0x128;
+	static constexpr uint32_t VS_KO = 0x000, VS_JUDGE = 0x018, VS_DRAW = 0x020;
+	static constexpr uint32_t VS_FIGHT = 0x028, VS_WIN = 0x0A8, VS_LOSE = 0x128;
 	// Which block holds which of the screen's rows. August's own table, every line of it measured by playing.
 	static const int *vs_block_of_row()
 	{
@@ -502,7 +535,7 @@ private:
 			r.win += u16(base + VS_WIN + uint32_t(adv) * 8);
 			r.lose += u16(base + VS_LOSE + uint32_t(adv) * 8);
 		}
-		r.draw = r.fight - r.win - r.lose;
+		r.draw = u16(base + VS_DRAW);
 		r.ko = u16(base + VS_KO);
 		r.judge = u16(base + VS_JUDGE);
 		return r;

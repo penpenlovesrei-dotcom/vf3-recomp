@@ -1,0 +1,17 @@
+# Fighting Vipers 2, mode console : un match V.S. mene jusqu'au bout, pour que les compteurs du VS DIAGRAM
+# bougent et qu'on puisse enfin les voir la ou la page les lit.
+#
+# Un match ARCADE ne les touche pas : le round joue en verification n'a bouge que quatorze octets, tous
+# ailleurs. Le tableau est un releve de VERSUS, donc c'est un versus qu'il faut.
+#
+# Les images comptees sont celles du JEU, donc le gel de la page ne decale rien :
+#   1200  Start sur l'ecran titre  -> la liste s'ouvre, le jeu gele
+#         VF3_KEYS_S passe par OPTIONS pour mettre ROUND TIME VS au minimum (les rounds doivent expirer vite,
+#         les deux joueurs restant immobiles) puis ressort de la page
+#   1260  Start, le jeu ayant repris -> la liste s'ouvre a nouveau ; VF3_KEYS_S descend d'un cran et prend V.S.
+#   1500  Poing du joueur 1  -> son combattant
+#   1520  Poing du joueur 2  -> le sien
+1200 press p1.start
+1260 press p1.start
+1500 press p1.punch
+1520 press p2.punch

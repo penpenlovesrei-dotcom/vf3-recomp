@@ -2306,6 +2306,19 @@ int main(int argc, char **argv)
 	// Fighter 3 (src/host/fv2_options.h, docs/fv2-console-options.md).
 	fv2_texte console_font;
 	fv2_options options;
+	// The console's surfaces, over the picture the game made (and under this port's menu, if that is open as
+	// well): mid is the game's own 4:3 screen, which is what their placement was measured against. ONE place
+	// draws them, because F12 photographs the window by composing it again -- and a photograph that left the
+	// page out would not be a photograph of what is on screen.
+	auto draw_console = [&](m3::Model3 &b) {
+		SDL_FRect all, mid;
+		if (!modes.shown && !options.shown) return;
+		picture_rect(all, mid);
+		if (modes.shown) modes.render(ren, all, mid);
+		// The OPTIONS page's backdrop covers the 4:3 screen and NOTHING IS DIMMED: the Dreamcast does not dim
+		// this one, measured (docs/fv2-dreamcast-menus.md section 3bis).
+		if (options.shown) options.render(ren, mid, b);
+	};
 	// What was playing under the console's surface, and whether a mode was chosen on the way out (above).
 	int music_held = -1;
 	bool music_mode_chosen = false;
@@ -3062,9 +3075,16 @@ int main(int argc, char **argv)
 				if (!hidden && SDL_GetKeyboardFocus() != win) SDL_RaiseWindow(win);   // (the move to a new Space can lose it)
 			}
 			if (menu.handle_event(e)) continue;
+			// Two of this port's own keys reach past the console's surfaces: Escape, so its menu is always
+			// available, and F12, so a page can be photographed like anything else on screen. Everything
+			// else belongs to the surface while it is up.
+			auto ours = [](const SDL_Event &ev) {
+				return ev.type == SDL_EVENT_KEY_DOWN
+					   && (ev.key.scancode == SDL_SCANCODE_ESCAPE || ev.key.scancode == SDL_SCANCODE_F12);
+			};
 			// The console's list of modes, while it is up: its own surface takes the keys and the pad, and
 			// Escape is left alone so this port's menu can always be reached.
-			if (modes.shown && !(e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE)) {
+			if (modes.shown && !ours(e)) {
 				const int chose = modes.handle_event(e, cfg.ctl);
 				if (chose >= 0) choose_mode(chose);
 				else if (chose == fv2_mode_list::CANCELLED) {
@@ -3078,8 +3098,8 @@ int main(int argc, char **argv)
 				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
 					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
 			}
-			// The OPTIONS page, the same way, and Escape left alone for the same reason.
-			if (options.shown && !(e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE)) {
+			// The OPTIONS page, the same way, and the same two keys left alone for the same reasons.
+			if (options.shown && !ours(e)) {
 				// This page reads and writes the game's own RAM, so not while a frame runs alongside. The page
 				// freezes the game, but the frame that was in flight when it opened may not have finished.
 				if (game.emu_thread.joinable()) game.job_wait();
@@ -3123,6 +3143,7 @@ int main(int argc, char **argv)
 					picture_rect(all, mid);
 					const SDL_Rect area = { int(std::lround(all.x)), int(std::lround(all.y)), int(std::lround(all.w)), int(std::lround(all.h)) };
 					compose(false);
+					draw_console(board);
 					read_window(dir + name, &area);
 					fprintf(stderr, "screenshot %s\n", (dir + name).c_str());
 					break;
@@ -3615,20 +3636,7 @@ int main(int argc, char **argv)
 			}
 		}
 		compose();
-		// the console's list of modes, over the picture the game made (and under this port's menu, if that is
-		// open as well): mid is the game's own 4:3 screen, which is what its placement was measured against
-		if (modes.shown) {
-			SDL_FRect list_all, list_mid;
-			picture_rect(list_all, list_mid);
-			modes.render(ren, list_all, list_mid);
-		}
-		// the OPTIONS page, over that same picture. Its backdrop covers the 4:3 screen and NOTHING IS DIMMED:
-		// the Dreamcast does not dim this one, measured (docs/fv2-dreamcast-menus.md section 3bis).
-		if (options.shown) {
-			SDL_FRect opt_all, opt_mid;
-			picture_rect(opt_all, opt_mid);
-			options.render(ren, opt_mid, board);
-		}
+		draw_console(board);
 		// the frame rate: the pictures shown a second, over the game (not the menu or a pause, where no new
 		// pictures are made: hidden there, as VF1's and VF2's)
 		const bool fps_shown = cfg.show_fps && !stopped;
