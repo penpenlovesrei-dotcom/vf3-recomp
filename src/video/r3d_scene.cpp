@@ -155,9 +155,14 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 	// quand le decor courant est le numero <n>.
 	//
 	// Pourquoi ajouter. Le decor d'entrainement existe dans la borne -- nom, camera, brouillard, arene, et les
-	// combattants tiennent debout dessus -- mais le creneau 3 de ses huit identifiants de ressource, celui de la
-	// geometrie propre, vaut zero. Il ne manque donc que le ring. On garde tout le reste du jeu et on ne lui
-	// ajoute que ce qui lui manque.
+	// combattants tiennent debout dessus -- mais sa geometrie propre n'est nulle part : le combat force sur TEST
+	// donne les combattants, leurs ombres et rien d'autre. Il ne manque donc que le ring. On garde tout le reste
+	// du jeu et on ne lui ajoute que ce qui lui manque.
+	//
+	// NE PAS REECRIRE « le creneau 3 de ses huit identifiants de ressource ». Ces huit mots sont la bande-son du
+	// decor, pas sa geometrie : le repartiteur Dreamcast 0x8C047C9E lit le BAS OCTET de l'identifiant et ne
+	// connait que 0xA9 (effets), 0xF0 (musique) et 0xFF. Le creneau 3 de TEST y vaut 0x001800F0 -- musique,
+	// index 24. Ou un decor declare sa geometrie reste une question ouverte.
 	//
 	// Comment. Nos modeles sont convertis avec `--cam identite`, donc leur matrice est modele -> MONDE. Le
 	// viewport du jeu porte dans `root` la matrice de sa camera, monde -> vue. La composition est donc

@@ -6,7 +6,7 @@ rem dit si ce gel vient de nous ou de la borne : VF3_STAGE=0 force le decor,
 rem mais VF3_SCENE n'est pas pose, donc rien n'est injecte.
 rem
 rem   si ca gele quand meme  -> c'est la borne, sur un decor dont la geometrie
-rem                             est vide (le creneau 3 de TEST vaut zero)
+rem                             n'existe pas dans la borne
 rem   si ca ne gele pas      -> c'est notre injection, et on cherche chez nous
 setlocal
 set PATH=C:\msys64\mingw64\bin;%PATH%

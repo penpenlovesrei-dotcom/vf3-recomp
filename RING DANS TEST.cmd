@@ -12,9 +12,13 @@ rem                     decor courant est 0. Le jeu garde ses combattants, ses
 rem                     ombres et son interface ; on ne lui ajoute que ce qui
 rem                     lui manque.
 rem
-rem Pourquoi ajouter plutot que remplacer : la borne porte tout TEST sauf le
-rem creneau 3 de ses huit identifiants de ressource, celui de la geometrie
-rem propre, qui vaut zero. Il ne manque que le ring.
+rem Pourquoi ajouter plutot que remplacer : la borne porte tout TEST -- nom,
+rem camera, brouillard, arene, et les combattants tiennent debout -- mais pas sa
+rem geometrie. Il ne manque que le ring.
+rem
+rem (Les huit identifiants de ressource d'un decor sont sa BANDE-SON, pas sa
+rem geometrie : le repartiteur ne connait que musique et effets. Ou un decor
+rem declare sa geometrie reste a trouver.)
 rem
 rem --pc : mode PC -- pas d'ecran d'amorce, acces libre, pas de menu console.
 rem
