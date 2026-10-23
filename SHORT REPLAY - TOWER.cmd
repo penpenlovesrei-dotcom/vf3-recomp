@@ -1,15 +1,30 @@
 @echo off
 rem Fighting Vipers 2, ARBRE ISOLE : le SHORT REPLAY sur TOWER -- un decor
-rem d'origine complet, SANS la moindre injection. C'est le temoin.
+rem d'origine complet, SANS la moindre injection -- et AVEC le levier, pour le
+rem voir sans avoir a casser d'armure.
 rem
-rem A QUOI CA SERT. Si les angles successifs sortent ici, la chaine est bonne et
-rem il ne reste qu'a les retrouver sur TEST avec le ring. Si elles n'y sortent
-rem pas, c'est la chaine qu'il faut reprendre, pas l'injection.
+rem CE QUE VF3_SREP FAIT. Deux ecritures, et les deux sont necessaires :
 rem
-rem Les trois modes sont 7 S_REP_INIT, 8 S_REPLAY, 9 SR2GAME_INIT -- noms de
-rem Sega, en clair dans le binaire. VF3_SREP neutralise, en 0x0001EBE8, le test
-rem du bit 0x00800000 que le jeu exige dans le mot de proprietes du coup, donc
-rem n'importe quel coup tenu dix images arme le replay.
+rem   0x00114F50 = 1        une DONNEE. L'etape 0 de la tache du replay
+rem                         (0x0001EAE4) n'atteint la branche du bit 0x00800000
+rem                         que si la cause de manche vaut 3 (super KO) OU si
+rem                         cet octet vaut 1.
+rem   0001EBE8  beq -> nop  pour que n'importe quel coup y passe, au lieu des
+rem                         seuls coups que Sega a marques dans sa table.
+rem
+rem Poser le nop seul ne faisait rien du tout : la branche n'etait jamais
+rem atteinte en combat. C'est l'erreur qui a coute un essai.
+rem
+rem Avec ce levier, tout coup tenu [0x00114F44] = dix images arme le replay.
+rem
+rem EFFET DE BORD, dit clairement : tant que le levier est la, l'etape 0 ne
+rem passe plus par le chemin du combat courant, donc CASSER UNE ARMURE N'ARME
+rem PLUS le replay. C'est l'un ou l'autre. Pour la voie fidele au jeu -- casser
+rem une piece d'armure, sans aucun patch -- prends
+rem "SHORT REPLAY - RING DANS TEST.cmd".
+rem
+rem Les trois modes sont 7 S_REP_INIT, 8 S_REPLAY, 9 SR2GAME_INIT : noms de
+rem Sega, en clair dans le binaire.
 rem
 rem --pc : mode PC -- pas d'ecran d'amorce, acces libre, pas de menu console.
 setlocal
@@ -27,7 +42,8 @@ if not exist "build\bin\vf3.exe" (
 )
 del log.txt 2>nul
 echo Decor force : index 10 = TOWER, d'origine, sans injection.
-echo Tout coup tenu dix images arme le short replay.
+echo Levier VF3_SREP : tout coup tenu dix images arme le short replay.
+echo (Et du coup, casser une armure ne l'arme plus -- voir le commentaire.)
 echo.
 echo START, lance un combat, et frappe. Pas besoin de KO.
 echo.

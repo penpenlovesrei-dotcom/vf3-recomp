@@ -1934,29 +1934,65 @@ void Model3::ko_spectaculaire()
 //   0x0001F2F4   mode 9 ; si la cause de manche [0x00581452] n'est pas 3 (super KO), REARME les
 //                quatre taches et le combat reprend.
 //
-// Donc 0x00800000 n'est pas un etat calcule : Sega marque dans la table des coups ceux qui meritent
-// un replay -- les gros projetes qui envoient dans la paroi. Ce levier neutralise le test de ce
-// bit, et tout coup tenu dix images arme le replay :
+// CE QUI L'ARME VRAIMENT, ET IL N'Y A RIEN A PATCHER POUR CA. L'etape 0 (0x0001EAE4) commence par
+// un aiguillage, et c'est lui que j'avais manque :
 //
-//   0001EBE8   beq +0x1D8    le bit 0x00800000 manque   ->  nop
+//   0001EAE4   r3 = [0x00581452]        la CAUSE de fin de manche
+//   0001EAF0   beq 3 -> 0x0001EB84      super KO : la branche du bit 0x00800000
+//   0001EAF8   r3 = [0x00114F50]
+//   0001EB00   beq 1 -> 0x0001EB84      ou ce reglage vaut 1 : meme branche
+//   0001EB04   sinon, le chemin du combat courant
 //
-// Une seule instruction, et une seule : on LAISSE le test du bit 0x00002000 en 0x0001EBE0, qui
-// interdit le replay sur certains coups. Le neutraliser aussi armerait le replay sur des coups ou
-// le jeu le refuse exprès, et on ne saurait plus ce qu'on regarde.
+// Donc le test du bit 0x00800000 n'est atteint que sur un super KO, ou si l'octet de reglage
+// 0x00114F50 vaut 1. En combat normal on ne passe jamais la. Le chemin du combat courant est juste
+// en dessous :
 //
-// En RAM, et relu avant d'ecrire, comme partout ici : le programme est un gzip que l'amorce
-// deballe.
+//   0001EB3C   r4 = [r12 + 0x64] ; andi. r0, r4, 0x30 ; bne -> 0x0001EC40 (l'armement, sans seuil)
+//   0001EB6C   r4 = [r12 + 0x60] ; andi. r0, r4, 0x30 ; bne -> 0x0001EC40
+//
+// et ces deux mots, c'est l'enregistreur 0x0001E708 qui les remplit :
+//
+//   [r12+0x60] |= [J1 + 0xF44] & 0x30
+//   [r12+0x64] |= [J2 + 0xF44] & 0x30
+//
+// +0xF44 est le mot que le menu de test du jeu nomme "armor_flag" (son record est en 0x0011C06C,
+// champ +0x0C = 0xF44), et 0x30 ses deux bits de piece brisee. Le short replay part donc A
+// L'INSTANT OU UNE PIECE D'ARMURE CASSE, sans seuil et sans fin de manche. Frederic l'avait dit
+// avant moi : « ce doit etre aussi la meme camera que lors de la destruction des armures ».
+//
+// CE QUE CE LEVIER FAIT, DU COUP. Il sert a voir la camera sans casser d'armure. Deux ecritures,
+// et les deux sont necessaires :
+//
+//   0x00114F50 = 1   une DONNEE, pour que l'aiguillage prenne la branche du bit 0x00800000
+//   0001EBE8  beq +0x1D8 -> nop   pour que n'importe quel coup y passe, au lieu des seuls coups
+//                                 que Sega a marques dans sa table
+//
+// Poser le nop seul ne faisait rien du tout -- mesure faite, et c'est ce qui a fait perdre un
+// essai a Frederic. On LAISSE en place le test du bit 0x00002000 (0x0001EBE0), qui interdit le
+// replay sur certains coups.
+//
+// EFFET DE BORD, dit clairement : avec 0x00114F50 a 1, l'etape 0 ne passe plus par le chemin du
+// combat courant, donc la cassure d'armure n'arme plus le replay tant que le levier est la. C'est
+// l'un ou l'autre, pas les deux.
+//
+// Le nop est en RAM et relu avant d'etre ecrit, comme partout ici : le programme est un gzip que
+// l'amorce deballe. L'octet de reglage, lui, est une donnee que le jeu reecrit, donc on le repose
+// a chaque image.
 void Model3::short_replay()
 {
 	if (set != "fvipers2" || ram.size() < 0x800000) return;
 	if (!getenv("VF3_SREP")) return;
+	// La donnee, a chaque image.
+	constexpr uint32_t REGLAGE = 0x00114F50;
+	if ((REGLAGE ^ 3) < ram.size()) ram[REGLAGE ^ 3] = 1;
+	// Le nop, une fois.
 	constexpr uint32_t ECHAPPE = 0x0001EBE8;
 	constexpr uint32_t SEGA = 0x418201D8u;   // beq +0x1d8
 	if (word(ram, ECHAPPE) != SEGA) return;
 	word(ram, ECHAPPE) = 0x60000000u;   // nop
 	cpu.ram_written(ECHAPPE);            // (le code natif du recompilateur vient de ce qui etait la)
-	fprintf(stderr, "VF3_SREP : le test du bit 0x00800000 neutralise en 0x0001EBE8 --"
-	                " tout coup arme le short replay (modes 7/8/9)\n");
+	fprintf(stderr, "VF3_SREP : [0x00114F50] = 1 et le test du bit 0x00800000 neutralise en"
+	                " 0x0001EBE8 -- tout coup arme le short replay (modes 7/8/9)\n");
 }
 
 // VF3_SKO_LOG=1 : dire, quand ca change, l'etat de la chaine de la cinematique.
