@@ -1569,36 +1569,32 @@ int Model3::force_stage(int n)
 		}
 	}
 
-	// L'ARENE DE TEST, prise chez TOWER parce que c'est litteralement la meme.
+	// LE CHAMP +0x24 N'EST PAS UNE ARENE : C'EST LA LISTE D'AFFICHAGE DES OBJETS DU DECOR.
 	//
-	// Le champ +0x24 d'un decor pointe une structure d'arene : son +0x00 mene a un en-tete de compteurs en
-	// demi-mots, et ses enregistrements de 0x20 octets commencent en +0x18 (0x00027D2C : `lhz r6,0(r26)`,
-	// `addi r25,r3,0x18`, `li r17,0x20`). Lues des deux cotes :
+	// Ce bloc repointait le +0x24 de TEST sur celui de TOWER, en croyant lui donner une arene de
+	// collision. C'etait faux, et le repointage est retire le 23 octobre 2026. La boucle de
+	// 0x00027D2C se lit ainsi :
 	//
-	//     DC    TEST   enregistrements  0.050 -0.050  1.183 -1.083 ...   compteurs  5 0 9 0 9 0 9 0
-	//     borne TOWER  enregistrements  0.050 -0.050  1.183 -1.083 ...   compteurs  1678 0 1676 0 ...
-	//     borne TEST   enregistrements  0.010  0.020  0.030  0.040 ...   compteurs  160 11784 160 11788
+	//     r3  = [fiche + 0x24]        le bloc d'objets
+	//     r26 = [r3 + 0]              la liste : 32 paires de demi-mots
+	//     r25 = r3 + 0x18             les matrices, 0x60 octets = douze flottants chacune
+	//     lhz r6,0(r26)  -> sth r6,0xE(r16)     l'identifiant de l'objet
+	//     lhz r6,2(r26)  -> x 0x60              l'index de sa matrice
 	//
-	// Les enregistrements de TEST sur Dreamcast sont identiques a ceux de TOWER sur la borne, sur 120
-	// flottants exactement -- 480 octets, et les deux ne divergent qu'au debut de la structure suivante, les
-	// structures etant espacees de 0x1F8 = 504 et 0x18 + 480 faisant 504.
+	// Les « enregistrements de 120 flottants » sont donc DIX MATRICES 3x4, pas des triplets de plans :
+	// 0,050 -0,050 1,183 -1,083 sont des elements de matrice. Et les listes se lisent en clair :
 	//
-	// Ceux de TEST sur la borne sont une rampe 0,01 0,02 0,03, et ses compteurs valent 160 et 11784 -- soit
-	// 0x00A0 et 0x2E08 : ses propres identifiants de ressource relus comme des demi-mots. Le pointeur est donc
-	// du remplissage lui aussi. Recopier les seuls enregistrements ne suffisait pas : l'en-tete restait faux,
-	// et la hitbox ne bougeait pas.
+	//     TOWER     068E 068C 068B 068D puis 068B 068D ... quatre objets distincts
+	//     WESTERN   0626 x 32
+	//     DAM       0680 x 32
+	//     TEST      00A0 00A0 00A0 0000 ...  sa propre liste de SONS relue comme des objets
 	//
-	// On fait donc pointer tout le +0x24 sur la structure de TOWER. Ses flottants +0x04..+0x14 sont de toute
-	// facon identiques pour tous les decors et sur les deux machines.
-	if (n == 0) {
-		constexpr uint32_t CHAMP = 0x0007516C + 0x24;
-		constexpr uint32_t VIDE = 0x000761B0;   // la structure factice de TEST
-		constexpr uint32_t TOUR = 0x00077560;   // celle de TOWER
-		if (word(ram, CHAMP) == VIDE) {
-			word(ram, CHAMP) = TOUR;
-			fprintf(stderr, "decor TEST : arene prise chez TOWER (%#x), comme sur Dreamcast\n", TOUR);
-		}
-	}
+	// Repointer TEST sur TOWER ne corrigeait donc aucune collision : ca lui faisait DESSINER les
+	// trente-deux objets de TOWER. L'enceinte, elle, est le carre +-fiche+0x30, et elle etait deja
+	// juste -- voir le bloc plus haut.
+	//
+	// Ou un decor declare sa geometrie reste ouvert. Les identifiants d'objet (0x068B..0x068E, 0x0626,
+	// 0x0680) sont un espace de noms distinct des identifiants sonores en 0x00A0xxxx.
 
 	int faits = 0;
 	for (const Site &s : sites) {
