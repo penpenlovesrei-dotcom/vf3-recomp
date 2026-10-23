@@ -843,3 +843,21 @@ vaut 3 dans les deux cas — et ce qui décide de la colonne est **le réglage `
 Autrement dit l'exploitant qui éteint `SUPER K.O.` ne supprime pas la fin : il la fait compter dans l'autre
 colonne. Les deux cases séparent donc **les Super K.O. obtenus réglage éteint de ceux obtenus réglage
 allumé**, et non deux manières de les faire.
+
+### Et ce que le réglage commande vraiment
+
+Il ne décide pas si la fin peut arriver — le compteur monte dans les deux cas. C'est une option
+**d'affichage**, et deux routines le montrent :
+
+- **`FUN_00059E24`**, les marques de rounds gagnés. Éteint, le jeu dessine de simples marques, `0x00581454`
+  d'un côté et `0x00581455` de l'autre. Allumé, il parcourt l'historique des rounds à `0x00581897` sur
+  `0x00581456` entrées et donne à chacun un symbole **selon la façon dont il a été gagné** : 1 et 2 pour le
+  côté gauche, 3 et 4 pour le droit, `0xFF` pour un double KO qui en pose un des deux côtés.
+- **`FUN_0005C760`**, qui change la bannière affichée pendant le combat selon le même réglage.
+
+Ce qui donne aussi un sens à la séparation des deux colonnes : réglage allumé, le joueur a été prévenu et la
+fin lui est annoncée ; éteint, elle lui est tombée dessus sans rien dire. Deux statistiques différentes pour
+l'exploitant.
+
+Au passage, `0x00581454` et `0x00581455` sont **les rounds gagnés de chaque côté**, ce que la section 7
+donnait pour non établi, et `0x00581456` est le nombre de rounds joués.
