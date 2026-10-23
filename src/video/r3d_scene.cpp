@@ -457,14 +457,29 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						for (int k = 0; k < 4; k++) w = (w << 8) | octet(a + uint32_t(k));
 						float f; memcpy(&f, &w, 4); return f;
 					};
+					// CHAQUE MORCEAU PORTE SA PROPRE MATRICE 3x4, et on la prend telle quelle.
+					//
+					// La boucle de dessin du jeu (0x000284F4) appelle FUN_000021C0 sur
+					// `0x00581A1C + i*0x1B4 + 0xD4` : douze flottants, une 3x3 en +0x00..+0x20 puis
+					// la translation en +0x24..+0x2C, multiplies dans la matrice courante. La
+					// Dreamcast fait exactement pareil en 0x8C0BA680, qui lit seize flottants depuis
+					// `r12 + 0xD4` et fait quatre `ftrv xmtrx`.
+					//
+					// On lit donc SA matrice au lieu de poser nos modeles a la main : rotation et
+					// position viennent avec, et il n'y a plus rien a inventer sur le placement.
 					if (piece)
 						for (int i = 0; i < 32; i++) {
 							const uint32_t e = board.morceaux_base + uint32_t(i) * 0x10;
 							if (octet(e + 0xC) == 2) continue;
-							Model c = *piece;
+							const uint32_t M = 0x00581A1C + uint32_t(i) * 0x1B4 + 0xD4;
 							Mat4 t = Mat4::identity();
-							for (int k = 0; k < 3; k++) t.m[k * 5] = 0.25f;
-							t.m[12] = flot(e + 0) ; t.m[13] = flot(e + 4); t.m[14] = flot(e + 8);
+							for (int c3 = 0; c3 < 3; c3++)
+								for (int r = 0; r < 3; r++)
+									t.m[c3 * 4 + r] = flot(M + uint32_t(c3 * 3 + r) * 4);
+							t.m[12] = flot(M + 0x24);
+							t.m[13] = flot(M + 0x28);
+							t.m[14] = flot(M + 0x2C);
+							Model c = *piece;
 							c.matrix = jeu.root * t;
 							if (c.meshes)
 								for (Mesh &me : *c.meshes) me.injected = true;
