@@ -652,17 +652,45 @@ fois, l'écran titre étant installé à l'image 1193 :
 
 | demandée à | ce qui sort |
 |---|---|
-| 1201, 1205, 1210 | le décor d'une démonstration, tout blanc, « Old Armstone Town » en bandeau et « v.s. GRACE » en bas |
-| 1215, 1220, 1250 | **le générique**, propre, sur le viper |
+| 1201 à 1210 | le décor d'une démonstration, tout blanc, « Old Armstone Town » en bandeau et « v.s. GRACE » en bas |
+| 1211 | **le générique**, mais un morceau du viper manque encore en bas |
+| 1212 et au-delà | le générique entier |
 
-L'écran titre met donc une vingtaine d'images à finir de s'installer, et la fin demandée avant cela se pose
-sur ce qui n'a pas fini de partir. L'attente est de quarante images : le double du mesuré, et l'écran titre
-dure environ 190, donc il y a de la place.
+La frontière est donc nette : **1212**, soit dix-huit images après `FV2_TITLE_DSP`. L'écran titre met ce
+temps-là à finir de s'installer, et la fin demandée avant cela se pose sur ce qui n'a pas fini de partir.
+L'image 1211 est le pas de trop juste avant : assez tard pour que le générique sorte, trop tôt pour qu'il
+sorte complet — c'est elle qui dit que le défaut est une installation inachevée et non un état mal choisi.
+
+L'attente est de quarante images, soit plus du double, et l'écran titre dure environ 190, donc il y a de la
+place.
 
 **Le redémarrage de l'attraction a été essayé d'abord**, puisque c'est la route qui *range* la scène pour
 l'écran titre — et il ne sert pas ici : demandée à l'image 1206 après un redémarrage, le même décor cassé est
 sorti. La fin ne veut pas une scène rangée, elle veut un écran titre fini.
 
-**Reste à faire** : la correction est posée et compile, mais le tour de vérification dans l'hôte — ouvrir la
-page, valider `ENDING`, photographier le générique — n'a pas été joué. La bissection de la frontière
-(1211–1214) tournait quand la séance s'est arrêtée.
+### Le tour de vérification
+
+Joué dans l'hôte, en partie cachée, du premier appui jusqu'au générique. La liste s'ouvre à l'image 1200, la
+page mène à `DISPLAY` puis à `ENDING`, *valider* la demande, et la page s'efface. Le jeu reprend à l'image
+1200, l'attente compte ses quarante images, et :
+
+```
+image 1241 mode 12 sub 5     ENDING_INT, quarante-sept images apres FV2_TITLE_DSP
+image 1253 mode 13 sub 5     ENDING_DSP
+```
+
+Les photographies montrent le générique entier et qui avance — *Chief Programmer HIDEYA SHIBAZAKI* puis, vingt
+secondes plus tard, *Character Designers KENTAROW NISHIMURA...* — sur le viper, en écran large, sans rien du
+décor blanc. La ligne fait donc ce qu'elle annonce.
+
+Et elle rend la main toute seule, ce qui était la condition pour n'avoir rien à remettre en place :
+
+```
+image 7167 mode 18 sub 5     OVER_INT : le generique est fini
+image 7360 mode  3 sub 1     la boucle d attraction reprend
+image 7558 mode  3 sub 5     l ecran titre
+image 7777 mode  3 sub 10    la rediffusion, comme si de rien n etait
+```
+
+Le jeu passe donc par son GAME OVER avant de revenir à l'attraction. Six mille trois cents images entre
+la demande et le retour, un peu moins de deux minutes.
