@@ -269,25 +269,25 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// aligne les morceaux et joue le son. Il ne lui manque que des modeles a dessiner,
 				// et nous en injectons. On lit donc SON etat et on retire nos panneaux.
 				//
-				// Le masque est [[0x00075124] + 0xC0], et il porte DEUX choses.
+				// Le masque est [[0x00075124] + 0xC0]. 0x00046924 y fait le OU des bits de paroi
+				// du combattant (+0xE8C), mais seulement quand celui-ci porte le bit 0x04000000 de
+				// son mot d'etat ET depasse un seuil de force : ce sont donc bien les murs CASSES,
+				// pas un simple contact.
 				//
-				// Ses quatre bits BAS sont le simple contact : 0x00046924 y fait le OU des bits de
-				// paroi du combattant. Les employer faisait disparaitre la paroi des qu'on la
-				// touchait, sans casse et sans morceaux -- c'etait le defaut vu a l'ecran.
+				// LES BITS SONT 1, 2, 4, 8, et il faut lire `rlwinm` avec soin pour le voir.
+				// 0x00027B70 teste `rlwinm. r0,r20,SH,0,0` pour SH = 31, 30, 29, 28. En
+				// numerotation PowerPC le bit 0 est le POIDS FORT, et cette forme met dans le bit 0
+				// du resultat le bit SH de la source -- donc SH = 31 designe le bit 31, c'est-a-dire
+				// la VALEUR 1, et non 0x40000000.
 				//
-				// Les murs casses sont les quatre bits HAUTS. 0x00027B70 les teste un par un, et
-				// chacun porte l'orientation de sa paroi, qu'il range en 0x005817FC avant d'aligner
-				// les morceaux :
+				// Je m'y suis trompe une fois : j'ai cru aux bits hauts, et le mur a cesse de
+				// disparaitre puisque ces bits-la ne sont jamais poses. Ne pas y revenir.
 				//
-				//     0x40000000  angle 0x0000      0x10000000  angle 0x8000
-				//     0x20000000  angle 0xC000      0x08000000  angle 0x4000
+				//     bit 1  angle 0x0000  z = -D        bit 4  angle 0x8000  z = +D
+				//     bit 2  angle 0xC000  x = +D        bit 8  angle 0x4000  x = -D
 				//
-				// L'angle est en seizieme de tour sur 16 bits : 0, 270, 180, 90 degres. On tient
-				// pour acquis que 0 est la paroi z = -D et 0x8000 la paroi z = +D, puisque
-				// FUN_00027C04 aligne toujours les morceaux a z = -D avant de les tourner. Le sens
-				// de rotation pour les deux parois en x N'EST PAS PROUVE : on prend 0x4000 pour
-				// x = -D et 0xC000 pour x = +D, et le journal imprime l'angle pour qu'une seule
-				// casse de paroi laterale le confirme ou l'inverse.
+				// Les cotes viennent de 0x00046A60, qui ecrit ses quatre points de contact dans cet
+				// ordre : +0xE38 a z = -D, +0xE44 a x = +D, +0xE50 a z = +D, +0xE5C a x = -D.
 				//
 				// Un panneau de notre ring se range par sa boite : il tient d'un seul cote, donc le
 				// signe de son centre sur l'axe ou il est MINCE le designe.
@@ -377,10 +377,8 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						const float ex = hi[0] - lo[0], ez = hi[2] - lo[2];
 						const float cx = (lo[0] + hi[0]) * 0.5f, cz = (lo[2] + hi[2]) * 0.5f;
 						uint32_t bit = 0;
-						if (ex < ez * 0.5f)                              // mince en x : paroi x = +-D
-							bit = cx > 0 ? 0x20000000u : 0x08000000u;    // angle 0xC000 / 0x4000
-						else if (ez < ex * 0.5f)                         // mince en z : paroi z = +-D
-							bit = cz > 0 ? 0x10000000u : 0x40000000u;    // angle 0x8000 / 0x0000
+						if (ex < ez * 0.5f) bit = cx > 0 ? 2u : 8u;        // mince en x : paroi x = +-D
+						else if (ez < ex * 0.5f) bit = cz > 0 ? 4u : 1u;   // mince en z : paroi z = +-D
 						if (bit && (murs_casses & bit))
 							continue;
 					}

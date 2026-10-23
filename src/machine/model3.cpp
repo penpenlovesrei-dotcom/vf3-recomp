@@ -1825,14 +1825,14 @@ void Model3::murs_note()
 	// Si l'une des deux ferme, 0x00027B70 n'est pas appelee, le changement de masque n'est pas vu,
 	// et FUN_00027C04 n'aligne aucun morceau -- le compteur de parois reste a zero. C'est
 	// exactement ce qu'on a mesure sur TEST : masque a 4, parois a 0.
-	// Les quatre bits HAUTS sont les murs casses, les quatre bas le simple contact. L'angle de la
-	// derniere paroi tombee est range en 0x005817FC par FUN_00027C04 : il nomme son cote, et c'est
-	// lui qui confirmera le sens de rotation pour les deux parois en x.
+	// Les quatre bits de paroi cassee sont 1, 2, 4 et 8 : `rlwinm. r0,r20,SH,0,0` pour SH = 31, 30,
+	// 29, 28 met dans le bit 0 du resultat le bit SH de la source, et en numerotation PowerPC le
+	// bit 31 est le POIDS FAIBLE. L'angle de la derniere paroi tombee est range en 0x005817FC.
 	const uint32_t p1 = word(ram, 0x0058FD4C), p2 = word(ram, 0x0058FD50);
 	const unsigned angle = (unsigned(ram[0x005817FC ^ 3]) << 8) | ram[0x005817FD ^ 3];
-	fprintf(stderr, "murs : masque %08x [casses %x, contact %x]  parois %u  angle %04x"
+	fprintf(stderr, "murs : masque %08x  parois %u  angle %04x"
 	        "  porte1 %08x [%s]  porte2 %08x [%s]  etats %s\n",
-	        masque, (masque >> 27) & 0x1E, masque & 0xF, ram[0x005818D9 ^ 3], angle,
+	        masque, ram[0x005818D9 ^ 3], angle,
 	        p1, (p1 & 0x03000000) ? "ouverte" : "FERMEE",
 	        p2, (p2 & 0x84007000) ? "FERMEE" : "ouverte", etats.c_str());
 
