@@ -96,6 +96,7 @@
 //                        thing still moving. Use with VF3_QUIT_AFTER_S.
 //   VF3_SHOT_AT=n,...    the window as drawn at these passes of the loop, to build/host_window_at_N.png
 //   VF3_OPTION_LOG=1     what the console OPTIONS page writes: the setting, and the cooked copy it keeps in step
+//   VF3_TIMER_LOG=1      the match's own clock: the cooked word a round starts from, and the seconds left
 //                        (model3.h, fv2_recook_option). The one way to see the page write rather than trust it.
 //   VF3_ROMS=folder      the player's ROM folder (as --roms)
 //   VF3_3D=cpu|gpu|auto  the 3D renderer for this run (as Display > 3D renderer)
@@ -1992,6 +1993,20 @@ int main(int argc, char **argv)
 			        (unsigned long long)game_frame, t,
 			        int(s == &between), models, s->viewports.size(), int(game.view.full_3d), int(sky_wide), side_colour[0], int(s->blank),
 			        board.fv2_mode(), board.fv2_submode());
+		}
+		// (tests: VF3_TIMER_LOG=1 follows the match's own clock -- the cooked word the round starts from
+		// (0x00581418 for one player, 0x0058141C for two) and the seconds left (0x00581404) -- so that a
+		// ROUND TIME set on the OPTIONS page can be seen arriving in a fight rather than taken on trust.
+		// It reads the board and writes nothing; docs/fv2-console-options.md keeps the measurement.)
+		if (static const bool timer_log = getenv("VF3_TIMER_LOG") != nullptr; timer_log) {
+			static int was = -1;
+			const int left = board.fv2_option(0x00581404, 4);
+			if (left != was) {
+				fprintf(stderr, "timer f %llu: %d s left, the round starts from %d (1P) / %d (2P)\n",
+						(unsigned long long)game_frame, left, board.fv2_option(0x00581418, 4) / 64,
+						board.fv2_option(0x0058141C, 4) / 64);
+				was = left;
+			}
 		}
 		if (new_2d) {
 			// A stage: the 3D full width and the 2D over it clear of the 4:3 edges (a fight's HUD never reaches them)

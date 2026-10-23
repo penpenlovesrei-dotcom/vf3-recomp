@@ -1,0 +1,12 @@
+# Fighting Vipers 2, mode console : le round de verification. Regler ROUND TIME par la page, ressortir, lancer
+# ARCADE, et lire l'horloge du match -- la chaine entiere, de la touche au chrono.
+#
+# Les images comptees ici sont celles du JEU, donc le gel de la page ne decale rien :
+#   1200  Start sur l'ecran titre (il tient de 1193 a 1386)  -> la liste s'ouvre, le jeu gele
+#         VF3_KEYS_S mene a ROUND TIME 1P, pose la valeur, et ressort de la page
+#   1260  Start, le jeu ayant repris                         -> la liste s'ouvre a nouveau
+#         VF3_KEYS_S choisit ARCADE
+#   1500  Poing sur l'ecran de choix                         -> le combattant est pris
+1200 press p1.start
+1260 press p1.start
+1500 press p1.punch
