@@ -658,3 +658,39 @@ ambiante pleine, tombent sur une vue à un quart, et c'est ça qu'on voit.
   à la fin d'un replay, nous la coupons au milieu d'une démonstration. L'essai « Start pendant un replay »
   n'a pas tranché : il retombe sur une démonstration, pas sur un replay, donc il ne compare pas ce qu'il
   faut.
+
+
+### La chaîne complète, du symptôme au compteur
+
+```
+des combattants sombres
+  └─ ils sont accrochés à un nœud de vue voisin, d'ambiante 0,251 au lieu de 0,800
+      └─ parce que la liste d'affichage envoyée ne couvre pas leur nœud
+          └─ parce que le jeu ne bâtit que 3 descripteurs de DMA au lieu de 5
+              └─ parce que deux d'entre eux tirent leur longueur de compteurs
+                 (0x00580FAC, 0x00580FB0) multipliés par 12, en 0x00005184 et 0x0000519C
+                  └─ et 0x00580FB0 vaut 33 au lieu de 323
+                      └─ parce que 0x00006C34 et 0x0000688C, qui l'incrémentent,
+                         tournent 1 206 fois au lieu de 69 151
+```
+
+Chaque palier est mesuré avec son témoin, et chaque adresse est relevée, pas supposée.
+
+### Où ça s'arrête, et pourquoi
+
+Le dernier palier dit **que** le jeu soumet cinquante fois moins de choses à dessiner, pas **pourquoi**. Les
+appelants des deux incrémenteurs sont `0x0001277C`, `0x00012CB4`, `0x00018DA0`, `0x00022C10` et `0x00023C94` ;
+le témoin se sert des cinq, l'essai pratiquement d'aucun. Savoir ce qui les commande demande de décompiler la
+soumission de scène — un chantier à lui, pas une mesure de plus.
+
+Ce qui est acquis et qui ne sera pas à refaire :
+
+- le défaut est **le redémarrage de la boucle d'attraction**, ni le menu ni la demande d'écran titre
+  (`VF3_NO_SKIP=1` le reproduit sans rien demander au jeu) ;
+- il frappe **la soumission**, pas le rendu : les modèles sont tous là, 457 à 532, correctement placés ;
+- il explique **les deux symptômes d'octobre et celui-ci** : ce qui n'est pas réécrit est lu tel qu'il était,
+  d'où les modèles restés sur l'écran titre et les combattants qui héritent d'une ambiante étrangère ;
+- et les instruments existent désormais : `VF3_VIEW_LOG`, `VF3_DMA_LOG`, `VF3_NO_SKIP`.
+
+**Ce qu'il ne faut pas faire** : forcer l'ambiante ou le soleil. Ce serait peindre par-dessus une scène qui
+n'a pas été soumise, et le reste — ce qui traîne à l'écran — resterait entier.
