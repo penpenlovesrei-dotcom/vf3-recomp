@@ -1,0 +1,13 @@
+# TOWER, un match long joue au hasard, pour attraper une casse de mur.
+# Le masque des murs est [[0x00075124] + 0xC0] et les trente-deux objets du
+# decor portent leur etat en +0xC d'une entree de 0x10 octets a partir de
+# 0x00581A1C. VF3_STAGE_LOG les imprime a chaque changement.
+1900 press p1.coin
+1930 press p1.coin
+1960 press p1.start
+2100 press p1.right
+2140 press p1.right
+2220 press p1.punch
+2700 random p1 20261023
+2700 random p2 777
+26000 quit

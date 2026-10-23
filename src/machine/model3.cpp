@@ -1778,24 +1778,41 @@ void Model3::stage_note()
 void Model3::murs_note()
 {
 	if (set != "fvipers2" || !getenv("VF3_STAGE_LOG") || ram.size() < 0x800000) return;
-	// LE VERROU DES PAROIS, lu a sa source. En 0x00027AC4 :
+	// LE MASQUE DES MURS, LU A LA BONNE ADRESSE CETTE FOIS.
 	//
-	//     r3 = [0x0058FD50]                   un mot d'etat du jeu
-	//     andis. r0, r3, 0x300   -> si ces bits manquent, tout est saute
-	//     and.   r0, 0x84007000  -> si ceux-ci sont la, tout est saute
-	//     bl 0x00027B70                        le masque, puis la pose
-	//     r20 = [0x005818D9]                   le nombre de parois
-	//     cmpwi r20, 0 -> si zero, aucune paroi n'est traitee (0x000284A0)
+	// La version precedente de cette sonde annoncait dans son commentaire qu'elle lisait
+	// [[0x00075124] + 0xC0] -- et lisait en fait 0x0058FD50 et 0x005818D9. La conclusion qu'elle a
+	// servie le 23 octobre au matin (<< le masque reste a zero meme sur TOWER >>) ne portait donc sur
+	// rien. Ce qui suit lit la vraie source, celle de 0x00027B70 :
 	//
-	// Deux valeurs suffisent donc a savoir si les murs sont possibles sur ce decor.
-	const uint32_t etat = word(ram, 0x0058FD50);
-	const uint8_t n = ram[0x005818D9 ^ 3];
-	static uint32_t ae = 0xFFFFFFFF;
-	static uint8_t an = 0xFF;
-	if (etat == ae && n == an) return;
-	ae = etat; an = n;
-	fprintf(stderr, "murs : etat %#010x  [0x300 %s, 0x84007000 %s]  parois %u\n",
-	        etat, (etat & 0x03000000) ? "oui" : "NON", (etat & 0x84007000) ? "OUI" : "non", n);
+	//     r5  = [0x00075124]        la structure de combat
+	//     r3  = [r5 + 0xC0]         le masque
+	//     r4  = [0x005818B4]        sa copie de l'image precedente
+	//     r20 = r3 ^ r4             les bits qui viennent de changer
+	//     chaque bit qui bascule rappelle FUN_00027C04 puis FUN_00027D2C, qui RECONSTRUISENT la
+	//     liste d'affichage des objets du decor.
+	//
+	// Et le consommateur, en 0x000284F4, boucle sur trente-deux entrees de 0x10 octets a partir de
+	// 0x00581A1C (ou 0x0058589C) :
+	//
+	//     lbz r3,0xC(r29) ; cmpwi r3,2 ; beq -> pas dessine
+	//     lhz r16,0xE(r29)                     l'identifiant de l'objet
+	//
+	// Un objet detruit est donc un objet dont l'octet +0xC vaut 2. On imprime les deux : le masque, et
+	// les trente-deux etats.
+	const uint32_t combat = word(ram, 0x00075124);
+	uint32_t masque = 0;
+	if (combat + 0xC0 + 4 < ram.size()) masque = word(ram, combat + 0xC0);
+	std::string etats;
+	for (int i = 0; i < 32; i++) {
+		const uint32_t b = (0x00581A1C + uint32_t(i) * 0x10 + 0xC) ^ 3;
+		etats += char('0' + (b < ram.size() ? ram[b] % 10 : 9));
+	}
+	static uint32_t am = 0xFFFFFFFF;
+	static std::string ae;
+	if (masque == am && etats == ae) return;
+	am = masque; ae = etats;
+	fprintf(stderr, "murs : masque %08x  etats %s\n", masque, etats.c_str());
 }
 
 // Honey's other costume: the one players have passed around for twenty years, and which turns out to be in
