@@ -205,7 +205,12 @@ struct console_play
 			// 1 and sub-state 2 (model3.cpp), so this is the first moment the scene is the game's own idea of
 			// empty. Asking any earlier would carry the old one over, which is the whole defect.
 			const bool tidy = (mode == 2 || mode == 3) && (sub == 2 || sub == 3);
-			if (tidy) { b.fv2_request_title(); skip_logo = 0; }
+			// (tests: VF3_NO_SKIP=1 restarts the attract loop and then lets the game walk to its own title
+			// screen, logo and all. For telling a fault that belongs to the restart from one that belongs to
+			// asking for the title early -- the dark fighters of the 2026-10-23 are one or the other.)
+			static const bool no_skip = getenv("VF3_NO_SKIP") != nullptr;
+			if (tidy && no_skip) skip_logo = 0;
+			else if (tidy) { b.fv2_request_title(); skip_logo = 0; }
 			else skip_logo--;
 		}
 		if (inject_start > 0) { out.start[0] = true; inject_start--; }

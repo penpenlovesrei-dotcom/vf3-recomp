@@ -588,3 +588,40 @@ boucle de `0x00003CEC` est plus court après le redémarrage.
 **La mesure suivante** : ce que `0x00003CEC` parcourt — sa liste et son compte — et pourquoi elle est plus
 courte. `--trace-pc` sur son entrée donnera le pointeur et la longueur, et la comparaison témoin/essai au même
 sous-état dira ce qui manque.
+
+
+### La preuve par les mêmes modèles, et la cause isolée
+
+Le doute qui restait : les deux replays ne jouent pas la même arène, et un soleil bas pourrait être celui du
+décor. Écarté en comparant **les mêmes modèles**, reconnus à leurs adresses :
+
+| | nœud | ambiante | soleil | modèles |
+|---|---|---|---|---|
+| témoin, image 6400 | `8000E8` | 0,800 | `(0.02 **0.85** -0.52)` | 139 : `6DA8A9 6DA4BD 6DA0D1 6D9E28` |
+| essai, image 2400 | `800122` | 0,251 | `(0.92 **-0.39** 0.08)` | 139 : `6DA8A9 6DA4BD 6DA0D1 6D9E28` |
+
+**Les mêmes 139 modèles, aux mêmes adresses**, éclairés d'en haut d'un côté et d'en bas de l'autre. Ce n'est
+pas l'arène. Et une seconde famille, `85243F 851AC7 A02796 A0273A`, se retrouve des deux côtés elle aussi, à
+des nœuds différents (`80027E` contre `8002F2`).
+
+**Les modèles ont glissé de nœud.** Le témoin les range sur `800074, 8000E8, 800196, 80020A, 80027E, 8002B8` ;
+l'essai sur `800122, 80020A, 80027E, 8002F2, 80032C`. Chaque groupe se retrouve accroché à un nœud voisin —
+celui d'une autre partie de la scène, avec la lumière de celle-là.
+
+### Ce n'est pas le raccourci de l'écran titre
+
+`VF3_NO_SKIP=1` redémarre la boucle et **laisse le jeu marcher jusqu'à son propre écran titre**, logo compris,
+sans rien lui demander. Le replay qui suit est **tout aussi sombre** : mêmes `0.251`, même soleil à `-0.39`.
+
+Donc ce n'est ni le menu, ni la demande d'écran titre : **c'est le redémarrage de la boucle d'attraction
+lui-même**, `MODE_REQUEST = 3, SUBMODE_REQUEST = 0`.
+
+### L'hypothèse qui reste, et pourquoi elle tient
+
+Le jeu redémarre sa boucle tout seul en permanence — ce fichier le note plus haut : *« le replay demande le
+redémarrage de la boucle »*. Et il n'a pas de combattants sombres. Ce qui diffère chez nous est **le moment** :
+le jeu le fait à la fin d'un replay, nous le faisons **au milieu d'une démonstration**.
+
+À vérifier : appuyer sur Start **pendant un replay** plutôt que pendant une démonstration, et regarder la
+scène suivante. Si elle est saine, la sortie est de ne pas couper une démonstration en plein milieu — soit
+en attendant qu'elle finisse, soit en la terminant comme le jeu la termine.
