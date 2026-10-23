@@ -14,12 +14,14 @@ rem                      le sol blanc reste blanc   -> il est peint par autre
 rem                                                    chose, et notre sol est
 rem                                                    absent ou recouvert
 rem   VF3_SCENE_LOG=1    le SOUS-ETAT DU COMBAT puis la forme de la scene,
-rem                      imprimes seulement quand ils CHANGENT. Le sous-etat
-rem                      est l'octet 0x0058FDB4 : FUN_0007249C de la borne
-rem                      repartit sur une table de seize fonctions en
-rem                      0x0002444C, indexee par lui. C'est donc lui qui nomme
-rem                      la presentation, le debut de round non controlable et
-rem                      le replay. La ligne porte aussi l'index de decor
+rem                      imprimes seulement quand ils CHANGENT, SOUS LE NOM DE
+rem                      SEGA : le mode est en 0x0058FD98 et le sous-etat en
+rem                      0x0058FD99, et les quatre-vingts noms sont en clair
+rem                      dans la ROM, table de pointeurs en 0x00024494. Les
+rem                      trois sous-etats ou le sol est blanc s'y appellent
+rem                      ROUND_MASK_*, SET_*/READY_* et REPLAY_* ; le seul ou
+rem                      il est correct est FIGHT_*. La ligne porte aussi
+rem                      l'index de decor
 rem                      (0x0058FD9F), dont depend l'injection, et par viewport
 rem                      la priorite, les modeles, le rectangle, le soleil,
 rem                      l'ambiante, le projecteur et le brouillard.

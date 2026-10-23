@@ -183,8 +183,56 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 			cull_lo = in->cull_lo.data();
 			cull_hi = in->cull_hi.data();
 			Scene mien;
+			// LE BUDGET DE NOEUDS EST CELUI DE TOUTE LA SCENE. `visits` est remis a zero une fois par
+			// build() et `node_one` abandonne des qu'il passe NODE_BUDGET -- or le parcours du JEU a
+			// deja eu lieu quand on arrive ici. Si sa scene est lourde dans un sous-etat, la fin de
+			// NOTRE chaine tombe, et c'est le seul mecanisme de la chaine qui puisse faire disparaitre
+			// un modele sur quarante-six sans rien changer d'autre.
+			const uint32_t visites_du_jeu = visits;
 			viewport(in->viewport_addr, mien, 0);
+			const uint32_t visites_a_nous = visits - visites_du_jeu;
 			poly = sp; cull_lo = sl; cull_hi = sh;
+			// LE PLAN DE SOL BOUCHE-TROU DU JEU, RETIRE.
+			//
+			// La borne dessine sous les combattants un carre plat de douze unites de cote au niveau
+			// zero -- un seul maillage, six sommets, modele 0x860542 en VROM. Sur un decor normal la
+			// geometrie du decor le cache ; sur TEST, dont le creneau de geometrie vaut zero, il n'y a
+			// rien pour ca, et c'est LUI qu'on voyait comme un sol blanc.
+			//
+			// Pourquoi il n'apparait que dans trois sous-etats. Le tampon de profondeur est vide par
+			// NIVEAU de priorite et un niveau superieur repeint ceux d'en dessous. Dans READY_DSP et
+			// FIGHT_DSP notre viewport est en priorite 2 et le plan en priorite 1 : on le recouvre.
+			// Dans SET_DSP (et dans ROUND_MASK et REPLAY) tout le jeu retombe en priorite 1, le plan
+			// partage alors notre passe, et il gagne la profondeur -- a juste titre : il est a y = 0,
+			// notre sol Dreamcast est a y = -0,04 a -0,14, donc DESSOUS.
+			//
+			// On le reconnait par sa FORME, pas par son adresse : un modele d'un seul maillage, six
+			// sommets, tous au meme y, tenant dans huit unites. Ni un combattant ni une ombre ni une
+			// piece du ring n'a cette forme. Les ombres, elles, sont d'autres modeles et restent.
+			if (!mien.viewports.empty()) {
+				size_t otes = 0;
+				for (Viewport &v : scene.viewports) {
+					auto bouche_trou = [](const Model &m) {
+						if (!m.meshes || m.meshes->size() != 1) return false;
+						const std::vector<Vertex> &s = (*m.meshes)[0].verts;
+						if (s.size() != 6) return false;
+						for (const Vertex &p : s) {
+							if (p.pos[1] != s[0].pos[1]) return false;
+							if (std::fabs(p.pos[0]) > 8.0f || std::fabs(p.pos[2]) > 8.0f) return false;
+						}
+						return true;
+					};
+					const size_t avant = v.models.size();
+					v.models.erase(std::remove_if(v.models.begin(), v.models.end(), bouche_trou),
+					               v.models.end());
+					otes += avant - v.models.size();
+				}
+				static bool dit = false;
+				if (otes && !dit) {
+					dit = true;
+					fprintf(stderr, "plan de sol bouche-trou du jeu retire : %zu modele(s)\n", otes);
+				}
+			}
 			if (!mien.viewports.empty()) {
 				// UN VIEWPORT A NOUS, et non les modeles verses dans celui du jeu.
 				//
@@ -272,6 +320,22 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					a_nous.models.push_back(std::move(m));
 				}
 				injected_note(int(a_nous.models.size()));
+				// NOTRE DECOR AMPUTE : la plainte, des que le compte baisse. Le decor converti est
+				// statique, donc son nombre de modeles ne PEUT pas varier d'une image a l'autre --
+				// s'il baisse, c'est que le parcours a ete interrompu, et le budget de noeuds est
+				// le seul endroit ou ca arrive. La ligne dit combien le jeu en avait deja depense.
+				{
+					static size_t plein = 0;
+					const size_t n = a_nous.models.size();
+					if (n > plein) plein = n;
+					static size_t dit = 0;
+					if (n < plein && n != dit) {
+						dit = n;
+						fprintf(stderr, "decor ampute : %zu modeles sur %zu  (noeuds : le jeu %u,"
+						        " nous %u, budget %u)\n",
+						        n, plein, visites_du_jeu, visites_a_nous, NODE_BUDGET);
+					}
+				}
 				// VF3_SCENE_LOG : la forme de la scene du jeu, ecrite quand elle change. Les combattants
 				// manquent pendant les etats de presentation et les replays, et c'est la qu'on saura si notre
 				// viewport ajoute y est pour quelque chose -- combien le jeu en produit, leurs priorites, et
@@ -292,6 +356,30 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						         v.spot_colour[0], v.spot_colour[1], v.spot_colour[2],
 						         v.scroll_fog, v.fog_density, v.fog_start);
 						forme += buf;
+						// LES VIEWPORTS MAIGRES, NOMMES. Celui qui ne porte qu'un ou deux modeles
+						// est suspect : c'est la que vit le plan blanc que le jeu dessine sous les
+						// combattants quand TEST n'a pas de geometrie a lui. On donne l'adresse du
+						// modele et sa boite, de quoi le reconnaitre.
+						if (v.models.size() <= 2)
+							for (const Model &m : v.models) {
+								if (!m.meshes) continue;
+								float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+								size_t nv = 0;
+								for (const Mesh &me : *m.meshes)
+									for (const Vertex &s : me.verts) {
+										nv++;
+										for (int k = 0; k < 3; k++) {
+											lo[k] = std::min(lo[k], s.pos[k]);
+											hi[k] = std::max(hi[k], s.pos[k]);
+										}
+									}
+								char b2[176];
+								snprintf(b2, sizeof b2, "{maigre %06x : %zu maillage(s), %zu sommets,"
+								         " x %.1f..%.1f y %.1f..%.1f z %.1f..%.1f} ",
+								         m.addr, m.meshes->size(), nv,
+								         lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]);
+								forme += b2;
+							}
 					}
 					// L'ETAT DU JEU, EN TETE DE LIGNE, SOUS LE NOM DE SEGA. Le mode est en
 					// 0x0058FD98 et le sous-etat en 0x0058FD99 (model3.cpp, fv2_mode), et Sega
