@@ -1995,15 +1995,15 @@ int main(int argc, char **argv)
 			        board.fv2_mode(), board.fv2_submode());
 		}
 		// (tests: VF3_TIMER_LOG=1 follows the match's own clock -- the cooked word the round starts from
-		// (0x00581418 for one player, 0x0058141C for two) and the seconds left (0x00581404) -- so that a
+		// (0x00581418 for one player, 0x0058141C for two) and what is left of it (0x00581404) -- so that a
 		// ROUND TIME set on the OPTIONS page can be seen arriving in a fight rather than taken on trust.
 		// It reads the board and writes nothing; docs/fv2-console-options.md keeps the measurement.)
 		if (static const bool timer_log = getenv("VF3_TIMER_LOG") != nullptr; timer_log) {
 			static int was = -1;
 			const int left = board.fv2_option(0x00581404, 4);
 			if (left != was) {
-				fprintf(stderr, "timer f %llu: %d s left, the round starts from %d (1P) / %d (2P)\n",
-						(unsigned long long)game_frame, left, board.fv2_option(0x00581418, 4) / 64,
+				fprintf(stderr, "timer f %llu: %d left (%.1f s), the round starts from %d (1P) / %d (2P)\n",
+						(unsigned long long)game_frame, left, double(left) / 64.0, board.fv2_option(0x00581418, 4) / 64,
 						board.fv2_option(0x0058141C, 4) / 64);
 				was = left;
 			}

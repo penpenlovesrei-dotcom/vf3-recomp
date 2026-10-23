@@ -524,3 +524,33 @@ Les deux moitiés se recouvrent sur `3840` : la page pose le mot que le match re
 **À savoir pour le prochain essai** : si le réglage est déjà au maximum, un pas vers la droite ne change rien
 et n'écrit rien — c'est ce qui s'est passé au premier essai, où la sauvegarde portait déjà 60. Faire descendre
 la valeur avant de la remonter, sinon on lit un silence pour une panne.
+
+### Le round de vérification
+
+Les deux moitiés se recouvrent, mais aucune des deux n'est un match. Celui-là a été joué, en partie cachée, du
+premier appui jusqu'au chrono : `tools/scripts/fv2-console-options-round.txt` ouvre la liste à l'image 1200,
+`VF3_KEYS_S` mène à `ROUND TIME 1P` et le fait **descendre de 60 à 20**, ressort de la page par deux retours
+arrière, l'appui de l'image 1260 rouvre la liste, *valider* prend ARCADE, et le poing de l'image 1500 choisit
+le combattant. `VF3_TIMER_LOG=1` suit alors `0x00581404`.
+
+La sauvegarde a été copiée dans un dossier de données à part, pour que celle du propriétaire ne bouge pas :
+elle portait 60, donc l'amorçage avait cuit `3840`. Le journal donne :
+
+```
+option 120555 = 20, cooked 00581418 = 1280 (20 s)
+...
+timer f 1701: 1280 left (20.0 s), the round starts from 20 (1P) / 45 (2P)
+timer f 3401: 1280 left (20.0 s), the round starts from 20 (1P) / 45 (2P)
+timer f 4842: 0 left (0.0 s)
+```
+
+**Deux rounds partis de 1280**, les vingt secondes posées par la page, et non les 3840 de l'amorçage. Le
+premier s'est terminé avant la fin du temps (remise à 1280 à l'image 3401), le second a expiré à l'image 4842.
+
+Deux choses se lisent en passant :
+
+- **`0x00581404` compte des images, pas des secondes.** 1280 pour vingt secondes : soixante-quatre par
+  seconde, le même compte que la conversion. Les `5, 4, 3, 2, 1` relevés dans `fv2-flux-de-match.md` étaient
+  ses cinq dernières images, pas des secondes.
+- **`ROUND TIME VS` est resté à 45**, la valeur de la sauvegarde que rien n'a touchée. L'écriture ne déborde
+  pas sur le réglage voisin.
