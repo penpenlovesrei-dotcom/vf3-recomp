@@ -835,6 +835,18 @@ struct Game
 		        (unsigned long long)roster_written);
 		rebuild_from_ram_if_stale();
 	}
+	// VF3_STAGE=<n> : le decor force. Meme forme que hold_roster -- le patch est en RAM, donc il attend que
+	// l'amorce ait decompresse le programme, et Model3::force_stage lit avant d'ecrire.
+	void hold_stage()
+	{
+		const char *s = getenv("VF3_STAGE");
+		if (!s || !*s) return;
+		const int n = int(strtol(s, nullptr, 0));
+		const int faits = board.force_stage(n);
+		if (faits <= 0) return;
+		fprintf(stderr, "decor force : %d site(s) patche(s), le decor vaut %d\n", faits, n);
+		if (rebuilt_after_boot) rebuild_from_ram_if_stale();
+	}
 	// Honey's four costumes.
 	//
 	// The game already cycles two of them, and it is a cycle rather than a held direction -- measured on the
@@ -1465,7 +1477,9 @@ int main(int argc, char **argv)
 		}
 		game.tiles_on = true;
 		game.rebuilt_after_boot = true;
+		game.board.hang_armed = true;   // le detecteur de gel ne sert qu'une fois l'amorce passee
 		game.hold_roster();   // (before the rebuild: the native code is then made from the program as it will run)
+		game.hold_stage();    // (de meme : le tireur de decor patche avant que le natif en soit fait)
 		game.rebuild_from_ram_if_stale();
 		fprintf(stderr, "boot: %llu frames in %.2f s, unseen\n", (unsigned long long)game_frame,
 				std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());

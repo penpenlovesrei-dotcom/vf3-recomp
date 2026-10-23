@@ -111,6 +111,8 @@ public:
 	int bus_freq_multiplier() const { return bus_mult_x2; }
 	int cycles_per_second() const { return cps; }
 	uint32_t pc() const { return s.pc; }
+	uint32_t gpr(int i) const { return s.r[i & 31]; }   // (pour le detecteur de gel : model3.cpp)
+	uint32_t lr() const { return s.lr; }
 
 	// The state in the form the reference build dumps each frame (128 words; see tools/ref)
 	void dump_state(uint32_t *out) const;

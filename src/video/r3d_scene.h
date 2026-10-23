@@ -39,6 +39,10 @@ struct Mesh
 	bool textured = false, alpha_test = false, texture_alpha = false, poly_alpha = false, lighting = false;
 	bool fixed_shading = false, smooth_shading = false, high_priority = false, trans_select = false, layered = false;
 	bool specular = false, translator_map = false, inverted = false, micro = false;
+	// Vrai sur les maillages venus de VF3_SCENE en mode ADDITIF : ceux-la seuls prennent la planche injectee.
+	// Sans ca la planche remplacait celle du jeu PARTOUT -- vignettes de selection portant les textures du ring,
+	// combattants noirs, puisque leurs coordonnees tombaient dans une planche qui ne les contient pas.
+	bool injected = false;
 	float shininess = 0, specular_value = 0, fog_intensity = 0;
 	int format = 0, x = 0, y = 0, width = 0, height = 0, page = 0;
 	int wrap_u = 0, wrap_v = 0;   // 0 repeat, 1 repeat clamped, 2 mirror, 3 mirror clamped

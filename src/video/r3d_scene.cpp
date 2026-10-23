@@ -55,6 +55,7 @@
 // Vertex: X, Y, Z (high 24 bits each, 17.7; the low bytes the normal, or the fixed shade), then U (high 16) and
 // V (low 16).
 #include "r3d_scene.h"
+#include "r3d_inject.h"
 #include <atomic>
 #include "../machine/model3.h"
 #include <algorithm>
@@ -63,6 +64,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <cstring>
+#include <string>
 #include <limits>
 #include <map>
 
@@ -144,7 +146,185 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 		rom_cache.clear();
 	if (dyn_cache.size() > 20000)
 		dyn_cache.clear();
-	viewport(0x800000, scene, 0);
+	// VF3_SCENE=<directory>: a scene read from disk, rendered in place of the game's. The board's memory is left
+	// alone -- the builder is pointed at our own buffers for this frame, because the game rewrites culling and
+	// polygon RAM every frame and an injected scene would live for none of them. See r3d_inject.h.
+	injected_note(-1);   // (instrument : build() a ete atteint)
+	const Injected *in = injected_scene();
+	// VF3_SCENE_ADD=<n> : AJOUTER la scene lue sur disque a celle du jeu, au lieu de la remplacer, et seulement
+	// quand le decor courant est le numero <n>.
+	//
+	// Pourquoi ajouter. Le decor d'entrainement existe dans la borne -- nom, camera, brouillard, arene, et les
+	// combattants tiennent debout dessus -- mais le creneau 3 de ses huit identifiants de ressource, celui de la
+	// geometrie propre, vaut zero. Il ne manque donc que le ring. On garde tout le reste du jeu et on ne lui
+	// ajoute que ce qui lui manque.
+	//
+	// Comment. Nos modeles sont convertis avec `--cam identite`, donc leur matrice est modele -> MONDE. Le
+	// viewport du jeu porte dans `root` la matrice de sa camera, monde -> vue. La composition est donc
+	// `root * la notre`, dans cet ordre : operator* applique son operande de droite d'abord.
+	static const int add_stage = [] {
+		const char *s = getenv("VF3_SCENE_ADD");
+		return (s && *s) ? int(strtol(s, nullptr, 0)) : -1;
+	}();
+	const bool additif = in && add_stage >= 0;
+	if (in && !additif) {
+		poly = in->poly.data();
+		cull_lo = in->cull_lo.data();
+		cull_hi = in->cull_hi.data();
+		viewport(in->viewport_addr, scene, 0);
+		injected_note(scene.viewports.empty() ? 0 : int(scene.viewports[0].models.size()));
+	} else {
+		viewport(0x800000, scene, 0);
+		const bool ce_decor = additif && board.ram.size() > (0x58FD9F ^ 3)
+		                      && board.ram[0x58FD9F ^ 3] == uint8_t(add_stage);
+		if (ce_decor && !scene.viewports.empty()) {
+			const uint32_t *sp = poly, *sl = cull_lo, *sh = cull_hi;
+			poly = in->poly.data();
+			cull_lo = in->cull_lo.data();
+			cull_hi = in->cull_hi.data();
+			Scene mien;
+			viewport(in->viewport_addr, mien, 0);
+			poly = sp; cull_lo = sl; cull_hi = sh;
+			if (!mien.viewports.empty()) {
+				// UN VIEWPORT A NOUS, et non les modeles verses dans celui du jeu.
+				//
+				// Pourquoi. Nos polygones a ombrage fixe portent le gris peint dans la donnee Dreamcast, et le
+				// rendu calcule `li = ombre * sun_intensity + ambiante`. Le viewport de la borne vaut 0,600 et
+				// 0,298 (mesures dans son propre viewport en 0xFFDF9800), donc un sol a 0,36 ressortait a 0,51
+				// et le noir ne descendait plus sous 0,298 : tout etait releve et ecrase, le sol delave vers le
+				// blanc. Avec soleil 1 et ambiante 0, `li` vaut l'octet, et le gris est celui de la Dreamcast.
+				//
+				// Cohabitation : le tampon de profondeur est vide par NIVEAU DE PRIORITE, pas par viewport
+				// (r3d_raster.cpp, draw_band), donc deux viewports de meme priorite partagent la passe et se
+				// composent correctement avec les combattants.
+				// LA PRIORITE SE PREND SUR LE CONTENU, pas sur le premier viewport venu. Le rasteriseur
+				// vide le tampon de profondeur A CHAQUE NIVEAU DE PRIORITE (draw_band), donc un niveau
+				// superieur repeint ceux d'en dessous. Mesure pendant l'intro d'un combat : le jeu pose
+				// une dizaine de viewports, les combattants sont dans un de priorite 1, et le premier de
+				// la liste est en priorite 2 -- notre decor le copiait et les recouvrait. En plein combat
+				// le defaut ne se voyait pas, le premier viewport ayant la meme priorite qu'eux.
+				//
+				// On prend donc la priorite de celui qui porte le plus de modeles : c'est la scene de
+				// combat. A defaut, celle du premier.
+				const Viewport *porteur = &scene.viewports[0];
+				for (const Viewport &v : scene.viewports)
+					if (v.models.size() > porteur->models.size()) porteur = &v;
+				const Viewport &jeu = *porteur;
+				Viewport a_nous = jeu;
+				a_nous.models.clear();
+				a_nous.sun_intensity = 1.0f;
+				a_nous.ambient = 0.0f;
+				// Pas de brouillard en double : fog_layers choisit UN viewport par priorite.
+				a_nous.fog_density = a_nous.fog_start = a_nous.fog_attenuation = 0;
+				a_nous.scroll_fog = a_nous.scroll_att = 0;
+				// NI DE PROJECTEUR. Le rendu l'AJOUTE apres l'eclairage : `lr = li + spot_colour * lobe`.
+				// Nos polygones a ombrage fixe portent deja le gris peint dans la donnee ; un projecteur
+				// allume par le jeu -- pour la presentation d'un combat, par exemple -- s'ajoutait par
+				// dessus et blanchissait le sol, alors qu'en plein combat, projecteur eteint, il etait
+				// correct. C'est ce qu'on voyait comme un sol blanc au debut du round.
+				for (int k = 0; k < 3; k++) a_nous.spot_colour[k] = a_nous.spot_fog_colour[k] = 0;
+				a_nous.spot_range[0] = a_nous.spot_range[1] = 0;
+				for (int k = 0; k < 4; k++) a_nous.spot_ellipse[k] = 0;
+				// L'ANIMATION. Le compteur monte d'une unite par image, chacun sur sa propre periode,
+				// comme la hauteur de 0x8C110FD4 sur la Dreamcast. La translation s'applique dans
+				// l'espace du MONDE -- la routine d'origine empile la matrice, translate, puis dessine,
+				// donc le decalage vient a gauche de la transformation du modele et a droite de la
+				// camera : `camera * translation * modele`.
+				// On reconnait le modele a sa TEXTURE, pas a son rang. Rien ne garantit que le rendu
+				// construise les modeles dans l'ordre de la conversion -- et c'est pour avoir suppose le
+				// contraire que le cylindre ne bougeait pas : on animait un autre objet.
+				static uint64_t tic = 0;
+				tic++;
+				for (Model &m : mien.viewports[0].models) {
+					const Anime *sien = nullptr;
+					for (const Anime &a : in->animes) {
+						if (!m.meshes) break;
+						for (const Mesh &me : *m.meshes)
+							if (me.textured && me.x == a.tex_x && me.y == a.tex_y) { sien = &a; break; }
+						if (sien) break;
+					}
+					if (sien) {
+						const float h = float(tic % uint64_t(sien->periode + 1));
+						// Les copies d'abord : le meme modele, decale d'un multiple du pas. Celle du
+						// decalage nul est la derniere, et c'est elle qui suit le chemin commun.
+						for (int k = -sien->copies; k <= sien->copies; k++) {
+							if (!k) continue;
+							Model c = m;
+							Mat4 t = Mat4::identity();
+							t.m[12] = sien->d[0] * h;
+							t.m[13] = sien->d[1] * h + sien->pas * float(k);
+							t.m[14] = sien->d[2] * h;
+							c.matrix = jeu.root * (t * c.matrix);
+							if (c.meshes)
+								for (Mesh &me : *c.meshes) me.injected = true;
+							a_nous.models.push_back(std::move(c));
+						}
+						Mat4 t = Mat4::identity();
+						t.m[12] = sien->d[0] * h;
+						t.m[13] = sien->d[1] * h;
+						t.m[14] = sien->d[2] * h;
+						m.matrix = t * m.matrix;
+					}
+					m.matrix = jeu.root * m.matrix;
+					// Marquer les maillages : eux seuls prennent la planche injectee (r3d_raster.cpp).
+					if (m.meshes)
+						for (Mesh &me : *m.meshes) me.injected = true;
+					a_nous.models.push_back(std::move(m));
+				}
+				injected_note(int(a_nous.models.size()));
+				// VF3_SCENE_LOG : la forme de la scene du jeu, ecrite quand elle change. Les combattants
+				// manquent pendant les etats de presentation et les replays, et c'est la qu'on saura si notre
+				// viewport ajoute y est pour quelque chose -- combien le jeu en produit, leurs priorites, et
+				// combien de modeles chacun porte.
+				if (getenv("VF3_SCENE_LOG")) {
+					std::string forme;
+					for (const Viewport &v : scene.viewports) {
+						// La lumiere et le brouillard viennent avec : le sol n'est blanc que dans
+						// trois sous-etats, et rien dans le chemin d'eclairage d'un maillage a
+						// ombrage fixe, sans projecteur ni brouillard, n'en depend. Ce qui change
+						// d'un etat a l'autre est donc la SCENE, et c'est cette ligne qui le dit.
+						char buf[192];
+						snprintf(buf, sizeof buf,
+						         "[pri %d, %d modele(s), %gx%g en %g,%g | sol %.2f amb %.2f"
+						         " proj %.2f/%.2f/%.2f brou %.2f/%.3f/%.3f] ",
+						         v.priority, int(v.models.size()), v.vp_w, v.vp_h, v.vp_x, v.vp_y,
+						         v.sun_intensity, v.ambient,
+						         v.spot_colour[0], v.spot_colour[1], v.spot_colour[2],
+						         v.scroll_fog, v.fog_density, v.fog_start);
+						forme += buf;
+					}
+					// L'ETAT DU JEU, EN TETE DE LIGNE, SOUS LE NOM DE SEGA. Le mode est en
+					// 0x0058FD98 et le sous-etat en 0x0058FD99 (model3.cpp, fv2_mode), et Sega
+					// a laisse les quatre-vingts noms en clair dans la ROM, une table de
+					// pointeurs en 0x00024494. Les trois sous-etats ou le sol est blanc y
+					// portent un nom : ROUND_MASK_*, SET_*/READY_*, REPLAY_*. La ligne porte
+					// aussi l'index de decor (0x0058FD9F), dont depend notre `ce_decor`.
+					static const char *SOUS_GAME[20] = {
+						"ROUND_MASK_INT", "ROUND_MASK_IN", "ROUND_MASK_DSP", "ROUND_MASK_OUT",
+						"ROUND_INT", "ROUND_DSP", "SET_INT", "SET_INT_POSE", "SET_DSP",
+						"READY_INT", "READY_DSP", "FIGHT_INT", "FIGHT_DSP", "JUDGE", "JUDGE_DSP",
+						"REPLAY_INT", "REPLAY_DSP", "VIC_INT", "VIC_DSP", "NEXT_PROG_SEL"
+					};
+					auto octet = [&](uint32_t a) {
+						return board.ram.size() > (a ^ 3) ? board.ram[a ^ 3] : 0xFFu;
+					};
+					const unsigned mode = octet(0x0058FD98), sous = octet(0x0058FD99);
+					const char *nom = ((mode == 6 || mode == 7) && sous < 20) ? SOUS_GAME[sous] : "?";
+					char tete[96];
+					snprintf(tete, sizeof tete, "mode %u, %s (%u), decor %u : ",
+					         mode, nom, sous, octet(0x0058FD9F));
+					forme = std::string(tete) + forme;
+					static std::string avant;
+					if (forme != avant) {
+						avant = forme;
+						fprintf(stderr, "scene : %s+ le notre (%d modeles), copie du porteur pri %d\n",
+						        forme.c_str(), int(a_nous.models.size()), jeu.priority);
+					}
+				}
+				scene.viewports.push_back(std::move(a_nous));
+			}
+		}
+	}
 	// VF3_TRANS_AUDIT=1: every translucent mesh in the scene, with where it came from and how big it is in the
 	// camera's space, for finding the one that covers the picture (debugging)
 	if (getenv("VF3_TRANS_AUDIT")) {

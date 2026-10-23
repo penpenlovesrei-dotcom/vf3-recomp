@@ -325,6 +325,17 @@ int main(int argc, char **argv)
 		}
 		auto tp0 = std::chrono::steady_clock::now();
 		board.run_frame();
+		// VF3_STAGE=<n> : le decor force, comme le fait l'hote fenetre (main.cpp, hold_stage). Le patch vit
+		// en RAM, donc il attend que l'amorce ait decompresse le programme : on reessaie a chaque image, et
+		// force_stage lit avant d'ecrire, donc une fois pose il ne fait plus rien.
+		if (const char *sg = getenv("VF3_STAGE")) {
+			static bool dit = false;
+			const int faits = board.force_stage(int(strtol(sg, nullptr, 0)));
+			if (faits > 0 && !dit) {
+				dit = true;
+				fprintf(stderr, "decor force : %d site(s) patche(s), le decor vaut %ld\n", faits, strtol(sg, nullptr, 0));
+			}
+		}
 		// --full-roster: Fighting Vipers 2's hidden fighters, put in as soon as the boot has unpacked the code
 		// that gates them and held after that (model3.cpp, unlock_roster). It goes in before the rebuild below,
 		// so --rec makes its native code from the program as it will run.

@@ -507,14 +507,21 @@ void Model3::run_lines(unsigned from, unsigned to)
 			irq.assert_(0x02);
 		if (on_line) on_line(i);
 		cpu.execute(int(line_cycles));
+		hang_sample();
 		if (after_slice) after_slice();
 	}
 }
 
 void Model3::run_frame_start()
 {
+	stage_note();
+	murs_note();
+	pmg_note();
+	hang_watch();
+
 	auto exec = [this](int n) {
 		cpu.execute(n);
+		hang_sample();
 		if (after_slice) after_slice();
 	};
 	const unsigned cycles = unsigned(ppc_hz);
@@ -1435,6 +1442,325 @@ int Model3::unlock_roster()
 	word(ram, SITE) = ALWAYS;
 	cpu.ram_written(SITE);   // (the recompiler's native code was made from the instruction that was there)
 	return 1;
+}
+
+// VF3_STAGE=<n> : le decor que le jeu tire au sort, force.
+//
+// CE QUI A ETE MESURE. L'octet en 0x0058FD9F porte l'index du decor courant,
+// dans la table des 27 enregistrements de 0x70 octets en 0x00075170 : son +0x00
+// pointe le nom, et les 27 noms se lisent en clair (TEST, WESTERN, AC_CARRIER,
+// ...), TEST en 0. Seize sites ecrivent cet octet, dont deux depuis le tirage
+// de 0x0007111C, qui prend un octet du generateur, le reduit modulo 27, puis
+// le filtre par un masque de 27 octets en 0x004836FF -- zero autorise.
+//
+// POURQUOI ON NE REPOSE PAS L'OCTET A CHAQUE IMAGE. C'est ce qui a ete essaye
+// d'abord, et ca desynchronise : pendant la demonstration, les modeles d'un
+// decor sont deja charges quand l'octet dit l'autre, et on obtient le decor de
+// l'un avec le sol de l'autre. Il faut forcer le CHOIX, une fois, pour que les
+// modeles, l'arene et la camera suivent ensemble.
+//
+// On patche donc le tireur lui-meme pour qu'il rende l'index voulu :
+//
+//     0007111C   stwu r1,-0x20(r1)   ->   li r3,<n>
+//     00071120   mflr r0             ->   blr
+//
+// L'adresse est en RAM : le programme est un gzip que l'amorce decompresse en
+// RAM 0, donc il n'y a rien a patcher avant qu'elle soit passee par la. D'ou la
+// lecture avant l'ecriture -- autre chose que l'instruction de Sega veut dire
+// que ce n'est pas le moment. Meme precaution que unlock_roster.
+// CE QUI NE SUFFIT PAS : patcher le seul tireur. Mesure -- avec lui patche, un vrai combat demarre quand meme
+// sur DAM. Le decor d'un combat ne vient pas du tirage mais d'une FICHE DE COMBAT : en 0x00072C94 le jeu pose
+// `lis r9,0x48 ; addi r9,r9,0x3744`, soit une table en 0x00483744 dont le champ +4 de chaque fiche est le decor.
+// Deux autres chemins le lisent en +0x27 d'une autre structure, et deux encore dans des octets voisins du sien.
+//
+// On remplace donc les CINQ lectures indirectes par la constante. Les ecrivains EN DUR sont laisses tranquilles
+// -- l'attract (0x000B3C4 pose 21) et l'ecran de selection (0x0005F050 pose 26) : c'est en les ecrasant qu'on
+// obtenait le decor de l'un avec le sol de l'autre.
+int Model3::force_stage(int n)
+{
+	if (set != "fvipers2") return -1;
+	if (n < 0 || n > 26) return -1;
+	// (adresse, l'instruction que Sega a ecrite, le registre charge)
+	struct Site { uint32_t at, was; int reg; };
+	static const Site sites[] = {
+		{ 0x0007111C, 0x9421FFE0, -1 },   // le tireur : stwu r1,-0x20(r1) -> li r3,n ; blr
+		{ 0x00072CD0, 0x880B0004,  0 },   // lbz r0,4(r11)      la fiche de combat
+		{ 0x00072FD8, 0x881D0027,  0 },   // lbz r0,0x27(r29)
+		{ 0x000732EC, 0x881F0027,  0 },   // lbz r0,0x27(r31)
+		{ 0x0000D2A0, 0x8863FDA4,  3 },   // lbz r3,-0x25c(r3)
+		{ 0x0000D54C, 0x8863FDA5,  3 },   // lbz r3,-0x25b(r3)
+		// Les deux du demarrage d'un combat. Sans eux le decor repassait a 9 (DAM) des que le combat commencait,
+		// alors que l'attract, lui, affichait bien le notre : c'est ce que l'ecran montrait.
+		{ 0x000716B4, 0x7FC0F378,  0 },   // mr r0,r30
+		{ 0x00071748, 0x88091460,  0 },   // lbz r0,0x1460(r9)
+	};
+	// EMPRUNTER LA LISTE DE COMPORTEMENTS D'UN AUTRE DECOR NE MARCHE PAS -- essaye, et mesure.
+	//
+	// Le champ +0x20 pointe les comportements que le decor active, par indice dans la table de 0x1C octets
+	// de 0x00114FE0. TEST en active zero, les autres neuf, dont sept communs a tous. On a donc fait pointer
+	// TEST sur la liste de TOWER (0x001155A2) pour lui donner murs et chute.
+	//
+	// Resultat a l'ecran : les comportements s'activent bien -- des objets apparaissent et eclatent -- mais
+	// ils referencent la geometrie de LEUR decor. Sur TEST, qui ne l'a pas, ca ne donne que des eclats
+	// parasites, et ni mur ni chute. Une liste n'est donc pas transposable : il faudra lire ce que les
+	// entrees 08, 06, 05 et 04 vont chercher, et leur donner la geometrie du ring.
+
+	// LES DEUX CHAMPS QUE LA BORNE N'A PAS, recopies de la Dreamcast.
+	//
+	// L'enregistrement d'un decor a la meme disposition des deux cotes. Compares champ par champ, ceux de TEST
+	// ne different que par deux valeurs :
+	//
+	//              +0x30   +0x34    +0x38   +0x3c   +0x40
+	//     DC       5.000   99.990   2.800   3.000   0.300
+	//     borne    5.000    0.000   2.700   3.000   0.300
+	//
+	// Et 99,99 est exactement ce que portent DAM et TOWER sur la borne -- les decors a chute longue. Zero chez
+	// TEST, donc un ejecte qui ne tombe pas. On ne choisit aucune valeur : on recopie celles de la Dreamcast.
+	if (n == 0) {
+		constexpr uint32_t REC = 0x0007516C;   // l'enregistrement de TEST
+		struct Champ { uint32_t off, etait, devient; const char *quoi; };
+		static const Champ champs[] = {
+			{ 0x34, 0x00000000, 0x42C7FAE1, "la profondeur de chute (0 -> 99,99)" },
+			{ 0x38, 0x402CCCCD, 0x40333333, "le champ +0x38 (2,70 -> 2,80)" },
+		};
+		for (const Champ &c : champs)
+			if (word(ram, REC + c.off) == c.etait) {
+				word(ram, REC + c.off) = c.devient;
+				fprintf(stderr, "decor TEST : %s, comme sur Dreamcast\n", c.quoi);
+			}
+	}
+
+	// L'ARENE DE TEST, prise chez TOWER parce que c'est litteralement la meme.
+	//
+	// Le champ +0x24 d'un decor pointe une structure d'arene : son +0x00 mene a un en-tete de compteurs en
+	// demi-mots, et ses enregistrements de 0x20 octets commencent en +0x18 (0x00027D2C : `lhz r6,0(r26)`,
+	// `addi r25,r3,0x18`, `li r17,0x20`). Lues des deux cotes :
+	//
+	//     DC    TEST   enregistrements  0.050 -0.050  1.183 -1.083 ...   compteurs  5 0 9 0 9 0 9 0
+	//     borne TOWER  enregistrements  0.050 -0.050  1.183 -1.083 ...   compteurs  1678 0 1676 0 ...
+	//     borne TEST   enregistrements  0.010  0.020  0.030  0.040 ...   compteurs  160 11784 160 11788
+	//
+	// Les enregistrements de TEST sur Dreamcast sont identiques a ceux de TOWER sur la borne, sur 120
+	// flottants exactement -- 480 octets, et les deux ne divergent qu'au debut de la structure suivante, les
+	// structures etant espacees de 0x1F8 = 504 et 0x18 + 480 faisant 504.
+	//
+	// Ceux de TEST sur la borne sont une rampe 0,01 0,02 0,03, et ses compteurs valent 160 et 11784 -- soit
+	// 0x00A0 et 0x2E08 : ses propres identifiants de ressource relus comme des demi-mots. Le pointeur est donc
+	// du remplissage lui aussi. Recopier les seuls enregistrements ne suffisait pas : l'en-tete restait faux,
+	// et la hitbox ne bougeait pas.
+	//
+	// On fait donc pointer tout le +0x24 sur la structure de TOWER. Ses flottants +0x04..+0x14 sont de toute
+	// facon identiques pour tous les decors et sur les deux machines.
+	if (n == 0) {
+		constexpr uint32_t CHAMP = 0x0007516C + 0x24;
+		constexpr uint32_t VIDE = 0x000761B0;   // la structure factice de TEST
+		constexpr uint32_t TOUR = 0x00077560;   // celle de TOWER
+		if (word(ram, CHAMP) == VIDE) {
+			word(ram, CHAMP) = TOUR;
+			fprintf(stderr, "decor TEST : arene prise chez TOWER (%#x), comme sur Dreamcast\n", TOUR);
+		}
+	}
+
+	int faits = 0;
+	for (const Site &s : sites) {
+		if (word(ram, s.at) != s.was) continue;
+		if (s.reg < 0) {
+			if (word(ram, s.at + 4) != 0x7C0802A6u) continue;   // mflr r0
+			word(ram, s.at) = 0x38600000u | uint32_t(n);        // li r3,n
+			word(ram, s.at + 4) = 0x4E800020u;                  // blr
+			cpu.ram_written(s.at + 4);
+		} else {
+			word(ram, s.at) = 0x38000000u | (uint32_t(s.reg) << 21) | uint32_t(n);   // li rN,n
+		}
+		cpu.ram_written(s.at);
+		faits++;
+	}
+	return faits;
+}
+
+// LE DETECTEUR DE GEL. Mesure : le jeu s'est fige a l'explosion d'armure du second round, et AUCUNE des six
+// assertions nommees n'a parle. Le message de 0x00274A24 ne suffit donc pas -- il ne couvre que les six pieges
+// du gestionnaire de polygones, et le programme en compte vingt-sept en tout, dont certains sans message.
+//
+// Un gel, c'est le PowerPC qui tourne en rond. On echantillonne donc son compteur de programme a chaque image :
+// s'il ne bouge plus sur une seconde entiere, on le dit, avec l'instruction qui s'y trouve. L'adresse nomme le
+// piege directement, et il n'y a plus rien a deviner.
+void Model3::hang_report()
+{
+	const uint32_t pc = cpu.pc();
+	fprintf(stderr, "GEL : le PowerPC tourne en %#010x (instruction %08x)\n", pc, peek32(pc));
+	for (int i = -3; i <= 3; i++)
+		fprintf(stderr, "   %#010x  %08x%s\n", pc + 4 * i, peek32(pc + 4 * i), i ? "" : "   <--");
+	// Le premier gel attrape etait la memcpy octet a octet de 0x00001E20 : lbzu / stbu / addic. r5,-1 / bne.
+	// Une longueur nulle y devient 0xFFFFFFFF au premier tour, et la boucle part pour quatre milliards
+	// d'iterations. Ce qui manque alors, c'est la longueur et l'appelant -- d'ou ce qui suit.
+	fprintf(stderr, "   retour en %#010x ; r3=%#010x r4=%#010x r5=%#010x r6=%#010x\n",
+	        cpu.lr(), cpu.gpr(3), cpu.gpr(4), cpu.gpr(5), cpu.gpr(6));
+	fprintf(stderr, "   r7=%#010x r8=%#010x r9=%#010x r31=%#010x\n",
+	        cpu.gpr(7), cpu.gpr(8), cpu.gpr(9), cpu.gpr(31));
+}
+
+// CE QUE LE PREMIER DETECTEUR NE POUVAIT PAS PROUVER. Il comparait le compteur de programme d'une image a la
+// suivante. Or le recompilateur n'ecrit `s.pc` qu'aux SORTIES DE BLOC (ppc_rec.cpp, `pcs(s.pc, s.next)`), donc
+// un echantillon par image peut etre perime, et la meme adresse soixante fois ne prouve rien a elle seule.
+//
+// Celui-ci echantillonne apres CHAQUE TRANCHE d'execution -- quelques centaines de fois par image -- et retient
+// les adresses DISTINCTES. Un jeu qui tourne normalement en traverse des centaines ; un jeu bloque en traverse
+// une poignee. C'est la TAILLE de l'ensemble qui conclut, pas la repetition d'une valeur, et l'ensemble lui-meme
+// nomme la region ou il tourne.
+void Model3::hang_sample()
+{
+	if (set != "fvipers2" || hang_said >= 3 || hang_over) return;
+	const uint32_t pc = cpu.pc();
+	// Le programme du jeu tourne en RAM a la base 0 ; l'amorce, elle, tourne dans le CROM. Et elle y passe plus
+	// d'une seconde dans une boucle de cinq adresses : elle efface 5,5 Mio de RAM (0xFFF018D8, r5 = 0x15293A).
+	// Sans ce filtre le detecteur criait au gel avant meme le demarrage, et se taisait ensuite.
+	if (pc >= 0x00800000) return;
+	for (unsigned i = 0; i < hang_n; i++)
+		if (hang_pcs[i] == pc) return;
+	if (hang_n < sizeof(hang_pcs) / sizeof(hang_pcs[0]))
+		hang_pcs[hang_n++] = pc;
+	else
+		hang_over = true;   // plus de 32 adresses : le jeu bouge, inutile d'en retenir plus
+}
+
+void Model3::hang_watch()
+{
+	if (set != "fvipers2" || hang_said >= 3 || !hang_armed) return;
+	// LE SIGNAL DE VIE EST CELUI DU JEU, pas une heuristique sur le code execute. Mesure : le critere
+	// precedent -- « moins de huit adresses distinctes en une seconde » -- attrapait les attentes actives de
+	// l'amorce, qui sont legitimes et longues : une boucle de decompte de 83 millions en 0x000074C4, et
+	// l'effacement de 5,5 Mio de RAM en 0xFFF018D8. Les trois rapports etaient consommes avant l'attract.
+	//
+	// Le jeu, lui, reconstruit sa liste d'affichage a chaque image : le curseur 0x00580FA4 repart de 0x800000
+	// et grandit (voir 0x00004F70 et 0x00005080). S'il ne bouge plus, le jeu ne construit plus rien, et c'est
+	// la definition meme du gel qu'on cherche.
+	const uint32_t vie = word(ram, 0x00580FA4);
+	if (vie != hang_live) {
+		hang_live = vie;
+		hang_frames = 0;
+		hang_n = 0;
+		hang_over = false;
+		return;
+	}
+	if (++hang_frames < 120) return;   // deux secondes sans que la liste d'affichage bouge
+	const unsigned n = hang_over ? 999 : hang_n;
+	hang_frames = 0;
+	hang_n = 0;
+	hang_over = false;
+	if (n == 0) return;
+	hang_said++;
+	fprintf(stderr, "GEL : en une seconde le PowerPC n'a traverse que %u adresse(s) :\n", n);
+	for (unsigned i = 0; i < n; i++)
+		fprintf(stderr, "   %#010x  %08x\n", hang_pcs[i], peek32(hang_pcs[i]));
+	hang_report();
+}
+
+// LE GUETTEUR D'ASSERTION. Le gestionnaire de polygones du jeu verifie ses budgets, et quand l'un saute il ecrit
+// un message puis se branche sur lui-meme -- le jeu gele sur place, sans rien dire. Six pieges de cette forme,
+// tous non gardes, tous dans 0x00005228..0x0000538C :
+//
+//     005228  lwz   r3, 0xfa4(r3)      le curseur du miroir de RAM de culling
+//     005234  addi  r4, r4, 0x740      le plafond, 0x00800740
+//     005238  cmpw  r3, r4
+//     00523c  ble   0x5254             si on tient, on continue
+//     00524c  stw   r3, 0x4a24(r2)     sinon on pose le message en 0x00274A24
+//     005250  b     0x5250             et on gele
+//
+//     0x00580FA4 <= 0x00800740   "PMG ERROR:TOO MANY VIEWPORT"
+//     0x00580FA8 <= 0x00802A80   "PMG ERROR:TOO MANY CULLING NODE"
+//     0x00581030 <= 0x00805DA8   "PMG ERROR:TOO MANY MATRIX" / MEMCPY_SCRIPT / SIBTBL
+//
+// Le mot de 0x00274A24 nomme donc l'assertion qui a saute. On le lit a chaque image et on le dit une fois : le
+// gel cesse d'etre muet, et on sait lequel des six budgets deborde sans avoir a deviner.
+void Model3::pmg_note()
+{
+	if (set != "fvipers2" || ram.size() < 0x600000) return;
+	static bool dit = false;
+	if (dit) return;
+	const uint32_t p = word(ram, 0x00274A24);
+	if (!p || p + 64 >= ram.size()) return;
+	char m[64];
+	size_t k = 0;
+	for (; k < sizeof(m) - 1; k++) {
+		const uint8_t c = ram[(p + k) ^ 3];
+		if (c < 32 || c >= 127) break;
+		m[k] = char(c);
+	}
+	m[k] = '\0';
+	// L'emplacement n'est jamais vide : au repos il porte "NON ERROR". Ce n'est donc pas la nullite qui
+	// signale la panne mais le CHANGEMENT de message -- mesure au premier essai, ou le guetteur a parle des
+	// l'amorce avec les trois budgets a zero.
+	if (k == 0 || strncmp(m, "NON ERROR", 9) == 0) return;
+	dit = true;
+	fprintf(stderr, "ASSERTION du jeu : %s  (message en %#010x)\n", m, p);
+	hang_report();
+	fprintf(stderr, "   budgets : viewport %#x/%#x, noeuds %#x/%#x, matrices %#x/%#x\n",
+	        word(ram, 0x00580FA4), 0x00800740u,
+	        word(ram, 0x00580FA8), 0x00802A80u,
+	        word(ram, 0x00581030), 0x00805DA8u);
+}
+
+// Le decor que le jeu croit afficher, lu et non deduit d'une image : l'octet
+// de 0x0058FD9F, puis le pointeur de nom du bon enregistrement. Ecrit sur
+// stderr quand il change, et seulement alors.
+void Model3::stage_note()
+{
+	static const bool on = getenv("VF3_STAGE_LOG") != nullptr;
+	if (!on || set != "fvipers2" || ram.size() < 0x600000) return;
+	const unsigned i = ram[0x58FD9F ^ 3];
+	static unsigned last = 0xFFFF;
+	if (i == last) return;
+	last = i;
+	char nom[24] = "?";
+	if (i < 27) {
+		const uint32_t p = word(ram, 0x00075170 + i * 0x70);
+		if (p && p + sizeof(nom) < ram.size())
+			for (size_t k = 0; k < sizeof(nom) - 1; k++) {
+				const uint8_t c = ram[(p + k) ^ 3];
+				nom[k] = (c >= 32 && c < 127) ? char(c) : '\0';
+				if (!nom[k]) break;
+			}
+	}
+	fprintf(stderr, "decor : index %u (%s)\n", i, nom);
+}
+
+// LE MASQUE DES MURS, lu a l'execution parce qu'il n'est pas lisible autrement.
+//
+// L'arene n'est pas installee au chargement du decor : elle est (re)construite quand un MASQUE change. En
+// 0x00027B74 :
+//
+//     r5 = [0x00075124]            une structure batie en RAM, hors de l'image du programme
+//     r3 = [r5 + 0xC0]             le masque courant
+//     r20 = r3 XOR l'ancien        ce qui a change
+//     bit 1 change -> 0x00027D2C avec r18 = 0        (installer une paroi)
+//     bit 2 change -> ... r18 = 0xC000
+//     bit 3 change -> ... r18 = 0x8000
+//
+// Chaque bit est donc une paroi, et c'est sa modification qui la pose ou la retire. Si ce masque reste nul sur
+// TEST, aucune paroi n'est jamais installee -- et aucun patch de la donnee source ne peut y changer quoi que
+// ce soit, ce qui expliquerait les deux essais sans effet.
+void Model3::murs_note()
+{
+	if (set != "fvipers2" || !getenv("VF3_STAGE_LOG") || ram.size() < 0x800000) return;
+	// LE VERROU DES PAROIS, lu a sa source. En 0x00027AC4 :
+	//
+	//     r3 = [0x0058FD50]                   un mot d'etat du jeu
+	//     andis. r0, r3, 0x300   -> si ces bits manquent, tout est saute
+	//     and.   r0, 0x84007000  -> si ceux-ci sont la, tout est saute
+	//     bl 0x00027B70                        le masque, puis la pose
+	//     r20 = [0x005818D9]                   le nombre de parois
+	//     cmpwi r20, 0 -> si zero, aucune paroi n'est traitee (0x000284A0)
+	//
+	// Deux valeurs suffisent donc a savoir si les murs sont possibles sur ce decor.
+	const uint32_t etat = word(ram, 0x0058FD50);
+	const uint8_t n = ram[0x005818D9 ^ 3];
+	static uint32_t ae = 0xFFFFFFFF;
+	static uint8_t an = 0xFF;
+	if (etat == ae && n == an) return;
+	ae = etat; an = n;
+	fprintf(stderr, "murs : etat %#010x  [0x300 %s, 0x84007000 %s]  parois %u\n",
+	        etat, (etat & 0x03000000) ? "oui" : "NON", (etat & 0x84007000) ? "OUI" : "non", n);
 }
 
 // Honey's other costume: the one players have passed around for twenty years, and which turns out to be in

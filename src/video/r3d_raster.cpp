@@ -12,7 +12,9 @@
 // byte; 255 transparent with contour), 7 RGBA4, 8-11 a 4-bit grey nibble (15 transparent; formats 1-4 with
 // contour).
 #include <cstdlib>
+#include <cstdio>
 #include "r3d_raster.h"
+#include "r3d_inject.h"
 #include "parallel.h"
 #include <algorithm>
 #include <cmath>
@@ -134,6 +136,18 @@ static void vp_rect(const Viewport &vp, int w, int gx, float xscale, float scale
 void Raster::render(const Scene &scene, const uint16_t *tex_ram)
 {
 	if (base.size() != size_t(w) * h) alloc();   // (let go while the GPU drew)
+	// VF3_SCENE: the converted scene brings its own sheet, or the geometry would wear whatever the game last
+	// uploaded (see r3d_inject.h).
+	//
+	// En mode ADDITIF (VF3_SCENE_ADD) la scene du jeu est toujours la, et sa planche avec : on garde donc les
+	// deux, et c'est le maillage qui dit laquelle il veut. Remplacer globalement donnait les textures du ring
+	// sur les vignettes de l'ecran de selection et des combattants tout noirs.
+	inj_tex = nullptr;
+	if (const Injected *in = injected_scene())
+		if (!in->tex.empty()) {
+			if (getenv("VF3_SCENE_ADD")) inj_tex = in->tex.data();
+			else tex_ram = in->tex.data();
+		}
 	tex = tex_ram;
 	prepare(scene);
 	resolve_hd(tex_ram);
@@ -476,7 +490,7 @@ void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 	// the nodes' texture offset moves where on the sheet the mesh reads from (Step 1.5 and later; 0 on Step 1.0,
 	// which has no such word, so the two lines below are then exactly what they were)
 	const int tx = model.tex_x, ty = model.tex_y;
-	Sampler smp = { tex, mesh.page ^ model.page, (mesh.x + tx) & 2047, (mesh.y + ty) & 2047,
+	Sampler smp = { mesh.injected && inj_tex ? inj_tex : tex, mesh.page ^ model.page, (mesh.x + tx) & 2047, (mesh.y + ty) & 2047,
 		mesh.format, mesh.width, mesh.height, mesh.wrap_u, mesh.wrap_v, mesh.alpha_test };
 	Sampler smp_flip = smp;
 	smp_flip.bx = (mesh.flip_x + tx) & 2047;
@@ -641,6 +655,11 @@ void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 						ch += (target - ch) * fog;
 					}
 				}
+				// VF3_DIAG_ROUGE=1 : nos maillages injectes sortent en rouge pur. Un sol blanc qui
+				// passe au rouge est le notre et c'est son eclairage ; un sol blanc qui RESTE blanc
+				// est peint par autre chose, et c'est la composition qu'il faut regarder.
+				static const bool diag_rouge = getenv("VF3_DIAG_ROUGE") != nullptr;
+				if (diag_rouge && mesh.injected) { c.r = 1; c.g = 0; c.b = 0; }
 				depth[at] = wi;
 				if (mesh.layered) stencil[at]++;
 				if (layer == 0) {

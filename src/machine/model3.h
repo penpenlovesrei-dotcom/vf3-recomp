@@ -197,6 +197,19 @@ public:
 	// now, 0 if there was nothing to do (already there, or the program isn't unpacked yet), -1 for a game this
 	// isn't known for.
 	int unlock_roster();
+	int force_stage(int n);   // VF3_STAGE : patche le tireur de decor (model3.cpp)
+	void stage_note();        // VF3_STAGE_LOG : dit le decor courant quand il change
+	void murs_note();         // dit le masque des murs quand il change (model3.cpp)
+	void pmg_note();          // dit l'assertion du gestionnaire de polygones quand elle saute (model3.cpp)
+	void hang_watch();        // dit ou le PowerPC tourne en rond quand le jeu gele (model3.cpp)
+	void hang_sample();       // appele apres chaque tranche d'execution
+	void hang_report();
+	uint32_t hang_pcs[32] = {};
+	unsigned hang_n = 0, hang_frames = 0;
+	unsigned hang_said = 0;
+	uint32_t hang_live = 0;
+	bool hang_over = false;
+	bool hang_armed = false;   // pose par l'hote quand l'amorce est finie (main.cpp)
 	// Honey's other costume, the one Sega gated behind thirty straight wins (docs/fv2-honey.md). Two
 	// instructions in her own cloth handler, turned always-true, in the same shape as the roster patch above:
 	// read before every write, and the caller keeps calling. 1 if it wrote just now, 0 if there was nothing to

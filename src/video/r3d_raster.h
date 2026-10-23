@@ -90,6 +90,7 @@ private:
 	std::vector<float> depth, depth_saved;
 	std::vector<uint8_t> stencil, stencil_saved;
 	const uint16_t *tex = nullptr;
+	const uint16_t *inj_tex = nullptr;   // la planche de VF3_SCENE en mode additif (r3d_raster.cpp)
 	bool sun_clamp = true;
 	uint64_t hd_version = 0;   // the tex_version the texture pack's answers were worked out for
 
