@@ -206,6 +206,8 @@ public:
 	// Mesure du 23 octobre sur TOWER : base 0x0070F014, soit [0x00075124] + 0xB14, pas 0,3125 pour
 	// un demi-cote de 5,0, et les identifiants dans l'ordre de la liste d'objets du decor.
 	uint32_t morceaux_base = 0;
+	// Neutralise le dessin des morceaux PAR LE JEU, sur le decor injecte (model3.cpp).
+	void morceaux_neutraliser();
 	void pmg_note();          // dit l'assertion du gestionnaire de polygones quand elle saute (model3.cpp)
 	void hang_watch();        // dit ou le PowerPC tourne en rond quand le jeu gele (model3.cpp)
 	void hang_sample();       // appele apres chaque tranche d'execution

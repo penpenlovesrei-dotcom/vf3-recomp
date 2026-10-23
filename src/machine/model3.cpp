@@ -517,6 +517,7 @@ void Model3::run_frame_start()
 {
 	stage_note();
 	murs_note();
+	morceaux_neutraliser();
 	pmg_note();
 	hang_watch();
 
@@ -1813,6 +1814,36 @@ void Model3::stage_note()
 // Chaque bit est donc une paroi, et c'est sa modification qui la pose ou la retire. Si ce masque reste nul sur
 // TEST, aucune paroi n'est jamais installee -- et aucun patch de la donnee source ne peut y changer quoi que
 // ce soit, ce qui expliquerait les deux essais sans effet.
+// LE JEU NE PEUT PAS DESSINER LES MORCEAUX DE TEST, ET ON L'EN EMPECHE PROPREMENT.
+//
+// FUN_00006B3C va chercher le modele d'un objet dans la table 0x003003CC, indexee par
+// l'identifiant et batie a l'execution pour le decor courant. Les morceaux de TEST n'y sont pas :
+// leur geometrie n'existe nulle part dans la borne, c'est tout le probleme du portage. Et la liste
+// d'objets de TEST est du remplissage -- sa table de sons relue -- qui donne des identifiants de
+// 160 et 161 et des index de matrice de 11 784, donc des matrices prises hors du bloc.
+//
+// En rendant ses taches a TEST (fiche+0x20), on a mis ce dessin en marche : d'ou les artefacts.
+//
+// On ne cherche pas de zone libre pour y poser une fausse liste. Le code offre son propre
+// interrupteur : dessiner_objets_decor (0x000284F4) saute toute entree dont l'octet d'etat +0xC
+// vaut 2. On pose donc 2 partout, une fois les morceaux alignes. Le jeu continue a les ALIGNER et
+// a les ANIMER -- 0x000280AC ne lit pas cet octet -- il cesse seulement de les dessiner, et le
+// port les dessine a sa place avec la geometrie Dreamcast et la liste d'objets relevee sur elle.
+//
+// CE QUE CA COUTE : l'octet d'etat servait aussi a dire quand un morceau a fini sa course. On le
+// perd, donc nos eclats restent tant que la paroi est tombee.
+void Model3::morceaux_neutraliser()
+{
+	if (set != "fvipers2" || !morceaux_base || ram.size() < 0x800000) return;
+	const char *add = getenv("VF3_SCENE_ADD");
+	if (!add) return;
+	if (ram[0x0058FD9F ^ 3] != uint8_t(strtol(add, nullptr, 0))) return;
+	for (int i = 0; i < 32; i++) {
+		const uint32_t a = (morceaux_base + uint32_t(i) * 0x10 + 0xC) ^ 3;
+		if (a < ram.size()) ram[a] = 2;
+	}
+}
+
 void Model3::murs_note()
 {
 	if (set != "fvipers2" || !getenv("VF3_STAGE_LOG") || ram.size() < 0x800000) return;

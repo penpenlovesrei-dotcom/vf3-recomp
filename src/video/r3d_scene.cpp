@@ -517,7 +517,10 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					// position viennent avec, et il n'y a plus rien a inventer sur le placement.
 					for (int i = 0; i < 32; i++) {
 						const uint32_t e = board.morceaux_base + uint32_t(i) * 0x10;
-						if (octet(e + 0xC) == 2) continue;
+						// L'octet d'etat ne sert plus de filtre : on l'a mis a 2 partout pour
+						// que le JEU cesse de dessiner ses objets inexistants
+						// (model3.cpp, morceaux_neutraliser). C'est la liste d'objets relevee
+						// sur Dreamcast qui dit maintenant lesquels se dessinent.
 						// L'identifiant de CE morceau, PRIS SUR LA DREAMCAST et non dans
 						// l'entree de la borne : le champ +0x24 de la fiche de TEST est du
 						// remplissage, et le jeu y lit des identifiants de 160 et 161. La
