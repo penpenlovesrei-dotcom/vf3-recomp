@@ -780,6 +780,28 @@ image 7073 : 336 modeles      le passage de replay, garni
 
 **336 modèles** dans le passage 3D, là où la demande nue n'en donnait que les restes.
 
+### Et le décor est bien là — pour le match qu'on a joué
+
+Photographié dans l'hôte, à l'image près, la fin montre **Cross River Damsite** : le barrage, l'eau, la cage,
+les deux combattants en plein échange, « v.s. EMI ». C'est la rediffusion du match qui vient d'être joué, sur
+son décor, en écran large.
+
+**Mais la fin rediffuse l'échelle entière, et l'échelle n'a qu'un barreau.** Les passages se suivent :
+
+| passage | modèles | ce qu'on voit |
+|---|---|---|
+| le premier | 334 à 338 | le match joué, décor compris |
+| le suivant | 279 | le sol nu, « Old Armstone Town », « v.s. GRACE » |
+
+Le second n'est pas un défaut du portage : c'est un adversaire que le joueur n'a jamais affronté, donc un
+replay qui n'existe pas. Une vraie partie d'arcade en remplirait huit.
+
+**Et c'est ce qui explique ma longue erreur de lecture.** Quatre photos de suite sont tombées sur le second
+passage ou sur un carton, et j'en ai conclu que l'hôte ne chargeait pas les décors alors que `vf3run` les
+chargeait — deux moteurs, deux résultats, une belle fausse piste. Il n'y avait aucune différence de moteur :
+l'image de `vf3run` était le premier passage, les miennes le second. **Même leçon qu'à la section
+précédente, au même endroit : sur un phénomène qui alterne, une image prise au hasard ne prouve rien.**
+
 ### Le tour de vérification
 
 Joué dans l'hôte, en partie cachée, du premier appui jusqu'au générique. La liste s'ouvre à l'image 1200, la
