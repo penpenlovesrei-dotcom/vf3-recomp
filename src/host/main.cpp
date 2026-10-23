@@ -2832,6 +2832,17 @@ int main(int argc, char **argv)
 			// states never reached. So this line is not his switch but a way to watch it: A asks the game
 			// for it and the page gets out of the way. It ends by itself and the attract loop takes over,
 			// so there is nothing to put back (model3.cpp, fv2_request_ending).
+			//
+			// HALF OF IT COMES OUT, and the line is kept anyway because the half that comes out is the roll
+			// itself. The ending alternates: about 225 frames of credits over the viper, which draw exactly
+			// right, and about 225 of a 3D passage -- 279 models over 16 viewports, 383 later -- which draws
+			// as a bare white floor with a figure the size of a thumb on it, under 2D banners left from the
+			// demonstration ("Old Armstone Town", "v.s. GRACE"). Nothing of the scenery is there.
+			//
+			// It is not a matter of when it is asked for: measured at the same offset from ENDING_INT, a
+			// request at 1201 and one at 1250 give the same pictures. The likeliest reason is that the game
+			// is asked for its ending from the title screen, having never loaded anything -- but that is a
+			// lead, not a measurement, and docs/fv2-console-options.md keeps what was actually seen.
 			{ "ENDING", fixed("WATCH"), {}, [&] { cplay.ask_ending(board); ending_asked = true; }, {}, 0, false, 0 },
 		};
 		// The twenty tracks, and the numbering, are August's measured tables (GameFV2.h): on bank 0x10 the

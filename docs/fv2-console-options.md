@@ -647,41 +647,55 @@ moyen de la regarder : *valider* la demande au jeu et la page s'efface.
 Elle se termine toute seule : le générique dure une centaine de secondes, puis le jeu repasse par sa boucle
 d'attraction et revient à son écran titre. Il n'y a rien à remettre en place.
 
-**Mais pas demandée n'importe quand.** Mesuré avec `vf3run --shots`, en poussant `MODE_REQUEST` une image à la
-fois, l'écran titre étant installé à l'image 1193 :
+**La moitié seulement en sort, et la ligne est gardée quand même**, parce que la moitié qui sort est le
+générique lui-même.
 
-| demandée à | ce qui sort |
-|---|---|
-| 1201 à 1210 | du noir, un plan blanc nu et une silhouette grosse comme le pouce : **aucun décor n'est chargé**. Le plan blanc est le sol vide, pas un décor mal dessiné ; le bandeau « Old Armstone Town » et la bande « v.s. GRACE » sont des couches 2D restées là |
-| 1211 | **le générique**, mais un morceau du viper manque encore en bas |
-| 1212 et au-delà | le générique entier |
+La fin **alterne** : environ 225 images de cartons sur le viper, qui se dessinent exactement comme il faut, et
+environ 225 d'un passage en 3D — 279 modèles sur 16 vues, 383 plus tard — qui se dessine comme un **sol blanc
+nu avec une silhouette grosse comme le pouce**, sous des bandeaux 2D restés de la démonstration (« Old
+Armstone Town », « v.s. GRACE »). Rien du décor n'est là.
 
-La frontière est donc nette : **1212**, soit dix-huit images après `FV2_TITLE_DSP`. Avant cela la fin n'a
-rien à dessiner : demandée trop tôt, elle arrive avant que son décor soit chargé, et l'écran reste au sol nu.
-L'image 1211 est le pas de trop juste avant — assez tard pour que le générique sorte, trop tôt pour qu'il
-sorte complet — et c'est elle qui le dit : un chargement inachevé, et non un état mal choisi.
+### Une frontière qui n'en était pas une
 
-L'attente est de quarante images, soit plus du double, et l'écran titre dure environ 190, donc il y a de la
-place.
+Il faut raconter l'erreur, parce qu'elle est instructive et qu'elle a tenu une demi-journée.
 
-**Le redémarrage de l'attraction a été essayé d'abord**, puisque c'est la route qui *range* la scène pour
-l'écran titre — et il ne sert pas ici : demandée à l'image 1206 après un redémarrage, le même décor cassé est
-sorti. La fin ne veut pas une scène rangée, elle veut un écran titre fini.
+En poussant `MODE_REQUEST` une image à la fois et en photographiant **toujours à l'image 1900**, le générique
+paraissait cassé demandé de 1201 à 1210, entier à partir de 1212, et partiel à 1211 — une frontière nette à
+dix-huit images après `FV2_TITLE_DSP`, qu'on pouvait expliquer par un écran titre qui n'a pas fini de
+s'installer. Une attente de quarante images a été posée là-dessus.
+
+**C'était un artefact de l'échantillonnage.** Puisque la fin alterne toutes les 225 images, déplacer la
+demande déplace *la phase dans laquelle tombe l'image 1900* : à 1201 elle tombait sur un passage 3D, à 1250
+sur un carton. Photographiées **au même décalage depuis `ENDING_INT`** — +300 et +650 — une demande à 1201 et
+une à 1250 donnent les deux mêmes images, aux mêmes tailles d'octet près. **Le moment de la demande ne change
+rien du tout.** L'attente a été retirée.
+
+La leçon, pour la prochaine fois : comparer des images prises au même instant d'un phénomène périodique, et
+non au même numéro d'image absolu. Le « 1211 partiel » qui semblait si parlant n'était qu'une transition de
+phase prise au vol.
+
+### Ce qui reste à trouver
+
+Les passages 3D de la fin ne chargent pas leur décor. La piste la plus simple est que le jeu se voit demander
+sa fin **depuis l'écran titre, sans avoir jamais rien chargé** — mais c'est une piste, pas une mesure. Elle a
+un air de famille avec les combattants noirs du 2026-10-23 : des modèles bien soumis, et une scène qui n'est
+pas là.
 
 ### Le tour de vérification
 
 Joué dans l'hôte, en partie cachée, du premier appui jusqu'au générique. La liste s'ouvre à l'image 1200, la
-page mène à `DISPLAY` puis à `ENDING`, *valider* la demande, et la page s'efface. Le jeu reprend à l'image
-1200, l'attente compte ses quarante images, et :
+page mène à `DISPLAY` puis à `ENDING`, *valider* la demande, et la page s'efface. Le jeu reprend à l'image 1200,
+et — ce tour ayant été joué pendant que l'attente de quarante images était encore en place, dà déduite depuis :
 
 ```
 image 1241 mode 12 sub 5     ENDING_INT, quarante-sept images apres FV2_TITLE_DSP
 image 1253 mode 13 sub 5     ENDING_DSP
 ```
 
-Les photographies montrent le générique entier et qui avance — *Chief Programmer HIDEYA SHIBAZAKI* puis, vingt
-secondes plus tard, *Character Designers KENTAROW NISHIMURA...* — sur le viper, en écran large, sans rien du
-décor blanc. La ligne fait donc ce qu'elle annonce.
+Les photographies montrent les cartons entiers et qui avancent — *Chief Programmer HIDEYA SHIBAZAKI* puis,
+vingt secondes plus tard, *Character Designers KENTAROW NISHIMURA...* — sur le viper, en écran large. **Les
+deux sont tombées sur des cartons**, ce qui est précisément le piège décrit plus haut : elles ne disent rien
+des passages 3D, qui eux restent au sol nu.
 
 Et elle rend la main toute seule, ce qui était la condition pour n'avoir rien à remettre en place :
 

@@ -193,29 +193,18 @@ struct console_play
 	// dropped rather than held, because a request held is what broke the select screen twice.
 	static constexpr int SKIP_GIVE_UP = 600;
 	int skip_logo = 0;        // frames left to wait for the scene to be tidy before asking for the title
-	// THE ENDING IS ASKED FOR FROM THE TITLE SCREEN, AND NOT STRAIGHT AWAY. Measured with vf3run --shots,
-	// poking MODE_REQUEST one frame at a time, with the title screen installed at frame 1193:
+	// THE ENDING IS ASKED FOR STRAIGHT AWAY, and the wait that used to sit here is withdrawn.
 	//
-	//   asked at 1201 to 1210  ->  black, with a bare white ground plane and a figure the size of a thumb.
-	//                              NO SCENERY IS LOADED AT ALL -- the white plane is the empty floor, not a
-	//                              stage drawn wrong -- and the "Old Armstone Town" banner and "v.s. GRACE"
-	//                              strip over it are 2D layers left behind, not part of what is being drawn.
-	//   asked at 1211           ->  the staff roll, but a piece of the viper still missing at the bottom
-	//   asked at 1212 and after ->  the whole roll, over the whole viper
+	// It was put in on a measurement that did not hold. Poking MODE_REQUEST a frame at a time and
+	// photographing ALWAYS AT FRAME 1900, the roll looked broken when asked at 1201-1210 and clean from 1212,
+	// so twenty frames seemed to be what the title screen needed to finish installing. It is not: THE ENDING
+	// ALTERNATES, about 225 frames of credits over the viper and then about 225 of a 3D passage, so moving the
+	// request moves which of the two frame 1900 falls in. Photographed at the SAME OFFSET from ENDING_INT
+	// instead -- +300 and +650 -- a request at 1201 and one at 1250 give the same two pictures, byte for byte
+	// the same sizes. The request frame makes no difference at all.
 	//
-	// So the boundary is 1212, eighteen frames after FV2_TITLE_DSP, and 1211 is what makes it readable: late
-	// enough for the roll to come out, too early for it to come out whole. The ending asked before that gets
-	// nothing loaded to draw. Forty frames is the wait here, more than twice what was measured, and the title
-	// screen lasts about 190, so there is room.
-	//
-	// The attract loop's restart was tried first, since that is the road that TIDIES for the title screen --
-	// and it does not serve here: asked at 1206 after a restart, the same broken stage came out. The ending
-	// does not want a tidy scene, it wants a finished title screen.
-	static constexpr int ENDING_WAIT = 40;
-	int ending_in = 0;        // frames left on the title screen before the ending is asked for; 0: nothing pending
-
-	// The console's DISPLAY page asking to watch the game's own ending.
-	void ask_ending(m3::Model3 &) { ending_in = ENDING_WAIT; }
+	// What the pictures really say is in the next comment, and it is not about timing.
+	void ask_ending(m3::Model3 &b) { b.fv2_request_ending(); }
 
 	// Once a frame, before the game runs. Returns what to hand the game on top of the player's own controls.
 	void step(m3::Model3 &b, m3::Controls &out)
@@ -235,13 +224,6 @@ struct console_play
 			if (tidy && no_skip) skip_logo = 0;
 			else if (tidy) { b.fv2_request_title(); skip_logo = 0; }
 			else skip_logo--;
-		}
-		// The ending, once the title screen has had its twenty-odd frames (above). Counted only while the
-		// title screen is really up: if the player's own Start has carried the game somewhere else in the
-		// meantime, the request is dropped rather than held.
-		if (ending_in > 0) {
-			if (!b.fv2_on_title()) ending_in = 0;
-			else if (--ending_in == 0) b.fv2_request_ending();
 		}
 		if (inject_start > 0) { out.start[0] = true; inject_start--; }
 		if (inject_start_p2 > 0) { out.start[1] = true; inject_start_p2--; }
