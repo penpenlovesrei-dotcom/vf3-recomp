@@ -2295,6 +2295,9 @@ int main(int argc, char **argv)
 	// The SOUNDS page's two tests: which effect and which track are under the cursor, and whether a track was
 	// started from there (it is stopped on the way out, so a test does not follow the player into the game).
 	int se_index = 0x23, bgm_track = 0;
+	// which track is actually sounding, or -1: the marker belongs to that one and not to the one under the
+	// cursor, or stepping away would leave it claiming a track that is not playing
+	int bgm_playing = -1;
 	bool bgm_testing = false;
 	// The pump's own clock, out here so that going into a surface can prime it (see there).
 	double menu_sound_owed = 0;
@@ -2791,12 +2794,21 @@ int main(int argc, char **argv)
 			  }, {}, [&] { return (cfg.effects + 4) / 5; }, 20, false, 0 },
 			// August drew this one "BGM" and dispatched on "BGM TEST", because two lines called VOLUME could
 			// not be told apart. The break before it is his too: a third of a step, read off the original.
-			{ "BGM", [&] { return std::string(MUSIC[bgm_track]); },
-			  [&](int d) {
-				  bgm_track = (bgm_track + 20 + d) % 20;
-				  game.play_music(uint8_t(bgm_track));
-				  bgm_testing = true;
-			  }, {}, {}, 0, false, 0.32f },
+			// A MUSIC WAITS TO BE ASKED FOR. Frederic heard the first version, where stepping played at once:
+			// that is right for an effect, which is over in half a second, and wrong for a track, which runs
+			// until something stops it. So left and right only choose, A starts, and B stops -- and B is kept
+			// by this line while something plays, the next one leaving the page as usual.
+			{ "BGM", [&] { return std::string(MUSIC[bgm_track]) + (bgm_playing == bgm_track ? "  >" : ""); },
+			  [&](int d) { bgm_track = (bgm_track + 20 + d) % 20; },
+			  [&] { game.play_music(uint8_t(bgm_track)); bgm_testing = true; bgm_playing = bgm_track; },
+			  {}, 0, false, 0.32f,
+			  [&] {
+				  if (!bgm_testing) return false;
+				  game.stop_music();
+				  bgm_testing = false;
+				  bgm_playing = -1;
+				  return true;
+			  } },
 			// The music packs -- the first Fighting Vipers' tracks in place of these -- are the fork's, and
 			// its own notes say the replacement was wired there and never once heard. Nothing of it here.
 			{ "BGM SET", fixed("-"), {}, {}, {}, 0, false, 0 },
@@ -3164,6 +3176,7 @@ int main(int argc, char **argv)
 			if (was_at == fv2_options::SCR_SOUNDS && now_at != fv2_options::SCR_SOUNDS && bgm_testing) {
 				game.stop_music();
 				bgm_testing = false;
+				bgm_playing = -1;
 			}
 			was_at = now_at;
 		}

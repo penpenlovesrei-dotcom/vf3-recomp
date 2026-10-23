@@ -457,3 +457,42 @@ y a été branché sans jamais être entendu.
 `DISPLAY` est laissée à ses quatre lignes d'août, dont deux vivantes. Lui en ajouter (échelle de rendu, choix
 du rasteriseur, mouvement fluide) serait inventer une page qui n'est pas la sienne ; les deux enjambées le
 sont pour une raison dite à leur ligne.
+
+
+## Pourquoi `ROUND TIME` ne prenait pas, et ce qu'il fallait écrire en plus — 2026-10-23
+
+Frédéric a mis `ROUND TIME 1P` à 60 et le round a duré 30. Mesuré, et la réponse n'est pas celle que
+`docs/fv2-console-options.md` supposait depuis la veille.
+
+**Le match ne lit pas le réglage.** Il lit un mot **déjà converti** : `0x0000C2EC` choisit entre `0x00581418`
+(un joueur) et `0x0058141C` (deux) selon `0x0058145A`, et pose le résultat dans le chrono `0x00581404`.
+
+**Et la conversion n'a lieu qu'une fois, à l'amorçage.** `VF3_RAMLOG` montre `0x00581418` déjà égal à `0x780`
+à l'**image 223**, en mode 0, et il ne bouge plus de toute la partie. Le calcul est en `0x00038DB8` :
+`rlwinm ...,6`, soit **la valeur fois 64** — le jeu compte 64 images par seconde pour ce chrono, pas 60.
+30 × 64 = 1920, et 60 × 64 = 3840.
+
+Écrire le réglage seul ne pouvait donc **rien** faire après l'amorçage, et c'est exactement ce qu'il a vu. La
+version qui redémarrait la partie le cachait sans le résoudre.
+
+### Quels réglages sont ainsi mis en cache
+
+Pas deviné : deux amorçages ont été vidés, l'un avec les réglages poussés et l'autre non, et **tout
+`0x00580000`–`0x00582000` comparé**. Deux endroits seulement bougent :
+
+| réglage | son cache | la forme |
+|---|---|---|
+| `ROUND TIME 1P` | `0x00581418` | valeur × 64 |
+| `ROUND TIME VS` | `0x0058141C` | valeur × 64 |
+| `ADVERTISE SOUND` | `0x0058142C` | valeur + 1 |
+
+Les **énergies n'ont rien bougé** : elles sont lues vives et n'ont besoin de rien.
+
+### La correction
+
+`Model3::fv2_set_option` écrit maintenant **trois** choses : la sauvegarde, la copie de travail, et le cache
+quand il y en a un (`fv2_recook_option`).
+
+**Vérifié** : en posant `0x00581418` à `0xF00` à partir de l'image 1500 — donc bien après l'amorçage — le round
+suivant part à **3840 images, soixante secondes**, contre 1920 au témoin. Le cache est donc relu à chaque
+match, et l'écrire suffit.

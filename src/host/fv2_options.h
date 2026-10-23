@@ -168,11 +168,12 @@ struct fv2_options
 		std::string name;
 		std::function<std::string()> text;   // the value as text, or null for none
 		std::function<void(int)> step;       // left and right; null, with no act either: stepped over
-		std::function<void()> act;           // A instead of left and right, for a button
+		std::function<void()> act;           // A as well as left and right: a button, or starting a test
 		std::function<int()> lit;            // a gauge instead of a value: how many arrows are lit
 		int total = 0;                       // how many arrows in all
 		bool as_button = false;              // drawn as INITIALIZE's painted label rather than as text
 		float gap = 0;
+		std::function<bool()> cancel;        // B goes to the line first, which keeps it by returning true
 	};
 	std::vector<own_line> own[SCR_COUNT];
 
@@ -359,8 +360,18 @@ struct fv2_options
 		};
 		// Backing out goes UP ONE SCREEN, which is August's own back stack rather than aiming at the modes
 		// list by hand. From OPTIONS itself there is nowhere above, so it closes the page.
+		// B goes to the chosen line first, and only then up a screen. A line that has something of its own to
+		// undo -- a track the SOUNDS page started playing -- keeps the press by saying so, and the next B
+		// leaves. Frederic asked for exactly that: the music plays on A and stops on B.
 		auto back = [&] {
 			want_sound = SND_CANCEL;
+			if (sel() >= 0 && sel() < lines()) {
+				const line &l = page(at)[size_t(sel())];
+				if (l.what == line::OWN) {
+					const own_line &o = own[at][size_t(l.which)];
+					if (o.cancel && o.cancel()) return -1;
+				}
+			}
 			if (at == SCR_OPTIONS) return CANCELLED;
 			at = SCR_OPTIONS;
 			return -1;

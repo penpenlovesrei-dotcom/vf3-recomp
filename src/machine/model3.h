@@ -230,7 +230,30 @@ public:
 			const size_t at = size_t(fv2_option_index(live - FV2_OPTIONS_LIVE + i));
 			if (at < backup.size()) backup[at] = now;
 		}
+		fv2_recook_option(live, v);
 		return changed;
+	}
+	// AND THE COOKED COPIES, because for some settings the working copy is not what the match reads.
+	//
+	// Frederic set ROUND TIME to 60 and the round still ran 30. Measured: the game turns that setting into a
+	// count of frames ONCE, at frame 223 of the boot (0x00038DB8, `rlwinm ...,6`, so sixty-four frames a
+	// second of its own), and keeps it at 0x00581418 for one player and 0x0058141C for two. The match reads
+	// those words and never the setting again -- 0x0000C2EC picks between them on 0x0058145A, the two-player
+	// flag. Writing the setting alone could not be seen, and that is exactly what he saw.
+	//
+	// Which settings are cooked was not guessed either: two boots were dumped, one with the settings poked and
+	// one without, and the whole of 0x00580000-0x00582000 compared. Only two places moved -- the two round
+	// times, and ADVERTISE SOUND at 0x0058142C, which is kept as the setting plus one. The energies moved
+	// nothing, so they are read live and need nothing here.
+	void fv2_recook_option(int live, int v)
+	{
+		auto poke32 = [&](uint32_t a, uint32_t w) {
+			if (ram.size() <= size_t(a) + 4) return;
+			for (int i = 0; i < 4; i++) ram[(a + uint32_t(i)) ^ 3] = uint8_t(w >> (24 - 8 * i));
+		};
+		if (live == 0x120555) poke32(0x00581418, uint32_t(v) << 6);        // ROUND TIME 1P
+		else if (live == 0x120556) poke32(0x0058141C, uint32_t(v) << 6);   // ROUND TIME VS
+		else if (live == 0x12054F) poke32(0x0058142C, uint32_t(v) + 1);    // ADVERTISE SOUND
 	}
 	// Blanks the FREE PLAY notices (the PC way: always free play, nothing to say), in the fixed CROM the boot copies
 	// the program from (so from the next boot). Checked against the known data around them first; returns how many
