@@ -674,12 +674,59 @@ La leçon, pour la prochaine fois : comparer des images prises au même instant 
 non au même numéro d'image absolu. Le « 1211 partiel » qui semblait si parlant n'était qu'une transition de
 phase prise au vol.
 
-### Ce qui reste à trouver
+### Pourquoi il n'y a pas de décor : la fin est faite de rediffusions
 
-Les passages 3D de la fin ne chargent pas leur décor. La piste la plus simple est que le jeu se voit demander
-sa fin **depuis l'écran titre, sans avoir jamais rien chargé** — mais c'est une piste, pas une mesure. Elle a
-un air de famille avec les combattants noirs du 2026-10-23 : des modèles bien soumis, et une scène qui n'est
-pas là.
+Sega a laissé les noms de ses états en clair, et ce sont eux qui répondent. Les sept sous-états de la fin
+(`docs/fv2-etats.md`, qui dit aussi comment les lire) :
+
+```
+ending_trans_init   ending_trans_wait   ending_replay_init
+ending_replay_ctrl  ending_replay_next  ending_final_mask1  ending_final_mask2
+```
+
+**Trois sur sept ne parlent que de replays.** Le générique n'est pas un film : c'est le défilé des crédits
+alternant avec **les rediffusions des combats que le joueur vient de gagner**. Les bandeaux que j'avais pris
+pour des restes de démonstration — « Old Armstone Town », « v.s. GRACE » — sont les surimpressions du replay
+lui-même, qui annonce son lieu et son adversaire, exactement comme dans l'attraction.
+
+Donc, demandée depuis l'écran titre, la fin n'a **aucun match à rediffuser**. Le sol reste nu parce qu'il n'y
+a pas de décor à charger : il n'y a pas de combat.
+
+### Les trois images qui le prouvent
+
+La même image de la fin, au même décalage depuis `ENDING_INT`, demandée de trois façons :
+
+| comment on y entre | ce qui sort | poids |
+|---|---|---|
+| `MODE_REQUEST = 12` depuis l'écran titre | un sol blanc nu, une silhouette grosse comme le pouce | 16 Ko |
+| `MODE_REQUEST = 12` **depuis un combat** | les **deux combattants** du combat, texturés, avec leurs ombres — toujours sur un sol nu | 28 Ko |
+| la **branche du jeu lui-même** | la rediffusion entière : *Cross River Damsite*, la cage, les deux combattants, « v.s. PICKY » | 324 Ko |
+
+La deuxième ligne est la charnière : demander le mode depuis un combat fait apparaître les combattants, parce
+qu'ils sont chargés — et pas le décor, parce que le replay n'a pas été préparé.
+
+La troisième se fait sans rien forcer du rendu. `fv2_game_NEXT_PROG_SEL` branche sur la fin quand
+`ADV_INFO_STATUS` porte le bit 3, « l'échelle est finie » — un bit que les notes d'été donnaient comme *lu dans
+le code, jamais vu posé*. Il suffit de le poser : l'octet bas de `0x005813F0` vaut `00` juste avant la branche,
+donc on n'écrase rien. Le jeu prend alors sa propre route, avec tout ce qu'elle fait en plus du mode —
+`FUN_0000DD70`, l'arrêt de sept tâches, le brouillard effacé, le compteur d'écran à `0x140` — et la fin sort
+entière.
+
+```
+VF3_POKE=5813f0=8 VF3_POKE_FRAMES=7170-7178
+vf3run ... --script <la route d un combat> --modes
+   7178  ENDING_INT   19      au lieu de CONTINUE_INT
+```
+
+### Ce que la ligne peut et ne peut pas
+
+Elle montre **le générique**, qui est le contenu propre de la fin, et le jeu se rend la main tout seul. Elle ne
+peut pas montrer les rediffusions : il n'y a rien à rediffuser quand on arrive de l'écran titre, et il n'y a
+pas de replay à inventer.
+
+**La vraie fin du jeu est donc à portée, mais ailleurs** : poser le bit 3 d'`ADV_INFO_STATUS` pendant un match
+réel donnerait au joueur sa fin complète, replays compris, par la route du jeu. C'est un levier de plus à
+mesurer — où le poser sans gêner le reste — et non une affaire d'affichage.
 
 ### Le tour de vérification
 

@@ -69,6 +69,63 @@ sous-état et en regardant :
 Confirmés de bout en bout par la mesure. Le replay a ses propres états, donc **le jeu dit lui-même quand il a
 fini de montrer**, que le joueur l'ait coupé ou non — ce qu'aucun chronomètre ne pouvait remplacer.
 
+### Les six sous-états du choix (SEL), `0x00024544`
+
+```
+0 SEL_START        1 SELECT          2 STAGE_SEL_INT   3 STAGE_SEL_DSP
+4 DECIDE_INT       5 DECIDE_DSP
+```
+
+### Les sept sous-états de la fin (ENDING), base 62
+
+```
+0 ending_trans_init    1 ending_trans_wait    2 ending_replay_init
+3 ending_replay_ctrl   4 ending_replay_next   5 ending_final_mask1
+6 ending_final_mask2
+```
+
+**Ces noms-là disent ce qu'est la fin : des REDIFFUSIONS.** Trois des sept ne parlent que de ça — en initier
+une, la mener, passer à la suivante. Le générique n'est donc pas un film : c'est le défilé des crédits alternant
+avec les replays des combats que le joueur vient de gagner, sur leurs décors, avec le bandeau du lieu et la
+bande « v.s. NOM » que tout replay porte.
+
+C'est ce qui explique ce qu'on voit en demandant la fin depuis l'écran titre : il n'y a aucun match à rediffuser,
+donc le sol reste nu. Le détail est dans `docs/fv2-console-options.md`.
+
+### Les trois sous-états du nom (NAME), base 69
+
+```
+0 NAME_ENTRY_INIT   1 NAME_ENTRY_CTRL   2 NAME_ENTRY_DISP
+```
+
+### Les huit sous-états du SUPER K.O. (SKO), base 72
+
+```
+0 SKO_REPLAY_WAIT      1 SKO_SET_IMAGE_STAGE   2 SKO_WAZA_WAIT    3 SKO_TRANS_WAIT
+4 SKO_IMAGE_DISP       5 SKO_RESET_STAGE       6 SKO_TRANS_WAIT2  7 SKO_IMAGE_STAGE_END
+```
+
+`waza` est 技, le coup. Un Super K.O. est donc une petite mise en scène à lui : on attend le coup, on change de
+décor (`SET_IMAGE_STAGE`), on montre, on remet le décor (`RESET_STAGE`). Utile à savoir pour les deux cases
+`SKO 1` et `SKO 2` du VS DIAGRAM, qu'aucun match n'a encore remplies.
+
+## Comment ces quatre-vingts noms se lisent
+
+`0x00024494` n'est pas une suite de chaînes mais une **table de pointeurs** : quatre-vingts mots, chacun
+l'adresse d'un nom terminé par zéro. La table jumelle `0x00024354` donne, au même indice, l'adresse du
+gestionnaire. Lues dans un dépôt de RAM (`vf3run --ram-at`, l'octet du jeu à l'adresse A étant à l'indice
+`A^3`), les deux ensemble donnent le tableau ci-dessus et, pour chaque état, la fonction qui l'exécute :
+
+| état | gestionnaire | | état | gestionnaire |
+|---|---|---|---|---|
+| `ENDING_INT` | `0x0000E15C` | | `ending_trans_init` | `0x000725D0` |
+| `ENDING_DSP` | `0x0000E270` | | `ending_replay_init` | `0x000727B8` |
+| `NEXT_PROG_SEL` | `0x0000DB48` | | `ending_replay_ctrl` | `0x000728C8` |
+| `OVER_INT` | `0x0000E2F0` | | `ending_replay_next` | `0x00072958` |
+
+Et ces deux-là, `0x00072FD0` et `0x00073238`, sont les deux endroits de la fin que `docs/fv2-flux-de-match.md`
+avait déjà vus reconstruire un modèle de combattant : ce sont les replays qui remontent leurs acteurs.
+
 
 ## « L'écran titre est-il à l'écran ? »
 

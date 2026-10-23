@@ -2839,10 +2839,18 @@ int main(int argc, char **argv)
 			// as a bare white floor with a figure the size of a thumb on it, under 2D banners left from the
 			// demonstration ("Old Armstone Town", "v.s. GRACE"). Nothing of the scenery is there.
 			//
-			// It is not a matter of when it is asked for: measured at the same offset from ENDING_INT, a
-			// request at 1201 and one at 1250 give the same pictures. The likeliest reason is that the game
-			// is asked for its ending from the title screen, having never loaded anything -- but that is a
-			// lead, not a measurement, and docs/fv2-console-options.md keeps what was actually seen.
+			// AND THE REASON IS IN SEGA'S OWN NAMES. The ending's seven sub-states, read out of the table of
+			// pointers at 0x00024494, are ending_trans_init, ending_trans_wait, ending_replay_init,
+			// ending_replay_ctrl, ending_replay_next, ending_final_mask1, ending_final_mask2: THREE OF THE
+			// SEVEN ARE REPLAYS. The roll alternates with replays of the matches the player has just won,
+			// and the banners are the replay's own, naming its stage and its opponent as every replay does.
+			//
+			// So from the title screen there is no match to replay and no stage to load. Measured three ways
+			// at the same offset from ENDING_INT: asked from the title, a bare floor; asked from inside a
+			// fight, the two fighters of that fight, loaded and lit, on a bare floor; entered by the game's
+			// own branch -- ADV_INFO_STATUS bit 3, "the ladder is finished" -- the whole replay on its stage,
+			// cage and all. This line shows the roll, which is the ending's own content; the replays want a
+			// game played first, and that is a lever of its own (docs/fv2-console-options.md).
 			{ "ENDING", fixed("WATCH"), {}, [&] { cplay.ask_ending(board); ending_asked = true; }, {}, 0, false, 0 },
 		};
 		// The twenty tracks, and the numbering, are August's measured tables (GameFV2.h): on bank 0x10 the
