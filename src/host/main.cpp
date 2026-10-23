@@ -1970,9 +1970,17 @@ int main(int argc, char **argv)
 					s->viewports.size(), board.fv2_mode(), board.fv2_submode());
 			for (size_t i = 0; i < s->viewports.size(); i++) {
 				const auto &v = s->viewports[i];
-				fprintf(stderr, "  view %2zu  %4.0fx%-4.0f at %4.0f,%-4.0f  ambient %.3f  sun %.3f (%.2f %.2f %.2f)  models %zu\n",
+				// The models' addresses as well, because a count cannot say WHAT is in a viewport and the
+				// fighters and the scenery do not come from the same place. Four is enough to tell a family.
+				std::string addrs;
+				for (size_t k = 0; k < v.models.size() && k < 4; k++) {
+					char t[16];
+					snprintf(t, sizeof t, " %06X", v.models[k].addr);
+					addrs += t;
+				}
+				fprintf(stderr, "  view %2zu  %4.0fx%-4.0f at %4.0f,%-4.0f  ambient %.3f  sun %.3f (%.2f %.2f %.2f)  models %zu%s\n",
 						i, v.vp_w, v.vp_h, v.vp_x, v.vp_y, v.ambient, v.sun_intensity, v.sun[0], v.sun[1], v.sun[2],
-						v.models.size());
+						v.models.size(), addrs.c_str());
 			}
 		}
 		if (static const bool pic_log = getenv("VF3_PIC_LOG") != nullptr; pic_log) {   // (tests: each picture's makings)

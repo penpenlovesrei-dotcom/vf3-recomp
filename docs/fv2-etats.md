@@ -446,3 +446,45 @@ Le témoin n'a qu'une exception, l'essai en a trois et deux vues de plus.
 **La mesure suivante** : savoir dans quelle vue sont les combattants, et d'où vient le nœud de lumière qu'elle
 cite. L'hypothèse à vérifier — pas à croire — est que la liste d'affichage garde des nœuds de vue d'avant le
 redémarrage, et que les combattants tombent dans l'un d'eux.
+
+
+### La vue des combattants, et son soleil à l'envers
+
+Le relevé imprime aussi les adresses des modèles, parce qu'un compte ne dit pas **ce** qu'il y a dans une vue.
+Dans le même run, avant le Start, la démonstration montre les combattants correctement éclairés :
+
+```
+image 1400, sous-etat 0B (la demonstration)
+  view  6   ambient 0.098  sun 1.000 (-0.90  0.42  0.14)   89 modeles  7927A3 79149D 7911A5 791089
+  view 10   ambient 0.800  sun 1.000 (-0.08  0.94  0.34)  226 modeles  A02F03 A02EEC A02DEF A02DD8
+```
+
+```
+image 1800, sous-etat 0A (le replay, apres Start)
+  view 10   ambient 0.251  sun 1.000 ( 0.92 -0.38 -0.03)  104 modeles  7927A3 79149D 7911A5 791089
+  view 13   ambient 0.710  sun 1.000 (-0.43  0.83  0.36)  162 modeles  83CF98 83CD3C 931B5F 931A5B
+```
+
+**La famille `0x79xxxx` est la même des deux côtés** — `7927A3`, `79149D`, `7911A5`, `791089`, aux mêmes
+adresses. C'est elle, les combattants : des modèles refaits image par image, là où les décors vivent plus haut
+(`A02Fxx`, `83Cxxx`, `931xxx`) et ne bougent pas.
+
+Et **ce n'est pas l'ambiante**. Dans la démonstration elle vaut `0.098`, plus basse encore que les `0.251` du
+replay sombre, et les combattants y sont très bien éclairés. Ce qui change est **la direction du soleil** :
+
+| | soleil | sa composante verticale |
+|---|---|---|
+| la démonstration, combattants éclairés | `(-0.90  0.42  0.14)` | **+0,42, d'en haut** |
+| le témoin, replay naturel | `( 0.02  0.85 -0.52)` | **+0,85, d'en haut** |
+| le replay après Start | `( 0.92 -0.38 -0.03)` | **−0,38, D'EN BAS** |
+
+**Le soleil éclaire les combattants par en dessous.** Leurs dessus ne reçoivent rien, et avec une ambiante de
+0,251 il ne reste que des silhouettes — exactement l'image. Dans le témoin, toutes les vues sans exception ont
+une composante verticale positive.
+
+### Ce qui reste à trouver
+
+D'où vient ce nœud de vue. Il est dans la liste d'affichage que le jeu construit, donc la question est de
+savoir si le redémarrage de la boucle lui fait citer un nœud d'une autre scène, ou s'il en construit un neuf
+avec de mauvaises valeurs. Les deux se distinguent en surveillant qui écrit ces mots — et c'est la même
+branche du séquenceur que ce fichier cherche déjà depuis le 2026-10-21.
