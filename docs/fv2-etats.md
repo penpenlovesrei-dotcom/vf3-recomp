@@ -488,3 +488,44 @@ D'où vient ce nœud de vue. Il est dans la liste d'affichage que le jeu constru
 savoir si le redémarrage de la boucle lui fait citer un nœud d'une autre scène, ou s'il en construit un neuf
 avec de mauvaises valeurs. Les deux se distinguent en surveillant qui écrit ces mots — et c'est la même
 branche du séquenceur que ce fichier cherche déjà depuis le 2026-10-21.
+
+
+### Remonter à ce qui écrit ce nœud : trois maillons, et le quatrième ouvert
+
+**1. Le relevé nomme les nœuds.** `VF3_VIEW_LOG` imprime aussi l'adresse du nœud de chaque vue (champ `node`
+de `Viewport`, posé dans `SceneBuilder::viewport`). Dans un même run :
+
+```
+image 1400, la demonstration   node 80015C  ambient 0.098  sun (-0.90  0.42  0.14)   89 modeles  7927A3...
+                               node 800244  ambient 0.800  sun (-0.08  0.94  0.34)  226 modeles  A02F03...
+image 1800, le replay sombre   node 800244  ambient 0.251  sun ( 0.92 -0.38 -0.03)  104 modeles  7927A3...
+```
+
+**Les combattants ont changé de nœud** : `80015C` dans la démonstration, `800244` dans le replay — et `800244`
+était le nœud des décors dans la démonstration.
+
+**2. La RAM de culling est remplie par DMA, pas par le processeur.** `vf3run --watch 8E000928` ne rapporte
+**rien** : `r3d_dma_write32` copie des blocs depuis la RAM principale avec `write32`, qui n'est pas le chemin
+de `Cpu::w32`. C'est un piège qui coûte une heure à qui l'ignore. `VF3_DMA_LOG=1` dit d'où vient chaque bloc :
+
+```
+r3d dma: 007D8010 -> 8E000000, 464 words
+r3d dma: 007E2A10 -> 8E00AA00,  24 words
+r3d dma: 007EB6B0 -> 8E0136A0,   8 words
+```
+
+**3. Les nœuds sont recopiés d'un gabarit unique.** `--trace-pc 6348` donne `r5 = 0x005811C4` dans les deux
+runs, et `r6` la destination. La boucle `0x00006350`–`0x00006364` copie **48 mots** de ce gabarit vers chaque
+vue. Le gabarit lui-même est écrit en `0x0000624C`, et sa verticale est **positive des deux côtés** : ce n'est
+donc pas lui le coupable.
+
+### Le maillon ouvert, et l'hypothèse à vérifier
+
+Le bloc DMA couvre les mots **0 à 463**. Le nœud `0x800244` est le mot **580**, donc **hors du bloc**. Si aucun
+autre transfert ne le couvre, il n'est **pas réécrit de l'image** et ce que la scène y lit vient d'une scène
+précédente — ce qui expliquerait tout : un nœud resté là depuis avant le redémarrage, et des combattants
+accrochés dessus.
+
+**À vérifier avant d'y croire** : compter tous les transferts d'une image et voir si l'un couvre le mot 580.
+La même vérification sur le témoin dira si ce nœud y est écrit ou s'il y est aussi un reste — auquel cas
+l'explication est ailleurs. Rien ne doit être corrigé avant cette réponse.

@@ -79,6 +79,7 @@ struct Viewport
 	float left = -1, right = 1, bottom = -1, top = 1;    // the frustum's tangents
 	float cota = 0;
 	float sun[3] = {}, sun_intensity = 0, ambient = 0;
+	uint32_t node = 0;   // where this viewport's node was read from, for saying WHICH node a light came from
 	float spot_ellipse[4] = {};  // centre x, y (from the top), radius scale x, y; in 496x384 pixels
 	float spot_range[2] = {};
 	float spot_colour[3] = {}, spot_fog_colour[3] = {};

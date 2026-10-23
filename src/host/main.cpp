@@ -1978,8 +1978,8 @@ int main(int argc, char **argv)
 					snprintf(t, sizeof t, " %06X", v.models[k].addr);
 					addrs += t;
 				}
-				fprintf(stderr, "  view %2zu  %4.0fx%-4.0f at %4.0f,%-4.0f  ambient %.3f  sun %.3f (%.2f %.2f %.2f)  models %zu%s\n",
-						i, v.vp_w, v.vp_h, v.vp_x, v.vp_y, v.ambient, v.sun_intensity, v.sun[0], v.sun[1], v.sun[2],
+				fprintf(stderr, "  view %2zu  node %06X  ambient %.3f  sun %.3f (%.2f %.2f %.2f)  models %zu%s\n",
+						i, v.node, v.ambient, v.sun_intensity, v.sun[0], v.sun[1], v.sun[2],
 						v.models.size(), addrs.c_str());
 			}
 		}

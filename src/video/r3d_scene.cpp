@@ -200,6 +200,7 @@ void SceneBuilder::viewport(uint32_t addr, Scene &scene, int guard)
 		scene.viewports.emplace_back();
 		Viewport &p = scene.viewports.back();
 		vp = &p;
+		p.node = addr & 0xFFFFFF;
 		p.priority = (v[0] >> 3) & 3;
 		p.vp_x = (v[0x1A] & 0xFFFF) / 16.0f;
 		p.vp_y = (v[0x1A] >> 16) / 16.0f;

@@ -1008,6 +1008,11 @@ void Model3::r3d_dma_write32(unsigned reg, uint32_t data)
 	case 0x04: dma_dst = data; break;
 	case 0x08:
 		dma_len = data;
+		// (tests: VF3_DMA_LOG=1 says where each block of the display list comes from and goes. The culling RAM
+		// is filled by THIS, not by the CPU's stores, which is why --watch on 0x8E... reports nothing: a
+		// viewport node's words have to be followed back to the main RAM they were copied from.)
+		if (static const bool say = getenv("VF3_DMA_LOG") != nullptr; say && dma_len)
+			fprintf(stderr, "r3d dma: %08X -> %08X, %u words\n", dma_src, dma_dst, dma_len);
 		while (dma_len) {
 			uint32_t v = read32(dma_src);
 			write32(dma_dst, (dma_config & 0x80) ? bswap32(v) : v);
