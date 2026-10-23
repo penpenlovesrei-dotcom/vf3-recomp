@@ -851,7 +851,7 @@ private:
 			// The rule the settings page uses, under the chosen line, across this grid's own width.
 			const float ty = r == CTL_TEST ? y + pitch * 0.35f : y;
 			if (r == ctl_row)
-				rule(ren, mid, ty + h * ((16.0f + 31.0f) / fv2_texte::CELL + 0.24f), h, 0.185f, 0.845f);
+				rule(ren, mid, ty + h * ((16.0f + 31.0f) / fv2_texte::CELL + 0.12f), h, 0.145f, 0.805f);
 			if (r == CTL_TEST) {
 				for (int c = 0; c < 2; c++)
 					font->draw_mid(ren, "TEST", col_x[size_t(c)], ty, h,
