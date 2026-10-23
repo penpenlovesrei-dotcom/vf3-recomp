@@ -519,6 +519,7 @@ void Model3::run_frame_start()
 	murs_note();
 	morceaux_neutraliser();
 	ko_spectaculaire();
+	short_replay();
 	ko_spectaculaire_note();
 	pmg_note();
 	hang_watch();
@@ -1905,6 +1906,57 @@ void Model3::ko_spectaculaire()
 	}
 	fprintf(stderr, "VF3_SKO : les deux echappements de 0x00043E84 neutralises --"
 	                " tout KO prend desormais la cinematique SKO\n");
+}
+
+// VF3_SREP=1 : FAIRE ARMER LE SHORT REPLAY PAR N'IMPORTE QUEL COUP.
+//
+// C'est la camera que Frederic cherchait -- pas le super KO. Sega la nomme : les 41 modes de camera
+// ont leurs noms en clair dans le binaire (vers 0x0008BD3C, mode 0 = FIX), et les trois qui
+// comptent sont 7 S_REP_INIT, 8 S_REPLAY, 9 SR2GAME_INIT. Le dernier nom dit tout -- short replay
+// to game : contrairement a SUPER_KO, qui sort vers VIC_INIT, celui-la REND LA MAIN au combat,
+// donc il arrive en pleine manche, juste apres l'impact.
+//
+// La chaine, decodee :
+//
+//   0x000431F4   la fonction qui demarre un coup. Elle va chercher les donnees du coup dans la
+//                table de pointeurs 0x000B4368 et recopie leur premier mot en [combattant+0x19E0]
+//                (r14[0x678]). Elle en est le seul ecrivain du programme entier.
+//   0x0001EBE4   la tache du replay compte les images consecutives ou le bit 0x00800000 de ce mot
+//                est pose, le bit 0x00002000 devant etre absent. Au seuil [0x00114F44] = 10 images,
+//                elle arme : [r12+0x69] = compteur + 5 + 1 (combien d'images remonter),
+//                [r12+0x6D] = 1 (l'etape 1), et elle range en [[0x0007515C]+0x3BC] le combattant
+//                que la camera va suivre.
+//   0x0001EDE0   etape 1 : DESARME les quatre taches du combat, rembobine le tampon circulaire de
+//                320 images, pose le mode de camera 7.
+//   0x0001EF24   les etapes impaires suivantes rembobinent encore, apres avoir rappele 0x00027904
+//                -- l'init des parois, qui remet le masque 0x005818B4 et le compteur de morceaux
+//                0x005818D9. Il faut bien : pour rejouer l'impact, le mur doit etre remis debout.
+//   0x0001F2F4   mode 9 ; si la cause de manche [0x00581452] n'est pas 3 (super KO), REARME les
+//                quatre taches et le combat reprend.
+//
+// Donc 0x00800000 n'est pas un etat calcule : Sega marque dans la table des coups ceux qui meritent
+// un replay -- les gros projetes qui envoient dans la paroi. Ce levier neutralise le test de ce
+// bit, et tout coup tenu dix images arme le replay :
+//
+//   0001EBE8   beq +0x1D8    le bit 0x00800000 manque   ->  nop
+//
+// Une seule instruction, et une seule : on LAISSE le test du bit 0x00002000 en 0x0001EBE0, qui
+// interdit le replay sur certains coups. Le neutraliser aussi armerait le replay sur des coups ou
+// le jeu le refuse exprès, et on ne saurait plus ce qu'on regarde.
+//
+// En RAM, et relu avant d'ecrire, comme partout ici : le programme est un gzip que l'amorce
+// deballe.
+void Model3::short_replay()
+{
+	if (set != "fvipers2" || ram.size() < 0x800000) return;
+	if (!getenv("VF3_SREP")) return;
+	constexpr uint32_t ECHAPPE = 0x0001EBE8;
+	constexpr uint32_t SEGA = 0x418201D8u;   // beq +0x1d8
+	if (word(ram, ECHAPPE) != SEGA) return;
+	word(ram, ECHAPPE) = 0x60000000u;   // nop
+	cpu.ram_written(ECHAPPE);            // (le code natif du recompilateur vient de ce qui etait la)
+	fprintf(stderr, "VF3_SREP : le test du bit 0x00800000 neutralise en 0x0001EBE8 --"
+	                " tout coup arme le short replay (modes 7/8/9)\n");
 }
 
 // VF3_SKO_LOG=1 : dire, quand ca change, l'etat de la chaine de la cinematique.
