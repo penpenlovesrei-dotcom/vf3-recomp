@@ -239,6 +239,8 @@ VF3_SHADOW_NONE=1        les ombres du jeu retirees et la notre non appliquee : 
                          mesurer ce qu'une ombre enleve
 VF3_SHADOW_ALL=1         tous les viewports dans la carte, pour voir lesquels partagent l'espace
 VF3_SCALE_LOG=1          les echelles mesurees des qu'une bouge
+VF3_SHADOW_WHY=1         combien d'images n'ont pas trouve leur lumiere, et pourquoi
+VF3_SHADOW_FAIL=<n>      faire echouer la lumiere une image sur n, pour exercer le filet
 ```
 
 **Deux pièges payés cher.** `r3d.hlsl` et `r3d_gpu.cpp` doivent bouger ensemble : un échantillonneur de
@@ -258,6 +260,36 @@ locale, deux cartes — et elles sont plus fines, chacune ne couvrant qu'un comb
 ombres. Et `VF3_FORCE_STAGE` ne recharge pas la mémoire de textures, donc les arènes atteintes en forçant
 sortent avec les textures d'un autre décor — sans effet sur la géométrie des ombres, mais les captures de ces
 décors ne valent pas pour juger à l'œil.
+
+## L'ombre du jeu qui revenait, le 2026-10-23 : trouvee et corrigee
+
+Frederic l'a vu en jouant : par moments l'ancienne ombre reapparaissait. C'etait dans le code et pas dans le
+hasard. L'ombre du jeu n'est retiree que lorsque notre lumiere a pu etre trouvee (`r3d_gpu.cpp`, la boucle de
+trace : `if (shadows && light_ok && colour_index == 16) continue;`), donc **toute image ou `fit_light`
+echoue montre l'ombre du jeu**. Compte avec `VF3_SHADOW_WHY=1` : **17 images sur 660** d'un combat, **223 sur
+3180** de la boucle d'attraction.
+
+Trois causes, mesurees et nommees une par une :
+
+1. **Le sens des normales des quadrilateres d'ombre.** Il venait d'un soleil pris dans la scene — la premiere
+   vue qui en avait un — qui pouvait etre presque dans le plan du sol : les normales s'annulaient alors en
+   s'additionnant. Elles sont maintenant alignees sur la premiere, et le sens est fixe par le cote ou se
+   tiennent les combattants.
+2. **La couche de reference.** C'etait « la plus proche des pieds en proportion » ; c'est maintenant **la plus
+   haute au-dessous d'eux**. L'ancien critere lachait des qu'un combattant quittait le sol : c'etait les 159
+   images de la boucle d'attraction.
+3. **Les images sans aucun triangle d'ombre.** Les modeles sont dans la scene mais rien d'eux n'arrive au
+   rastériseur — hors champ. Elles etaient comptees comme des echecs alors que **le jeu n'y dessine pas
+   d'ombre non plus** : il n'y a rien a remplacer. Elles sont desormais rangees a part.
+
+Et un filet : quand une image echoue malgre tout alors que des triangles d'ombre sont bien la, **la lumiere de
+l'image precedente est reprise** (`R3dGpu::kept`), lachee apres 30 images sans ombre pour qu'un decor n'herite
+jamais de la lumiere du precedent.
+
+Apres les trois : **zero image perdue**, sur 780 images d'un combat et 3300 de la boucle d'attraction — il ne
+reste que les images sans ombre du tout. Le filet ne se declenche donc plus jamais, et c'est pour cela que
+`VF3_SHADOW_FAIL=<n>` existe : il fait echouer la lumiere une image sur n, pour l'exercer. Essaye a 2, la
+capture ne differe d'une image normale que de **13 pixels sur 1 049 088**, et l'ombre du jeu ne revient pas.
 
 ## Ce qui reste ouvert, et qui bloque quoi
 

@@ -889,3 +889,37 @@ Forcer le décor en plein combat change la fiche du décor et sa géométrie, ma
 de textures** : les arènes ainsi atteintes sortent avec des textures d'un autre décor. C'est sans effet sur la
 géométrie des ombres — ce qui est mesuré ici — mais les captures de ces décors ne sont pas représentatives.
 Pour juger une arène à l'œil, il faut l'atteindre en jouant.
+
+## L'ombre du jeu qui revenait
+
+Vu en jouant, puis mesuré. L'ombre du jeu n'est retirée que lorsque notre lumière a pu être trouvée, donc
+**toute image où `fit_light` échoue la montre**. `VF3_SHADOW_WHY=1` compte les échecs et leur motif :
+**17 images sur 660** d'un combat, **223 sur 3180** de la boucle d'attraction.
+
+| motif | combat | attraction | ce que c'était |
+|---|---|---|---|
+| pas de direction de sol | 14 | 64 | deux choses mélangées : le sens des normales, et les images sans aucun triangle d'ombre |
+| aucune couche au niveau des pieds | 3 | 159 | les combattants en l'air |
+
+**Le sens des normales.** Les quadrilatères d'ombre regardent tous du même côté, mais le signe que leurs
+normales portent n'est pas connu d'avance ; il venait d'un soleil pris dans la scène, qui peut être presque
+dans le plan du sol, et les normales s'annulaient en s'additionnant. Elles sont maintenant alignées sur la
+première, et le signe est tranché après coup par le côté où se tiennent les combattants — une donnée interne,
+sans vecteur extérieur.
+
+**La couche de référence.** C'était la couche dont le plan plat est le plus proche des pieds *en proportion*.
+Dès qu'un combattant quitte le sol, ses pieds s'éloignent et le critère lâche. C'est maintenant **la plus
+haute surface plate au-dessous d'eux**, ce qui est la définition du sol sur lequel ils se tiennent.
+
+**Les images sans triangle d'ombre.** Les modèles sont dans la scène, mais rien d'eux n'arrive au rastériseur.
+Mesuré : sur chacune de ces images, `0 triangles d ombre` — donc **le jeu n'y dessine pas d'ombre non plus**,
+et il n'y avait rien à remplacer. Ce n'étaient pas des pertes.
+
+**Le filet.** Si une image échoue encore alors que des triangles d'ombre sont bien présents, la lumière de
+l'image précédente est reprise : une lumière vieille d'une image ne se voit pas, l'ombre du jeu qui revient se
+voit. Elle est lâchée après 30 images sans ombre, pour qu'un décor n'hérite jamais de la lumière du précédent.
+
+Après les trois corrections : **zéro image perdue**, sur 780 images d'un combat et 3300 de la boucle
+d'attraction. Le filet ne se déclenche donc plus, ce qui le rend invérifiable par l'usage — d'où
+`VF3_SHADOW_FAIL=<n>`, qui fait échouer la lumière une image sur n. À 2 : 117 images rattrapées, et la capture
+ne diffère d'une image normale que de **13 pixels sur 1 049 088**.

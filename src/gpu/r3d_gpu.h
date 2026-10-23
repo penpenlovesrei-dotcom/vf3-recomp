@@ -66,6 +66,19 @@ private:
 	SDL_GPUGraphicsPipeline *p_shadow = nullptr;
 	float light_m[MAPS][16] = {};   // view space -> each light's clip space, by rows (fit_light)
 	int nmaps = 0;
+	// why the light could not be worked out, counted per reason: when it cannot, the game's own shadows
+	// are drawn again, so any count here that is not the first is a flicker the player sees
+	unsigned why[8] = {};
+	int shadow_models = 0;      // how many the scene carries, whether or not the light was worked out
+	// How many of their triangles actually reach the raster. A model can be in the scene and none of it
+	// on screen; then the game draws no shadow for that picture either, and there is nothing to replace.
+	int shadow_tris = 0;
+	// The last light that WAS worked out. When a picture fails to give one while the scene still carries
+	// the game's shadows, this one is used instead: a light one picture old cannot be seen, whereas
+	// falling back on the game's own shadows for that picture is a flicker the player does see.
+	struct Kept { float light_m[MAPS][16], floor_p[4], vp_scale[64]; int nmaps; bool caster_vp[64]; int vp_group[64]; };
+	Kept kept = {};
+	bool kept_ok = false;
 	bool light_ok = false;
 	bool caster_vp[64] = {};     // the viewports that carry the game's own shadows: their models cast
 	int vp_group[64] = {};       // which map each caster goes into (-1: none)
@@ -94,7 +107,7 @@ private:
 	bool make_targets(int w, int h, int ss);
 	bool ensure_buffer(SDL_GPUBuffer *&b, uint32_t &size, uint32_t need, SDL_GPUBufferUsageFlags usage);
 	bool make_shadow_map();
-	void measure_scales(const video::Scene &scene, const video::Raster &prep, const float d[3]);
+	void measure_scales(const video::Scene &scene, const video::Raster &prep);
 	// The light to draw the shadow map from, and the box it covers, worked out from the scene: the stage's
 	// sun for the direction, and the game's own shadows for where on the ground they fall
 	void fit_light(const video::Scene &scene, const video::Raster &prep);

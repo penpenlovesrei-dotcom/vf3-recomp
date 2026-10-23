@@ -273,7 +273,61 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 	std::vector<GVp> gv(std::max<size_t>(1, scene.viewports.size()));
 	// the light and the units each layer is drawn in, before the viewports' state, which carries them
 	light_ok = false;
-	if (shadows) fit_light(scene, prep);
+	if (shadows) {
+		fit_light(scene, prep);
+		// VF3_SHADOW_FAIL=<n>: give up on the light every nth picture on purpose. The net below is meant for
+		// a picture that fails, and once the two causes that made them fail were fixed none did any more --
+		// so this is how it is still exercised.
+		if (const char *fl = getenv("VF3_SHADOW_FAIL"); fl && light_ok) {
+			static unsigned tick = 0;
+			const int every = std::max(2, atoi(fl));
+			if (++tick % unsigned(every) == 0) light_ok = false;
+		}
+		if (light_ok) {
+			memcpy(kept.light_m, light_m, sizeof(light_m));
+			memcpy(kept.floor_p, floor_p, sizeof(floor_p));
+			memcpy(kept.vp_scale, vp_scale, sizeof(vp_scale));
+			memcpy(kept.caster_vp, caster_vp, sizeof(caster_vp));
+			memcpy(kept.vp_group, vp_group, sizeof(vp_group));
+			kept.nmaps = nmaps;
+			kept_ok = true;
+		} else if (shadow_tris > 0 && kept_ok) {
+			// the scene still carries the game's shadows, so leaving them out is still right; the light from
+			// the picture before does for this one
+			memcpy(light_m, kept.light_m, sizeof(light_m));
+			memcpy(floor_p, kept.floor_p, sizeof(floor_p));
+			memcpy(vp_scale, kept.vp_scale, sizeof(vp_scale));
+			memcpy(caster_vp, kept.caster_vp, sizeof(caster_vp));
+			memcpy(vp_group, kept.vp_group, sizeof(vp_group));
+			nmaps = kept.nmaps;
+			light_ok = true;
+			why[6 + 1]++;   // counted apart: a picture kept, not a picture lost
+		} else {
+			// No shadows in the scene at all. That is a menu or a cut as often as it is a stage with its
+			// shadow switch off, so the kept light is only let go after a while -- long enough to outlast a
+			// picture or two, short enough that the next stage never gets the last one's light.
+			static int empty = 0;
+			if (shadow_tris > 0) empty = 0;
+			else if (++empty > 30) kept_ok = false;
+		}
+	}
+	// VF3_SHADOW_WHY: how often the light could not be worked out, and why. Every time it cannot, the
+	// game's own shadows come back for that one picture -- which is what a player sees flicker.
+	if (shadows && getenv("VF3_SHADOW_WHY")) {
+		static unsigned said[8] = {}, frames = 0;
+		frames++;
+		bool moved = false;
+		for (int k = 0; k < 8; k++) if (why[k] != said[k]) moved = true;
+		if (moved && (frames % 60) == 0) {
+			static const char *name[8] = { "pas d ombres dans la scene", "pas de direction de sol",
+				"pas de faces de combattant", "aucune couche au niveau des pieds", "direction du sol perdue",
+				"aucun groupe ou repere degenere", "trop peu de sommets", "images rattrapees" };
+			fprintf(stderr, "lumiere non trouvee, sur %u images :", frames);
+			for (int k = 0; k < 8; k++) if (why[k]) fprintf(stderr, " [%s] %u", name[k], why[k]);
+			fprintf(stderr, "\n");
+			for (int k = 0; k < 8; k++) said[k] = why[k];
+		}
+	}
 	for (size_t i = 0; i < scene.viewports.size(); i++) {
 		const video::Viewport &v = scene.viewports[i];
 		GVp &o = gv[i];
@@ -731,10 +785,11 @@ bool R3dGpu::make_shadow_map()
 // measured at one -- the casters' own units -- are given a shadow: see where light[3] is filled in render().
 // What this still buys is the knowing: it names which layers stand apart, and the floor it finds is also
 // where the shadow stops, since nothing below the floor takes one.
-void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep, const float d[3])
+void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep)
 {
 	for (float &s : vp_scale) s = 0;
 	floor_p[0] = floor_p[1] = floor_p[2] = floor_p[3] = 0;
+	shadow_tris = 0;
 	auto vertex = [](const video::Raster::Tri &t, int k, float v[3]) {
 		const float wv = 1.0f / t.iw[k];
 		for (int q = 0; q < 3; q++) v[q] = t.a[k][q] * wv;
@@ -742,7 +797,8 @@ void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep
 	// Every face once: which viewport drew it, which way it faces, how big it is and where its middle lies.
 	// One sweep, because the scene carries some twenty thousand triangles and a frame has 17 ms in it.
 	flats.clear();
-	float fn[3] = { 0, 0, 0 };
+	float fn[3] = { 0, 0, 0 }, first_q[3] = { 0, 0, 0 };
+	int quads = 0, quad_tris = 0;
 	for (const video::Raster::Tri &t : prep.tris) {
 		const video::Raster::Draw &dr = prep.draws[t.draw];
 		const size_t iv = size_t(dr.vp - scene.viewports.data());
@@ -756,6 +812,7 @@ void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep
 		f.n[1] = u[2] * v[0] - u[0] * v[2];
 		f.n[2] = u[0] * v[1] - u[1] * v[0];
 		const float l = std::sqrt(f.n[0] * f.n[0] + f.n[1] * f.n[1] + f.n[2] * f.n[2]);
+		if (dr.mesh->colour_index == video::SHADOW_COLOUR_INDEX) quad_tris++;
 		if (!(l > 1e-12f)) continue;
 		for (int q = 0; q < 3; q++) {
 			f.n[q] /= l;
@@ -768,8 +825,14 @@ void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep
 		// angles -- so once a layer is known to hold the floor, the direction is taken from that layer's own
 		// floor and everything is measured a second time.
 		if (dr.mesh->colour_index == video::SHADOW_COLOUR_INDEX) {
-			const float s = f.n[0] * d[0] + f.n[1] * d[1] + f.n[2] * d[2] < 0 ? -f.area : f.area;
+			// The quads face the same way, but which way that is in numbers is not known yet, and adding
+			// normals that disagree in sign cancels them out: measured, 14 pictures of 660 in one fight came
+			// out with no floor direction at all, and on those the game's own shadows were drawn again. So
+			// they are aligned on the first one, and the side the fighters stand on settles the sign after.
+			if (!quads) for (int q = 0; q < 3; q++) first_q[q] = f.n[q];
+			const float s = f.n[0] * first_q[0] + f.n[1] * first_q[1] + f.n[2] * first_q[2] < 0 ? -f.area : f.area;
 			for (int q = 0; q < 3; q++) fn[q] += f.n[q] * s;
+			quads++;
 			continue;
 		}
 		flats.push_back(f);
@@ -780,7 +843,31 @@ void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep
 		for (int q = 0; q < 3; q++) v[q] /= l;
 		return true;
 	};
-	if (!unit(fn)) return;
+	shadow_tris = quad_tris;
+	// No shadow triangle at all in the picture: the models are in the scene but none of them on screen, so
+	// the game draws no shadow here either and there is nothing to replace. Measured in the attract loop,
+	// that is every one of the pictures this used to count as lost.
+	if (!quad_tris) { why[0]++; return; }
+	if (!unit(fn)) { why[1]++; return; }
+	// which way is up: the fighters stand ON the floor, so their faces lie on the side the shadow quads do
+	// not. Both are measured along fn as it came out, and the sign is flipped if they disagree.
+	{
+		double qs = 0, cs = 0;
+		int nq = 0, nc = 0;
+		for (const video::Raster::Tri &t2 : prep.tris) {
+			const video::Raster::Draw &dr2 = prep.draws[t2.draw];
+			const size_t iv2 = size_t(dr2.vp - scene.viewports.data());
+			if (iv2 >= 64 || !caster_vp[iv2]) continue;
+			float p2[3][3];
+			for (int k = 0; k < 3; k++) vertex(t2, k, p2[k]);
+			const double off = (double(p2[0][0]) + p2[1][0] + p2[2][0]) / 3 * fn[0]
+			                 + (double(p2[0][1]) + p2[1][1] + p2[2][1]) / 3 * fn[1]
+			                 + (double(p2[0][2]) + p2[1][2] + p2[2][2]) / 3 * fn[2];
+			if (dr2.mesh->colour_index == video::SHADOW_COLOUR_INDEX) { qs += off; nq++; }
+			else { cs += off; nc++; }
+		}
+		if (nq && nc && cs / nc < qs / nq) for (float &q : fn) q = -q;
+	}
 	float plane[64] = {}, share[64] = {}, ref = 0;
 	// how deep each layer's geometry goes, in its own units
 	float zlo[64], zhi[64];
@@ -820,15 +907,28 @@ void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep
 		float feet = 1e30f;
 		for (const Flat &f : flats)
 			if (caster_vp[f.vp]) feet = std::min(feet, f.mid[0] * fn[0] + f.mid[1] * fn[1] + f.mid[2] * fn[2]);
-		if (feet > 1e29f) return;
-		float nearest = 1e30f;
+		if (feet > 1e29f) { why[2]++; return; }
+		// The floor is the highest flat surface the fighters are standing ON, so it lies at or below their
+		// lowest face -- and "below" is settled, fn having been turned the fighters' way. Taking the nearest
+		// instead failed whenever they left the ground: measured, 159 pictures of 3180 in the attract loop,
+		// and on each of those the game's own shadows came back.
+		float best_off = -1e30f;
 		ref_vp = 64;
 		for (int iv = 0; iv < 64; iv++) {
 			if (plane[iv] == 0 || caster_vp[iv]) continue;
-			const float rel = std::fabs(std::fabs(plane[iv]) - std::fabs(feet)) / std::max(1e-6f, std::fabs(feet));
-			if (rel < nearest) { nearest = rel; ref_vp = size_t(iv); }
+			if (plane[iv] > feet + 0.02f * std::fabs(feet)) continue;   // above them: not the floor
+			if (plane[iv] > best_off) { best_off = plane[iv]; ref_vp = size_t(iv); }
 		}
-		if (!(nearest < 0.3f) || ref_vp >= 64) return;
+		if (ref_vp >= 64) {
+			// nothing below them at all: the nearest flat surface, whichever side it is on
+			float nearest = 1e30f;
+			for (int iv = 0; iv < 64; iv++) {
+				if (plane[iv] == 0 || caster_vp[iv]) continue;
+				const float rel = std::fabs(plane[iv] - feet) / std::max(1e-6f, std::fabs(feet));
+				if (rel < nearest) { nearest = rel; ref_vp = size_t(iv); }
+			}
+			if (ref_vp >= 64) { why[3]++; return; }
+		}
 		ref = plane[ref_vp];
 		if (pass == 1) break;
 		// the direction again, from that layer's own floor rather than from the flattened quads, and the
@@ -842,7 +942,7 @@ void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep
 			if (std::fabs(off - ref) > std::fabs(ref) * 0.01f) continue;
 			for (int q = 0; q < 3; q++) nf[q] += f.n[q] * (dot < 0 ? -f.area : f.area);
 		}
-		if (!unit(nf)) return;
+		if (!unit(nf)) { why[4]++; return; }
 		for (int q = 0; q < 3; q++) fn[q] = nf[q];
 	}
 	// Which layers share the casters' units, and which do not. A layer may hold several surfaces turned the
@@ -935,6 +1035,8 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 {
 	nmaps = 0;
 	light_ok = false;
+	shadow_models = 0;
+	shadow_tris = 0;   // measure_scales sets it, and it is not reached when the scene carries no shadows
 	for (bool &b : caster_vp) b = false;
 	for (int &g : vp_group) g = -1;
 	// the shadows' own places, which is where the ground is
@@ -962,15 +1064,12 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 			n++;
 		}
 	}
-	if (!n) return;
-	// the floor, and the units each layer is drawn in. The direction to start it off is any viewport's sun:
-	// it is only used to turn the shadow quads' normals the right way up.
-	float any_sun[3] = { 0, 1, 0 };
-	for (const video::Viewport &v : scene.viewports)
-		if (v.sun[0] || v.sun[1] || v.sun[2]) { for (int k = 0; k < 3; k++) any_sun[k] = v.sun[k]; break; }
-	measure_scales(scene, prep, any_sun);
+	shadow_models = n;
+	if (!n) { why[0]++; return; }
+	// the floor, and the units each layer is drawn in
+	measure_scales(scene, prep);
 	const float *N = floor_p;
-	if (!(N[0] || N[1] || N[2])) return;
+	if (!(N[0] || N[1] || N[2])) return;   // measure_scales has already said why
 	// each caster's own direction, out of its pieces' S.S^T
 	float dirs[64][3] = {};
 	for (size_t iv = 0; iv < 64; iv++) {
@@ -1016,7 +1115,7 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 		if (g < 0) g = 0;   // a third direction would need a third map; it joins the first
 		vp_group[iv] = g;
 	}
-	if (!nmaps) return;
+	if (!nmaps) { why[5]++; return; }
 	const float ground = std::max(lo[1], hi[1]);
 	for (int g = 0; g < nmaps; g++) {
 		// The box, read off that group's casters' own VERTICES. A model's place is one point and says nothing
@@ -1044,7 +1143,7 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 				nv++;
 			}
 		}
-		if (nv < 3) { nmaps = 0; return; }
+		if (nv < 3) { nmaps = 0; why[6]++; return; }
 		const float PAD = 0.3f;
 		blo[0] -= PAD; bhi[0] += PAD;
 		blo[2] -= PAD; bhi[2] += PAD;
@@ -1061,7 +1160,7 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 		if (std::fabs(z[1]) > 0.99f) { up[1] = 0; up[2] = 1; }
 		float x[3] = { up[1] * z[2] - up[2] * z[1], up[2] * z[0] - up[0] * z[2], up[0] * z[1] - up[1] * z[0] };
 		const float xl = std::sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
-		if (!(xl > 1e-6f)) { nmaps = 0; return; }
+		if (!(xl > 1e-6f)) { nmaps = 0; why[5]++; return; }
 		for (int k = 0; k < 3; k++) x[k] /= xl;
 		const float y[3] = { z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0] };
 		const float c[3] = { (blo[0] + bhi[0]) * 0.5f, (blo[1] + bhi[1]) * 0.5f, (blo[2] + bhi[2]) * 0.5f };
