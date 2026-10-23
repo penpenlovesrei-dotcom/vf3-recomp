@@ -1817,8 +1817,24 @@ void Model3::murs_note()
 	// 0x00027B30 `addi r17,r12,0x210` -- deux tampons de 33 entrees. Le jeu s'en sert comme d'un
 	// registre global ; on l'imprime pour voir s'il est stable a la frontiere d'image, faute de
 	// l'avoir trouve pose dans le code.
-	fprintf(stderr, "murs : masque %08x  parois %u  etats %s\n",
-	        masque, ram[0x005818D9 ^ 3], etats.c_str());
+	// LES DEUX PORTES QUI PRECEDENT LA POSE DES MORCEAUX. En 0x00027AC4, avant tout :
+	//
+	//     r3 = [0x0058FD4C] ; andis. r0,r3,0x300      si ces bits MANQUENT -> tout est saute
+	//     r3 = [0x0058FD50] ; and.   r0,0x84007000    si ces bits SONT LA  -> tout est saute
+	//
+	// Si l'une des deux ferme, 0x00027B70 n'est pas appelee, le changement de masque n'est pas vu,
+	// et FUN_00027C04 n'aligne aucun morceau -- le compteur de parois reste a zero. C'est
+	// exactement ce qu'on a mesure sur TEST : masque a 4, parois a 0.
+	// Les quatre bits HAUTS sont les murs casses, les quatre bas le simple contact. L'angle de la
+	// derniere paroi tombee est range en 0x005817FC par FUN_00027C04 : il nomme son cote, et c'est
+	// lui qui confirmera le sens de rotation pour les deux parois en x.
+	const uint32_t p1 = word(ram, 0x0058FD4C), p2 = word(ram, 0x0058FD50);
+	const unsigned angle = (unsigned(ram[0x005817FC ^ 3]) << 8) | ram[0x005817FD ^ 3];
+	fprintf(stderr, "murs : masque %08x [casses %x, contact %x]  parois %u  angle %04x"
+	        "  porte1 %08x [%s]  porte2 %08x [%s]  etats %s\n",
+	        masque, (masque >> 27) & 0x1E, masque & 0xF, ram[0x005818D9 ^ 3], angle,
+	        p1, (p1 & 0x03000000) ? "ouverte" : "FERMEE",
+	        p2, (p2 & 0x84007000) ? "FERMEE" : "ouverte", etats.c_str());
 
 	// OU VIVENT LES TRENTE-DEUX MORCEAUX, trouve par leur FORME et non par une adresse supposee.
 	//

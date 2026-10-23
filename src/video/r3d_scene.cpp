@@ -269,16 +269,28 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// aligne les morceaux et joue le son. Il ne lui manque que des modeles a dessiner,
 				// et nous en injectons. On lit donc SON etat et on retire nos panneaux.
 				//
-				// Le masque est [[0x00075124] + 0xC0]. Il recoit le OU des bits de contact de paroi
-				// du combattant (0x00046924) quand celui-ci porte le bit 0x04000000 de son mot
-				// d'etat et depasse un seuil de force. Les quatre bits nomment les quatre plans,
-				// dans l'ordre ou 0x00046A60 ecrit ses points de contact :
+				// Le masque est [[0x00075124] + 0xC0], et il porte DEUX choses.
 				//
-				//     bit 0 (1)   z = -D        bit 2 (4)   z = +D
-				//     bit 1 (2)   x = +D        bit 3 (8)   x = -D
+				// Ses quatre bits BAS sont le simple contact : 0x00046924 y fait le OU des bits de
+				// paroi du combattant. Les employer faisait disparaitre la paroi des qu'on la
+				// touchait, sans casse et sans morceaux -- c'etait le defaut vu a l'ecran.
 				//
-				// D est demi_cote_ring. Un panneau de notre ring se range par sa boite : il tient
-				// d'un seul cote, donc le signe de son centre sur l'axe ou il est MINCE le designe.
+				// Les murs casses sont les quatre bits HAUTS. 0x00027B70 les teste un par un, et
+				// chacun porte l'orientation de sa paroi, qu'il range en 0x005817FC avant d'aligner
+				// les morceaux :
+				//
+				//     0x40000000  angle 0x0000      0x10000000  angle 0x8000
+				//     0x20000000  angle 0xC000      0x08000000  angle 0x4000
+				//
+				// L'angle est en seizieme de tour sur 16 bits : 0, 270, 180, 90 degres. On tient
+				// pour acquis que 0 est la paroi z = -D et 0x8000 la paroi z = +D, puisque
+				// FUN_00027C04 aligne toujours les morceaux a z = -D avant de les tourner. Le sens
+				// de rotation pour les deux parois en x N'EST PAS PROUVE : on prend 0x4000 pour
+				// x = -D et 0xC000 pour x = +D, et le journal imprime l'angle pour qu'une seule
+				// casse de paroi laterale le confirme ou l'inverse.
+				//
+				// Un panneau de notre ring se range par sa boite : il tient d'un seul cote, donc le
+				// signe de son centre sur l'axe ou il est MINCE le designe.
 				uint32_t murs_casses = 0;
 				if (board.ram.size() > 0x00075128) {
 					const uint32_t combat = (uint32_t(board.ram[0x00075124 ^ 3]) << 24)
@@ -336,10 +348,12 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 								}
 						const float ex = hi[0] - lo[0], ez = hi[2] - lo[2];
 						const float cx = (lo[0] + hi[0]) * 0.5f, cz = (lo[2] + hi[2]) * 0.5f;
-						int bit = 0;
-						if (ex < ez * 0.5f) bit = cx > 0 ? 2 : 8;        // mince en x : paroi x = +-D
-						else if (ez < ex * 0.5f) bit = cz > 0 ? 4 : 1;   // mince en z : paroi z = +-D
-						if (bit && (murs_casses & uint32_t(bit)))
+						uint32_t bit = 0;
+						if (ex < ez * 0.5f)                              // mince en x : paroi x = +-D
+							bit = cx > 0 ? 0x20000000u : 0x08000000u;    // angle 0xC000 / 0x4000
+						else if (ez < ex * 0.5f)                         // mince en z : paroi z = +-D
+							bit = cz > 0 ? 0x10000000u : 0x40000000u;    // angle 0x8000 / 0x0000
+						if (bit && (murs_casses & bit))
 							continue;
 					}
 					const Anime *sien = nullptr;
