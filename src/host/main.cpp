@@ -1646,6 +1646,7 @@ int main(int argc, char **argv)
 	const int auto_scale = scale;   // the player's scale while settings.ini has none (0: worked out above)
 	auto chosen_scale = [&] { return cfg.scale ? cfg.scale : auto_scale; };
 	static video::Raster raster;
+	bool want_shadows = false;   // this port's own shadows asked for (switched on after the GPU check)
 	// ---- the 3D on the GPU ----
 	static R3dGpu gpu3d;
 	struct { bool on = false, failed = false, checked = false; SDL_Texture *tex = nullptr; int w = 0, h = 0, k = 1; double cpu_ms = 0, gpu_ms = 0; } g3;
@@ -1668,9 +1669,14 @@ int main(int argc, char **argv)
 			if (software && r3d_mode == R3D_AUTO)
 				fprintf(stderr, "the 3D on the GPU: %s draws on the CPU, so Auto uses the CPU's 3D (faster here)\n", name);
 			else if (gpu3d.init(gd)) {
-				// VF3_SHADOW_MAP=<game frame>: this port's own shadow map made, and written to
-				// build/shadow_map.png at that frame, to be looked at before anything reads it
-				gpu3d.shadows = getenv("VF3_SHADOW_MAP") != nullptr;
+				// VF3_SHADOW_MAP=<game frame>: this port's own shadows, and the map written to
+				// build/shadow_map.png at that frame. They are only switched on once the start-up check
+				// has compared the GPU's picture with the CPU's: with them on the two differ by design,
+				// and the check would read that as a GPU drawing wrongly.
+				// VF3_SHADOWS=0/1 says plainly whether they are wanted, so the same frame can be drawn
+				// both ways; asking for the map implies them.
+				if (const char *sw = getenv("VF3_SHADOWS")) want_shadows = atoi(sw) != 0;
+				else want_shadows = getenv("VF3_SHADOW_MAP") != nullptr;
 				g3.on = true;
 				fprintf(stderr, "the 3D on the GPU: started in %.0f ms (checked against the CPU's picture before it's trusted)\n",
 						std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
@@ -1874,6 +1880,19 @@ int main(int argc, char **argv)
 		// and the GPU's first upload is the whole texture memory, read from that copy)
 		if (g3.on && g3_texture() && !game.view.tex.empty()) {
 			const auto tg = std::chrono::steady_clock::now();
+			// this port's shadows replace the game's: when they are on, its own are left out (r3d_raster.h).
+			// Not before the start-up check has run on the picture as the game draws it.
+			gpu3d.shadows = want_shadows && g3.checked;
+			// The frame asked for, or the first one drawn after it: the host does not draw a picture for
+			// every game frame, so asking for an exact match is how a hook comes out silent for no reason.
+			if (const char *at = getenv("VF3_SHADOW_MAP"); at && getenv("VF3_SHADOW_DEBUG")) {
+				static bool said_once = false;
+				gpu3d.debug_now = !said_once && game_frame >= strtoull(at, nullptr, 10);
+				if (gpu3d.debug_now) said_once = true;
+			}
+			// the game's own shadows stay in the list the GPU renderer reads -- they mark the floor, which is how
+			// it measures the units each layer is drawn in -- and it leaves them out of the picture itself
+			raster.drop_game_shadows = false;
 			raster.prepare(*s);
 			// the texture pack's place for each polygon, which the GPU renderer reads out of `raster` as the CPU
 			// rasteriser does (tex3d_hd.h); nothing at all when no pack and no dump were asked for
@@ -1894,7 +1913,21 @@ int main(int argc, char **argv)
 				// (checked: the CPU's drawing buffers let go, made again if it ever draws: at 2x with 3x antialiasing on
 				// a Steam Deck they were near 500 MB of its shared memory, kept for nothing)
 				if (on_gpu && g3.checked) raster.drop_buffers();
-				if (const char *sm = getenv("VF3_SHADOW_MAP"); sm && game_frame == strtoull(sm, nullptr, 10)) {
+				// VF3_GPU_SHOT=<game frame>: the GPU's own 3D read back at that frame, to build/gpu_shot.png --
+				// the only way to look at what it drew, since its picture never comes back otherwise
+				static bool shot_done = false;
+				if (const char *gs = getenv("VF3_GPU_SHOT"); gs && rendered && !shot_done && game_frame >= strtoull(gs, nullptr, 10)) {
+					shot_done = true;
+					std::vector<uint32_t> gp;
+					if (gpu3d.read_output(gp)) {
+						const int k = aa_now();
+						write_png("build/gpu_shot.png", gp.data(), raster.width() / k, raster.height() / k);
+						fprintf(stderr, "the GPU's 3D at frame %llu: build/gpu_shot.png\n", (unsigned long long)game_frame);
+					}
+				}
+				static bool map_done = false;
+				if (const char *sm = getenv("VF3_SHADOW_MAP"); sm && !map_done && game_frame >= strtoull(sm, nullptr, 10)) {
+					map_done = true;
 					std::vector<float> dm;
 					int side = 0;
 					if (gpu3d.read_shadow_map(dm, side) && side > 0) {
@@ -3034,6 +3067,13 @@ int main(int argc, char **argv)
 				for (int q = 0; q < 2; q++) c.start[q] = c.start[q] || console_ctl.start[q];
 				// Honey's costume wheel, turned by the same presses of up the game turns its own two with
 				game.honey_tick(c.up[0] || c.up[1]);
+				// VF3_FORCE_STAGE=<0..26>: Fighting Vipers 2's stage number, held at STAGE_TEST__STAGE
+				// (0x0058FD9F, one byte; the debug names the program carries). FUN_0001809C takes the
+				// stage's record from the table of pointers at 0x0008D118 with it, and that record carries
+				// the light, the colour and the shadow switch at +0x6E -- so writing it is how the stages
+				// that switch the shadow off are reached without playing to them (docs/fv2-ombres.md).
+				if (const char *fs = getenv("VF3_FORCE_STAGE");
+				    fs && board.ram.size() > 0x58FD9F) board.ram[0x58FD9F ^ 3] = uint8_t(atoi(fs));
 				// The arcade's test menu (RAM 0x102002 is 4 while it's up; 0 at the attract, a fight, the boot): Down
 				// moves (the service button) and Start selects (the test button), any pad or key, as VF1's and VF2's;
 				// the menu's Service menu presses test once the game is past its boot; leaving it, the PC way restarts

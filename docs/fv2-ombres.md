@@ -745,3 +745,88 @@ grandeur, pour un effet moins visible que le défaut que a1 corrige.
 Le contrat de fidélité ne change pas : **une option, éteinte par défaut**, sur le patron de `hd_3d`, et
 `verifier-vf3.cmd` qui passe sans elle. Et le budget ne change pas non plus : **rien côté processeur**,
 0,75 ms d'attente côté carte — donc toute voie qui coûte doit coûter **sur la carte**.
+
+## Le décor n'est pas dessiné dans un seul espace, le 2026-10-23
+
+Mesuré en peignant, image par image, le viewport qui dessine chaque pixel puis la position de ce pixel dans
+l'espace de sa caméra (`VF3_SHADOW_DEBUG=3` puis `=4`, `=5`).
+
+Au barrage, à l'image 3101, cinq viewports dessinent quelque chose :
+
+| viewport | ce qu'il dessine | boîte de ses sommets | part de l'image |
+|---|---|---|---|
+| vp5 | combattant de gauche | x −1,77..−0,49 y −1,34..−0,46 z −6,34..−5,66 | 2,2 % |
+| vp9 | combattant de droite | x 0,64..1,88 y −1,35..0,37 z −6,26..−5,38 | 3,9 % |
+| vp12 | le décor | x −1099..1071 y −32..813 z −1455..−49 | 67,4 % |
+| vp13 | le sol proche, les cordes | x −3,20..6,88 y −7,19..2,10 z −11,50..−2,26 | 26,5 % |
+
+Les cinq partagent **le même cadre** (−0,4142 0,4142 −0,3207 0,3207), **la même cota** (423,3625), la même
+fenêtre et **la même matrice racine** (indice 1, échelle 1, place 1,98 −1,31 −5,67). Même caméra, donc. Mais
+vp12 dessine sa géométrie **vingt fois plus grande et vingt fois plus loin** : une dalle au pied du combattant
+est à `[19,6 −27,5 −129,4]` dans vp12, le sol juste en dessous à `[0,98 −1,37 −5,76]` dans vp13.
+
+Ce facteur n'est **écrit nulle part** : l'échelle des nœuds de culling vaut 1,0000 partout, le déterminant des
+matrices des modèles vaut ≈ 1. Il est dans les coordonnées des sommets. Le brouillard est réglé pour ces
+unités-là (densité 0,0005 : à z −1000 il vaut 0,5, à z −5 il ne vaut rien) — **c'est ainsi que le jeu embrume
+le fond et laisse les combattants nets**.
+
+Et c'est possible parce que `r3d_raster.cpp` **vide le tampon de profondeur une fois par priorité** : les
+couches ne se trient pas entre elles par la profondeur, mais par l'ordre de tracé. Le barrage met pourtant
+vp12 et vp13 dans la **même** priorité 1 — là, la couche lointaine se trie derrière simplement parce qu'elle
+est à z −1000.
+
+### Mesurer le rapport, et pourquoi on ne s'en sert pas
+
+`R3dGpu::measure_scales` le mesure sur la seule surface que les couches pourraient partager, le sol : la
+direction vient des ombres du jeu (qui sont posées dessus), puis, par viewport, le plan parallèle portant le
+plus d'aire. Au barrage : vp13 à −1,508 avec 98 % de l'aire, vp12 à −33,506 avec 64 % → **rapport 22,2**.
+
+Deux pièges mesurés, et c'est le second qui tranche :
+
+1. Une couche peut porter plusieurs surfaces plates (une marche, une bordure, le sol hors du ring). Sur un
+   décor de la boucle d'attraction, trois couches qui partagent manifestement un espace (profondeurs −9..−2,
+   −28..−5, −25..−13) montrent chacune une surface plate plus basse que le sol, qui lue seule donnerait 1,8 ou
+   1,6. La profondeur tranche : une couche rejoint celle des combattants tant qu'elle **commence à moins du
+   double** de la profondeur déjà atteinte. (Au barrage, la lointaine commence à 49 quand le reste finit à 11.)
+2. **Le plan le plus large d'une couche lointaine n'est pas forcément son sol.** Au barrage, c'est **l'eau
+   sous le grillage**, vue à travers les ouvertures. La caler sur la passerelle remonte cette eau au niveau de
+   la passerelle, et l'ombre tombe alors **dans le vide entre les barres** : mesuré à l'image 3101, environ la
+   moitié des pixels de sol touchés. Rien dans la scène ne dit à quelle profondeur est cette eau.
+
+Donc : le rapport est mesuré, mais **seules les couches à l'échelle 1 — celles des combattants — reçoivent
+l'ombre**. `VF3_SHADOW_FAR=1` l'applique quand même, pour comparer. Ce que la mesure rapporte quand même :
+elle nomme les couches qui sont ailleurs, et le plan de sol qu'elle trouve sert d'arrêt — **rien sous le sol
+ne prend d'ombre**, ce que l'ombre du jeu obtient gratuitement en étant un quadrilatère posé *dans* le sol.
+
+### La densité
+
+Ambiante **0,600** et soleil **1,000** sur tous les viewports (barrage et décor 5). L'ombre multiplie le
+soleil : un pixel à l'ombre garde donc les 0,6. Mesuré au décor 5 (sol plein), sur les pixels de sol que
+chaque ombre couvre :
+
+| | luminosité | écart |
+|---|---|---|
+| sol éclairé | 187,3 / 165,3 | — |
+| l'ombre du jeu, sur ses pixels | 29,7 | **−84 %** |
+| la nôtre, `VF3_SHADOW_DARK=0` | 101,9 | −38 % |
+| `=0,35` | 69,7 | −58 % |
+| `=0,70` | 37,6 | −77 % |
+
+Il faudrait environ **0,80** pour retrouver la noirceur du jeu — en perdant ce qui fait l'intérêt de la
+nôtre, la texture qui se lit dessous. Le réglage vaut **0 par défaut** : la lumière du jeu n'est pas touchée.
+
+### Les décors 13 à 17 : il n'y a rien à voir
+
+`VF3_FORCE_STAGE=<n>` écrit `STAGE_TEST__STAGE` (0x0058FD9F) à chaque image. Essayé : **5, 10 et 12 chargent
+de vraies arènes** ; **13, 14 et 20 n'en chargent aucune** — sol noir sous le ciel du décor précédent. Les
+arènes jouables sont donc les décors **0 à 12**, et toutes ont l'octet d'ombre à 1. Les cinq fiches qui le
+mettent à 0 ne sont pas des arènes : respecter leur choix n'a aucune conséquence visible.
+
+### Deux pièges d'outillage, payés cher
+
+- **`r3d.hlsl` et `r3d_gpu.cpp` bougent ensemble.** Un nuanceur qui déclare deux échantillonneurs contre un
+  côté C++ : Direct3D 12 refuse le pipeline (`0x80070057`), l'hôte retombe silencieusement sur le rendu
+  processeur, et on mesure une image qui n'est pas celle qu'on croit.
+- **`2>/dev/null` fait taire le journal.** Sous Windows `isatty()` est vrai pour `NUL`, donc l'hôte ne fait
+  pas son `freopen` vers `log.txt` et tout se perd. Rediriger l'erreur vers un **vrai fichier** ; le journal
+  atterrit alors dans `$VF3_DATA/log.txt`.

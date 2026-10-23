@@ -42,6 +42,9 @@ public:
 	// lights them with, their distance to it kept in a map -- which is all this step does; what reads the map
 	// comes after.
 	bool shadows = false;
+	// Say what the shadow is doing for THIS picture -- the frame VF3_SHADOW_MAP names -- and not for
+	// whichever one came first. Every number read off the wrong frame costs an hour.
+	bool debug_now = false;
 	// The shadow map read back, to look at it (tests): side x side distances, 1 where nothing was drawn
 	bool read_shadow_map(std::vector<float> &px, int &side);
 
@@ -60,6 +63,16 @@ private:
 	float light_m[16] = {};      // view space -> the light's clip space, by rows (fit_light)
 	bool light_ok = false;
 	bool caster_vp[64] = {};     // the viewports that carry the game's own shadows: their models cast
+	// How many of a viewport's units make one of the casters' (fit_light): the game draws its stage in
+	// several layers, each with its own depth buffer AND its own units, and nothing in the scene says by how
+	// much they differ -- it is measured off the one surface they share, the floor. 0: not measured, no shadow.
+	float vp_scale[64] = {};
+	// the floor measure_scales found, in the casters' units: xyz its direction, w its offset
+	float floor_p[4] = {};
+	// what measure_scales sweeps the scene into, kept from frame to frame so it allocates nothing
+	struct Flat { int vp; float n[3], mid[3], area; };
+	std::vector<Flat> flats;
+	std::vector<std::pair<float, float>> band;
 	SDL_GPUBuffer *vbuf = nullptr, *dbuf = nullptr, *pbuf = nullptr, *texram = nullptr;
 	uint32_t vbuf_size = 0, dbuf_size = 0, pbuf_size = 0;
 	SDL_GPUTransferBuffer *tb = nullptr;
@@ -75,7 +88,8 @@ private:
 	bool make_targets(int w, int h, int ss);
 	bool ensure_buffer(SDL_GPUBuffer *&b, uint32_t &size, uint32_t need, SDL_GPUBufferUsageFlags usage);
 	bool make_shadow_map();
+	void measure_scales(const video::Scene &scene, const video::Raster &prep, const float d[3]);
 	// The light to draw the shadow map from, and the box it covers, worked out from the scene: the stage's
 	// sun for the direction, and the game's own shadows for where on the ground they fall
-	void fit_light(const video::Scene &scene);
+	void fit_light(const video::Scene &scene, const video::Raster &prep);
 };

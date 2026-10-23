@@ -33,7 +33,8 @@ struct Draw
 struct Vp
 {
 	float4 sun;         // xyz, w intensity
-	float4 light;       // x ambient, y sun clamp (1/0), z the light intensity clamped at full (1/0: Step 1.0 only)
+	float4 light;       // x ambient, y sun clamp (1/0), z the light intensity clamped at full (1/0: Step 1.0 only),
+	                    // w how many of this viewport's units make one of the shadow casters' (0: not measured)
 	float4 spot_ellipse;
 	float4 spot_range;  // xy
 	float4 spot_colour, spot_fog_colour;
@@ -85,14 +86,21 @@ PolyV main(VsIn i)
 #ifdef FS_POLY
 COMBINED BIND(0, 2) Texture2D<float4> odepth : register(t0, space2);
 COMBINED BIND(0, 2) SamplerState odepth_s : register(s0, space2);
-BIND(1, 2) ByteAddressBuffer texram : register(t1, space2);
+// Fighting Vipers 2's shadow map (VS_SHADOW above): the fighters' distance to the light. When shadow_on is 0
+// it is odepth bound a second time and nothing reads it -- a sampler must always have a texture.
+COMBINED BIND(1, 2) Texture2D<float4> smap : register(t1, space2);
+COMBINED BIND(1, 2) SamplerState smap_s : register(s1, space2);
+BIND(2, 2) ByteAddressBuffer texram : register(t2, space2);
 // (raw buffers, read by byte offset: SDL_GPU's Direct3D 12 binds every storage buffer as a raw view, and a raw view
 // in a structured buffer's slot is undefined there: some cards, an AMD Radeon 780M and a GTX 970, drew nothing)
-BIND(2, 2) ByteAddressBuffer draws : register(t2, space2);
-BIND(3, 2) ByteAddressBuffer vps : register(t3, space2);
+BIND(3, 2) ByteAddressBuffer draws : register(t3, space2);
+BIND(4, 2) ByteAddressBuffer vps : register(t4, space2);
 BIND(0, 3) cbuffer Frame : register(b0, space3)
 {
-	float gx, xscale, yscale, frame_pad;
+	float gx, xscale, yscale, shadow_on;
+	float4 srow0, srow1, srow2, srow3;   // view space -> the shadow map's clip space, by rows
+	float4 shadow_k;                     // x: how much of the ambient the shadow takes as well (0: none)
+	float4 floorp;                       // the floor: xyz its direction, w its offset, in the casters' units
 };
 
 float4 decode(int type, uint v)
@@ -246,6 +254,31 @@ FsOut main(PolyV i)
 		lobe = range * ell;
 		lobe_fog = enable * ell;
 	}
+	// Fighting Vipers 2's shadow: 0 where the light does not reach this pixel. It multiplies the SUN, not the
+	// colour, so a pixel in shadow keeps the viewport's ambient and its texture stays visible -- which the game's
+	// own shadow does not do: being opaque, it paints the ground over (docs/fv2-ombres.md).
+	float shade = 1;
+	float3 shade_dbg = 0, look_dbg = 0;
+	if (shadow_on > 0 && vp.light.w > 0) {
+		// the map is in the casters' units; this viewport's may be others (measure_scales in r3d_gpu.cpp)
+		const float4 wv = float4(i.view / vp.light.w, 1);
+		// Nothing below the floor takes a shadow. The game's own shadow is a quad IN the floor, so it never
+		// falls through it; ours is cast from a map and would, and on a stage whose floor is a grating it
+		// landed on the structure a metre under the openings -- measured, 1102 pixels of 13415.
+		const bool under = dot(floorp.xyz, wv.xyz) < floorp.w - 0.05;
+		const float4 lp = float4(dot(srow0, wv), dot(srow1, wv), dot(srow2, wv), dot(srow3, wv));
+		const float2 suv = float2(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
+		const bool inside = lp.z >= 0.0 && lp.z <= 1.0 && all(suv >= 0.0) && all(suv <= 1.0);
+		const float near_light = smap.SampleLevel(smap_s, saturate(suv), 0).r;
+		if (inside && !under && lp.z - 0.002 > near_light) shade = 0.0;
+		// shadow_on 2 (VF3_SHADOW_DEBUG): what the lookup sees, painted instead of the picture --
+		// red and green the place read in the map, blue what was found there, black outside it
+		// rouge : le pixel est juge a l ombre ; vert : ce que la carte rend ; bleu : la lecture est dans la boite
+		shade_dbg = float3(1.0 - shade, near_light, inside ? 1.0 : 0.0);
+		// shadow_on 3 (VF3_SHADOW_DEBUG=2): where this pixel reads the map, and how far it is along the
+		// light -- rouge et vert : l endroit lu dans la carte ; bleu : la distance a la lumiere
+		look_dbg = float3(saturate(suv), saturate(lp.z));
+	}
 	if (d.flags & F_LIGHTING) {
 		float sun;
 		if (d.flags & F_FIXED) sun = i.misc.z;
@@ -254,7 +287,11 @@ FsOut main(PolyV i)
 		if (vp.light.y > 0 || c.a < 0.999) sun = max(sun, 0.0);
 		// the sun and ambient light, up to full on Step 1.0 and past it on the later steppings, as the CPU
 		// rasterizer has it (r3d_raster.cpp)
-		float li = sun * vp.sun.w + vp.light.x;
+		// The shadow multiplies the SUN. A pixel in shadow therefore keeps the viewport's ambient whole --
+		// measured 0.6 on this stage -- which is why it stays light while the game's own opaque shadow
+		// paints the ground over. shadow_k.x takes some of that ambient as well: 0 is the game's own
+		// light untouched, 1 leaves a pixel in shadow with nothing at all.
+		float li = sun * vp.sun.w * shade + vp.light.x * (1.0 - shadow_k.x * (1.0 - shade));
 		if (vp.light.z > 0) li = min(li, 1.0);
 		float3 l3 = li + vp.spot_colour.rgb * lobe;
 		c.rgb *= l3;
@@ -269,7 +306,7 @@ FsOut main(PolyV i)
 				float rz = -vp.sun.z + 2.0 * nl * i.normal.z;
 				s = max(0.0, rz);
 			}
-			s *= d.spec_value * vp.sun.w;
+			s *= d.spec_value * vp.sun.w * shade;
 			if (d.colour.a < 1.0) c.a = max(c.a, s);
 			c.rgb += s;
 		}
@@ -280,6 +317,17 @@ FsOut main(PolyV i)
 		float3 target = vp.fog.rgb * vp.fog2.z + vp.spot_fog_colour.rgb * vp.fog2.y * vp.fog.rgb * lobe_fog;
 		c.rgb += (target - c.rgb) * fog;
 	}
+	// shadow_on 7 (VF3_SHADOW_DEBUG=6): the place AFTER the layer's units are taken out, so every layer
+	// reads on the same ruler: view / scale * 0.05 + 0.5
+	if (shadow_on > 6.5) c.rgb = i.view / max(vp.light.w, 1e-6) * 0.05 + 0.5;
+	// shadow_on 6 (VF3_SHADOW_DEBUG=5): the same, far coarser, for the viewports drawn at a big scale
+	else if (shadow_on > 5.5) c.rgb = i.view * 0.0005 + 0.5;
+	// shadow_on 5 (VF3_SHADOW_DEBUG=4): the pixel's place in its viewport's space, as view * 0.05 + 0.5
+	else if (shadow_on > 4.5) c.rgb = i.view * 0.05 + 0.5;
+	// shadow_on 4 (VF3_SHADOW_DEBUG=3): which viewport drew this pixel, as vp/16 in red
+	else if (shadow_on > 3.5) c.rgb = float3(float(d.vp) / 16.0, 0, 0);
+	else if (shadow_on > 2.5) c.rgb = look_dbg;
+	else if (shadow_on > 1.5) c.rgb = shade_dbg;
 #if FS_LAYER == 0
 	o.base = float4(c.rgb, 1);
 	o.t1 = 0;
@@ -321,6 +369,8 @@ struct ShadowIn
 ShadowV main(ShadowIn i)
 {
 	ShadowV o;
+	// view is already the position in the camera's space: the CPU keeps its attributes divided by w and puts
+	// w back on when it fills the vertex buffer (r3d_gpu.cpp), so nothing has to be undone here.
 	const float4 v = float4(i.view, 1);
 	o.pos = float4(dot(lrow0, v), dot(lrow1, v), dot(lrow2, v), dot(lrow3, v));
 	o.dist = o.pos.z;

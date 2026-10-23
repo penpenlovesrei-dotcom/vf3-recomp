@@ -197,6 +197,60 @@ VF3_DMA_LOG=<image>|0                  chaque transfert du Real3D, avec son PC e
 celle du jeu, la remplacer par une ombre calculée, éclairer autrement) sont instruites dans le document, avec
 le budget en main — et le budget dit qu'il n'y en a pas, voir ci-dessous.
 
+## Les ombres, le 2026-10-23 : la voie b tourne
+
+Le portage dessine maintenant ses propres ombres, avec les **vrais modèles** des combattants (≈ 24 000
+sommets) et non les pièces simplifiées de la ROM. Branche `fv2-ombres`. Détail et mesures :
+`docs/fv2-ombres.md`.
+
+Ce qui marche, vu à l'image : **l'auto-ombrage** (le dos et les jambes s'assombrissent du côté opposé au
+soleil), **l'ombre portée sur le sol** avec la silhouette exacte — on distingue les deux chaussures, le vélo
+de Charlie — et les ombres du jeu retirées à leur place. Allumé par `VF3_SHADOWS=1`, **éteint par défaut**, et
+jamais avant que le contrôle de démarrage GPU/processeur ait comparé l'image telle que le jeu la dessine.
+
+**Trois choses qu'il a fallu comprendre, et qui coûteraient une journée à retrouver.**
+
+1. **Le décor n'est pas dessiné dans un seul espace.** Même caméra, même cadre, même matrice racine, mais des
+   unités différentes par couche : au barrage la couche lointaine est **vingt-deux fois** plus grande et plus
+   loin que les combattants. Le facteur n'est écrit nulle part ; `R3dGpu::measure_scales` le mesure sur le
+   sol. Mais le plan le plus large d'une couche lointaine n'est pas forcément son sol — au barrage c'est
+   l'eau sous le grillage — donc **seules les couches à l'échelle 1 reçoivent l'ombre**. `VF3_SHADOW_FAR=1`
+   pour voir l'autre choix.
+2. **Rien sous le sol ne prend d'ombre.** L'ombre du jeu est un quadrilatère posé *dans* le plan du sol, elle
+   ne le traverse jamais ; une ombre venue d'une carte, si. Sans cette règle elle tombait sur la structure
+   sous les ouvertures du grillage — 1 102 pixels sur 13 415 à l'image 3300.
+3. **Les arènes jouables sont les décors 0 à 12.** `VF3_FORCE_STAGE=<n>` écrit `STAGE_TEST__STAGE`
+   (0x0058FD9F) : 13, 14 et 20 ne chargent aucun décor. Les cinq fiches qui coupent l'ombre (13 à 17) ne sont
+   donc pas des arènes.
+
+Les réglages, tous **éteints par défaut** :
+
+```
+VF3_SHADOWS=0/1          les ombres du portage
+VF3_SHADOW_DARK=<0..1>   ce que l'ombre prend de l'ambiante en plus du soleil (0 : la lumiere du jeu
+                         intacte ; il faudrait ~0,80 pour egaler la noirceur de l'ombre du jeu)
+VF3_SHADOW_FAR=1         appliquer quand meme l'echelle mesuree aux couches lointaines
+VF3_FORCE_STAGE=<0..26>  forcer le decor
+VF3_SHADOW_MAP=<image>   la carte ecrite dans build/shadow_map.png
+VF3_GPU_SHOT=<image>     l'image du rendu GPU dans build/gpu_shot.png
+VF3_SHADOW_DEBUG=1..6    1 la lecture de la carte, 2 l'endroit lu, 3 le viewport, 4 et 5 la place dans
+                         l'espace de la vue, 6 la place une fois les unites de la couche retirees
+VF3_SHADOW_NONE=1        les ombres du jeu retirees et la notre non appliquee : le sol eclaire, pour
+                         mesurer ce qu'une ombre enleve
+VF3_SHADOW_ALL=1         tous les viewports dans la carte, pour voir lesquels partagent l'espace
+VF3_SCALE_LOG=1          les echelles mesurees des qu'une bouge
+```
+
+**Deux pièges payés cher.** `r3d.hlsl` et `r3d_gpu.cpp` doivent bouger ensemble : un échantillonneur de
+différence et Direct3D 12 refuse le pipeline en silence, l'hôte retombe sur le rendu processeur, et on mesure
+une image qui n'est pas celle qu'on croit. Et `2>/dev/null` fait taire le journal : sous Windows `isatty()`
+est vrai pour `NUL`, donc l'hôte ne fait pas son `freopen` — rediriger vers un vrai fichier, le journal est
+alors dans `$VF3_DATA/log.txt`.
+
+**Ce qui reste.** Les décors 3, 10 et 11 ont une lumière **par combattant** : il y faut deux cartes, une par
+combattant, et le nuanceur prend la plus sombre des deux. Pas fait. Et il n'y a pas encore d'option d'hôte sur
+le patron de `hd_3d` : seule la variable d'environnement allume les ombres.
+
 ## Ce qui reste ouvert, et qui bloque quoi
 
 - **Le jeu tient 43 images par seconde en combat, au lieu de 57,5, et on ne sait pas pourquoi.** Mesuré dans
