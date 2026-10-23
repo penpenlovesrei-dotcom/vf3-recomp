@@ -651,12 +651,29 @@ entre trois de ses autres.
 **Le codage est contigu**, pas espacé comme celui des réglages : deux octets gros-boutiens en `+0` et `+1`
 d'une case de huit, donc six octets sur huit inutilisés. Un compte de 4 n'a bougé que l'octet de `+1`.
 
-**SKO 1 et SKO 2 sont presque trouvés, et restent vides.** Les scalaires vont de huit en huit : `0x000` KO,
-`0x008`, `0x010`, `0x018` JUDGE, `0x020` DRAW. Trois des cinq sont mesurés, ce qui fixe le pas, et l'écran
-nomme exactement cinq compteurs de cette espèce — KO, SKO 1, SKO 2, JUDGE — dans cet ordre. Les deux trous
-sont donc presque sûrement SKO 1 à `0x008` et SKO 2 à `0x010`. **Presque n'est pas mesuré** : le quatrième
-match est allé les chercher et n'a produit que des KO ordinaires. Il faut un vrai Super K.O. avant de
-remplir ces deux cases ; d'ici là une case vide dit ce qu'on sait, un zéro prétendrait savoir.
+**SKO 1 et SKO 2, trouvés par un Super K.O. joué à la main.** Les scalaires vont de huit en huit : `0x000`
+KO, `0x008`, `0x010`, `0x018` JUDGE, `0x020` DRAW. Trois des cinq étaient mesurés, ce qui fixait le pas, et
+les deux trous ne pouvaient guère être que la paire SKO. Restait à le prouver, et **aucune machine n'y est
+arrivée** : ni le script, à six cadences d'Armor Flash, ni trente mille images de jeu aléatoire, ni un combat
+entier contre le processeur — les deux icônes d'armure restent vertes du début à la fin, mesurées sur treize
+images.
+
+Le coup demande une main : l'armure du joueur à terre (Armor Flash — avant, arrière, avant, arrière avec les
+trois boutons) et l'adversaire presque mort, puis avant + poing + pied + garde. **Frédéric l'a joué.** Un
+match versus, et la comparaison est sans appel :
+
+```
+0x010 passe de 0 a 1 dans le bloc du vainqueur
+KO, JUDGE et DRAW ne bougent pas du tout
+```
+
+Une victoire qui ne compte comme aucune des trois fins ordinaires et qui tombe dans l'un des deux trous
+**est** le Super K.O. Les deux cases sont donc remplies, et le tableau n'en a plus de vide.
+
+**Lequel des deux noms elle porte** est la seule chose encore prise plutôt que mesurée. La paire est dessinée
+SKO 1 à `0x008` et SKO 2 à `0x010` parce que les autres scalaires suivent l'ordre des colonnes de l'écran —
+KO avant JUDGE, à l'écran comme en mémoire — donc les deux trous entre eux devraient être SKO 1 puis SKO 2.
+Si le jeu montre un jour un compte sous l'autre, les deux constantes s'échangent et rien d'autre ne change.
 
 ### Ce que la page montre
 

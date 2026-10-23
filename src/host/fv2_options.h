@@ -478,6 +478,8 @@ private:
 	//
 	//     block(character) = VS_BASE + n * 0x1A8
 	//       + 0x000               KO
+	//       + 0x008               SKO 1      (the pair below; 0x010 is the one measured)
+	//       + 0x010               SKO 2
 	//       + 0x018               JUDGE
 	//       + 0x020               DRAW       (measured here; see below)
 	//       + 0x028 + opponent*8  FIGHT      (sixteen opponents, not fourteen: the row is 0x80 wide)
@@ -499,15 +501,21 @@ private:
 	// 10 - 4 - 0 = 6). The stored figure is what is read here, since it is the game's own count rather than a
 	// sum of three of its others.
 	//
-	// WHERE SKO 1 AND SKO 2 MUST BE, though they are still drawn blank. The scalars sit at a pitch of eight:
-	// 0x000 KO, 0x008, 0x010, 0x018 JUDGE, 0x020 DRAW. Three of those five are measured, which fixes the
-	// pitch, and the screen names exactly five counters of this kind -- KO, SKO 1, SKO 2, JUDGE -- in that
-	// order, with DRAW beside them. So the two gaps are almost certainly SKO 1 at 0x008 and SKO 2 at 0x010.
+	// AND THE SUPER K.O. IS MEASURED NOW, by a hand that could do it. Neither scripted play nor thirty
+	// thousand frames of random mashing ever produced one -- the move wants the player's own armour gone
+	// first (Armor Flash: forward, back, forward, back with all three buttons) and the opponent nearly dead
+	// -- so Frederic played it. One versus match, and the diff is unmistakable:
 	//
-	// ALMOST IS NOT MEASURED, so nothing is drawn there. A Super K.O. has to be played before either can be
-	// claimed, and the fourth match went looking: punch and kick alternating every eight frames for ten
-	// thousand frames gave three more fights and three more ORDINARY knockouts, and moved nothing at 0x008 or
-	// 0x010. An empty cell says that; a zero would claim it.
+	//   0x010 goes from 0 to 1 in the winner's block, and KO, JUDGE and DRAW do not move at all.
+	//
+	// A win that counts as none of the three ordinary endings and lands in one of the two gaps IS the Super
+	// K.O., and that settles the pitch for the pair.
+	//
+	// WHICH OF THE TWO NAMES IT CARRIES is the one thing still taken rather than measured. The pair is drawn
+	// as SKO 1 at 0x008 and SKO 2 at 0x010 because the other scalars follow the screen's own column order --
+	// KO before JUDGE, on screen and in memory alike -- so the two gaps between them should be SKO 1 then
+	// SKO 2. If the game ever shows a count under the other one, these two constants swap and nothing else
+	// changes.
 	//
 	// ITS BASE HAD TO BE MOVED, and this is the one number not taken from August. Its offsets are into ITS
 	// NVRAM dump, not this port's `backup`. The two are related by a constant, found from the fingerprint it
@@ -526,7 +534,8 @@ private:
 	// match writes none of this -- the verification round moved fourteen bytes, all of them elsewhere -- which
 	// is the sense in which the screen is a VERSUS diagram.
 	static constexpr uint32_t VS_BASE = 0x3006, VS_STRIDE = 0x1A8;
-	static constexpr uint32_t VS_KO = 0x000, VS_JUDGE = 0x018, VS_DRAW = 0x020;
+	static constexpr uint32_t VS_KO = 0x000, VS_SKO1 = 0x008, VS_SKO2 = 0x010;
+	static constexpr uint32_t VS_JUDGE = 0x018, VS_DRAW = 0x020;
 	static constexpr uint32_t VS_FIGHT = 0x028, VS_WIN = 0x0A8, VS_LOSE = 0x128;
 	// Which block holds which of the screen's rows. August's own table, every line of it measured by playing.
 	static const int *vs_block_of_row()
@@ -541,10 +550,10 @@ private:
 	static constexpr int VS_COLS = 8;    // FIGHT WIN LOSE DRAW KO SKO1 SKO2 JUDGE
 	static constexpr int VS_ROWS = 14;
 
-	struct vs_row { uint32_t fight, win, lose, draw, ko, judge; };
+	struct vs_row { uint32_t fight, win, lose, draw, ko, sko1, sko2, judge; };
 	vs_row read_vs(m3::Model3 &board, int row) const
 	{
-		vs_row r = { 0, 0, 0, 0, 0, 0 };
+		vs_row r = { 0, 0, 0, 0, 0, 0, 0, 0 };
 		const int block = vs_block_of_row()[row];
 		auto u16 = [&](uint32_t off) -> uint32_t {
 			return off + 1 < board.backup.size() ? uint32_t(board.backup[off]) << 8 | board.backup[off + 1] : 0;
@@ -557,6 +566,8 @@ private:
 		}
 		r.draw = u16(base + VS_DRAW);
 		r.ko = u16(base + VS_KO);
+		r.sko1 = u16(base + VS_SKO1);
+		r.sko2 = u16(base + VS_SKO2);
 		r.judge = u16(base + VS_JUDGE);
 		return r;
 	}
@@ -576,25 +587,25 @@ private:
 		const float gt = dst.y + VS_T * th, gb = dst.y + VS_B * th;
 		const float cw = (gr - gl) / VS_COLS, rh = (gb - gt) / VS_ROWS;
 		const float h = rh * 0.62f / fv2_texte::CAP;
-		vs_row total = { 0, 0, 0, 0, 0, 0 };
+		vs_row total = { 0, 0, 0, 0, 0, 0, 0, 0 };
 		for (int r = 0; r < VS_ROWS; r++) {
 			const vs_row v = read_vs(board, r);
 			total.fight += v.fight; total.win += v.win; total.lose += v.lose;
 			total.draw += v.draw; total.ko += v.ko; total.judge += v.judge;
+			total.sko1 += v.sko1; total.sko2 += v.sko2;
 			draw_vs_row(ren, v, gl, gt + r * rh, cw, rh, h, PLAIN);
 		}
 		draw_vs_row(ren, total, gl, gt + VS_ROWS * rh, cw, rh, h, CHOSEN);
 	}
 
-	// SKO 1 and SKO 2 are left blank, and that is deliberate: August's own list of loose ends has them
-	// "affichés à zéro sans qu'on sache où ils vivent -- le seul chiffre du tableau qu'on ne puisse pas
-	// justifier". An empty cell says that; a zero would claim it.
+	// All eight columns carry a figure now. SKO 1 and SKO 2 were blank while nobody could say where they
+	// lived -- August's own list of loose ends had them "affichés à zéro sans qu'on sache où ils vivent" --
+	// and a played Super K.O. answered it (above).
 	void draw_vs_row(SDL_Renderer *ren, const vs_row &v, float gl, float y, float cw, float rh, float h,
 					 SDL_Color col)
 	{
-		const uint32_t n[VS_COLS] = { v.fight, v.win, v.lose, v.draw, v.ko, 0, 0, v.judge };
+		const uint32_t n[VS_COLS] = { v.fight, v.win, v.lose, v.draw, v.ko, v.sko1, v.sko2, v.judge };
 		for (int c = 0; c < VS_COLS; c++) {
-			if (c == 5 || c == 6) continue;
 			const std::string s = std::to_string(n[c]);
 			font->draw_mid(ren, s.c_str(), gl + (c + 0.5f) * cw, y + rh * 0.5f - h * 0.5f, h, col);
 		}

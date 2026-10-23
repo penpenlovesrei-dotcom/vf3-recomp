@@ -473,7 +473,9 @@ titre.
 
 ### Ce qui reste
 
-- `SKO 1` et `SKO 2` : jouer un vrai Super K.O. et voir si `0x008` et `0x010` bougent.
+- `SKO 1` et `SKO 2` : **faits**, par un Super K.O. joue a la main. `0x010` passe a 1 dans le bloc
+  du vainqueur sans que KO, JUDGE ni DRAW ne bougent. Ni le script, ni trente mille images de jeu
+  aleatoire, ni un combat entier contre le processeur n'avaient su le produire.
 - `CONTROLLER`, vide, et `BGM SET`, les packs de musique du fork.
 - Les combattants noirs du 2026-10-23 : la soumission tronquée après un redémarrage de l'attraction, cause
   toujours ouverte.
