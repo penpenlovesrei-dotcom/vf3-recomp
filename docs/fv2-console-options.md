@@ -406,7 +406,9 @@ lui** : les teinter au jaune de la ligne choisie ne disait rien, le segment allu
 ### `CONTROLLER` — les affectations
 
 Titre et rien d'autre en août, où elle fut demandée ainsi le 18. Elle règle maintenant les commandes :
-**huit lignes** — les quatre directions, poing, garde, pied, et Start — **sur deux colonnes**, `1P` et `2P`.
+**neuf lignes** — les quatre directions, poing, garde, pied, Start et `SELECT` — **sur deux colonnes**,
+`1P` et `2P`. La ligne choisie porte le **filet rose** de `GAME ASSIGNMENTS`, le même dessin, posé par son
+bas comme là-bas, sur la largeur de cette grille-ci.
 Haut et bas parcourent les lignes, gauche et droite passent d'un joueur à l'autre, `A` ouvre une ligne et
 **la touche ou le bouton suivant devient l'affectation**. Retour arrière **et Start** annulent, ce qui en
 fait les deux seules commandes qu'on ne puisse pas lier ici. Start ressort aussi, hors capture.
@@ -424,9 +426,14 @@ de stick indiscutable. Start revient à la grille.
 Le partage est le bon, et c'est Frédéric qui l'a demandé ainsi : **la grille dit ce qui est lié, le miroir dit
 que ça arrive**. Le miroir seul ne réglait rien ; accroché à l'éditeur, il vaut d'être là.
 
-Chaque ligne porte l'icône du jeu correspondante, **allumée tant que la commande est tenue** par le joueur de
-la colonne choisie. C'est le témoin qu'une liste d'affectations ne donne pas : on voit non seulement ce qui
-est lié, mais que ça arrive vraiment.
+Chaque ligne porte l'icône du jeu correspondante, **toujours allumée** : ici elle dit de quelle commande il
+s'agit, pas si on la tient. C'est le miroir, derrière `TEST`, qui répond à cette question-là — et il y répond
+mieux, en grand.
+
+**`SELECT` est la pièce de ce portage.** La borne a Start, Coin, Test et Service et pas de Select du tout : le
+nom est celui de la manette de console, et le levier est celui sur lequel il tombe là-bas — le bouton où la
+main va pour mettre un crédit. Elle ne porte pas d'icône, la planche ne dessinant que ce qu'un combattant
+fait.
 
 Les icônes viennent de `assets/menu-console/inputs.png`, 512 × 512, qui ne servait nulle part. Ses onze cases
 ont été **mesurées sur l'encre** : les flèches n'ont pas toutes la même largeur — 71 pour les droites, 59 pour

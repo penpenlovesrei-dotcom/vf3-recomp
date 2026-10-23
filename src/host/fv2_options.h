@@ -461,7 +461,7 @@ struct fv2_options
 		if (mirror) {
 			if (ctl_testing >= 0) { f1 = "HOLD A DIRECTION OR A BUTTON"; f2 = "START : BACK"; }
 			else if (ctl_capturing) { f1 = "PRESS THE KEY OR BUTTON TO SET"; f2 = "START OR BACKSPACE : CANCEL"; }
-			else { f1 = "A : SET        START : BACK"; f2 = "AN ICON LIGHTS WHILE IT IS HELD"; }
+			else { f1 = "A : SET        START : BACK"; f2 = "TEST : WATCH THEM LIGHT"; }
 		}
 		font->draw_mid(ren, f1, mid.x + mid.w * 0.5f, mid.y + FOOT1 * mid.h, fh, PLAIN);
 		font->draw_mid(ren, f2, mid.x + mid.w * 0.5f, mid.y + FOOT2 * mid.h, fh, PLAIN);
@@ -646,11 +646,15 @@ private:
 	struct ctl_row_def { int action; const char *name; int icon; uint8_t bit; };
 	static const ctl_row_def *ctl_rows()
 	{
-		static const ctl_row_def R[8] = {
+		static const ctl_row_def R[9] = {
 			{ C_UP,    "UP",    IC_UP,    L_UP },     { C_DOWN,  "DOWN",  IC_DOWN,  L_DOWN },
 			{ C_LEFT,  "LEFT",  IC_LEFT,  L_LEFT },   { C_RIGHT, "RIGHT", IC_RIGHT, L_RIGHT },
 			{ C_PUNCH, "PUNCH", IC_P,     L_PUNCH },  { C_GUARD, "GUARD", IC_G,     L_GUARD },
 			{ C_KICK,  "KICK",  IC_K,     L_KICK },   { C_START, "START", -1,       0 },
+			// SELECT is this port's COIN. The board has Start, Coin, Test and Service and no Select at all,
+			// so the name is the console pad's and the lever is the one it stands on there -- the button a
+			// player reaches for to put a credit in. It carries no icon: the sheet draws what a fighter does.
+			{ C_COIN,  "SELECT", -1,      0 },
 		};
 		return R;
 	}
@@ -658,8 +662,8 @@ private:
 	// player's mirror. The editor says what is bound; the mirror says it arrives. Frederic asked for exactly
 	// that split, and it is the right one -- the first version of this page was the mirror alone, and setting
 	// nothing made it useless; the mirror hung off the editor is worth having.
-	static constexpr int CTL_TEST = 8;    // the row index of that line
-	static constexpr int CTL_ROWS = 9;
+	static constexpr int CTL_TEST = 9;    // the row index of that line
+	static constexpr int CTL_ROWS = 10;
 
 	// What a cell says: the key, then the pad button when one is bound.
 	std::string binding_text(int player, int action) const
@@ -833,7 +837,7 @@ private:
 		if (ctl_testing >= 0) { render_mirror(ren, mid); return; }
 		const float cap = ROW_CAP * mid.h * 0.78f;
 		const float h = cap / fv2_texte::CAP;
-		const float top = 0.235f * mid.h, pitch = 0.066f * mid.h;
+		const float top = 0.225f * mid.h, pitch = 0.058f * mid.h;
 		const float icon_x = mid.x + 0.205f * mid.w, name_x = mid.x + 0.265f * mid.w;
 		const float col_x[2] = { mid.x + 0.545f * mid.w, mid.x + 0.745f * mid.w };
 		const float ih = pitch * 0.72f;
@@ -844,15 +848,20 @@ private:
 		for (int r = 0; r < CTL_ROWS; r++) {
 			const float y = mid.y + top + float(r) * pitch;
 			// The TEST line binds nothing: it carries no name of its own and says TEST under each column.
+			// The rule the settings page uses, under the chosen line, across this grid's own width.
+			const float ty = r == CTL_TEST ? y + pitch * 0.35f : y;
+			if (r == ctl_row)
+				rule(ren, mid, ty + h * ((16.0f + 31.0f) / fv2_texte::CELL + 0.24f), h, 0.185f, 0.845f);
 			if (r == CTL_TEST) {
 				for (int c = 0; c < 2; c++)
-					font->draw_mid(ren, "TEST", col_x[size_t(c)], y + pitch * 0.35f, h,
+					font->draw_mid(ren, "TEST", col_x[size_t(c)], ty, h,
 								   r == ctl_row && c == ctl_col ? CHOSEN : PLAIN);
 				continue;
 			}
 			const ctl_row_def &d = ctl_rows()[size_t(r)];
-			if (d.icon >= 0)
-				draw_icon(ren, d.icon, icon_x, y + cap * 0.45f, ih, (live[size_t(ctl_col)] & d.bit) != 0);
+			// LIT ALWAYS on this page: here the icon says which line this is, not whether anything is held.
+			// The mirror behind TEST is what answers that, and it answers it better, being large.
+			if (d.icon >= 0) draw_icon(ren, d.icon, icon_x, y + cap * 0.45f, ih, true);
 			font->draw(ren, d.name, name_x, y, h, r == ctl_row ? CHOSEN : PLAIN);
 			for (int c = 0; c < 2; c++) {
 				const bool here = r == ctl_row && c == ctl_col;
@@ -983,10 +992,13 @@ private:
 	//
 	// It is also stretched to the column and SQUASHED in height: at its own proportions (1005 x 50) it would
 	// stand taller than a row and bite into the next one. It stays a rule; only its tick flattens.
-	void rule(SDL_Renderer *ren, const SDL_FRect &mid, float bottom, float h)
+	// The pink rule under the chosen line, hung by its BOTTOM: its tick rises above the line, so placing it
+	// by its top underlines the row below. The span is the settings page's by default; CONTROLLER passes its
+	// own, being a wider grid.
+	void rule(SDL_Renderer *ren, const SDL_FRect &mid, float bottom, float h, float l = RULE_L, float r = RULE_R)
 	{
 		const float rh = h * 0.26f;
-		const SDL_FRect dst = { mid.x + RULE_L * mid.w, bottom - rh, (RULE_R - RULE_L) * mid.w, rh };
+		const SDL_FRect dst = { mid.x + l * mid.w, bottom - rh, (r - l) * mid.w, rh };
 		SDL_RenderTexture(ren, cursor, nullptr, &dst);
 	}
 };
