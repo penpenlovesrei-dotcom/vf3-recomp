@@ -1961,6 +1961,20 @@ int main(int argc, char **argv)
 			pace.upload_ms += double(SDL_GetTicksNS() - tu) / 1e6;
 		} else pace.gpu_ms += gpu3d.last_cpu_ms;
 		g3_shown = on_gpu;
+		// (tests: VF3_VIEW_LOG=frame,frame,... prints every viewport of those pictures with the light the game
+		// put on it -- its ambient, its sun and how strong, and how many models are in it. For telling a scene
+		// that is lit differently from one that is drawn differently, which a count of models cannot.)
+		if (const char *vl = getenv("VF3_VIEW_LOG");
+			vl && strstr((std::string(",") + vl + ",").c_str(), ("," + std::to_string(game_frame) + ",").c_str())) {
+			fprintf(stderr, "views at frame %llu: %zu, mode %d sub %d\n", (unsigned long long)game_frame,
+					s->viewports.size(), board.fv2_mode(), board.fv2_submode());
+			for (size_t i = 0; i < s->viewports.size(); i++) {
+				const auto &v = s->viewports[i];
+				fprintf(stderr, "  view %2zu  %4.0fx%-4.0f at %4.0f,%-4.0f  ambient %.3f  sun %.3f (%.2f %.2f %.2f)  models %zu\n",
+						i, v.vp_w, v.vp_h, v.vp_x, v.vp_y, v.ambient, v.sun_intensity, v.sun[0], v.sun[1], v.sun[2],
+						v.models.size());
+			}
+		}
 		if (static const bool pic_log = getenv("VF3_PIC_LOG") != nullptr; pic_log) {   // (tests: each picture's makings)
 			size_t models = 0;
 			for (auto &v : s->viewports) models += v.models.size();

@@ -412,3 +412,37 @@ reposée**.
 Trouver qui écrit les paramètres d'éclairage des modèles, et comparer ce qu'ils valent dans le témoin et dans
 l'essai à la même image du replay. La reproduction tient sans fenêtre, donc elle ne coûte rien à répéter :
 `tools/scripts` n'a pas encore ces trois scénarios, ils sont dans le bac à sable de la session.
+
+
+### Ce que portent les vues, témoin contre essai
+
+`VF3_VIEW_LOG=<image>` imprime chaque vue de cette image avec la lumière que le jeu lui a mise. Au même
+sous-état `0A` des deux côtés :
+
+**Témoin — le jeu seul, 15 vues, et une seule lumière :**
+
+```
+view  0..14   ambient 0.800  sun 1.000 (0.02 0.85 -0.52)     (14 vues sur 15)
+view 11       ambient 0.227  sun 0.230 (-0.00 0.81 0.59)   73 modeles
+```
+
+**Essai — après Start, 17 vues, et TROIS lumières mélangées :**
+
+```
+view  0..16   ambient 0.710  sun 1.000 (-0.43 0.83 0.36)     le fond
+view  6       ambient 1.000  sun 0.020 (0.15 0.10 0.98)    113 modeles
+view  5, 10   ambient 0.251  sun 1.000 (0.92 -0.38 -0.03)  104 modeles (vue 10)
+view 13, 14   ambient 0.710  sun 1.000 (-0.43 0.83 0.36)   162 et 171 modeles
+```
+
+**Le témoin a une lumière et l'essai en a trois.** C'est là qu'est le défaut, et ça explique l'image : les
+décors sont dans les vues à `0.710` et sont bien éclairés ; une vue de 104 modèles est à `ambient 0.251` avec
+un soleil qui pointe de côté `(0.92 -0.38 -0.03)` — des silhouettes.
+
+L'hétérogénéité est le signal, et elle ne dépend pas de l'arène : que deux replays différents aient des
+ambiantes de base différentes (0.800 contre 0.710) est normal ; qu'une même scène en porte trois ne l'est pas.
+Le témoin n'a qu'une exception, l'essai en a trois et deux vues de plus.
+
+**La mesure suivante** : savoir dans quelle vue sont les combattants, et d'où vient le nœud de lumière qu'elle
+cite. L'hypothèse à vérifier — pas à croire — est que la liste d'affichage garde des nœuds de vue d'avant le
+redémarrage, et que les combattants tombent dans l'un d'eux.
