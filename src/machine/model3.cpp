@@ -1546,12 +1546,13 @@ int Model3::force_stage(int n)
 		// CE QUI MOTIVE L'ECART. Le ring VISIBLE est plus large que l'enceinte : le moteur decode les
 		// quatre panneaux de deflecteurs a x et z = +-6,0 et les faisceaux a +-5,698..6,841, pour un sol de
 		// rayon 4,781. Le combattant s'arrete donc un metre avant les deflecteurs -- 17 % trop tot a l'oeil.
-		// C'est vrai sur Dreamcast aussi, mais Frederic veut aller jusqu'aux deflecteurs ; on pose donc 6,0,
-		// le plan des panneaux.
+		// C'est vrai sur Dreamcast aussi, mais Frederic veut aller jusqu'aux deflecteurs. On a essaye 6,0,
+		// le plan des panneaux : a l'ecran le combattant y entrait. 5,9 le laisse au contact, et c'est la
+		// valeur retenue, choisie A L'OEIL et par lui -- elle ne vient d'aucune donnee.
 		//
 		// VF3_RING=<valeur> change ce nombre sans recompiler -- pour en essayer d'autres a l'ecran.
 		{
-			float bord = 6.0f;
+			float bord = 5.9f;
 			if (const char *s = getenv("VF3_RING")) bord = float(atof(s));
 			uint32_t mot;
 			memcpy(&mot, &bord, 4);
