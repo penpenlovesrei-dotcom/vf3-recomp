@@ -389,9 +389,9 @@ menaient nulle part. Les voici remplies, ligne pour ligne d'après `Src/OSD/SDL/
 
 | ligne | ici |
 |---|---|
-| `SE` | **enjambée** |
+| `SE` | **réelle depuis le 2026-10-23** : les 256 index de la banque `0x2E`, joués à chaque pas. Les trois seuls nommés s'affichent par leur nom, les autres par le numéro du SOUND TEST du jeu (index + 353) |
 | `SE VOLUME` | **réelle**, jauge de vingt segments |
-| `BGM` | **enjambée** (août l'affichait `BGM` et l'aiguillait sur `BGM TEST`, deux lignes `VOLUME` étant indiscernables) |
+| `BGM` | **réelle depuis le 2026-10-23** : les vingt musiques par leur nom, jouées à chaque pas, arrêtées en quittant la page. Août l'affichait `BGM` et l'aiguillait sur `BGM TEST`, deux lignes `VOLUME` étant indiscernables |
 | `BGM SET` | **enjambée** |
 | `BGM VOLUME` | **réelle**, jauge de vingt segments |
 | `INITIALIZE` | **réelle**, remet les deux volumes à fond |
@@ -431,3 +431,29 @@ n'a jamais été joué. Il faudra en jouer un pour le dire.
 `SKO 1` et `SKO 2` restent **vides**, et c'est voulu : la liste des points en suspens d'août les donne
 « *affichés à zéro sans qu'on sache où ils vivent — le seul chiffre du tableau qu'on ne puisse pas
 justifier* ». Une case vide le dit ; un zéro le prétendrait.
+
+
+## `SOUNDS` remplie — le 2026-10-23
+
+Les deux essais de la page marchent. Ce qui les bloquait n'était pas le tableau des sorties mis de côté — ils
+ne touchent pas à la musique du jeu — mais le fait qu'une note tendue à la carte **sous un écran gelé** ne
+s'entendait pas. C'est fait depuis la veille, donc ils sont faisables.
+
+| ligne | ce qu'elle fait |
+|---|---|
+| `SE` | parcourt les 256 index de la banque `0x2E` et joue à chaque pas |
+| `BGM` | parcourt les vingt musiques par leur nom et joue à chaque pas |
+
+Les noms et la numérotation sont les tables mesurées d'août : sur la banque `0x10` le numéro du SOUND TEST est
+l'index plus dix, sur `0x2E` l'index plus 353. **Vérifié ici deux fois** dans le relevé MIDI : l'attraction
+envoie `A0 10 07`, qui est le n° 17 `ATTRACT`, et le replay `A0 10 11`, qui est le n° 27 `DEMO`.
+
+Et une décision à nous : **une musique d'essai est arrêtée en quittant la page**, par la commande de silence du
+jeu. Sans ça un essai suivait le joueur dans la partie, et ce n'est plus un essai.
+
+`BGM SET` reste enjambée : les packs de musique sont du fork, et ses propres notes disent que le remplacement
+y a été branché sans jamais être entendu.
+
+`DISPLAY` est laissée à ses quatre lignes d'août, dont deux vivantes. Lui en ajouter (échelle de rendu, choix
+du rasteriseur, mouvement fluide) serait inventer une page qui n'est pas la sienne ; les deux enjambées le
+sont pour une raison dite à leur ligne.

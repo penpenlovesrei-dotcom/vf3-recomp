@@ -2292,6 +2292,10 @@ int main(int argc, char **argv)
 	// What was playing under the console's surface, and whether a mode was chosen on the way out (above).
 	int music_held = -1;
 	bool music_mode_chosen = false;
+	// The SOUNDS page's two tests: which effect and which track are under the cursor, and whether a track was
+	// started from there (it is stopped on the way out, so a test does not follow the player into the game).
+	int se_index = 0x23, bgm_track = 0;
+	bool bgm_testing = false;
 	// The pump's own clock, out here so that going into a surface can prime it (see there).
 	double menu_sound_owed = 0;
 	uint64_t menu_sound_last = 0;
@@ -2762,18 +2766,39 @@ int main(int argc, char **argv)
 			// The fork's own ending, its illustrations over the replays. Nothing of it exists here.
 			{ "ENDING", fixed("-"), {}, {}, {}, 0, false, 0 },
 		};
+		// The twenty tracks, and the numbering, are August's measured tables (GameFV2.h): on bank 0x10 the
+		// sound test's number is the index plus ten, and on bank 0x2E the index plus 353. Confirmed here
+		// twice over in the MIDI log -- the attract's A0 10 07 is no. 17 and the replay's A0 10 11 is no. 27.
+		static const char *const MUSIC[20] = {
+			"SELECT", "BURNING BEAR", "NIGHT CALL", "RAVIN", "L.S.D.", "INSPIRE", "NAME ENTRY", "ATTRACT",
+			"INSERT COIN", "GAME OVER", "BRAIN CLEANSER", "DEEPER", "TRIPBACK", "3RD SIGNAL", "UNDER THE SUN",
+			"ENDING", "GOOD NOISE", "DEMO", "UFO DINER", "MENU",
+		};
 		options.own[fv2_options::SCR_SOUNDS] = {
-			// The sound test and the music test both need a note handed to the sound board, which is the very
-			// layer that was undone on the 2026-10-21 and is waiting on docs/fv2-console-son.md being agreed.
-			// Until then they are lines, not levers.
-			{ "SE", fixed("-"), {}, {}, {}, 0, false, 0 },
+			// THE SOUND TEST WORKS NOW, and it is worth saying why it could not before: it wants a note handed
+			// to the sound board while the page is up, and that wants the board turning under a frozen game,
+			// which was only built on the 2026-10-22. The three names are the only three anyone has named;
+			// the rest show the number the game's own SOUND TEST shows.
+			{ "SE", [&] {
+				  const char *known = se_index == 0x23 ? "sd_sign_16" : se_index == 0x26 ? "sd_ketsu_00"
+								 : se_index == 0x27 ? "sd_sonic00_11" : nullptr;
+				  return known ? std::string(known) : "NO. " + std::to_string(353 + se_index);
+			  }, [&](int d) { se_index = (se_index + 256 + d) % 256; game.play_effect(uint8_t(se_index)); },
+			  {}, {}, 0, false, 0 },
 			{ "SE VOLUME", {}, [&](int d) {
 				  cfg.effects = std::clamp(cfg.effects + 5 * d, 0, 100); cfg_dirty = true;
 				  game.sound.set_volumes(cfg.music / 100.0f, cfg.effects / 100.0f);
 			  }, {}, [&] { return (cfg.effects + 4) / 5; }, 20, false, 0 },
 			// August drew this one "BGM" and dispatched on "BGM TEST", because two lines called VOLUME could
 			// not be told apart. The break before it is his too: a third of a step, read off the original.
-			{ "BGM", fixed("-"), {}, {}, {}, 0, false, 0.32f },
+			{ "BGM", [&] { return std::string(MUSIC[bgm_track]); },
+			  [&](int d) {
+				  bgm_track = (bgm_track + 20 + d) % 20;
+				  game.play_music(uint8_t(bgm_track));
+				  bgm_testing = true;
+			  }, {}, {}, 0, false, 0.32f },
+			// The music packs -- the first Fighting Vipers' tracks in place of these -- are the fork's, and
+			// its own notes say the replacement was wired there and never once heard. Nothing of it here.
 			{ "BGM SET", fixed("-"), {}, {}, {}, 0, false, 0 },
 			{ "BGM VOLUME", {}, [&](int d) {
 				  cfg.music = std::clamp(cfg.music + 5 * d, 0, 100); cfg_dirty = true;
@@ -3131,6 +3156,17 @@ int main(int argc, char **argv)
 		// And nothing is stopped that was not playing. On a title screen reached straight from the SEGA logo
 		// there is no music at all, and music_now says so -- which is the trap the first measurement of this
 		// job fell into, proving a silence where there had been nothing to cut.
+		// A track started by the SOUNDS page's test is stopped when that page is left, by its own silence
+		// command. Otherwise a test followed the player back into the game, which is not a test any more.
+		{
+			static int was_at = fv2_options::SCR_OPTIONS;
+			const int now_at = options.shown ? options.at : fv2_options::SCR_OPTIONS;
+			if (was_at == fv2_options::SCR_SOUNDS && now_at != fv2_options::SCR_SOUNDS && bgm_testing) {
+				game.stop_music();
+				bgm_testing = false;
+			}
+			was_at = now_at;
+		}
 		{
 			static bool was_up = false;
 			const bool up = modes.shown || options.shown;
