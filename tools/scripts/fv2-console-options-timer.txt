@@ -1,0 +1,6 @@
+# Fighting Vipers 2, mode console : la route jusqu'au reglage ROUND TIME 1P, pour voir ce que la page ecrit.
+#
+# L'ecran titre du jeu tient de l'image 1193 a l'image 1386 (mesure). Start a l'image 1200 tombe dedans et
+# ouvre la liste des sept modes ; de la le jeu est gele, donc plus aucune image ne passe et la suite se pilote
+# a l'horloge (VF3_KEYS_S), seule chose qui atteigne une surface dessinee par-dessus un jeu arrete.
+1200 press p1.start

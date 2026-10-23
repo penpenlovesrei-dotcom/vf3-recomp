@@ -493,6 +493,34 @@ Les **énergies n'ont rien bougé** : elles sont lues vives et n'ont besoin de r
 `Model3::fv2_set_option` écrit maintenant **trois** choses : la sauvegarde, la copie de travail, et le cache
 quand il y en a un (`fv2_recook_option`).
 
-**Vérifié** : en posant `0x00581418` à `0xF00` à partir de l'image 1500 — donc bien après l'amorçage — le round
-suivant part à **3840 images, soixante secondes**, contre 1920 au témoin. Le cache est donc relu à chaque
-match, et l'écrire suffit.
+**Vérifié**, en deux moitiés qui se rejoignent.
+
+*Que le cache soit relu* : en posant `0x00581418` à `0xF00` à partir de l'image 1500 — donc bien après
+l'amorçage — le round suivant part à **3840 images, soixante secondes**, contre 1920 au témoin. Le cache est
+donc relu à chaque match, et l'écrire suffit.
+
+*Que la page écrive bien ce mot-là* : `VF3_OPTION_LOG=1` fait dire à `fv2_recook_option` ce qu'elle pose et où.
+La route est `tools/scripts/fv2-console-options-timer.txt` — Start à l'image 1200 tombe sur l'écran titre et
+ouvre la liste ; de là le jeu est gelé, donc la suite se pilote à l'horloge (`VF3_KEYS_S`), seule chose qui
+atteigne une surface dessinée par-dessus un jeu arrêté :
+
+```
+VF3_HIDDEN=1 VF3_OPTION_LOG=1 VF3_SCRIPT=tools/scripts/fv2-console-options-timer.txt
+VF3_KEYS_S=Down@30,Down@31,Down@32,Down@33,Down@34,Down@35,Return@37,Return@39,Down@41,Down@42,Left@44,Left@45,Right@47,Right@48
+```
+
+Six *bas* mènent à OPTIONS, deux *valider* ouvrent la page puis GAME ASSIGNMENTS, deux *bas* tombent sur
+`ROUND TIME 1P`, et les pas donnent :
+
+```
+option 120555 = 55, cooked 00581418 = 3520 (55 s)
+option 120555 = 50, cooked 00581418 = 3200 (50 s)
+option 120555 = 55, cooked 00581418 = 3520 (55 s)
+option 120555 = 60, cooked 00581418 = 3840 (60 s)
+```
+
+Les deux moitiés se recouvrent sur `3840` : la page pose le mot que le match relit.
+
+**À savoir pour le prochain essai** : si le réglage est déjà au maximum, un pas vers la droite ne change rien
+et n'écrit rien — c'est ce qui s'est passé au premier essai, où la sauvegarde portait déjà 60. Faire descendre
+la valeur avant de la remonter, sinon on lit un silence pour une panne.

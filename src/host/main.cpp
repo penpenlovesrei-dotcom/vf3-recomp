@@ -95,6 +95,8 @@
 //                        VF3_MENU_KEYS goes off in the first second. Seconds, because the clock is the only
 //                        thing still moving. Use with VF3_QUIT_AFTER_S.
 //   VF3_SHOT_AT=n,...    the window as drawn at these passes of the loop, to build/host_window_at_N.png
+//   VF3_OPTION_LOG=1     what the console OPTIONS page writes: the setting, and the cooked copy it keeps in step
+//                        (model3.h, fv2_recook_option). The one way to see the page write rather than trust it.
 //   VF3_ROMS=folder      the player's ROM folder (as --roms)
 //   VF3_3D=cpu|gpu|auto  the 3D renderer for this run (as Display > 3D renderer)
 //   VF3_GPU3D_NO_PROBE=1 no start-up probe of Direct3D 12 (a quad drawn and read back) before the GPU's check

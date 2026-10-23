@@ -10,6 +10,8 @@
 #include "../../third_party/mame/315-5881/crypt_315_5881.h"
 #include "../ppc/ppc.h"
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <deque>
 #include <functional>
 #include <string>
@@ -251,9 +253,16 @@ public:
 			if (ram.size() <= size_t(a) + 4) return;
 			for (int i = 0; i < 4; i++) ram[(a + uint32_t(i)) ^ 3] = uint8_t(w >> (24 - 8 * i));
 		};
-		if (live == 0x120555) poke32(0x00581418, uint32_t(v) << 6);        // ROUND TIME 1P
-		else if (live == 0x120556) poke32(0x0058141C, uint32_t(v) << 6);   // ROUND TIME VS
-		else if (live == 0x12054F) poke32(0x0058142C, uint32_t(v) + 1);    // ADVERTISE SOUND
+		uint32_t at = 0, word = 0;
+		if (live == 0x120555) at = 0x00581418, word = uint32_t(v) << 6;        // ROUND TIME 1P
+		else if (live == 0x120556) at = 0x0058141C, word = uint32_t(v) << 6;   // ROUND TIME VS
+		else if (live == 0x12054F) at = 0x0058142C, word = uint32_t(v) + 1;    // ADVERTISE SOUND
+		if (!at) return;
+		poke32(at, word);
+		// (tests: VF3_OPTION_LOG=1 says what the page wrote and where, so the cooked copy can be seen leaving
+		// the page rather than taken on trust.)
+		if (getenv("VF3_OPTION_LOG"))
+			fprintf(stderr, "option %06X = %d, cooked %08X = %u (%.0f s)\n", live, v, at, word, double(word) / 64.0);
 	}
 	// Blanks the FREE PLAY notices (the PC way: always free play, nothing to say), in the fixed CROM the boot copies
 	// the program from (so from the next boot). Checked against the known data around them first; returns how many
