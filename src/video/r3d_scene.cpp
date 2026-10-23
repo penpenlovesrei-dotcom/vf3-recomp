@@ -460,20 +460,22 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// Quelle geometrie. On n'a pas de modele d'eclat : on reprend un panneau de
 				// deflecteur, reduit au quart par sa matrice. C'est un premier jet assume, pas la
 				// forme d'origine -- la Dreamcast a ses propres morceaux et ils restent a extraire.
-				// VF3_ECLATS=1 : dessiner les morceaux. ETEINT PAR DEFAUT, et pour une raison
-				// precise.
+				// LES ECLATS. Rallumes apres verification dans le code Dreamcast.
 				//
-				// Le placement est juste -- on prend la matrice 3x4 que le jeu calcule pour chaque
-				// entree -- mais la GEOMETRIE posee ne l'est pas. Un groupe 0 a 3 de l'entree MDL
-				// compte neuf parties : sept petites, qui forment la tete, et DEUX RUBANS DE MILLE
-				// UNITES. En dessiner un par morceau actif met plusieurs rubans de 1000 unites en
-				// travers de la scene, et ils noient les faisceaux et les deflecteurs.
+				// Je les avais eteints en croyant poser trop de geometrie : un groupe 0 a 3 compte
+				// neuf parties, dont deux rubans de mille unites. La lecture de 0x8C027F0C et de
+				// 0x8C0BDCC0 montre que c'est faux -- un objet dessine le maillage de son +0x04,
+				// 0x8C0C3900 fait `add #24, r4` pour sauter l'en-tete de groupe, et ces 24 octets
+				// sont exactement ceux que notre decodeur appelle l'en-tete de groupe. Le groupe
+				// EST l'objet que le jeu dessine, rubans compris.
 				//
-				// Ce qu'il faut avant de rallumer : savoir quelle PARTIE de l'objet le jeu dessine
-				// reellement. La structure d'objet Dreamcast a un enfant en +0x04 et un frere en
-				// +0x2C ; notre conversion met tout un groupe dans un seul modele, donc elle
-				// confond peut-etre l'eclat et le faisceau qui l'accompagne.
-				if (getenv("VF3_ECLATS") && board.morceaux_base && !modeles_morceaux.empty()) {
+				// Les artefacts venaient d'ailleurs : du JEU, qui dessinait ses propres objets
+				// inexistants depuis la liste de remplissage de TEST. C'est traite dans
+				// model3.cpp, morceaux_neutraliser.
+				//
+				// VF3_ECLATS=0 les eteint.
+				const char *eclats = getenv("VF3_ECLATS");
+				if ((!eclats || *eclats != '0') && board.morceaux_base && !modeles_morceaux.empty()) {
 					// Quel modele porte quel identifiant : `morceaux.txt` donne la BOITE de
 					// chacun, et on apparie sur elle. Les quatre boites sont tres differentes
 					// -- des rubans de mille unites dans quatre directions -- donc
