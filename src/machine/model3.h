@@ -244,9 +244,21 @@ public:
 	// flag. Writing the setting alone could not be seen, and that is exactly what he saw.
 	//
 	// Which settings are cooked was not guessed either: two boots were dumped, one with the settings poked and
-	// one without, and the whole of 0x00580000-0x00582000 compared. Only two places moved -- the two round
-	// times, and ADVERTISE SOUND at 0x0058142C, which is kept as the setting plus one. The energies moved
-	// nothing, so they are read live and need nothing here.
+	// one without, and the whole of 0x00580000-0x00582000 compared. The energies moved nothing, so they are
+	// read live and need nothing here.
+	//
+	// AND ADVERTISE SOUND WAS HERE BY MISTAKE, put in on the strength of 0x0058142C moving with it. It does
+	// not: 0x0058142C is the MATCH POINT, the rounds a match is won in, and the first reading was a
+	// coincidence -- ADVERTISE SOUND was 1, so "the setting plus one" was 2, and MATCH COUNT 1P was 2 as
+	// well. Measured properly, one setting at a time: ADVERTISE SOUND at 0 leaves 0x0058142C at 2 and moves
+	// a dozen bytes in the sound tables at 0x00580E8D and 0x0058135D..6F instead, while MATCH COUNT 1P at 5
+	// makes 0x0058142C read 5. The game reads that word when a blow would win a round -- FUN_000136B0
+	// compares rounds-won plus the blow's worth against it -- so writing the wrong number there shortens or
+	// lengthens every match.
+	//
+	// It needs nothing in its place: the game RECOOKS the match point at the start of every match. Poked live
+	// during the attract, it reads 5 in the fight that follows. ADVERTISE SOUND, for its part, is spread into
+	// sound tables at boot and has no one word to write; it takes a restart, which this page does not do.
 	void fv2_recook_option(int live, int v)
 	{
 		auto poke32 = [&](uint32_t a, uint32_t w) {
@@ -256,7 +268,6 @@ public:
 		uint32_t at = 0, word = 0;
 		if (live == 0x120555) at = 0x00581418, word = uint32_t(v) << 6;        // ROUND TIME 1P
 		else if (live == 0x120556) at = 0x0058141C, word = uint32_t(v) << 6;   // ROUND TIME VS
-		else if (live == 0x12054F) at = 0x0058142C, word = uint32_t(v) + 1;    // ADVERTISE SOUND
 		if (!at) return;
 		poke32(at, word);
 		// (tests: VF3_OPTION_LOG=1 says what the page wrote and where, so the cooked copy can be seen leaving

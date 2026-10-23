@@ -539,9 +539,32 @@ Pas deviné : deux amorçages ont été vidés, l'un avec les réglages poussés
 |---|---|---|
 | `ROUND TIME 1P` | `0x00581418` | valeur × 64 |
 | `ROUND TIME VS` | `0x0058141C` | valeur × 64 |
-| `ADVERTISE SOUND` | `0x0058142C` | valeur + 1 |
 
 Les **énergies n'ont rien bougé** : elles sont lues vives et n'ont besoin de rien.
+
+### Et une erreur dans ce même relevé, trouvée le soir même
+
+Ce relevé donnait aussi `ADVERTISE SOUND` pour caché à `0x0058142C`, « gardé comme le réglage plus un ». **Il
+ne l'est pas.** `0x0058142C` est le **nombre de rounds d'un match**, et la première lecture était une
+coïncidence : `ADVERTISE SOUND` valait 1, donc « plus un » faisait 2, et `MATCH COUNT 1P` valait 2 aussi.
+
+Mesuré proprement, un réglage à la fois :
+
+| poussé | ce qui bouge dans `0x00580000`–`0x00582000` |
+|---|---|
+| `MATCH COUNT 1P` à 5 | `0x0058142F` seul — l'octet bas du mot à `0x0058142C`, qui lit alors 5 |
+| `MATCH COUNT VS` à 5 | rien à l'amorçage |
+| `ADVERTISE SOUND` à 0 | rien à `0x0058142C` ; une douzaine d'octets dans les tables de son, à `0x00580E8D` et `0x0058135D`–`6F` |
+
+Et ce mot n'est pas décoratif : `FUN_000136B0`, qui résout un coup fatal, compare **les rounds déjà gagnés
+plus ce que vaut le coup** à `0x0058142C` pour décider si le match est fini. Y écrire un mauvais nombre
+raccourcit ou rallonge donc tous les matchs — ce que faisait la page depuis le matin, dès qu'on touchait à
+`ADVERTISE SOUND`.
+
+**La ligne a été retirée, et rien ne la remplace** : le jeu **recuit** le nombre de rounds au début de chaque
+match. Poussé vif pendant l'attraction, il se lit 5 dans le combat qui suit. `ADVERTISE SOUND`, lui, est
+réparti dans des tables de son à l'amorçage et n'a pas un mot à réécrire ; il demande un redémarrage, que
+cette page ne fait pas.
 
 ### La correction
 
