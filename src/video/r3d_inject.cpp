@@ -129,6 +129,24 @@ Injected load()
 			     " en %d copie(s) espacees de %g",
 			     a.tex_x, a.tex_y, a.d[0], a.d[1], a.d[2], a.periode, 2 * a.copies + 1, a.pas);
 	}
+
+	// Les morceaux d'une paroi qui casse, s'il y a lieu. Facultatif lui aussi : sans ce fichier, une
+	// paroi tombee disparait simplement, sans eclats.
+	if (FILE *f = fopen((d + "morceaux.txt").c_str(), "r")) {
+		char ligne[256];
+		while (fgets(ligne, sizeof ligne, f)) {
+			if (ligne[0] == '#' || ligne[0] == '\n') continue;
+			Morceau m;
+			if (sscanf(ligne, "%d %f %f %f %f %f %f", &m.id, &m.lo[0], &m.hi[0], &m.lo[1], &m.hi[1],
+			           &m.lo[2], &m.hi[2]) == 7 && m.id > 0)
+				in.morceaux.push_back(m);
+		}
+		fclose(f);
+		for (const Morceau &m : in.morceaux)
+			note("morceau : l'identifiant %d est le modele dont la boite va de"
+			     " (%g, %g, %g) a (%g, %g, %g)",
+			     m.id, m.lo[0], m.lo[1], m.lo[2], m.hi[0], m.hi[1], m.hi[2]);
+	}
 	return in;
 }
 

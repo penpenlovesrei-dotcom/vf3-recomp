@@ -330,8 +330,36 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// contraire que le cylindre ne bougeait pas : on animait un autre objet.
 				static uint64_t tic = 0;
 				static bool echelle_dite = false;   // VF3_ECHELLE : la mesure ne se fait qu'une fois
+				std::vector<Model> modeles_morceaux;   // mis de cote, poses seulement a la casse
 				tic++;
 				for (Model &m : mien.viewports[0].models) {
+					// UN MODELE DE MORCEAU NE SE DESSINE PAS DANS LA SCENE AU REPOS.
+					//
+					// Les quatre morceaux de paroi font partie de l'entree MDL du decor, donc la
+					// conversion les sort comme les autres -- mais le jeu ne les pose qu'a la
+					// casse, chacun sur la matrice de son entree. Les laisser dans la scene fixe
+					// mettrait quatre rubans de mille unites en permanence au milieu du ring.
+					// On les reconnait a leur boite, celle que `morceaux.txt` donne.
+					if (!in->morceaux.empty() && m.meshes) {
+						float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+						for (const Mesh &me : *m.meshes)
+							for (const Vertex &s : me.verts)
+								for (int k = 0; k < 3; k++) {
+									lo[k] = std::min(lo[k], s.pos[k]);
+									hi[k] = std::max(hi[k], s.pos[k]);
+								}
+						bool morceau = false;
+						for (const Morceau &q : in->morceaux) {
+							bool pareil = true;
+							for (int k = 0; k < 3 && pareil; k++)
+								pareil = std::fabs(lo[k] - q.lo[k]) < 0.01f
+								      && std::fabs(hi[k] - q.hi[k]) < 0.01f;
+							if (pareil) { morceau = true; break; }
+						}
+						// On les met de cote plutot que de les jeter : la boucle des morceaux,
+						// plus bas, y puise par identifiant.
+						if (morceau) { modeles_morceaux.push_back(std::move(m)); continue; }
+					}
 					// UN PANNEAU DONT LE MUR EST TOMBE NE SE DESSINE PLUS.
 					//
 					// On range le modele par sa boite : un panneau de paroi est MINCE sur un axe et
@@ -434,9 +462,13 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// Quelle geometrie. On n'a pas de modele d'eclat : on reprend un panneau de
 				// deflecteur, reduit au quart par sa matrice. C'est un premier jet assume, pas la
 				// forme d'origine -- la Dreamcast a ses propres morceaux et ils restent a extraire.
-				if (board.morceaux_base && !a_nous.models.empty()) {
-					const Model *piece = nullptr;
-					for (const Model &m : a_nous.models) {
+				if (board.morceaux_base && !modeles_morceaux.empty()) {
+					// Quel modele porte quel identifiant : `morceaux.txt` donne la BOITE de
+					// chacun, et on apparie sur elle. Les quatre boites sont tres differentes
+					// -- des rubans de mille unites dans quatre directions -- donc
+					// l'appariement est sans ambiguite.
+					const Model *par_id[16] = {};
+					for (const Model &m : modeles_morceaux) {
 						if (!m.meshes) continue;
 						float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
 						for (const Mesh &me : *m.meshes)
@@ -445,9 +477,14 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 									lo[k] = std::min(lo[k], s.pos[k]);
 									hi[k] = std::max(hi[k], s.pos[k]);
 								}
-						// un panneau : mince sur un axe, large sur l'autre, et pas l'enveloppe
-						const float ex = hi[0] - lo[0], ez = hi[2] - lo[2];
-						if (ex < 1.0f && ez > 4.0f && ez < 40.0f) { piece = &m; break; }
+						for (const Morceau &q : in->morceaux) {
+							if (q.id < 0 || q.id >= 16 || par_id[q.id]) continue;
+							bool pareil = true;
+							for (int k = 0; k < 3 && pareil; k++)
+								pareil = std::fabs(lo[k] - q.lo[k]) < 0.01f
+								      && std::fabs(hi[k] - q.hi[k]) < 0.01f;
+							if (pareil) { par_id[q.id] = &m; break; }
+						}
 					}
 					auto octet = [&](uint32_t a) {
 						return a < board.ram.size() ? board.ram[a ^ 3] : uint8_t(0);
@@ -467,10 +504,15 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					//
 					// On lit donc SA matrice au lieu de poser nos modeles a la main : rotation et
 					// position viennent avec, et il n'y a plus rien a inventer sur le placement.
-					if (piece)
-						for (int i = 0; i < 32; i++) {
-							const uint32_t e = board.morceaux_base + uint32_t(i) * 0x10;
-							if (octet(e + 0xC) == 2) continue;
+					for (int i = 0; i < 32; i++) {
+						const uint32_t e = board.morceaux_base + uint32_t(i) * 0x10;
+						if (octet(e + 0xC) == 2) continue;
+						// L'identifiant de CE morceau. Celui qui n'a pas de modele -- 9, le
+						// terminateur, de loin le plus frequent -- ne dessine rien, et c'est
+						// le comportement du jeu, pas un trou dans le portage.
+						const unsigned id = (unsigned(octet(e + 0xE)) << 8) | octet(e + 0xF);
+						const Model *piece = id < 16 ? par_id[id] : nullptr;
+						if (piece) {
 							const uint32_t M = 0x00581A1C + uint32_t(i) * 0x1B4 + 0xD4;
 							Mat4 t = Mat4::identity();
 							for (int c3 = 0; c3 < 3; c3++)
@@ -485,6 +527,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 								for (Mesh &me : *c.meshes) me.injected = true;
 							a_nous.models.push_back(std::move(c));
 						}
+					}
 				}
 				injected_note(int(a_nous.models.size()));
 				// NOTRE DECOR AMPUTE : la plainte, des que le compte baisse. Le decor converti est

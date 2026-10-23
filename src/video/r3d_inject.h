@@ -42,11 +42,30 @@ struct Anime {
 	int copies = 0;   // de chaque cote
 };
 
+// Un modele de MORCEAU DE PAROI, tel que `morceaux.txt` le decrit : une ligne
+// `<id> <xmin> <xmax> <ymin> <ymax> <zmin> <zmax>`.
+//
+// D'ou ca vient : quand une paroi casse, le jeu aligne trente-deux morceaux et
+// lit l'identifiant de chacun en +0xE de son entree, puis dessine l'objet
+// `[0x8C1C03EC + 4 + id*4]`. Pour le decor d'entrainement, les quatre qui
+// dessinent quelque chose -- 5, 6, 7 et 8 -- tombent sur les quatre premiers
+// groupes de l'entree MDL ; les autres identifiants sont des terminateurs, et
+// `9`, le plus frequent, ne dessine rien.
+//
+// On reconnait le modele a sa BOITE et non a son rang, pour la meme raison que
+// l'animation le reconnait a sa texture : rien ne garantit que le rendu
+// construise les modeles dans l'ordre de la conversion.
+struct Morceau {
+	int id = 0;
+	float lo[3] = {}, hi[3] = {};
+};
+
 struct Injected {
 	bool ok = false;
 	std::vector<uint32_t> poly, cull_lo, cull_hi;
 	std::vector<uint16_t> tex;
 	std::vector<Anime> animes;
+	std::vector<Morceau> morceaux;
 	uint32_t viewport_addr = 0x808000;
 };
 
