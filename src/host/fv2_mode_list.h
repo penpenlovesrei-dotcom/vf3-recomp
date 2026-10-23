@@ -139,6 +139,10 @@ struct fv2_mode_list
 		sel = ARCADE;
 		stick_y = 0;
 		blink_t0 = SDL_GetTicksNS();   // (so the chosen line starts at full, and the blink starts there)
+		// The list opening has a sound of its own, and August gives it the same note as deciding does:
+		// SOUND_OPEN and SOUND_VALIDATE are both sd_sign_16, no. 388. It was missing here, and Frederic heard
+		// the hole -- every move had its sound and the opening had none.
+		want_sound = SND_VALIDATE;
 	}
 	void hide() { shown = false; }
 
