@@ -1,0 +1,270 @@
+// The console's PAUSE MENU: Start during a match, over the fight, with the game frozen behind it.
+//
+// August had this menu and measured its four levers (docs/fv2-menu-console-inventaire.md section 2); this
+// port never had it, and docs/fv2-console.md said why -- "Escape already does everything that menu would, so
+// this was left until the modes are finished". The modes were finished on the 2026-10-23, so here it is.
+//
+// WHAT "BETTER INTEGRATED" MEANS HERE, since Frederic asked for that and not merely for the four lines:
+//
+//   * it is a surface like the other two, not a page of this port's menu. The list of modes and the OPTIONS
+//     page already freeze the game, take the keys and the pad, and draw over the picture the game made; this
+//     one is built the same way and says the same things to the host (want_sound, CANCELLED).
+//   * it is drawn with the GAME'S OWN LETTERS, the glyph sheet the OPTIONS page uses, and carries that page's
+//     pink cursor rule, hung by its bottom for the same reason. Nothing here is RmlUi.
+//   * the fight stays visible under it, taken down to half, which is the Dreamcast's own dimming measured for
+//     the list of modes (DIM_ALPHA there, the same number here).
+//   * START OPENS IT AND START CLOSES IT. The button that paused is the button that resumes, which is what a
+//     console does; B also backs out, as everywhere else in these surfaces.
+//
+// A LINE WITH NO LEVER IS DRAWN, DIMMED AND STEPPED OVER, which is the rule the OPTIONS page already follows
+// and the reason is the same: a menu whose lines come and go is misread at a glance. Two of the four are in
+// that state and say below exactly what is missing for them.
+#pragma once
+#include <SDL3/SDL.h>
+#include <string>
+#include <vector>
+#include "controls.h"
+#include "fv2_texte.h"
+#include "png.h"
+
+struct fv2_pause
+{
+	// The four lines are August's, in his order.
+	enum { TITLE_SCREEN, CHANGE_VIPER, REMATCH, CHANGE_STAGE, LINES };
+	static const char *name(int l)
+	{
+		static const char *const N[LINES] = { "TITLE SCREEN", "CHANGE YOUR VIPER", "REMATCH", "CHANGE STAGE" };
+		return l >= 0 && l < LINES ? N[l] : "?";
+	}
+
+	static constexpr int CANCELLED = -2;          // backed out: the host resumes the game
+	enum { SND_NONE, SND_MOVE, SND_VALIDATE, SND_CANCEL };
+	int want_sound = SND_NONE;
+
+	// THE FORM IS THE DREAMCAST'S, which Frederic showed on the 2026-10-24: not a page of centred lines like
+	// the OPTIONS screen, but a PANEL -- a translucent violet box under a pale header bar that reads "1P
+	// PAUSE" -- standing on the side of the player who paused, over a darkened fight, with the two hints
+	// split left and right along the bottom.
+	//
+	// The numbers below are read off that picture in fractions of the game's own 4:3 screen, which is how
+	// every other surface here is measured, so the panel keeps its place whatever the window does.
+	static constexpr uint8_t DIM_ALPHA = 110;          // the fight stays readable under it
+	static constexpr float PANEL_W = 0.355f, PANEL_H = 0.312f;
+	static constexpr float PANEL_TOP = 0.400f;         // the box; its header bar sits above this
+	static constexpr float PANEL_MARGIN = 0.135f;      // from the picture's edge, on the player's own side
+	static constexpr float BAR_H = 0.052f;             // the pale header bar
+	static constexpr float TEXT_IN = 0.022f;           // the lines' left margin inside the box
+	static constexpr float ROW_TOP = 0.055f, PITCH = 0.0615f, ROW_CAP = 0.0330f;
+	static constexpr float FOOT_Y = 0.906f, FOOT_L = 0.300f, FOOT_R = 0.715f;
+	static constexpr SDL_Color CHOSEN = { 252, 252, 10, 255 };
+	static constexpr SDL_Color PLAIN = { 247, 246, 246, 255 };
+	static constexpr SDL_Color MUTED = { 150, 150, 150, 255 };
+	static constexpr SDL_Color PANEL = { 150, 62, 140, 190 };     // the box, translucent
+	static constexpr SDL_Color BAR = { 226, 226, 226, 235 };      // the header bar
+	static constexpr SDL_Color BAR_INK = { 32, 32, 32, 255 };     // and what is written on it
+
+	bool shown = false;
+	int who = 0;                   // the player who paused: the panel stands on his side, 1P left, 2P right
+	int sel = TITLE_SCREEN;
+	int stage = 3;                 // CHANGE STAGE's choice; 3 is MARBLE ARENA, the one this port already names
+	bool ready = false, tried = false;
+	SDL_Texture *cursor = nullptr;
+	fv2_texte *font = nullptr;     // the sheet, loaded once by the host and shared
+	int stick_x = 0, stick_y = 0;
+
+	// WHICH LINES HAVE A LEVER. Two do, two do not, and the two that do not are not forgotten -- they are
+	// waiting on a measurement each, named here so the next session does not have to find the question again:
+	//
+	//   CHANGE YOUR VIPER  ends the match off screen "in about two seconds, with three bytes" -- the round
+	//                      counter 0x00581455, the round timer 0x00581406 and the screen-duration counter
+	//                      0x0058FD56. August's note gives the three ADDRESSES and not the three VALUES, and
+	//                      a match ended with the wrong ones is a match ended wrongly.
+	//   REMATCH            "do not leave the fight; the game relaunches a round itself", the finding being
+	//                      that the loser's task stops at the end of a match (player 2's task state is at
+	//                      0x00700100). That is a description of what was observed, not a lever.
+	//   TITLE SCREEN       August's lever is this port's fv2_attract_to_title -- push the attract sequencer
+	//                      to the end of its list with its timer expired -- and MEASURED FROM A FIGHT it does
+	//                      nothing: the sequencer is not running there, so there is no list to walk off. The
+	//                      round simply ended and the next one began. Leaving a fight properly is the road
+	//                      docs/fv2-etats.md still calls unwired, and this line waits on it with the others.
+	static bool has_lever(int l) { return l == CHANGE_STAGE; }
+
+	bool load(SDL_Renderer *ren, const std::string &assets, fv2_texte *sheet, FILE *log)
+	{
+		if (tried) return ready;
+		tried = true;
+		font = sheet;
+		if (!font || !font->ready) {
+			if (log) fprintf(log, "the console's pause menu: no glyph sheet -- Start cannot open it\n");
+			return false;
+		}
+		// The same cursor rule as the OPTIONS page, read again rather than borrowed: each surface owns what
+		// it draws, which is why either can be built or dropped without touching the other.
+		const std::string path = assets + "/menu-console/option_cursor.png";
+		std::vector<uint32_t> px;
+		int w = 0, h = 0;
+		std::string why;
+		if (!read_png(path.c_str(), px, w, h, why)) {
+			if (log) fprintf(log, "the console's pause menu: %s %s -- Start cannot open it\n", path.c_str(), why.c_str());
+			return false;
+		}
+		cursor = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC, w, h);
+		if (!cursor) {
+			if (log) fprintf(log, "the console's pause menu: no texture for %s (%s)\n", path.c_str(), SDL_GetError());
+			return false;
+		}
+		SDL_UpdateTexture(cursor, nullptr, px.data(), w * 4);
+		SDL_SetTextureBlendMode(cursor, SDL_BLENDMODE_BLEND);
+		SDL_SetTextureScaleMode(cursor, SDL_SCALEMODE_LINEAR);
+		ready = true;
+		if (log) fprintf(log, "the console's pause menu: its cursor and the glyph sheet are in\n");
+		return true;
+	}
+
+	void textures_lost(SDL_Renderer *ren, const std::string &assets)
+	{
+		if (cursor) { SDL_DestroyTexture(cursor); cursor = nullptr; }
+		ready = false;
+		tried = false;
+		load(ren, assets, font, nullptr);
+	}
+
+	void show(int player)
+	{
+		if (!ready) return;
+		shown = true;
+		who = player ? 1 : 0;
+		sel = TITLE_SCREEN;
+		stick_x = stick_y = 0;
+	}
+	void hide() { shown = false; }
+
+	void move(int d)
+	{
+		for (int i = 0; i < LINES; i++) {
+			sel = (sel + LINES + d) % LINES;
+			if (has_lever(sel)) break;      // a line with no lever is stepped OVER, never dropped
+		}
+		want_sound = SND_MOVE;
+	}
+
+	// One event while the menu is up. Returns a line (0..LINES-1) when one is chosen, CANCELLED when the
+	// player backs out, -1 otherwise.
+	int handle_event(const SDL_Event &e, const player_controls ctl[2])
+	{
+		if (!shown) return -1;
+		auto bound = [&](int action, SDL_Scancode sc) {
+			for (int p = 0; p < 2; p++) if (ctl[p].key[action] == sc) return true;
+			return false;
+		};
+		auto sideways = [&](int d) {
+			if (sel != CHANGE_STAGE) return;
+			stage = (stage + 16 + d) % 16;
+			want_sound = SND_MOVE;
+		};
+		switch (e.type) {
+		case SDL_EVENT_KEY_DOWN: {
+			if (e.key.repeat) return -1;
+			const SDL_Scancode sc = e.key.scancode;
+			if (sc == SDL_SCANCODE_UP || bound(C_UP, sc)) move(-1);
+			else if (sc == SDL_SCANCODE_DOWN || bound(C_DOWN, sc)) move(+1);
+			else if (sc == SDL_SCANCODE_LEFT || bound(C_LEFT, sc)) sideways(-1);
+			else if (sc == SDL_SCANCODE_RIGHT || bound(C_RIGHT, sc)) sideways(+1);
+			// Start closes what Start opened. It is listed before A so that a player whose Start is also a
+			// game button cannot choose a line with it by accident.
+			else if (bound(C_START, sc)) { want_sound = SND_CANCEL; return CANCELLED; }
+			else if (sc == SDL_SCANCODE_BACKSPACE || bound(C_KICK, sc)) { want_sound = SND_CANCEL; return CANCELLED; }
+			else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER || sc == SDL_SCANCODE_SPACE
+					 || bound(C_PUNCH, sc)) {
+				if (!has_lever(sel)) return -1;
+				want_sound = SND_VALIDATE;
+				return sel;
+			}
+			return -1;
+		}
+		case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+			switch (e.gbutton.button) {
+			case SDL_GAMEPAD_BUTTON_DPAD_UP: move(-1); break;
+			case SDL_GAMEPAD_BUTTON_DPAD_DOWN: move(+1); break;
+			case SDL_GAMEPAD_BUTTON_DPAD_LEFT: sideways(-1); break;
+			case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: sideways(+1); break;
+			case SDL_GAMEPAD_BUTTON_START: case SDL_GAMEPAD_BUTTON_EAST:
+				want_sound = SND_CANCEL;
+				return CANCELLED;
+			case SDL_GAMEPAD_BUTTON_SOUTH:
+				if (!has_lever(sel)) return -1;
+				want_sound = SND_VALIDATE;
+				return sel;
+			default: break;
+			}
+			return -1;
+		case SDL_EVENT_GAMEPAD_AXIS_MOTION: {
+			const int dir = e.gaxis.value < -16000 ? -1 : e.gaxis.value > 16000 ? 1 : 0;
+			if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY) {
+				if (dir && dir != stick_y) move(dir);
+				stick_y = dir;
+			} else if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
+				if (dir && dir != stick_x) sideways(dir);
+				stick_x = dir;
+			}
+			return -1;
+		}
+		default: return -1;
+		}
+	}
+
+	// Over the picture the game made: the fight darkened, then the panel on the pauser's side. mid is the
+	// game's own 4:3 screen, which every number above is a fraction of.
+	void render(SDL_Renderer *ren, const SDL_FRect &all, const SDL_FRect &mid)
+	{
+		if (!shown || !ready || !font) return;
+		SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+		SDL_SetRenderDrawColor(ren, 0, 0, 0, DIM_ALPHA);
+		SDL_RenderFillRect(ren, &all);
+
+		const float w = PANEL_W * mid.w, h = PANEL_H * mid.h;
+		const float x = who ? mid.x + mid.w * (1.0f - PANEL_MARGIN) - w : mid.x + mid.w * PANEL_MARGIN;
+		const float y = mid.y + PANEL_TOP * mid.h;
+		const float bar = BAR_H * mid.h;
+
+		// The header bar, then the box under it. The bar is drawn first so the box's edge sits against it.
+		const SDL_FRect bar_r = { x, y - bar, w, bar };
+		SDL_SetRenderDrawColor(ren, BAR.r, BAR.g, BAR.b, BAR.a);
+		SDL_RenderFillRect(ren, &bar_r);
+		const SDL_FRect box = { x, y, w, h };
+		SDL_SetRenderDrawColor(ren, PANEL.r, PANEL.g, PANEL.b, PANEL.a);
+		SDL_RenderFillRect(ren, &box);
+		// The pale upright the Dreamcast draws down the panel's left edge.
+		const SDL_FRect edge = { x - bar * 0.09f, y - bar, bar * 0.09f, h + bar };
+		SDL_SetRenderDrawColor(ren, BAR.r, BAR.g, BAR.b, BAR.a);
+		SDL_RenderFillRect(ren, &edge);
+
+		// "1P PAUSE" on the bar, in its own ink: the player first, hard against the left, then the word.
+		const float bar_cap = bar * 0.56f, bar_h = bar_cap / fv2_texte::CAP;
+		const char *side = who ? "2P" : "1P";
+		font->draw(ren, side, x + TEXT_IN * mid.w * 0.5f, y - bar + bar * 0.20f, bar_h, BAR_INK);
+		font->draw(ren, "PAUSE", x + w * 0.30f, y - bar + bar * 0.20f, bar_h, BAR_INK);
+
+		// The lines, left-aligned inside the box as they are there.
+		const float cap = ROW_CAP * mid.h, line_h = cap / fv2_texte::CAP;
+		for (int i = 0; i < LINES; i++) {
+			const bool on = i == sel, lever = has_lever(i);
+			const SDL_Color col = !lever ? MUTED : on ? CHOSEN : PLAIN;
+			const float ly = y + (ROW_TOP + float(i) * PITCH) * mid.h;
+			if (i == CHANGE_STAGE) {
+				char t[40];
+				snprintf(t, sizeof t, "%s %d", name(i), stage);
+				font->draw(ren, t, x + TEXT_IN * mid.w, ly, line_h, col);
+			} else {
+				font->draw(ren, name(i), x + TEXT_IN * mid.w, ly, line_h, col);
+			}
+		}
+
+		// The two hints, split along the bottom as the Dreamcast splits them.
+		const float fh = ROW_CAP * mid.h / fv2_texte::CAP * 0.58f;
+		font->draw_mid(ren, "USE THE DIRECTION BUTTON TO SELECT", mid.x + FOOT_L * mid.w, mid.y + FOOT_Y * mid.h, fh, PLAIN);
+		font->draw_mid(ren, "USE THE A BUTTON TO DECIDE", mid.x + FOOT_R * mid.w, mid.y + FOOT_Y * mid.h, fh, PLAIN);
+	}
+
+private:
+};

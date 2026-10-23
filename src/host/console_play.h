@@ -149,7 +149,7 @@ struct console_play
 	// playing state (0x2A from a fight, 0x2D from the select screen), so the title screen comes back over a
 	// game that is still running and fv2_in_attract stays false. Leaving a fight properly is the game's own
 	// road -- finish the match off screen -- which is written down in docs/fv2-etats.md and is not wired here.
-	enum class start_for { none, list, title };
+	enum class start_for { none, list, title, pause };
 	start_for take_start(m3::Model3 &b, bool pressed, bool list_open)
 	{
 		// While the list is up it is the list's button, not the game's: withheld whatever it does there.
@@ -165,11 +165,11 @@ struct console_play
 			// its tile layers torn across each other, the roster names printed through the logo, the whole
 			// picture in stripes. Measured here the same way, frame 3001 of a versus fight.
 			//
-			// There is no good screen to ask for from inside a game, so nothing is asked: the press is not
-			// swallowed either, and goes to the game as the board's own Start, which is what lets a second
-			// player cut into a match. Leaving a fight properly is the game's own road -- finish the match
-			// off screen -- and it is still not wired (docs/fv2-etats.md).
-			if (!b.fv2_in_attract()) { start_was = pressed; return start_for::none; }
+			// There is no good screen to ask the GAME for from inside a game, so nothing is asked of it. What
+			// opens instead is this port's own pause menu, over the fight, with the game frozen behind it --
+			// which is what a console does with that button and what August's work had (fv2_pause.h). The
+			// press is withheld, as every press this layer acts on is.
+			if (!b.fv2_in_attract()) { swallow_start = true; start_was = pressed; return start_for::pause; }
 			what = b.fv2_on_title() ? start_for::list : start_for::title;
 			// Two roads to the title screen, and they are not interchangeable. From the attract loop, the
 			// game's own: the sequencer is pushed to the end of its list and walks off it, which installs the

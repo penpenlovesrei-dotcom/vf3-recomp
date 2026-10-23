@@ -380,9 +380,7 @@ window, which is how the measurements above were taken.
   30 frames after that screen appears. Both need the select screen's own timing, which this page has not
   measured here, so neither is wired up. The hooks are in `console_play` (`inject_start_p2` is there and
   unused); what is missing is the measurement, not the plumbing.
-- **The pause menu.** Start during a fight brings the title screen back rather than opening a console's pause
-  menu, and it leaves the game running underneath (above). Here Escape already does everything that menu
-  would, so this was left until the modes are finished.
+- **The pause menu** — **construit le 2026-10-24**, les modes étant finis. Voir plus bas.
 - **The region.** The byte is readable and writable through `Model3::fv2_region`, and holds, but nothing calls
   it yet: it has to be written at the moment the settings have just been loaded from the NVRAM, or the NVRAM
   read overwrites it, and that moment has not been pinned down in this port.
@@ -397,3 +395,47 @@ window, which is how the measurements above were taken.
 - Fighting Vipers 2 without `--console`: unchanged, interpreter against recompiled on
   `tools/scripts/fv2-fight.txt`.
 - The two measurements above, each against a control run that differs in one thing only.
+
+## Le menu de pause
+
+`src/host/fv2_pause.h`, construit le 2026-10-24. Start pendant un match l'ouvre par-dessus le combat, le jeu
+gelé derrière ; Start le referme. C'est la troisième surface de ce portage, après la liste des modes et la
+page OPTIONS, et elle est faite comme elles : elle gèle le jeu, prend le clavier et la manette, dit au seul
+hôte ce qu'elle veut entendre (`want_sound`), et ne connaît rien de RmlUi.
+
+### La forme est celle du disque
+
+Frédéric a montré l'écran de la Dreamcast, et c'est lui qui est suivi, pas une page de lignes centrées :
+
+- un **panneau** violet translucide sous une **barre pâle** qui porte `1P PAUSE`, avec un montant clair le
+  long de son bord gauche ;
+- **à gauche pour le joueur 1, à droite pour le joueur 2** — le panneau se range du côté de celui qui a mis
+  en pause, et l'hôte sait lequel c'est par le Start qui est arrivé ;
+- **l'écran assombri** derrière, et le combat qui reste lisible dessous ;
+- les lignes **alignées à gauche** dans le panneau, la choisie en jaune ;
+- les deux aides **séparées en bas**, à gauche et à droite, comme là-bas.
+
+Toutes les mesures sont en fractions de l'écran 4:3 du jeu, comme partout ailleurs ici, donc le panneau garde
+sa place quelle que soit la fenêtre.
+
+### Les quatre lignes, et ce qui leur manque
+
+Ce sont celles d'août (`docs/fv2-menu-console-inventaire.md` §2). Une seule a un levier qui marche d'ici ;
+les trois autres sont **dessinées, en sourdine et enjambées**, la règle que la page OPTIONS suit déjà.
+
+| ligne | état |
+|---|---|
+| `TITLE SCREEN` | **mesurée inopérante depuis un combat.** Le levier d'août est celui que ce portage appelle `fv2_attract_to_title` — pousser le séquenceur d'attraction au bout de sa liste, chrono expiré. Essayé depuis un combat : rien. Le séquenceur n'y tourne pas, il n'y a pas de liste à quitter ; le round s'est fini et le suivant a commencé |
+| `CHANGE YOUR VIPER` | la note d'août donne trois **adresses** — `0x00581455`, `0x00581406`, `0x0058FD56` — et pas les trois valeurs |
+| `REMATCH` | la note décrit ce qui a été observé, pas un levier |
+| `CHANGE STAGE` | **câblée** : le sélecteur de décor que TRAINING utilise déjà, tenu sur la scène choisie. Gauche et droite changent le numéro sur la ligne |
+
+Ce qui bloque les trois est la même chose que ce que `docs/fv2-etats.md` appelle depuis le début **sortir d'un
+combat proprement**, par la route du jeu.
+
+### Vérifié
+
+En partie cachée, sur `tools/scripts/fv2-console-vs-start.txt` : Start à l'image 3000 d'un combat versus
+(`GAME_DSP`, `FIGHT_DSP`) ouvre le panneau, les flèches enjambent bien les lignes sans levier, Start referme,
+et le combat reprend intact. Les photographies sont prises à l'horloge et non à l'image, le jeu étant gelé —
+une image qui n'avance pas ne déclenche jamais une capture calée dessus.

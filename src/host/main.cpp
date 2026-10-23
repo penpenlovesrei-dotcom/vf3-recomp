@@ -131,6 +131,7 @@
 #include "console_play.h"
 #include "fv2_mode_list.h"
 #include "fv2_options.h"
+#include "fv2_pause.h"
 #include "fv2_texte.h"
 #include "menu.h"
 #include "controls.h"
@@ -2351,18 +2352,21 @@ int main(int argc, char **argv)
 	// Fighter 3 (src/host/fv2_options.h, docs/fv2-console-options.md).
 	fv2_texte console_font;
 	fv2_options options;
+	fv2_pause pause;   // Start during a match, over the fight
 	// The console's surfaces, over the picture the game made (and under this port's menu, if that is open as
 	// well): mid is the game's own 4:3 screen, which is what their placement was measured against. ONE place
 	// draws them, because F12 photographs the window by composing it again -- and a photograph that left the
 	// page out would not be a photograph of what is on screen.
 	auto draw_console = [&](m3::Model3 &b) {
 		SDL_FRect all, mid;
-		if (!modes.shown && !options.shown) return;
+		if (!modes.shown && !options.shown && !pause.shown) return;
 		picture_rect(all, mid);
 		if (modes.shown) modes.render(ren, all, mid);
 		// The OPTIONS page's backdrop covers the 4:3 screen and NOTHING IS DIMMED: the Dreamcast does not dim
 		// this one, measured (docs/fv2-dreamcast-menus.md section 3bis).
 		if (options.shown) options.render(ren, mid, b);
+		// The pause menu goes over the fight, dimmed, which is why it is drawn last and takes `all` too.
+		if (pause.shown) pause.render(ren, all, mid);
 	};
 	// What was playing under the console's surface, and whether a mode was chosen on the way out (above).
 	int music_held = -1;
@@ -2383,6 +2387,7 @@ int main(int argc, char **argv)
 	if (cplay.on) {
 		console_font.load(ren, find_assets(), stderr);
 		options.load(ren, find_assets(), &console_font, stderr);
+		pause.load(ren, find_assets(), &console_font, stderr);
 	}
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
@@ -2573,6 +2578,7 @@ int main(int argc, char **argv)
 					modes.load(ren, find_assets(), stderr);
 					console_font.load(ren, find_assets(), stderr);
 					options.load(ren, find_assets(), &console_font, stderr);
+					pause.load(ren, find_assets(), &console_font, stderr);
 				}
 				g_pc_mode = !cfg.arcade;
 				cfg_dirty = true;
@@ -3018,6 +3024,26 @@ int main(int argc, char **argv)
 		sync_menu_sound();
 	};
 
+	// A line of the pause menu chosen. Two of the four have a lever and the other two are stepped over
+	// before they get here (fv2_pause.h says what each is waiting on).
+	auto chose_pause = [&](int line) {
+		fprintf(stderr, "the console's pause menu: %s chosen\n", fv2_pause::name(line));
+		if (line == fv2_pause::TITLE_SCREEN) {
+			// August's own lever, and this port already had it under another name: push the attract
+			// sequencer to the end of its list with its timer expired and the game walks off the end
+			// itself, which is the one road that installs the title screen the way the game does.
+			board.fv2_attract_to_title();
+		} else if (line == fv2_pause::CHANGE_STAGE) {
+			// The stage picker TRAINING already uses: held, so the game draws the chosen scene and keeps
+			// choosing it until it is released.
+			board.fv2_hold_stage(pause.stage);
+		}
+		pause.hide();
+		cplay.swallow_start = true;
+		cplay.start_was = true;
+		sync_menu_sound();
+	};
+
 	// ---- test hooks ----
 	std::vector<std::pair<SDL_Scancode, uint64_t>> test_keys;   // VF3_KEYS
 	std::vector<uint64_t> window_shots;
@@ -3144,6 +3170,7 @@ int main(int argc, char **argv)
 			modes.textures_lost(ren, find_assets());
 			console_font.textures_lost(ren, find_assets());
 			options.textures_lost(ren, find_assets());
+			pause.textures_lost(ren, find_assets());
 		}
 		new_frame = true;   // (the next picture sends the 2D again)
 	};
@@ -3212,6 +3239,24 @@ int main(int argc, char **argv)
 					cplay.swallow_start = true;
 					cplay.start_was = true;
 					fprintf(stderr, "the console's list: backed out\n");
+				}
+				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
+					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
+			}
+			// The pause menu, the same way. It reads and writes nothing of the game's RAM while a frame runs,
+			// so the wait below is for the same reason as the page's: the frame in flight when it opened may
+			// not have finished.
+			if (pause.shown && !ours(e)) {
+				if (game.emu_thread.joinable()) game.job_wait();
+				const int chose = pause.handle_event(e, cfg.ctl);
+				if (chose == fv2_pause::CANCELLED) {
+					pause.hide();
+					cplay.swallow_start = true;
+					cplay.start_was = true;
+					sync_menu_sound();
+					fprintf(stderr, "the console's pause menu: back to the fight\n");
+				} else if (chose >= 0) {
+					chose_pause(chose);
 				}
 				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
 					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
@@ -3296,7 +3341,7 @@ int main(int argc, char **argv)
 		// a list over a demonstration
 		if (modes.shown && menu.is_open()) modes.hide();   // (Escape opened this port's menu over it)
 		if (options.shown && menu.is_open()) close_options();
-		const bool stopped = paused || menu.is_open() || modes.shown || options.shown;
+		const bool stopped = paused || menu.is_open() || modes.shown || options.shown || pause.shown;
 		const bool ff = !stopped && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB];
 		int due = 0;
 		// ---- the console's surfaces keep the sound board turning ----
@@ -3397,6 +3442,7 @@ int main(int argc, char **argv)
 			};
 			if (modes.want_sound) { heard(modes.want_sound); modes.want_sound = fv2_mode_list::SND_NONE; }
 			if (options.want_sound) { heard(options.want_sound); options.want_sound = fv2_options::SND_NONE; }
+			if (pause.want_sound) { heard(pause.want_sound); pause.want_sound = fv2_pause::SND_NONE; }
 		}
 		if (stopped && cplay.on && (modes.shown || options.shown)) {
 			const uint64_t now = SDL_GetTicksNS();
@@ -3523,7 +3569,7 @@ int main(int argc, char **argv)
 				// the first time round.
 				if (cplay.on) {
 					const bool st = live.start[0] || live.start[1] || script_ctl.start[0] || script_ctl.start[1];
-					switch (cplay.take_start(board, st, modes.shown)) {
+					switch (cplay.take_start(board, st, modes.shown || pause.shown)) {
 					case console_play::start_for::list:
 						modes.show();
 						sync_menu_sound();
@@ -3532,6 +3578,13 @@ int main(int argc, char **argv)
 						break;
 					case console_play::start_for::title:
 						fprintf(stderr, "frame %llu: Start off the title screen (mode %d, sub-state %d): the game asked for its title screen\n",
+								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
+						break;
+					case console_play::start_for::pause:
+						// The panel stands on the side of the player who paused.
+						pause.show(!(live.start[0] || script_ctl.start[0]) && (live.start[1] || script_ctl.start[1]) ? 1 : 0);
+						sync_menu_sound();
+						fprintf(stderr, "frame %llu: Start in a game (mode %d, sub-state %d): the console's pause menu is up\n",
 								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
 						break;
 					case console_play::start_for::none: break;
