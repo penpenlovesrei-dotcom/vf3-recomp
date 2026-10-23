@@ -408,8 +408,13 @@ lui** : les teinter au jaune de la ligne choisie ne disait rien, le segment allu
 Titre et rien d'autre en août, où elle fut demandée ainsi le 18. Elle règle maintenant les commandes :
 **huit lignes** — les quatre directions, poing, garde, pied, et Start — **sur deux colonnes**, `1P` et `2P`.
 Haut et bas parcourent les lignes, gauche et droite passent d'un joueur à l'autre, `A` ouvre une ligne et
-**la touche ou le bouton suivant devient l'affectation**. Retour arrière annule, ce qui en fait la seule
-touche qu'on ne puisse pas lier ici. Start ressort.
+**la touche ou le bouton suivant devient l'affectation**. Retour arrière **et Start** annulent, ce qui en
+fait les deux seules commandes qu'on ne puisse pas lier ici. Start ressort aussi, hors capture.
+
+**Pourquoi Start n'est pas liable, et ce que ça a coûté** : dans la première version, seul Retour arrière annulait une
+capture. À la manette il n'y avait donc **aucune sortie** : tout bouton liait. La première main à l'essayer l'a
+prouvé en une session —  est passé de  à , ce qui n'est pas un réglage qu'on demande mais un
+Start pressé pour ressortir. Une capture qui avale tout enferme.
 
 Chaque ligne porte l'icône du jeu correspondante, **allumée tant que la commande est tenue** par le joueur de
 la colonne choisie. C'est le témoin qu'une liste d'affectations ne donne pas : on voit non seulement ce qui

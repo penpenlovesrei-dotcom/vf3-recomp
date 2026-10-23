@@ -460,7 +460,7 @@ struct fv2_options
 												   : "A : SET        START : BACK")
 								   : "USE THE DIRECTION BUTTON TO SELECT",
 					   mid.x + mid.w * 0.5f, mid.y + FOOT1 * mid.h, fh, PLAIN);
-		font->draw_mid(ren, mirror ? (ctl_capturing ? "BACKSPACE : CANCEL" : "AN ICON LIGHTS WHILE IT IS HELD")
+		font->draw_mid(ren, mirror ? (ctl_capturing ? "START OR BACKSPACE : CANCEL" : "AN ICON LIGHTS WHILE IT IS HELD")
 								   : "A : DECIDE        B : BACK",
 					   mid.x + mid.w * 0.5f, mid.y + FOOT2 * mid.h, fh, PLAIN);
 	}
@@ -711,6 +711,10 @@ private:
 				want_sound = SND_VALIDATE;
 			} else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
 				ctl_capturing = false;
+				// START CALLS IT OFF, it does not bind. A capture that swallows everything leaves a pad with
+				// no way out, and the first hand to try this page proved it: Start pressed to leave became
+				// the kick button. Start is this page's way out and the game's own button; it is not for binding.
+				if (e.gbutton.button == SDL_GAMEPAD_BUTTON_START) { want_sound = SND_CANCEL; return -1; }
 				if (ctl) ctl[size_t(ctl_col)].pad[action] = int(e.gbutton.button);
 				ctl_changed = true;
 				want_sound = SND_VALIDATE;
