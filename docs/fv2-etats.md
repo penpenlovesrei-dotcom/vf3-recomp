@@ -563,3 +563,28 @@ redémarrage de la boucle, le jeu n'écrit plus sa liste en entier, et ce qui tr
 **Ce qu'il ne faut pas faire** : rapiécer le soleil. La valeur lue n'est pas fausse, elle est périmée. La
 sortie est celle que ce fichier cherche depuis le 2026-10-21 — ce que le jeu exécute quand son séquenceur
 installe l'écran titre, et qui remet son émetteur de liste en état.
+
+
+### Qui émet la liste : le même, appelé trois fois moins
+
+Le registre de longueur du DMA est à `0xC2000008`. `--watch` dessus nomme chaque émission, et comptées sur
+1805 images :
+
+| émetteur | témoin | essai |
+|---|---|---|
+| `0x00009C64`, appelé de `0x00003CEC` | **9 642** | **3 428** |
+| `0x00009B04`, de `0x00033404` | 2 487 | 2 296 |
+| `0x00009B04`, de `0x00033468` | 2 461 | 1 918 |
+| `0x00009BCC`, de `0x00005214` | 1 128 | 1 118 |
+| `0x00009BCC`, de `0x00021F5C` | 419 | 67 |
+
+**Ce ne sont pas deux émetteurs différents** — c'était ma première lecture, et elle était fausse : les deux
+côtés se servent des quatre mêmes. Ce qui change est le **nombre d'appels** du principal, `0x00009C64` depuis
+`0x00003CEC` : un peu plus du tiers. Les trois autres bougent à peine.
+
+Le jeu ne change donc pas de façon d'écrire sa liste : **il a moins de choses à écrire**. Ce qui alimente la
+boucle de `0x00003CEC` est plus court après le redémarrage.
+
+**La mesure suivante** : ce que `0x00003CEC` parcourt — sa liste et son compte — et pourquoi elle est plus
+courte. `--trace-pc` sur son entrée donnera le pointeur et la longueur, et la comparaison témoin/essai au même
+sous-état dira ce qui manque.
