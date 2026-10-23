@@ -625,3 +625,36 @@ le jeu le fait à la fin d'un replay, nous le faisons **au milieu d'une démonst
 À vérifier : appuyer sur Start **pendant un replay** plutôt que pendant une démonstration, et regarder la
 scène suivante. Si elle est saine, la sortie est de ne pas couper une démonstration en plein milieu — soit
 en attendant qu'elle finisse, soit en la terminant comme le jeu la termine.
+
+
+### Correction : c'est le rattachement, pas la direction du soleil
+
+Un essai de plus — Start pendant un replay — a montré des scènes **saines** portant elles aussi des soleils à
+verticale négative : `(-0.32 -0.74 0.59)`, `(-0.27 -0.30 0.91)`. Le soleil est **propre à chaque vue**, et
+chaque vue a sa caméra : comparer deux vecteurs pris à deux moments ne prouve rien. **Ma formule « le soleil
+éclaire par en dessous » était une sur-interprétation**, et elle est retirée.
+
+Ce qui reste, et qui ne dépend d'aucune caméra, c'est **l'ambiante**, un scalaire :
+
+| les mêmes 139 modèles, `6DA8A9 6DA4BD 6DA0D1 6D9E28` | nœud | ambiante |
+|---|---|---|
+| témoin, replay naturel | `8000E8` | **0,800** |
+| essai, après redémarrage | `800122` | **0,251** |
+
+Et la seconde famille, `85243F 851AC7 A02796 A0273A` : nœud `80027E` à **0,227** chez le témoin, nœud `8002F2`
+à **0,478** chez l'essai.
+
+**Le défaut est donc le rattachement** : un même groupe de modèles se retrouve sur un nœud voisin et hérite
+d'une lumière destinée à autre chose — ambiante comprise. Les combattants, qui devraient être sur une vue à
+ambiante pleine, tombent sur une vue à un quart, et c'est ça qu'on voit.
+
+### Où ça en est
+
+- **Établi** : mêmes modèles, nœuds différents, ambiantes différentes ; et ce n'est ni le menu, ni la demande
+  d'écran titre, puisque `VF3_NO_SKIP=1` donne le même défaut.
+- **Établi aussi** : après le redémarrage le jeu n'envoie que 496 mots de liste là où il en envoie 7 914,
+  parce qu'il ne construit que **trois descripteurs de DMA au lieu de cinq**.
+- **Non établi** : pourquoi. La piste qui reste est le **moment** du redémarrage — le jeu redémarre sa boucle
+  à la fin d'un replay, nous la coupons au milieu d'une démonstration. L'essai « Start pendant un replay »
+  n'a pas tranché : il retombe sur une démonstration, pas sur un replay, donc il ne compare pas ce qu'il
+  faut.
