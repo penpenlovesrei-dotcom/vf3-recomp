@@ -1,0 +1,33 @@
+# Virtua Fighter 3 : une partie jouee au hasard, assez longue pour traverser plusieurs
+# decors, avec une image toutes les 600 images a partir du premier combat.
+# Les images vont dans build\host_v<numero>.png. Pour regarder ou tombent les ombres de
+# ce portage ailleurs que sur la plage du premier combat (docs/fv2-ombres.md).
+0 mark boot
+300 mark attract
+600 press p1.coin
++30 press p1.coin
++30 press p1.coin
++30 press p1.coin
++30 press p1.start
++90 mark select
++30 press p1.start
++150 mark fight
++60 random p1 20261019
+1200 shot v01200
+1800 shot v01800
+2400 shot v02400
+3000 shot v03000
+3600 shot v03600
+4200 shot v04200
+4800 shot v04800
+5400 shot v05400
+6000 shot v06000
+6600 shot v06600
+7200 shot v07200
+7800 shot v07800
+8400 shot v08400
+9000 shot v09000
+9600 shot v09600
+10200 shot v10200
+10800 random p1 off
++10 quit

@@ -291,6 +291,43 @@ reste que les images sans ombre du tout. Le filet ne se declenche donc plus jama
 `VF3_SHADOW_FAIL=<n>` existe : il fait echouer la lumiere une image sur n, pour l'exercer. Essaye a 2, la
 capture ne differe d'une image normale que de **13 pixels sur 1 049 088**, et l'ombre du jeu ne revient pas.
 
+## Virtua Fighter 3, le 2026-10-23 : le meme code, et un refus mesure
+
+Le code des ombres n'a plus **une ligne propre a un jeu**. Les deux choses qui l'etaient ont ete remplacees
+par des mesures internes, meilleures dans les deux jeux :
+
+1. **Reconnaitre une ombre** : plus `colour_index == 16` mais **`Model::flattened`**, le determinant nul de la
+   matrice. Sur Fighting Vipers 2 les deux criteres designent exactement les memes 37 maillages.
+2. **Le signe de la direction** : plus le soleil de la vue mais **l'ecart entre un combattant et son ombre**.
+
+Ce qui a permis de mesurer Virtua Fighter 3 au lieu d'en parler. Essaye, il clignotait. Trois mesures :
+
+| mesure | Fighting Vipers 2 | Virtua Fighter 3 |
+|---|---|---|
+| ecart de direction entre images | 0,18° | **5,55°**, pire 123,7° |
+| ecart des pieces d'une MEME image | **0,00°** | 6,71°, pire 61,3° |
+| residu de l'ajustement `I − N·Nᵀ + w·wᵀ` | **0,000000** sur 16 000 pieces | **0,069551** sur 64 000 |
+
+**Les matrices d'ombre de Virtua Fighter 3 ne sont pas des projections planes** — son sol a du relief. Toute
+la methode repose dessus, donc elle n'a pas de sens sur ce jeu. Le residu est devenu le critere, et il decide
+sans nommer de jeu : une vue qui n'est pas une projection plane refuse l'image, et le jeu dessine ses propres
+ombres. Seuil 0,005, pose entre un millionieme et sept centiemes.
+
+Verifie : sur Virtua Fighter 3, meme image ombres allumees ou eteintes, **identique a l'octet**. Sur Fighting
+Vipers 2, rien ne bouge.
+
+Une tentative a noter : extraire la direction **piece par piece** (chaque piece rendant son propre plan) fait
+tomber l'ecart entre images de 5,55° a 1,15° et supprime les retournements. Elle est gardee, elle est juste,
+mais elle ne suffit pas — le modele lui-meme est faux sur ce jeu.
+
+**Le refus a ete juge a l'essai**, pas seulement sur les chiffres. `jouer-vf3-ombres.cmd force`
+(`VF3_SHADOW_FORCE=1`) passe outre : a l'arret l'ombre est bonne, en mouvement non. Frederic, manette en main :
+« clignotements, changements de direction, je ne vois pas d'amelioration ». Le refus reste. Sans argument, le
+lanceur montre le comportement commite, c'est-a-dire les ombres du jeu.
+
+**Une reserve.** Au premier combat arcade de Virtua Fighter 3, sur la plage, le sol n'est pas dessine du tout
+dans le rendu 3D ; les ombres du jeu y sont invisibles aussi. Autre question.
+
 ## Ce qui reste ouvert, et qui bloque quoi
 
 - **Le jeu tient 43 images par seconde en combat, au lieu de 57,5, et on ne sait pas pourquoi.** Mesuré dans

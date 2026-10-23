@@ -291,7 +291,7 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 			memcpy(kept.vp_group, vp_group, sizeof(vp_group));
 			kept.nmaps = nmaps;
 			kept_ok = true;
-		} else if (shadow_tris > 0 && kept_ok) {
+		} else if (!light_refused && shadow_tris > 0 && kept_ok) {
 			// the scene still carries the game's shadows, so leaving them out is still right; the light from
 			// the picture before does for this one
 			memcpy(light_m, kept.light_m, sizeof(light_m));
@@ -302,6 +302,8 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 			nmaps = kept.nmaps;
 			light_ok = true;
 			why[6 + 1]++;   // counted apart: a picture kept, not a picture lost
+		} else if (light_refused) {
+			kept_ok = false;
 		} else {
 			// No shadows in the scene at all. That is a menu or a cut as often as it is a stage with its
 			// shadow switch off, so the kept light is only let go after a while -- long enough to outlast a
@@ -567,7 +569,7 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 				// VF3_SHADOW_ALL: every viewport into the map, to see which ones share the casters' space
 				static const bool all = getenv("VF3_SHADOW_ALL") != nullptr;
 				if (iv >= 64 || (!all && vp_group[iv] != g)) continue;
-				if (dr.mesh->colour_index == video::SHADOW_COLOUR_INDEX) continue;
+				if (dr.model->flattened) continue;
 				if (!dr.mesh->in_layer(0, dr.model->alpha)) continue;
 				SDL_DrawGPUPrimitives(rp, uint32_t(rg.count), 1, uint32_t(rg.first), 0);
 				cast++;
@@ -683,7 +685,7 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 				const Raster::Draw &d = prep.draws[rg.draw];
 				// With this port's shadows on, the game's own are left out here rather than in the raster:
 				// they still mark the floor for measure_scales, they are simply not drawn.
-				if (shadows && light_ok && d.mesh->colour_index == video::SHADOW_COLOUR_INDEX) continue;
+				if (shadows && light_ok && d.model->flattened) continue;
 				SDL_GPUGraphicsPipeline *p = d.mesh->layered ? layered : plain;
 				if (p != bound) {
 					SDL_BindGPUGraphicsPipeline(rp, p);
@@ -812,7 +814,7 @@ void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep
 		f.n[1] = u[2] * v[0] - u[0] * v[2];
 		f.n[2] = u[0] * v[1] - u[1] * v[0];
 		const float l = std::sqrt(f.n[0] * f.n[0] + f.n[1] * f.n[1] + f.n[2] * f.n[2]);
-		if (dr.mesh->colour_index == video::SHADOW_COLOUR_INDEX) quad_tris++;
+		if (dr.model->flattened) quad_tris++;
 		if (!(l > 1e-12f)) continue;
 		for (int q = 0; q < 3; q++) {
 			f.n[q] /= l;
@@ -824,7 +826,7 @@ void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep
 		// it. It is only a start -- they are flattened by a matrix the game builds from the stage's light
 		// angles -- so once a layer is known to hold the floor, the direction is taken from that layer's own
 		// floor and everything is measured a second time.
-		if (dr.mesh->colour_index == video::SHADOW_COLOUR_INDEX) {
+		if (dr.model->flattened) {
 			// The quads face the same way, but which way that is in numbers is not known yet, and adding
 			// normals that disagree in sign cancels them out: measured, 14 pictures of 660 in one fight came
 			// out with no floor direction at all, and on those the game's own shadows were drawn again. So
@@ -863,7 +865,7 @@ void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep
 			const double off = (double(p2[0][0]) + p2[1][0] + p2[2][0]) / 3 * fn[0]
 			                 + (double(p2[0][1]) + p2[1][1] + p2[2][1]) / 3 * fn[1]
 			                 + (double(p2[0][2]) + p2[1][2] + p2[2][2]) / 3 * fn[2];
-			if (dr2.mesh->colour_index == video::SHADOW_COLOUR_INDEX) { qs += off; nq++; }
+			if (dr2.model->flattened) { qs += off; nq++; }
 			else { cs += off; nc++; }
 		}
 		if (nq && nc && cs / nc < qs / nq) for (float &q : fn) q = -q;
@@ -1035,6 +1037,7 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 {
 	nmaps = 0;
 	light_ok = false;
+	light_refused = false;
 	shadow_models = 0;
 	shadow_tris = 0;   // measure_scales sets it, and it is not reached when the scene carries no shadows
 	for (bool &b : caster_vp) b = false;
@@ -1044,12 +1047,15 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 	int n = 0;
 	double sst[64][6] = {};
 	int pieces[64] = {};
+	static constexpr int MAXP = 64;   // pieces kept per viewport for the grouping below
+	static double psst[64][MAXP][6];
+	// where each viewport's shadow sits, and where its fighter sits: the shadow falls AWAY from the light,
+	// so the step from one to the other settles which way the light leans (below)
+	double smid[64][3] = {}, cmid[64][3] = {};
+	int sn[64] = {}, cn[64] = {};
 	for (size_t iv = 0; iv < scene.viewports.size() && iv < 64; iv++) {
 		for (const video::Model &m : scene.viewports[iv].models) {
-			bool sh = false;
-			for (const video::Mesh &me : *m.meshes)
-				if (me.colour_index == video::SHADOW_COLOUR_INDEX) { sh = true; break; }
-			if (!sh) continue;
+			if (!m.flattened) continue;
 			const float *M = m.matrix.m;
 			const float p[3] = { M[12], M[13], M[14] };
 			for (int k = 0; k < 3; k++) { lo[k] = std::min(lo[k], p[k]); hi[k] = std::max(hi[k], p[k]); }
@@ -1058,24 +1064,140 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 				r0[0]*r0[0]+r0[1]*r0[1]+r0[2]*r0[2], r1[0]*r1[0]+r1[1]*r1[1]+r1[2]*r1[2],
 				r2[0]*r2[0]+r2[1]*r2[1]+r2[2]*r2[2], r0[0]*r1[0]+r0[1]*r1[1]+r0[2]*r1[2],
 				r0[0]*r2[0]+r0[1]*r2[1]+r0[2]*r2[2], r1[0]*r2[0]+r1[1]*r2[1]+r1[2]*r2[2] };
+			// each piece's own S.S^T, not just their sum: whether they agree is what says the light can be
+			// read at all (below)
+			if (pieces[iv] < MAXP) {
+				for (int q = 0; q < 6; q++) psst[iv][pieces[iv]][q] = s[q];
+			}
 			for (int q = 0; q < 6; q++) sst[iv][q] += s[q];
 			pieces[iv]++;
 			caster_vp[iv] = true;
 			n++;
+			for (int q = 0; q < 3; q++) smid[iv][q] += p[q];
+			sn[iv]++;
 		}
 	}
 	shadow_models = n;
 	if (!n) { why[0]++; return; }
+	// and where the fighters themselves are, in the same viewports
+	for (size_t iv = 0; iv < scene.viewports.size() && iv < 64; iv++) {
+		if (!caster_vp[iv]) continue;
+		for (const video::Model &m : scene.viewports[iv].models) {
+			if (m.flattened) continue;
+			const float *M = m.matrix.m;
+			for (int q = 0; q < 3; q++) cmid[iv][q] += M[12 + q];
+			cn[iv]++;
+		}
+	}
 	// the floor, and the units each layer is drawn in
 	measure_scales(scene, prep);
 	const float *N = floor_p;
 	if (!(N[0] || N[1] || N[2])) return;   // measure_scales has already said why
 	// each caster's own direction, out of its pieces' S.S^T
 	float dirs[64][3] = {};
+	const float fn0[3] = { N[0], N[1], N[2] };
+	bool per_piece[64] = {};
 	for (size_t iv = 0; iv < 64; iv++) {
 		if (!caster_vp[iv] || !pieces[iv]) continue;
 		double a[6];
 		for (int q = 0; q < 6; q++) a[q] = sst[iv][q] / pieces[iv];
+		// The direction, piece by piece, and not from their mean.
+		//
+		// Fighting Vipers 2 flattens a whole fighter onto ONE plane, so every piece gives the same S.S^T --
+		// measured at a fight frame, they agree to five decimals -- and their mean was the light. Virtua
+		// Fighter 3's ground has relief: a piece is flattened onto the plane UNDER IT, so the plane's
+		// normal differs from piece to piece and so does S.S^T. Measured: three groups in one viewport,
+		// 0.023 apart, where Fighting Vipers 2 shows 0.00000. Their mean is then a plane that exists
+		// nowhere, and the light read off it swung 5.55 degrees a picture, 123.7 at worst, over 2040
+		// pictures -- which is what showed as the lighting turning about and blinking.
+		//
+		// But the LIGHT is the same for every piece; only the plane changes. So each piece gives up its own
+		// plane and its own direction, and it is the directions that are averaged. For one piece, S.S^T is
+		// I - N.N^T + w.w^T with N the plane it was flattened onto: N is what S.S^T sends to zero, which is
+		// the cross product of two of its rows, and w.w^T = S.S^T - I + N.N^T is rank one as before.
+		{
+			double acc[3] = { 0, 0, 0 }, resid = 0;
+			int got = 0;
+			for (int i = 0; i < std::min(pieces[iv], MAXP); i++) {
+				const double *s = psst[iv][i];
+				const double r[3][3] = { { s[0], s[3], s[4] }, { s[3], s[1], s[5] }, { s[4], s[5], s[2] } };
+				double nn[3] = { 0, 0, 0 }, bl = 0;
+				for (int u = 0; u < 3; u++) {
+					const int v = (u + 1) % 3;
+					const double c[3] = { r[u][1] * r[v][2] - r[u][2] * r[v][1],
+					                      r[u][2] * r[v][0] - r[u][0] * r[v][2],
+					                      r[u][0] * r[v][1] - r[u][1] * r[v][0] };
+					const double l2 = c[0] * c[0] + c[1] * c[1] + c[2] * c[2];
+					if (l2 > bl) { bl = l2; for (int q = 0; q < 3; q++) nn[q] = c[q]; }
+				}
+				if (!(bl > 1e-18)) continue;
+				const double nl = std::sqrt(bl);
+				for (int q = 0; q < 3; q++) nn[q] /= nl;
+				// turned the floor's way, so that the pieces' directions can be added up
+				if (nn[0] * fn0[0] + nn[1] * fn0[1] + nn[2] * fn0[2] < 0) for (double &q : nn) q = -q;
+				double b2[3][3];
+				for (int u = 0; u < 3; u++)
+					for (int v = 0; v < 3; v++)
+						b2[u][v] = r[u][v] - (u == v ? 1.0 : 0.0) + nn[u] * nn[v];
+				const double ww = std::max(0.0, b2[0][0] + b2[1][1] + b2[2][2]);
+				int bc = 0;
+				double bn = -1;
+				for (int c2 = 0; c2 < 3; c2++) {
+					const double l2 = b2[0][c2] * b2[0][c2] + b2[1][c2] * b2[1][c2] + b2[2][c2] * b2[2][c2];
+					if (l2 > bn) { bn = l2; bc = c2; }
+				}
+				double w2[3] = { 0, 0, 0 };
+				if (bn > 1e-12) {
+					const double sc = std::sqrt(ww / bn);
+					for (int q = 0; q < 3; q++) w2[q] = b2[q][bc] * sc;
+				}
+				// Is this piece's matrix a planar projection at all? Everything above rests on it: only
+				// then is S.S^T equal to I - N.N^T + w.w^T, and only then does d = N + w mean anything. So
+				// the fit is put back together and held against what was measured.
+				for (int u = 0; u < 3; u++)
+					for (int v = 0; v < 3; v++) {
+						const double back = (u == v ? 1.0 : 0.0) - nn[u] * nn[v] + w2[u] * w2[v];
+						resid = std::max(resid, std::fabs(back - r[u][v]));
+					}
+				// w's sign is free, so d came out one of two mirror images: take the one leaning the way
+				// the pieces counted so far lean
+				double dd[3] = { nn[0] + w2[0], nn[1] + w2[1], nn[2] + w2[2] };
+				if (got && (dd[0] * acc[0] + dd[1] * acc[1] + dd[2] * acc[2]) < 0)
+					for (int q = 0; q < 3; q++) dd[q] = nn[q] - w2[q];
+				const double dl2 = std::sqrt(dd[0] * dd[0] + dd[1] * dd[1] + dd[2] * dd[2]);
+				if (!(dl2 > 1e-9)) continue;
+				for (int q = 0; q < 3; q++) acc[q] += dd[q] / dl2;
+				got++;
+			}
+			const double al = std::sqrt(acc[0] * acc[0] + acc[1] * acc[1] + acc[2] * acc[2]);
+			// A light that cannot be read is not invented. Measured, the worst gap between a piece's
+			// S.S^T and the planar projection put back together from it:
+			//
+			//     Fighting Vipers 2   0.000000, worst 0.000001, over 16000 pieces
+			//     Virtua Fighter 3    0.069551, worst 0.081600, over 64000 pieces
+			//
+			// So Virtua Fighter 3 does not flatten its shadows onto a plane at all -- its ground has
+			// relief, and whatever it does instead is not a projection. Reading a light out of it gave
+			// the pieces of ONE picture disagreeing by 6.7 degrees on average and 61 at worst, which is
+			// what showed as the lighting turning about, blinking and going out. That viewport is left
+			// out, and with no caster left the game draws its own shadows as it always did. 0.005 is the
+			// one number measurement does not hand over; it sits between a millionth and seven hundredths.
+			// VF3_SHADOW_FORCE: go ahead anyway, to look at what the refusal is turning down
+			static const bool forced = getenv("VF3_SHADOW_FORCE") != nullptr;
+			if (resid > 0.005 && !forced) { caster_vp[iv] = false; light_refused = true; why[2]++; continue; }
+			if (got && al > 1e-9) {
+				for (int q = 0; q < 3; q++) dirs[iv][q] = float(acc[q] / al);
+				per_piece[iv] = true;
+			}
+		}
+		double worst = 0;
+		for (int i = 0; i < std::min(pieces[iv], MAXP); i++)
+			for (int q = 0; q < 6; q++) worst = std::max(worst, std::fabs(psst[iv][i][q] - a[q]));
+		if (debug_now)
+			fprintf(stderr, "  vp%zu: %d pieces, ecart maximum a la moyenne %.5f\n", iv, pieces[iv], worst);
+		// Pieces that disagree are expected now -- a ground with relief gives each its own plane -- so this
+		// is only told, not acted on. (void) keeps it alive when nothing is being told.
+		(void)worst;
 		// w.w^T = S.S^T - I + N.N^T, a rank-one matrix: its biggest column is w, and its trace is w.w
 		double b[3][3] = {
 			{ a[0] - 1 + double(N[0]) * N[0], a[3] + double(N[0]) * N[1], a[4] + double(N[0]) * N[2] },
@@ -1089,19 +1211,32 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 			if (l > bl) { bl = l; best = c; }
 		}
 		if (!(bl > 1e-12)) {      // w is zero: the light is straight down the floor's own direction
-			for (int k = 0; k < 3; k++) dirs[iv][k] = N[k];
+			if (!per_piece[iv]) for (int k = 0; k < 3; k++) dirs[iv][k] = N[k];
 			continue;
 		}
 		const double s = std::sqrt(ww / bl);
 		double w[3] = { b[0][best] * s, b[1][best] * s, b[2][best] * s };
-		// the sign the column came out with is arbitrary; the light is the way this viewport's sun leans
-		const video::Viewport &v = scene.viewports[iv];
-		if (w[0] * v.sun[0] + w[1] * v.sun[1] + w[2] * v.sun[2] < 0) for (double &q : w) q = -q;
+		// The sign the column came out with is arbitrary: N + w and N - w are mirror images about the floor's
+		// own direction, and only one of them is the light. What settles it is where the shadow landed. A
+		// point h above the floor casts at h.w away from itself, so the step from the fighter to its shadow
+		// runs along -w. It was this viewport's sun before, which works in Fighting Vipers 2 and not in
+		// Virtua Fighter 3, where every viewport carries the same [0 1 0] and it says nothing about the
+		// geometry -- measured, the direction came out 45 degrees off, mirrored.
+		if (sn[iv] && cn[iv]) {
+			double step[3];
+			for (int q = 0; q < 3; q++) step[q] = smid[iv][q] / sn[iv] - cmid[iv][q] / cn[iv];
+			if (step[0] * w[0] + step[1] * w[1] + step[2] * w[2] > 0) for (double &q : w) q = -q;
+		}
 		float d[3] = { float(N[0] + w[0]), float(N[1] + w[1]), float(N[2] + w[2]) };
 		const float dl = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-		if (!(dl > 1e-6f)) { for (int k = 0; k < 3; k++) dirs[iv][k] = N[k]; continue; }
-		for (int k = 0; k < 3; k++) dirs[iv][k] = d[k] / dl;
+		// the pieces' own answer wins when they gave one; this is the whole-viewport fallback
+		if (!(dl > 1e-6f)) { if (!per_piece[iv]) for (int k = 0; k < 3; k++) dirs[iv][k] = N[k]; continue; }
+		if (!per_piece[iv]) for (int k = 0; k < 3; k++) dirs[iv][k] = d[k] / dl;
 	}
+	// One refused viewport refuses the picture. Letting the others through would light some pictures and
+	// not the next, which is the blinking itself; and a game whose shadows are not planar projections
+	// has no light to read, not a light read from part of it.
+	if (light_refused) return;
 	// the groups: viewports whose directions agree to within a degree share a map, up to two maps
 	float gdir[2][3] = {};
 	for (size_t iv = 0; iv < 64; iv++) {
@@ -1115,7 +1250,46 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 		if (g < 0) g = 0;   // a third direction would need a third map; it joins the first
 		vp_group[iv] = g;
 	}
+	// a viewport whose pieces disagree casts nothing: with none left there is no light to read
+	{
+		int left = 0;
+		for (int iv = 0; iv < 64; iv++) if (caster_vp[iv]) left++;
+		if (!left) { why[2]++; return; }
+	}
 	if (!nmaps) { why[5]++; return; }
+	// VF3_SHADOW_WHY: how steady the direction is. It is read per caster from the game's own shadow
+	// matrices, but its SIGN is settled by where the shadow sits against its caster -- and a viewport
+	// that holds the stage as well as the fighters makes that comparison meaningless.
+	if (getenv("VF3_SHADOW_WHY")) {
+		static float said[64][3] = {};
+		static unsigned flips = 0, moves = 0, seen = 0, over5 = 0, n_ang = 0;
+		static double sum_ang = 0, max_ang = 0;
+		seen++;
+		for (int iv = 0; iv < 64; iv++) {
+			if (!caster_vp[iv] || !pieces[iv]) continue;
+			const float dot = dirs[iv][0] * said[iv][0] + dirs[iv][1] * said[iv][1] + dirs[iv][2] * said[iv][2];
+			if (said[iv][0] || said[iv][1] || said[iv][2]) {
+				const double ang = std::acos(std::min(1.0, std::max(-1.0, double(dot)))) * 57.2957795;
+				if (dot < 0) flips++;
+				else if (dot < 0.999f) moves++;
+				sum_ang += ang;
+				n_ang++;
+				if (ang > max_ang) max_ang = ang;
+				if (ang > 5) over5++;
+			}
+			for (int q = 0; q < 3; q++) said[iv][q] = dirs[iv][q];
+		}
+		static float saidN[3] = {};
+		static unsigned nmoves = 0;
+		{
+			const float dot = floor_p[0] * saidN[0] + floor_p[1] * saidN[1] + floor_p[2] * saidN[2];
+			if ((saidN[0] || saidN[1] || saidN[2]) && dot < 0.999f) nmoves++;
+			for (int q = 0; q < 3; q++) saidN[q] = floor_p[q];
+		}
+		if ((seen % 120) == 0)
+			fprintf(stderr, "direction : %u images, %u retournements, %u ecarts (moyenne %.2f deg, pire %.1f deg, %u au dela de 5 deg) ; le sol bouge %u fois\n",
+			        seen, flips, moves, n_ang ? sum_ang / n_ang : 0.0, max_ang, over5, nmoves);
+	}
 	const float ground = std::max(lo[1], hi[1]);
 	for (int g = 0; g < nmaps; g++) {
 		// The box, read off that group's casters' own VERTICES. A model's place is one point and says nothing
@@ -1130,7 +1304,7 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 			const video::Raster::Draw &dr = prep.draws[t.draw];
 			const size_t ivv = size_t(dr.vp - scene.viewports.data());
 			if (ivv >= 64 || vp_group[ivv] != g) continue;
-			if (dr.mesh->colour_index == video::SHADOW_COLOUR_INDEX) continue;
+			if (dr.model->flattened) continue;
 			for (int k = 0; k < t.n; k++) {
 				// a vertex keeps its attributes divided by w (that is how they interpolate): w back on, and it
 				// is the position in the camera's space again -- the space this matrix works in
@@ -1209,7 +1383,8 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 bool R3dGpu::read_shadow_map(std::vector<float> &px, int &side, int which)
 {
 	side = SMAP;
-	if (which < 0 || which >= MAPS || !smap[which]) return false;
+	// only the maps this picture made: the others hold whatever was last drawn in them
+	if (which < 0 || which >= nmaps || !smap[which]) return false;
 	SDL_GPUTransferBufferCreateInfo ti = {};
 	ti.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
 	ti.size = uint32_t(SMAP) * uint32_t(SMAP) * 4;

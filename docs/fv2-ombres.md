@@ -923,3 +923,69 @@ Après les trois corrections : **zéro image perdue**, sur 780 images d'un comba
 d'attraction. Le filet ne se déclenche donc plus, ce qui le rend invérifiable par l'usage — d'où
 `VF3_SHADOW_FAIL=<n>`, qui fait échouer la lumière une image sur n. À 2 : 117 images rattrapées, et la capture
 ne diffère d'une image normale que de **13 pixels sur 1 049 088**.
+
+## Virtua Fighter 3 : le même code, et un refus mesuré
+
+Deux choses seulement étaient propres à Fighting Vipers 2, et les remplacer par des mesures internes a rendu
+le code indépendant du jeu — ce qui a permis de **mesurer** Virtua Fighter 3 au lieu d'en parler.
+
+**Reconnaître une ombre.** C'était `colour_index == 16`, la case de la table des couleurs que ce jeu réécrit à
+chaque image. Virtua Fighter 3 n'en dit rien : à une image de combat, **tous** ses maillages ont `ci = −1`,
+leur couleur venant des sommets. Le remplaçant ne demande rien au jeu : **une ombre est un modèle aplati**,
+donc sa matrice est singulière.
+
+| | modèles | à matrice plate | maillages |
+|---|---|---|---|
+| Fighting Vipers 2, image 3101 | 264 | 36 | **37, exactement ceux d'index 16** |
+| Virtua Fighter 3, image 1200 | 345 | 10 | 34, 1 224 sommets |
+
+Croisement parfait sur Fighting Vipers 2 : `{(index 16, plate) : 37, (ni l'un ni l'autre) : 479}`. Et la
+séparation est franche — déterminant **exactement 0** d'un côté, **exactement 1,000** de l'autre.
+
+**Le signe de la direction.** `S·Sᵀ` donne `w·wᵀ`, donc `w` au signe près. Il venait du soleil de la vue ;
+Virtua Fighter 3 met `[0 1 0]` dans **toutes** ses vues, ce qui ne dit rien de sa géométrie. Le remplaçant est
+interne : **l'ombre tombe à l'opposé de la lumière**, donc l'écart entre un combattant et son ombre court le
+long de `−w`. Fighting Vipers 2 redonne exactement sa direction, `[0,2077 0,8434 0,4955]`.
+
+### Et le résultat sur Virtua Fighter 3 : le portage refuse
+
+Le code y tourne, trouve 34 ombres et remplit une carte à 43,6 %. Mais à l'écran : la lumière tourne, l'image
+clignote, l'ombre disparaît. Trois mesures, chacune tranchant une hypothèse.
+
+| mesure | Fighting Vipers 2 | Virtua Fighter 3 |
+|---|---|---|
+| écart de direction entre images | 0,18°, pire 14° | **5,55°**, pire 123,7° |
+| écart des pièces d'une **même** image à leur moyenne | **0,00°** | 6,71°, pire 61,3° |
+| les lignes des pièces convergent-elles en un point ? | — | non : écart de **1 142 unités** |
+| résidu de l'ajustement `I − N·Nᵀ + w·wᵀ` | **0,000000**, pire 0,000001, 16 000 pièces | **0,069551**, pire 0,081600, 64 000 pièces |
+
+Le dernier est le verdict. **Les matrices d'ombre de Virtua Fighter 3 ne sont pas des projections planes.**
+Son sol a du relief, et ce qu'il fait à la place n'est pas une projection sur un plan. Toute la chaîne
+—`S·Sᵀ = I − N·Nᵀ + w·wᵀ`, donc `d = N + w` — n'a de sens que si elles le sont : exact au millionième dans un
+jeu, faux de sept centièmes dans l'autre. Il n'y avait pas une lumière mal lue, il n'y avait pas de lumière à
+lire.
+
+Une tentative intermédiaire mérite d'être notée, parce qu'elle a réduit le mal sans le guérir : extraire la
+direction **pièce par pièce** (chaque pièce rendant son propre plan, et les directions étant moyennées plutôt
+que les plans) fait tomber l'écart entre images de 5,55° à **1,15°** et supprime les retournements. Mais les
+pièces d'une même image continuaient de diverger de 6,7°, puisque le modèle lui-même est faux.
+
+**Donc le résidu est devenu le critère**, et il décide sans nommer aucun jeu : si les pièces d'une vue ne sont
+pas des projections planes, le portage n'invente pas de lumière, il laisse le jeu dessiner les siennes. Une
+seule vue refusée refuse l'image entière — laisser passer les autres éclairerait une image sur deux, ce qui
+*est* le clignotement. Le seuil, **0,005**, est le seul nombre que la mesure ne donne pas : il est posé entre
+un millionième et sept centièmes.
+
+Après : sur Virtua Fighter 3, plus une seule de nos ombres, et la même image ombres allumées ou éteintes est
+**identique à l'octet**. Sur Fighting Vipers 2, rien ne bouge — 0,17° d'écart moyen, aucun retournement,
+aucun refus.
+
+**Le refus a été jugé à l'essai, et non sur les seuls chiffres.** `VF3_SHADOW_FORCE=1`
+(`jouer-vf3-ombres.cmd force`) passe outre, pour voir ce qui est écarté. À l'arrêt l'ombre est bonne : la
+forme est juste, les membres se séparent, la texture reste lisible. En mouvement, non — Frédéric, manette en
+main : « clignotements, changements de direction, **je ne vois pas d'amélioration** ». C'est le verdict qui
+compte, et il rejoint les chiffres : 1,15° d'écart par image en moyenne, jusqu'à 62°. Le refus reste.
+
+**Une réserve.** Au premier combat du mode arcade de Virtua Fighter 3, sur le décor de plage, le sol n'est pas
+dessiné du tout dans le rendu 3D : fond noir sous les pieds, et les ombres du jeu y sont invisibles pour la
+même raison. C'est une autre question, sans rapport avec les ombres.

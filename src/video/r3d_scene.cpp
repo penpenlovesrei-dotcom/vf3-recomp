@@ -503,6 +503,14 @@ void SceneBuilder::draw_model(uint32_t addr)
 	Model m;
 	m.addr = addr;
 	m.matrix = cur;
+	// flattened onto a plane, so the game means it as a shadow (r3d_scene.h)
+	{
+		const float *M = m.matrix.m;
+		const float det = M[0] * (M[5] * M[10] - M[9] * M[6])
+		                - M[4] * (M[1] * M[10] - M[9] * M[2])
+		                + M[8] * (M[1] * M[6] - M[5] * M[2]);
+		m.flattened = std::fabs(det) < 1e-6f;
+	}
 	m.alpha = attr.alpha;
 	m.scale = attr.scale;
 	m.page = attr.page;

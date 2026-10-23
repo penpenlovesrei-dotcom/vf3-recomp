@@ -80,6 +80,10 @@ private:
 	Kept kept = {};
 	bool kept_ok = false;
 	bool light_ok = false;
+	// Not a picture that failed, but a scene whose light cannot be read at all -- its shadow pieces do
+	// not agree on one projection. The net below keeps the last light through a failed picture; it must
+	// not keep one through this, or a game the port cannot read would get a stale light smeared over it.
+	bool light_refused = false;
 	bool caster_vp[64] = {};     // the viewports that carry the game's own shadows: their models cast
 	int vp_group[64] = {};       // which map each caster goes into (-1: none)
 	// How many of a viewport's units make one of the casters' (fit_light): the game draws its stage in

@@ -65,8 +65,10 @@ struct Mesh
 };
 
 // Fighting Vipers 2's shadows: their polygons take their colour from this entry of the table, which the game
-// rewrites every frame with the stage's shadow colour (docs/fv2-ombres.md). It is the game's own marker for
-// them -- every other mesh of a fight frame carries its own RGB.
+// rewrites every frame with the stage's shadow colour (docs/fv2-ombres.md). It is that game's own marker for
+// them -- every other mesh of a fight frame carries its own RGB. Model::flattened says the same thing without
+// asking the game, and is what the renderer goes by; this is kept because it is also where the colour of a
+// shadow comes from, and because it is how the marker was first found.
 constexpr int SHADOW_COLOUR_INDEX = 16;
 
 using Meshes = std::shared_ptr<std::vector<Mesh>>;
@@ -77,6 +79,14 @@ struct Model
 	uint32_t addr = 0;     // where it came from (for matching between frames)
 	Mat4 matrix;           // model to view
 	float alpha = 1, scale = 1;
+	// A shadow is a model the game has flattened: its matrix carries a projection onto the floor, so the
+	// linear part is of rank two and the determinant is exactly zero. That is what a shadow IS, in both
+	// games, and it needs nothing a game puts there on purpose. Measured on a fight frame of Fighting
+	// Vipers 2: the 37 meshes the colour table marks (SHADOW_COLOUR_INDEX) are exactly the 37 under a flat
+	// matrix, no more and no fewer, while the other 479 are rigid. And on one of Virtua Fighter 3: ten
+	// models flat out of 345, the rest at a determinant of exactly 1 -- where the colour index says nothing
+	// at all, every mesh of that frame taking its colour from its vertices.
+	bool flattened = false;
 	int page = 0;          // the texture sheet flip from the nodes
 	int tex_x = 0, tex_y = 0;   // the texture offset from the nodes (Step 1.5 and later; 0 on Step 1.0)
 	uint32_t node_path = 0;   // a hash of the culling nodes above it (for matching between frames)
