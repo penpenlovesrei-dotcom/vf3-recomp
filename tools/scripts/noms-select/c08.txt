@@ -1,0 +1,18 @@
+# L ecran de selection, curseur arrete sur la case 8, sans confirmer.
+1900 press p1.coin
+1930 press p1.coin
+1960 press p1.start
+2040 press p1.right
+2056 press p1.right
+2072 press p1.right
+2088 press p1.right
+2104 press p1.right
+2120 press p1.right
+2136 press p1.right
+2152 press p1.right
+2400 shot c08_t0
+2440 shot c08_t1
+2480 shot c08_t2
+2520 shot c08_t3
+2560 shot c08_t4
+2700 quit

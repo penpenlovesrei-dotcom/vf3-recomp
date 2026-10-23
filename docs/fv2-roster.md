@@ -135,6 +135,10 @@ It is permanent: it is the cursor handler's own mode, not a one-shot.
 
 Past cursor 10 the names and portraits are wrong or missing. The routine that draws them stops there, and its
 table of positions holds eleven entries. The fighters load and play; the label above them is somebody else's.
+**Corrected 2026-10-23, see `docs/fv2-noms-selection.md`:** cursors 11 and 12 draw the RIGHT name,
+the routine does not stop, and there is no table overrun. Cursor 13 is blank because of an explicit
+`cmpwi cr1,r3,13` at `0x0006045C`; without it, it would read MAHLER.
+
 Nothing here tries to paper over that -- it would mean building a name table Sega never wrote.
 
 

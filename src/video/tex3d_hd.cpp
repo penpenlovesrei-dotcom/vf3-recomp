@@ -260,14 +260,21 @@ bool Tex3dHd::find(const uint16_t *tex, const TexPlace &native, bool translator_
 	Seen s;
 	bool flat = false;
 	const uint64_t hash = hash_texels(tex, native.page, native.x, native.y, native.w, native.h, flat);
-	if (flat) {
-		// Every flat texture of a size hashes the same, so a pack entry for one would stand in for any of them,
-		// anywhere on the screen. Never matched, never dumped.
+	// A texture of one single texel value is refused by default. Not because every flat texture hashes alike --
+	// the hash walks all the texels, so a red square and a blue one differ -- but because a flat square of a
+	// given size and colour hashes like ANY flat area of that size and colour, anywhere on the screen: a stage,
+	// another fighter. One pack entry would stand in for all of them.
+	//
+	// `allow_flat` lifts it, and nothing decides that from inside: it is an option, set per run. Kuhn's skin is
+	// one flat coloured square, so without it he has no skin to dump and none to replace; with it, whatever flat
+	// art the pack carries will also stand in for any other flat area of the same size and colour in that run.
+	// That is the whole of the trade, and it is the operator's to make.
+	if (flat && !allow_flat) {
 		st.flat_refused++;
 	} else if (dump_on) {
 		dump_one(tex, native, hash, alpha);
 	}
-	if (!flat) {
+	if (!flat || allow_flat) {
 		const Key k = { hash, native.w, native.h, native.format };
 		if (auto e = entries.find(k); e != entries.end() && e->second.placed) {
 			s.hit = true;

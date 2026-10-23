@@ -309,8 +309,9 @@ reset. **The CPU ladder does not count.** The gate did its job.
   therefore two descriptions of one thing.
 - `*1P COLOR` (`0x007005B9`) **is the costume colour**, but it is read when a round loads and not after. Poked to 1 or 3 *during* a
   fight it only repaints the name plate (382 and 816 pixels, all inside the plate); poked to 2 the CPU stops
-  with an invalid instruction at `0x00020908`; poked to 4 the whole screen changes. None of that was run down,
-  and none of it touches the model -- which is the whole point: by then the model and its textures are already
+  with an invalid instruction at `0x00020908`; poked to 4 the whole screen changes. **That is now run down**
+  (`docs/fv2-couleurs.md`): a fighter's colour list holds exactly two pairs of eight bytes, so `*1P COLOR = 2`
+  reads the next fighter's, and further out the pointer it builds is not a pointer. None of it touches the model -- which is the whole point: by then the model and its textures are already
   loaded, so a poke cannot reach them. **Chosen at the select screen it does reach them.** One press of **up**
   on the fighter's cell before confirming takes the byte from 0 to 1, measured 2026-10-21 at frame 3300 of
   `tools/scripts/fv2-honey-tex-c2.txt`. START does *not* do this: it confirms nothing at all, the select

@@ -39,6 +39,9 @@ Tout est derrière un lanceur `.cmd` à la racine, et tous épinglent `VF3_DATA`
 | le pack de tuiles 2D | `jouer-fv2-hd2d.cmd`, `releve-tuiles-fv2.cmd` | `docs/fv2-hd-2d.md` |
 | les textures 3D | `jouer-fv2-hd3d.cmd`, `dumper-textures-3d-fv2.cmd` | `docs/fv2-hd-3d.md` |
 | les quatre costumes de Honey | `montrer-honey.cmd` | `docs/fv2-honey.md` |
+| la couleur des parties sans texture | | `docs/fv2-couleurs.md` |
+| les deux Kuhn, et ce qui les separe | | `docs/fv2-deux-kuhn.md` |
+| le nom sur l ecran de selection | | `docs/fv2-noms-selection.md` |
 | les modes console, et la liste sur l'écran titre | `jouer-fv2-console.cmd` | `docs/fv2-console.md` |
 | mesurer ce que fait Start | `mesurer-fv2-start.cmd` | `docs/fv2-etats.md` |
 | les captures de la liste | `capturer-fv2-liste.cmd` | `docs/fv2-console.md` |

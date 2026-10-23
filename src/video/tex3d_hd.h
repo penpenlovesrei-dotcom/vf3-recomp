@@ -91,6 +91,10 @@ public:
 	// name's size is the native one, for identification only. report gets a line for the player.
 	bool load(const std::string &dir, std::string &report);
 
+	// Lever le refus des textures unies, pour une course et pas pour le jeu : voir find(). Mis par --hd-flats.
+	void allow_flat_textures(bool on) { allow_flat = on; }
+	bool flat_allowed() const { return allow_flat; }
+
 	bool dumping() const { return dump_on; }
 	bool replacing() const { return !entries.empty(); }
 	bool active() const { return dump_on || replacing(); }
@@ -144,6 +148,7 @@ private:
 	struct Shelf { int page = 0, y = 0, x = 0, h = 0; };
 	Shelf shelf;
 	bool dump_on = false;
+	bool allow_flat = false;
 	std::string dump_dir;
 	std::unordered_set<std::string> dumped_names;
 	// What alpha each dumped image was written with. The image is written the first time the texture is drawn;
