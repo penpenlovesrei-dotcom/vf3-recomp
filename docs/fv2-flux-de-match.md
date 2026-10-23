@@ -859,5 +859,24 @@ Ce qui donne aussi un sens à la séparation des deux colonnes : réglage allum�
 fin lui est annoncée ; éteint, elle lui est tombée dessus sans rien dire. Deux statistiques différentes pour
 l'exploitant.
 
+### Ce qui reste en doute
+
+Tout ce qui précède est **lu dans le code et non vu en jouant**, et Frédéric, qui connaît le jeu, n'est pas
+convaincu. Son objection tient : si `SUPER K.O.` éteint empêche le coup — et `FUN_000136B0` va dans son sens,
+le coup ne valant alors qu'un round au lieu de deux — alors la colonne du réglage éteint ne peut jamais se
+remplir, et deux colonnes pour un seul cas atteignable n'a pas de sens.
+
+Deux lectures restent ouvertes :
+
+1. **C'est du code mort.** Sega a écrit les deux branches, une seule est atteignable, et `SKO 1` reste à zéro
+   pour toujours. C'est ce que dit le code tel quel.
+2. **J'ai mal lu quelque chose.** Le genre de fin à `0x00581452` n'a pas été vu prendre la valeur 3 ; personne
+   n'a trouvé qui l'écrit, et c'est tout ce sur quoi repose l'aiguillage.
+
+**Ce qui trancherait** : un Super K.O. joué avec le réglage éteint — s'il sort quand même, la lecture 1 tombe
+et `SKO 1` prend le point ; s'il ne sort pas, la lecture 1 tient. Trois minutes de jeu, pas davantage.
+
+En attendant, la page dessine les deux colonnes et ne prétend rien de plus que ce que la sauvegarde contient.
+
 Au passage, `0x00581454` et `0x00581455` sont **les rounds gagnés de chaque côté**, ce que la section 7
 donnait pour non établi, et `0x00581456` est le nombre de rounds joués.
