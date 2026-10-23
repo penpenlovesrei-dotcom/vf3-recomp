@@ -15,6 +15,19 @@ set IMAGES=%1
 if "%IMAGES%"=="" set IMAGES=3000
 cd /d "%~dp0"
 
+rem UN SEUL TOUR A LA FOIS. Les deux runs ecrivent leurs etats et leurs dumps dans %CMP%, toujours au
+rem meme endroit : deux verificateurs lances ensemble melangent leurs fichiers et la comparaison sort
+rem DIFFERENT sans qu'aucune regression n'existe. C'est arrive le 2026-10-23, un tour a 2000 images et
+rem un a 3000 : le s.state compare valait 3000 images d'un cote et 2000 de l'autre. Le verrou coute une
+rem ligne ; une fausse alerte sur le contrat de fidelite coute bien plus.
+if not exist "%CMP%" mkdir "%CMP%" 2> nul
+if exist "%CMP%\encours" (
+  echo Un autre verificateur tourne deja ^(%CMP%\encours^).
+  echo S'il a ete interrompu, effacer ce fichier et relancer.
+  goto :fin
+)
+echo %DATE% %TIME% > "%CMP%\encours"
+
 if not exist "%UP%\Makefile" (
   echo ---- creation de l'arbre d'origine dans %UP% ----
   git worktree add "%UP%" main || goto :fin
@@ -106,6 +119,7 @@ echo ---- pas a pas interpreteur contre code recompile (vf3lock) ----
 "build\bin\vf3lock.exe" "%ROM%" --script tools\scripts\vf3-match.txt
 
 :fin
+if exist "%CMP%\encours" del "%CMP%\encours"
 echo.
 echo ---- fini (code %ERRORLEVEL%) ----
 pause
