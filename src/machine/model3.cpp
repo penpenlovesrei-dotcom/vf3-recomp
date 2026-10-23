@@ -1530,6 +1530,43 @@ int Model3::force_stage(int n)
 				fprintf(stderr, "decor TEST : %s, comme sur Dreamcast\n", c.quoi);
 			}
 
+		// LA LISTE DE TACHES DE TEST EST VIDE, ET C'EST POURQUOI RIEN NE CASSE.
+		//
+		// FUN_00020068 est le repartiteur des taches de decor :
+		//
+		//     r9 = [0x0058FD90]      la fiche courante
+		//     r9 = [r9 + 0x20]       <-- la LISTE DE TACHES du decor
+		//     r4 = [r9]              un octet : l'indice d'une tache
+		//     r5 = 0x00114FE0 + r4 * 0x1C                le record de la tache
+		//     si ([r5 + 0x18] & r19) : appeler [r5 + r7]  r7 designe l'entree
+		//     r4 = [++r9]            l'octet suivant, jusqu'a zero
+		//
+		// La tache 8 (record en 0x001150C0) porte le systeme des parois : son entree de mise a
+		// jour est 0x00027A60, qui appelle 0x00027B70, qui voit changer le masque et aligne les
+		// morceaux. Or les listes se lisent en clair :
+		//
+		//     TOWER     9 8 6 5 4 1 2 3 11 13 14 16 18 19 21 28 29 30 31 32 43   -- 21 taches
+		//     WESTERN   9 8 6 5 4 1 2 3 7 11 13 ...
+		//     TEST      (vide, le premier octet vaut zero)
+		//
+		// TEST n'execute donc AUCUNE tache de decor. Le masque monte bien quand on projette
+		// quelqu'un -- mesure : masque 00000002, les cinq gardes ouvertes -- mais la copie en
+		// 0x005818B4 ne bouge jamais, parce que 0x00027B70 n'est jamais appelee.
+		//
+		// CE QUE FAIT LA DREAMCAST. Son champ +0x20 porte des pointeurs la ou la borne porte des
+		// octets, mais la liste de son TEST est identique a celle de son TOWER, sur les 21 entrees.
+		// On recopie donc le meme choix : le +0x20 de TEST pointe celui de TOWER.
+		{
+			constexpr uint32_t CHAMP = REC + 0x20;
+			constexpr uint32_t VIDE = 0x001155CE;   // la liste vide de TEST
+			constexpr uint32_t TOUR = 0x001155A2;   // celle de TOWER, 21 taches
+			if (word(ram, CHAMP) == VIDE) {
+				word(ram, CHAMP) = TOUR;
+				fprintf(stderr, "decor TEST : liste de taches prise chez TOWER (%#x),"
+				        " comme sur Dreamcast\n", TOUR);
+			}
+		}
+
 		// L'ENCEINTE ELARGIE A 6,0 : UN ECART ASSUME, PAS UN CORRECTIF.
 		//
 		// Que personne ne reprenne ceci pour une fidelite retrouvee. L'enceinte est le carre de demi-cote
@@ -1828,13 +1865,25 @@ void Model3::murs_note()
 	// Les quatre bits de paroi cassee sont 1, 2, 4 et 8 : `rlwinm. r0,r20,SH,0,0` pour SH = 31, 30,
 	// 29, 28 met dans le bit 0 du resultat le bit SH de la source, et en numerotation PowerPC le
 	// bit 31 est le POIDS FAIBLE. L'angle de la derniere paroi tombee est range en 0x005817FC.
+	// LES CINQ GARDES qui precedent l'appel a 0x00027B70, lues dans l'ordre du code (0x00027A7C
+	// a 0x00027AE8). Il suffit qu'une ferme pour que le changement de masque ne soit jamais vu,
+	// donc qu'aucun morceau ne soit aligne et que le compteur de parois reste a zero.
+	const uint32_t g0 = word(ram, 0x00591D14);
+	const uint8_t  g1 = ram[0x0058FDA6 ^ 3], g2 = ram[0x0058FDA3 ^ 3];
 	const uint32_t p1 = word(ram, 0x0058FD4C), p2 = word(ram, 0x0058FD50);
+	const bool raccourci = (p1 & 0x000C0000) != 0;
 	const unsigned angle = (unsigned(ram[0x005817FC ^ 3]) << 8) | ram[0x005817FD ^ 3];
-	fprintf(stderr, "murs : masque %08x  parois %u  angle %04x"
-	        "  porte1 %08x [%s]  porte2 %08x [%s]  etats %s\n",
-	        masque, ram[0x005818D9 ^ 3], angle,
-	        p1, (p1 & 0x03000000) ? "ouverte" : "FERMEE",
-	        p2, (p2 & 0x84007000) ? "FERMEE" : "ouverte", etats.c_str());
+	// Et la COPIE du masque : 0x00027B70 n'agit que sur les bits qui CHANGENT.
+	const uint32_t copie = word(ram, 0x005818B4);
+	fprintf(stderr, "murs : masque %08x (copie %08x)  parois %u  angle %04x  gardes"
+	        " [591D14 %08x %s] [FDA6 %u %s] [FDA3 %u %s] [FD4C %08x %s%s] [FD50 %08x %s]  etats %s\n",
+	        masque, copie, ram[0x005818D9 ^ 3], angle,
+	        g0, (g0 & 0x04000000) ? "FERMEE" : "ouverte",
+	        g1, g1 ? "FERMEE" : "ouverte",
+	        g2, g2 ? "FERMEE" : "ouverte",
+	        p1, raccourci ? "raccourci" : ((p1 & 0x03000000) ? "ouverte" : "FERMEE"),
+	        raccourci ? "" : "",
+	        p2, (raccourci || !(p2 & 0x84007000)) ? "ouverte" : "FERMEE", etats.c_str());
 
 	// OU VIVENT LES TRENTE-DEUX MORCEAUX, trouve par leur FORME et non par une adresse supposee.
 	//
