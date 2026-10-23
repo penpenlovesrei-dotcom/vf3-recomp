@@ -1812,7 +1812,12 @@ void Model3::murs_note()
 	static std::string ae;
 	if (masque == am && etats == ae) return;
 	am = masque; ae = etats;
-	fprintf(stderr, "murs : masque %08x  etats %s\n", masque, etats.c_str());
+	// r12 : la base des entrees de 0x10 octets. 0x00027B18 fait `or r17,r12,r12` et
+	// 0x00027B30 `addi r17,r12,0x210` -- deux tampons de 33 entrees. Le jeu s'en sert comme d'un
+	// registre global ; on l'imprime pour voir s'il est stable a la frontiere d'image, faute de
+	// l'avoir trouve pose dans le code.
+	fprintf(stderr, "murs : masque %08x  r12 %08x  parois %u  etats %s\n",
+	        masque, cpu.gpr(12), ram[0x005818D9 ^ 3], etats.c_str());
 }
 
 // Honey's other costume: the one players have passed around for twenty years, and which turns out to be in

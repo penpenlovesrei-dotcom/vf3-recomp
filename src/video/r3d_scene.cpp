@@ -263,6 +263,36 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				for (const Viewport &v : scene.viewports)
 					if (v.models.size() > porteur->models.size()) porteur = &v;
 				const Viewport &jeu = *porteur;
+				// LES MURS CASSES, PRIS DANS L'ETAT DU JEU.
+				//
+				// La borne tient toute la simulation : elle detecte la projection, pose le masque,
+				// aligne les morceaux et joue le son. Il ne lui manque que des modeles a dessiner,
+				// et nous en injectons. On lit donc SON etat et on retire nos panneaux.
+				//
+				// Le masque est [[0x00075124] + 0xC0]. Il recoit le OU des bits de contact de paroi
+				// du combattant (0x00046924) quand celui-ci porte le bit 0x04000000 de son mot
+				// d'etat et depasse un seuil de force. Les quatre bits nomment les quatre plans,
+				// dans l'ordre ou 0x00046A60 ecrit ses points de contact :
+				//
+				//     bit 0 (1)   z = -D        bit 2 (4)   z = +D
+				//     bit 1 (2)   x = +D        bit 3 (8)   x = -D
+				//
+				// D est demi_cote_ring. Un panneau de notre ring se range par sa boite : il tient
+				// d'un seul cote, donc le signe de son centre sur l'axe ou il est MINCE le designe.
+				uint32_t murs_casses = 0;
+				if (board.ram.size() > 0x00075128) {
+					const uint32_t combat = (uint32_t(board.ram[0x00075124 ^ 3]) << 24)
+					                      | (uint32_t(board.ram[0x00075125 ^ 3]) << 16)
+					                      | (uint32_t(board.ram[0x00075126 ^ 3]) << 8)
+					                      | uint32_t(board.ram[0x00075127 ^ 3]);
+					if (combat + 0xC4 < board.ram.size())
+						for (int k = 0; k < 4; k++)
+							murs_casses = (murs_casses << 8) | board.ram[(combat + 0xC0 + uint32_t(k)) ^ 3];
+				}
+				// VF3_MURS=<masque> : forcer le masque, pour VOIR le retrait sans avoir a reussir une
+				// vraie projection. Le jeu ne le pose que sur un coup assez fort, et un match joue au
+				// hasard ne le pose jamais -- 26 000 images sur TOWER l'ont laisse a zero.
+				if (const char *s = getenv("VF3_MURS")) murs_casses = uint32_t(strtoul(s, nullptr, 0));
 				Viewport a_nous = jeu;
 				a_nous.models.clear();
 				a_nous.sun_intensity = 1.0f;
@@ -290,6 +320,28 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				static bool echelle_dite = false;   // VF3_ECHELLE : la mesure ne se fait qu'une fois
 				tic++;
 				for (Model &m : mien.viewports[0].models) {
+					// UN PANNEAU DONT LE MUR EST TOMBE NE SE DESSINE PLUS.
+					//
+					// On range le modele par sa boite : un panneau de paroi est MINCE sur un axe et
+					// large sur l'autre, et le signe de son centre sur l'axe mince dit de quel cote
+					// il est. Un modele qui n'est mince sur aucun des deux -- le sol, l'enveloppe,
+					// la jupe -- n'appartient a aucune paroi et reste toujours la.
+					if (murs_casses && m.meshes) {
+						float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+						for (const Mesh &me : *m.meshes)
+							for (const Vertex &s : me.verts)
+								for (int k = 0; k < 3; k++) {
+									lo[k] = std::min(lo[k], s.pos[k]);
+									hi[k] = std::max(hi[k], s.pos[k]);
+								}
+						const float ex = hi[0] - lo[0], ez = hi[2] - lo[2];
+						const float cx = (lo[0] + hi[0]) * 0.5f, cz = (lo[2] + hi[2]) * 0.5f;
+						int bit = 0;
+						if (ex < ez * 0.5f) bit = cx > 0 ? 2 : 8;        // mince en x : paroi x = +-D
+						else if (ez < ex * 0.5f) bit = cz > 0 ? 4 : 1;   // mince en z : paroi z = +-D
+						if (bit && (murs_casses & uint32_t(bit)))
+							continue;
+					}
 					const Anime *sien = nullptr;
 					for (const Anime &a : in->animes) {
 						if (!m.meshes) break;
