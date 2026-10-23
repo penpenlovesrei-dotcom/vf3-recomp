@@ -208,7 +208,11 @@ public:
 	uint32_t morceaux_base = 0;
 	// Neutralise le dessin des morceaux PAR LE JEU, sur le decor injecte (model3.cpp).
 	void morceaux_neutraliser();
-	void pmg_note();          // dit l'assertion du gestionnaire de polygones quand elle saute (model3.cpp)
+	// VF3_SKO : fait prendre a tout KO le chemin de la cinematique spectaculaire (model3.cpp).
+	void ko_spectaculaire();
+	// VF3_SKO_LOG : dit l'etat de la chaine de la cinematique quand il change (model3.cpp).
+	void ko_spectaculaire_note();
+	void pmg_note();      // dit l'assertion du gestionnaire de polygones quand elle saute (model3.cpp)
 	void hang_watch();        // dit ou le PowerPC tourne en rond quand le jeu gele (model3.cpp)
 	void hang_sample();       // appele apres chaque tranche d'execution
 	void hang_report();

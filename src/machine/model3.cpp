@@ -518,6 +518,8 @@ void Model3::run_frame_start()
 	stage_note();
 	murs_note();
 	morceaux_neutraliser();
+	ko_spectaculaire();
+	ko_spectaculaire_note();
 	pmg_note();
 	hang_watch();
 
@@ -1852,6 +1854,89 @@ void Model3::morceaux_neutraliser()
 		const uint32_t a = (morceaux_base + uint32_t(i) * 0x10 + 0xC) ^ 3;
 		if (a < ram.size()) ram[a] = 2;
 	}
+}
+
+// VF3_SKO=1 : FAIRE PRENDRE A TOUT KO LE CHEMIN DE LA CINEMATIQUE SPECTACULAIRE.
+//
+// Pourquoi ce levier existe. Les angles « replay » qu'on voit sur Dreamcast juste apres l'impact
+// ne sont produits ni par le mur ni par l'armure : ils sont produits par la NATURE DU COUP qui
+// finit le round. La chaine, lue dans le programme de la borne :
+//
+//   0x00043E84   la fonction qui applique les degats. Au coup fatal elle pose le bit 0x04000000
+//                sur celui qui tombe, puis ecrit sur L'ATTAQUANT le bit 1 de son octet +0x5DD3 --
+//                si et seulement si le coup porte [attaquant+0x70] & 8 ET [attaquant+0xE8] & 2.
+//   0x0000C798   dans JUDGE : le jeu prend celui des deux qui n'a PAS le bit 0x04000000 (le
+//                survivant), lit son +0x5DD3, et si le bit 1 y est : cause de round 3 (rangee en
+//                0x00581452), et il arme l'octet 0x0058FDA6.
+//   0x0000CF8C   JUDGE_DSP : si 0x0058FDA6 est nul, chemin ordinaire. Sinon il saute par
+//                0x00024474 + [0x0058FDA3]*4 -- qui est la QUEUE de la table des etats, ses
+//                entrees 72 a 79, que Sega a nommees SKO_REPLAY_WAIT, SKO_SET_IMAGE_STAGE,
+//                SKO_WAZA_WAIT, SKO_TRANS_WAIT, SKO_IMAGE_DISP, SKO_RESET_STAGE, SKO_TRANS_WAIT2
+//                et SKO_IMAGE_STAGE_END. L'etape 3 pose le mode de camera 26, l'etape 4 le mode 6.
+//
+// Les deux instructions neutralisees sont les deux echappements vers le chemin ordinaire :
+//
+//   00043F54   beq +0x1C    [attaquant+0x70] & 8 est nul   ->  nop
+//   00043F60   beq +0x10    [attaquant+0xE8] & 2 est nul   ->  nop
+//
+// Les deux ou aucune, comme pour le costume de Honey : neutraliser la premiere seule ne changerait
+// rien, le second test reprenant la main.
+//
+// En RAM, et relu avant chaque ecriture : le programme de ce jeu est un gzip que l'amorce deballe,
+// donc il n'y a rien a patcher avant qu'elle l'ait fait.
+//
+// CE QUE CA NE FAIT PAS. Ca ne casse aucun mur : le mur casse par son propre chemin
+// (0x00046924 pose un bit de masque, 0x00027B70 voit le changement), independant de celui-ci. Ca
+// ne cree pas non plus de fin de round -- il en faut une vraie, donc un KO. Ca fait seulement que
+// la cinematique s'arme sur N'IMPORTE quel KO, au lieu des seuls coups qui portent les deux
+// proprietes, pour qu'on puisse la voir.
+void Model3::ko_spectaculaire()
+{
+	if (set != "fvipers2" || ram.size() < 0x800000) return;
+	if (!getenv("VF3_SKO")) return;
+	constexpr uint32_t ECHAPPE[2] = { 0x00043F54, 0x00043F60 };
+	constexpr uint32_t SEGA[2] = { 0x4182001Cu, 0x41820010u };   // beq +0x1C ; beq +0x10
+	// Les deux, ou rien : tout autre contenu veut dire que le programme n'est pas encore deballe,
+	// ou que le patch est deja pose.
+	if (word(ram, ECHAPPE[0]) != SEGA[0] || word(ram, ECHAPPE[1]) != SEGA[1]) return;
+	for (uint32_t a : ECHAPPE) {
+		word(ram, a) = 0x60000000u;   // nop
+		cpu.ram_written(a);           // (le code natif du recompilateur vient de ce qui etait la)
+	}
+	fprintf(stderr, "VF3_SKO : les deux echappements de 0x00043E84 neutralises --"
+	                " tout KO prend desormais la cinematique SKO\n");
+}
+
+// VF3_SKO_LOG=1 : dire, quand ca change, l'etat de la chaine de la cinematique.
+//
+// Pourquoi une sonde et pas un raisonnement. Le patch VF3_SKO s'applique -- mesure faite, les deux
+// mots etaient bien ceux de Sega -- et la manche scriptee n'a pas bouge d'une image. Donc ou le
+// round ne finit pas par un coup fatal (et 0x00043E84 ne passe jamais dans la branche patchee), ou
+// il y passe et c'est 0x0000C798 qui refuse. Les deux se distinguent par des octets, pas par une
+// opinion :
+//
+//   0x0058FD99   le sous-etat ; 13 = JUDGE, 14 = JUDGE_DSP (noms de Sega, decales de 24 dans la
+//                table unique de 0x00024354)
+//   0x0058FDA6   l'octet qui arme la cinematique
+//   0x0058FDA3   l'etape SKO, de 0 a 7
+//   0x00581452   la cause de fin de round ; 3 = spectaculaire
+//   [joueur]+0x5DD3   bit 1 : le coup fatal portait les deux proprietes
+//   [joueur]+0x00     bit 0x04000000 : celui-la est tombe
+void Model3::ko_spectaculaire_note()
+{
+	if (set != "fvipers2" || !getenv("VF3_SKO_LOG") || ram.size() < 0x800000) return;
+	auto octet = [&](uint32_t a) { return a < ram.size() ? ram[a ^ 3] : uint8_t(0); };
+	const uint32_t p1 = word(ram, 0x0007511C), p2 = word(ram, 0x00075120);
+	if (p1 + 0x5DD4 > ram.size() || p2 + 0x5DD4 > ram.size()) return;
+	// Une ligne par CHANGEMENT : sinon soixante par seconde noient la seule qui compte.
+	const uint8_t v[7] = { octet(0x0058FD99), octet(0x0058FDA6), octet(0x0058FDA3),
+	                       octet(0x00581452), octet(p1 + 0x5DD3), octet(p2 + 0x5DD3),
+	                       uint8_t(((word(ram, p1) >> 26) & 1) | (((word(ram, p2) >> 26) & 1) << 1)) };
+	static uint8_t vu[7] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+	if (memcmp(v, vu, sizeof v) == 0) return;
+	memcpy(vu, v, sizeof v);
+	fprintf(stderr, "SKO : sous-etat %u  fda6 %u  etape %u  cause %u  5DD3 %02x/%02x  tombe %u\n",
+	        v[0], v[1], v[2], v[3], v[4], v[5], v[6]);
 }
 
 void Model3::murs_note()
