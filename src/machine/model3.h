@@ -348,6 +348,10 @@ public:
 	// It commands nothing from inside a fight, and the measurement that established that is worth more than the
 	// failure: the bytes were still intact a second later, so nobody had read them.
 	void fv2_request_title();
+	// The game's own ending -- the staff roll -- asked for from the title screen, where the console's OPTIONS
+	// page is the only thing that asks. It runs about a hundred seconds and goes back to the attract loop by
+	// itself; model3.cpp says how that was measured before it was wired.
+	void fv2_request_ending();
 	// The attract sequencer's OWN road to the title screen, which is not the same thing and leaves a very
 	// different screen behind: pushed to the end of its list with its timer expired, the game walks off the
 	// end itself and installs the title screen the way it does on its own. Works from the attract loop and

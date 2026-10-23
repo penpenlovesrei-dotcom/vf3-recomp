@@ -1667,6 +1667,7 @@ constexpr uint32_t FV2_MODE_REQUEST = 0x0058FD9A;
 constexpr uint32_t FV2_SUBMODE_REQUEST = 0x0058FD9B;
 constexpr uint8_t FV2_MODE_ADV_INT = 2, FV2_MODE_ADV_DSP = 3;
 constexpr uint8_t FV2_ADV_TITLE_INT = 4, FV2_ADV_TITLE_DSP = 5;
+constexpr uint8_t FV2_MODE_ENDING_INT = 12;   // the staff roll: see fv2_request_ending below
 }
 
 int Model3::fv2_task_state() const
@@ -1753,6 +1754,21 @@ void Model3::fv2_request_title()
 	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return;
 	ram[FV2_MODE_REQUEST ^ 3] = FV2_MODE_ADV_DSP;
 	ram[FV2_SUBMODE_REQUEST ^ 3] = FV2_ADV_TITLE_INT;
+}
+
+// THE GAME'S OWN ENDING, asked for the same way. ENDING is mode 12, and MODE_SUB means nothing to it -- the
+// state machine's own rule for every mode but GAME, SEL and ADV (docs/fv2-etats.md) -- so the mode alone is
+// the whole request, and the sub-state is left where the title screen had it.
+//
+// Measured before it was wired, from the title screen, which is the only place the console's page can be
+// opened from: poked at frame 1250, the game enters ENDING_INT at 1251 and ENDING_DSP at 1263, rolls its
+// credits over the viper -- "Director HIROSHI KATAOKA" at 1900, "Presented by SEGA ENTERPRISES, LTD." at
+// 5000 -- and LEAVES ON ITS OWN at about 7370, through the attract loop, back to its title screen at 7566.
+// So it needs no way out built for it: it borrows the game's.
+void Model3::fv2_request_ending()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_MODE_REQUEST) return;
+	ram[FV2_MODE_REQUEST ^ 3] = FV2_MODE_ENDING_INT;
 }
 
 // Asks the attract loop to START OVER -- which is the one road on which the game tidies up after itself.

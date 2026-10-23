@@ -616,3 +616,53 @@ TOTAL           26         7        7       12      6         1
 
 Les lignes tombent sur les bons personnages, et le total est la somme des colonnes — chaque combat y compte
 deux fois, une par participant, puisque les deux blocs l'enregistrent.
+
+## `DISPLAY` : `HD ART` et `ENDING`
+
+Les deux lignes enjambées de cette page sont branchées. Elles ne l'ont pas été de la même façon : l'une
+n'attendait qu'un levier, l'autre a demandé une mesure.
+
+### `HD ART` : un vrai interrupteur
+
+La ligne ne faisait que rapporter, parce que le pack de textures 3D était lu une fois au démarrage et que
+rien ne savait le relâcher. Il n'a pas fallu de nouveau levier : **`load()` vide ce qu'il tient avant de
+lire**, donc charger depuis nulle part est la façon de reposer un pack, et le rendu GPU vérifie déjà le
+nombre de pages au lieu de le supposer — son propre commentaire prévoyait qu'un pack arrive plus tard.
+
+- `NONE` quand il n'y a rien à charger, et la ligne est alors enjambée comme toute ligne sans réglage.
+- `ON` / `OFF` sinon, et le réglage suit dans `settings.ini`.
+
+**Mesuré** avec un pack de quarante PNG tirés du dump : allumée, la page dit `ON` et le journal rapporte
+*40 textures loaded, 0 left out, in 1 page*. Éteinte, *the 3D texture pack put down*, la page refermée, le jeu
+a rendu sept cents images de plus sans une erreur — c'est là que le tampon du GPU est refait, donc c'est là
+que ça devait casser si ça devait casser.
+
+### `ENDING` : la fin du jeu, qu'on peut enfin regarder
+
+Août en faisait un interrupteur pour ses propres illustrations, dont rien n'existe ici. Mais **le jeu a une
+fin** — le générique, mode 12 — que personne n'avait jamais vue tourner : y arriver demande de finir l'échelle,
+et les notes la rangent parmi les états jamais atteints. La ligne n'est donc pas son interrupteur mais un
+moyen de la regarder : *valider* la demande au jeu et la page s'efface.
+
+Elle se termine toute seule : le générique dure une centaine de secondes, puis le jeu repasse par sa boucle
+d'attraction et revient à son écran titre. Il n'y a rien à remettre en place.
+
+**Mais pas demandée n'importe quand.** Mesuré avec `vf3run --shots`, en poussant `MODE_REQUEST` une image à la
+fois, l'écran titre étant installé à l'image 1193 :
+
+| demandée à | ce qui sort |
+|---|---|
+| 1201, 1205, 1210 | le décor d'une démonstration, tout blanc, « Old Armstone Town » en bandeau et « v.s. GRACE » en bas |
+| 1215, 1220, 1250 | **le générique**, propre, sur le viper |
+
+L'écran titre met donc une vingtaine d'images à finir de s'installer, et la fin demandée avant cela se pose
+sur ce qui n'a pas fini de partir. L'attente est de quarante images : le double du mesuré, et l'écran titre
+dure environ 190, donc il y a de la place.
+
+**Le redémarrage de l'attraction a été essayé d'abord**, puisque c'est la route qui *range* la scène pour
+l'écran titre — et il ne sert pas ici : demandée à l'image 1206 après un redémarrage, le même décor cassé est
+sorti. La fin ne veut pas une scène rangée, elle veut un écran titre fini.
+
+**Reste à faire** : la correction est posée et compile, mais le tour de vérification dans l'hôte — ouvrir la
+page, valider `ENDING`, photographier le générique — n'a pas été joué. La bissection de la frontière
+(1211–1214) tournait quand la séance s'est arrêtée.

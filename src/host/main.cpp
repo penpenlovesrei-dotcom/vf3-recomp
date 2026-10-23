@@ -1404,8 +1404,9 @@ int main(int argc, char **argv)
 	// is where the dump writes. Both take a folder of their own on the command line. Both are set up before the
 	// first picture, and asking for neither leaves both rasterisers' texture paths exactly as they were -- which
 	// is why Virtua Fighter 3 is untouched by any of it.
+	const std::string hd_pack_dir = arg_hd_pack.empty() ? data + "/texture_remplacement" : player_folder(arg_hd_pack, data);
 	{
-		const std::string pack = arg_hd_pack.empty() ? data + "/texture_remplacement" : player_folder(arg_hd_pack, data);
+		const std::string &pack = hd_pack_dir;
 		if (cfg.hd_3d) {
 			std::string report;
 			if (!video::hd3d().load(pack, report))
@@ -2783,21 +2784,55 @@ int main(int argc, char **argv)
 	// reason: a page whose lines slide up and down as settings come and go is misread at a glance. That is
 	// what the lines this port cannot do yet are -- drawn, dimmed, and passed by -- rather than quietly
 	// missing. Each says below why it is one.
+	bool ending_asked = false;   // ENDING on the DISPLAY page: the page closes so the roll can be seen
 	if (cplay.on) {
 		auto fixed = [](const char *v) { return [v] { return std::string(v); }; };
+		// A pack to load: one already in, or at least one PNG sitting in the folder. The dump writes into a
+		// subfolder of its own, so the files directly in here are the pack's and nothing else.
+		bool hd_pack = video::hd3d().replacing();
+		if (!hd_pack) {
+			std::error_code hec;
+			for (const auto &e : std::filesystem::directory_iterator(hd_pack_dir, hec))
+				if (e.is_regular_file(hec) && e.path().extension() == ".png") { hd_pack = true; break; }
+		}
 		options.own[fv2_options::SCR_DISPLAY] = {
 			// August's WIDESCREEN was a switch because its fork had two shapes; this port has five, so the
 			// line steps through them and shows the one in force. Same line, more of it.
 			{ "WIDESCREEN", [&] { return std::string(aspect_i ? ASPECT_NAMES[aspect_i] : "FIT"); },
 			  [&](int d) { set_shape(wrap(aspect_i + d, N_ASPECTS)); }, {}, {}, 0, false, 0 },
-			// The 3D texture pack is read once as the port starts and there is no way to let go of it again,
-			// so this says whether one is in and does not pretend to switch it.
-			{ "HD ART", [&] { return std::string(video::hd3d().replacing() ? "ON" : "NONE"); },
-			  {}, {}, {}, 0, false, 0 },
+			// HD ART SWITCHES NOW. The pack used to be read once at start-up with no way to let go of it, so
+			// the line could only report. It needs no new lever: load() empties what it holds before it reads,
+			// so loading from nowhere is how a pack is put down, and the GPU renderer already checks the page
+			// count rather than assuming it -- its own comment foresaw a pack arriving later.
+			//
+			// NONE when there is no pack to load, and then the line is stepped over like any other that has
+			// nothing to switch. Whether there is one is settled here, once, as the rest of the page is: a
+			// folder that gains its first PNG while the game runs is not a case worth a check every picture.
+			// Turning it on again re-reads the folder, which is the price of having no unload.
+			{ "HD ART", [&] { return std::string(video::hd3d().replacing() ? "ON" : hd_pack ? "OFF" : "NONE"); },
+			  hd_pack ? std::function<void(int)>([&](int) {
+				  std::string report;
+				  if (video::hd3d().replacing()) {
+					  video::hd3d().load(std::string(), report);   // (empties it: see above)
+					  fprintf(stderr, "the console's DISPLAY: the 3D texture pack put down\n");
+				  } else if (video::hd3d().load(hd_pack_dir, report)) {
+					  fprintf(stderr, "the console's DISPLAY: %s\n", report.c_str());
+				  } else {
+					  fprintf(stderr, "the console's DISPLAY: %s\n", report.c_str());
+					  return;   // (nothing loaded: the setting does not claim otherwise)
+				  }
+				  cfg.hd_3d = video::hd3d().replacing();
+				  cfg_dirty = true;
+			  }) : std::function<void(int)>(), {}, {}, 0, false, 0 },
 			{ "FPS COUNTER", [&] { return std::string(cfg.show_fps ? "ON" : "OFF"); },
 			  [&](int) { cfg.show_fps = !cfg.show_fps; cfg_dirty = true; }, {}, {}, 0, false, 0 },
-			// The fork's own ending, its illustrations over the replays. Nothing of it exists here.
-			{ "ENDING", fixed("-"), {}, {}, {}, 0, false, 0 },
+			// August's ENDING switched the fork's own illustrations over the replays, and nothing of those
+			// exists here. But the GAME has an ending -- the staff roll, mode 12 -- which no one had ever
+			// seen running, because reaching it means finishing the ladder and the notes have it among the
+			// states never reached. So this line is not his switch but a way to watch it: A asks the game
+			// for it and the page gets out of the way. It ends by itself and the attract loop takes over,
+			// so there is nothing to put back (model3.cpp, fv2_request_ending).
+			{ "ENDING", fixed("WATCH"), {}, [&] { cplay.ask_ending(board); ending_asked = true; }, {}, 0, false, 0 },
 		};
 		// The twenty tracks, and the numbering, are August's measured tables (GameFV2.h): on bank 0x10 the
 		// sound test's number is the index plus ten, and on bank 0x2E the index plus 353. Confirmed here
@@ -3104,6 +3139,8 @@ int main(int argc, char **argv)
 				// freezes the game, but the frame that was in flight when it opened may not have finished.
 				if (game.emu_thread.joinable()) game.job_wait();
 				if (options.handle_event(e, cfg.ctl, board) == fv2_options::CANCELLED) close_options();
+				// ENDING was asked for: the page has nothing more to say and the roll is behind it.
+				if (ending_asked) { ending_asked = false; close_options(); }
 				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
 					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
 			}

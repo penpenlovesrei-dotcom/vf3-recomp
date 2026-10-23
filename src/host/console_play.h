@@ -193,6 +193,25 @@ struct console_play
 	// dropped rather than held, because a request held is what broke the select screen twice.
 	static constexpr int SKIP_GIVE_UP = 600;
 	int skip_logo = 0;        // frames left to wait for the scene to be tidy before asking for the title
+	// THE ENDING IS ASKED FOR FROM THE TITLE SCREEN, AND NOT STRAIGHT AWAY. Measured with vf3run --shots,
+	// poking MODE_REQUEST one frame at a time, with the title screen installed at frame 1193:
+	//
+	//   asked at 1201, 1205, 1210  ->  a demonstration's stage, white, with "Old Armstone Town" over it and
+	//                                  "v.s. GRACE" under: the screen the title was replacing is still drawing
+	//   asked at 1215, 1220, 1250  ->  the staff roll, clean, over the viper
+	//
+	// So the title screen takes about twenty frames to finish installing itself, and the ending asked before
+	// that lands on top of what has not finished leaving. Forty frames is the wait here: twice what was
+	// measured, and the title screen lasts about 190, so there is room.
+	//
+	// The attract loop's restart was tried first, since that is the road that TIDIES for the title screen --
+	// and it does not serve here: asked at 1206 after a restart, the same broken stage came out. The ending
+	// does not want a tidy scene, it wants a finished title screen.
+	static constexpr int ENDING_WAIT = 40;
+	int ending_in = 0;        // frames left on the title screen before the ending is asked for; 0: nothing pending
+
+	// The console's DISPLAY page asking to watch the game's own ending.
+	void ask_ending(m3::Model3 &) { ending_in = ENDING_WAIT; }
 
 	// Once a frame, before the game runs. Returns what to hand the game on top of the player's own controls.
 	void step(m3::Model3 &b, m3::Controls &out)
@@ -212,6 +231,13 @@ struct console_play
 			if (tidy && no_skip) skip_logo = 0;
 			else if (tidy) { b.fv2_request_title(); skip_logo = 0; }
 			else skip_logo--;
+		}
+		// The ending, once the title screen has had its twenty-odd frames (above). Counted only while the
+		// title screen is really up: if the player's own Start has carried the game somewhere else in the
+		// meantime, the request is dropped rather than held.
+		if (ending_in > 0) {
+			if (!b.fv2_on_title()) ending_in = 0;
+			else if (--ending_in == 0) b.fv2_request_ending();
 		}
 		if (inject_start > 0) { out.start[0] = true; inject_start--; }
 		if (inject_start_p2 > 0) { out.start[1] = true; inject_start_p2--; }
