@@ -2785,6 +2785,7 @@ int main(int argc, char **argv)
 	// what the lines this port cannot do yet are -- drawn, dimmed, and passed by -- rather than quietly
 	// missing. Each says below why it is one.
 	bool ending_asked = false;   // ENDING on the DISPLAY page: the page closes so the roll can be seen
+	bool ending_real = false;    // which of the two that line does: the roll now, or the game's own ending
 	if (cplay.on) {
 		auto fixed = [](const char *v) { return [v] { return std::string(v); }; };
 		// A pack to load: one already in, or at least one PNG sitting in the folder. The dump writes into a
@@ -2851,7 +2852,25 @@ int main(int argc, char **argv)
 			// own branch -- ADV_INFO_STATUS bit 3, "the ladder is finished" -- the whole replay on its stage,
 			// cage and all. This line shows the roll, which is the ending's own content; the replays want a
 			// game played first, and that is a lever of its own (docs/fv2-console-options.md).
-			{ "ENDING", fixed("WATCH"), {}, [&] { cplay.ask_ending(board); ending_asked = true; }, {}, 0, false, 0 },
+			// TWO THINGS A AND LEFT/RIGHT CHOOSE BETWEEN, because the ending is two things.
+			//
+			//   ROLL NOW        the staff roll, here, over the title screen the page is sitting on. The
+			//                   credits are whole; the replay passages have no match to replay, so they come
+			//                   out on a bare floor. Costs nothing and gives the game back by itself.
+			//   AFTER A MATCH   the REAL one. The bit goes in when the game says the match is over, so the
+			//                   game's own branch point takes the ending with its replays on their stages --
+			//                   324 KB of picture against 16 for the bare one, measured.
+			//
+			// Armed, the line says so and the page stays up: there is a game to go and play. The arming
+			// keeps until a match ends, and nothing holds the bit (console_play.h, model3.cpp).
+			{ "ENDING", [&] {
+				  if (cplay.want_real_ending) return std::string("AFTER A MATCH  >");
+				  return std::string(ending_real ? "AFTER A MATCH" : "ROLL NOW");
+			  }, [&](int) { ending_real = !ending_real; },
+			  [&] {
+				  if (ending_real) cplay.arm_real_ending();
+				  else { cplay.ask_ending(board); ending_asked = true; }
+			  }, {}, 0, false, 0 },
 		};
 		// The twenty tracks, and the numbering, are August's measured tables (GameFV2.h): on bank 0x10 the
 		// sound test's number is the index plus ten, and on bank 0x2E the index plus 353. Confirmed here

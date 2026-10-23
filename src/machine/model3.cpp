@@ -1668,6 +1668,9 @@ constexpr uint32_t FV2_SUBMODE_REQUEST = 0x0058FD9B;
 constexpr uint8_t FV2_MODE_ADV_INT = 2, FV2_MODE_ADV_DSP = 3;
 constexpr uint8_t FV2_ADV_TITLE_INT = 4, FV2_ADV_TITLE_DSP = 5;
 constexpr uint8_t FV2_MODE_ENDING_INT = 12;   // the staff roll: see fv2_request_ending below
+constexpr uint32_t FV2_ADV_INFO_STATUS = 0x005813F0;   // the match's own word (docs/fv2-flux-de-match.md)
+constexpr uint32_t FV2_LADDER_DONE = 0x00000008;       // "the ladder is finished": NEXT_PROG_SEL branches to the ending
+constexpr uint32_t FV2_MATCH_OVER = 0x40000000;        // set when the match, not merely the round, is decided
 }
 
 int Model3::fv2_task_state() const
@@ -1769,6 +1772,42 @@ void Model3::fv2_request_ending()
 {
 	if (set != "fvipers2" || ram.size() <= FV2_MODE_REQUEST) return;
 	ram[FV2_MODE_REQUEST ^ 3] = FV2_MODE_ENDING_INT;
+}
+
+// THE GAME'S OWN ROAD TO ITS ENDING, which is not the same thing as asking for the mode.
+//
+// fv2_game_NEXT_PROG_SEL (0x0000DB48) is the branch point run at the end of EVERY round: it decides another
+// round, another opponent, a continue -- or the ending, if ADV_INFO_STATUS carries bit 3, "the ladder is
+// finished". The summer's notes had that bit as read in the code and never seen set. Setting it is enough,
+// and the game then does everything its own road does besides the mode: FUN_0000DD70, seven tasks stopped,
+// the fog cleared, the screen counter to 0x140. The ending comes out whole, replays and all.
+//
+// WHEN IT IS SET IS THE WHOLE OF IT, and it was measured a frame at a time against one recorded fight whose
+// branch point falls at frame 7178:
+//
+//   set at 7178            too late: the branch has read it, and the game goes to CONTINUE
+//   set at 7177 or 7176    the ending, whole
+//   set once at 6922       the ending, whole -- the bit keeps, 256 frames, with no need to hold it
+//   set at 3000, mid-fight the ending at 4740 instead, at the END OF THE FIRST ROUND, and BARE: that round
+//                          boundary is a NEXT_PROG_SEL too, and there is nothing recorded to replay yet
+//   set at 1250, on the title screen, before the match even starts: the same, bare, at 4740
+//
+// So the bit must go in once the MATCH is over, not the round. The game says when: 0x40000000 in the same
+// word, which is what its own "another round?" test reads. The game rewrites the whole word every frame from
+// 0x000122C4, keeping its value, so a write placed before a frame stands for that frame's reads.
+bool Model3::fv2_match_over() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ADV_INFO_STATUS + 4) return false;
+	uint32_t v = 0;
+	for (int i = 0; i < 4; i++) v = v << 8 | ram[(FV2_ADV_INFO_STATUS + uint32_t(i)) ^ 3];
+	return (v & FV2_MATCH_OVER) != 0;
+}
+
+void Model3::fv2_finish_ladder()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ADV_INFO_STATUS + 4) return;
+	uint8_t &low = ram[(FV2_ADV_INFO_STATUS + 3) ^ 3];   // the bit is in the lowest byte; the rest is left alone
+	low = uint8_t(low | FV2_LADDER_DONE);
 }
 
 // Asks the attract loop to START OVER -- which is the one road on which the game tidies up after itself.

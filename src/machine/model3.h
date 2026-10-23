@@ -352,6 +352,11 @@ public:
 	// page is the only thing that asks. It runs about a hundred seconds and goes back to the attract loop by
 	// itself; model3.cpp says how that was measured before it was wired.
 	void fv2_request_ending();
+	// The game's own road to that ending: its match word says when a MATCH (not a round) is over, and the
+	// "ladder is finished" bit makes its own branch point take the ending, replays and all. model3.cpp says
+	// what was measured, and why the moment is the whole of it.
+	bool fv2_match_over() const;
+	void fv2_finish_ladder();
 	// The attract sequencer's OWN road to the title screen, which is not the same thing and leaves a very
 	// different screen behind: pushed to the end of its list with its timer expired, the game walks off the
 	// end itself and installs the title screen the way it does on its own. Works from the attract loop and

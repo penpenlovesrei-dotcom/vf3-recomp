@@ -718,15 +718,67 @@ vf3run ... --script <la route d un combat> --modes
    7178  ENDING_INT   19      au lieu de CONTINUE_INT
 ```
 
-### Ce que la ligne peut et ne peut pas
+### Demandée depuis l'écran titre, elle ne peut que le générique
 
-Elle montre **le générique**, qui est le contenu propre de la fin, et le jeu se rend la main tout seul. Elle ne
-peut pas montrer les rediffusions : il n'y a rien à rediffuser quand on arrive de l'écran titre, et il n'y a
-pas de replay à inventer.
+Elle montre **les cartons**, qui sont le contenu propre de la fin, et le jeu se rend la main tout seul. Les
+rediffusions, elle ne peut pas : il n'y a rien à rediffuser quand on arrive de l'écran titre, et un replay
+ne s'invente pas.
 
-**La vraie fin du jeu est donc à portée, mais ailleurs** : poser le bit 3 d'`ADV_INFO_STATUS` pendant un match
-réel donnerait au joueur sa fin complète, replays compris, par la route du jeu. C'est un levier de plus à
-mesurer — où le poser sans gêner le reste — et non une affaire d'affichage.
+**La vraie fin du jeu est à portée, et elle y est maintenant.**
+
+### Le levier : où poser le bit 3
+
+`fv2_game_NEXT_PROG_SEL` est le point de branche de **chaque round**, pas seulement de chaque match. C'est
+toute la difficulté : poser le bit trop tôt fait prendre la branche à un round intermédiaire, qui n'a encore
+rien enregistré à rediffuser. Mesuré sur un combat dont le vrai point de branche tombe à l'image 7178 :
+
+| posé à | ce que fait le jeu |
+|---|---|
+| 7178 | **trop tard** — la branche a déjà lu le bit, le jeu va à `CONTINUE` |
+| 7177, 7176 | la fin, entière |
+| 6922, une seule fois | la fin, entière — le bit **tient** 256 images, rien n'a besoin de le maintenir |
+| 3000, en plein combat | la fin à l'image 4740, **à la fin du premier round**, et **nue** |
+| 1250, sur l'écran titre, avant même le match | pareil : nue, à 4740 |
+
+Les deux dernières lignes sont la leçon. Le bit survit à tout — l'écran de choix, le début du match — mais il
+est consommé par le premier `NEXT_PROG_SEL` venu, et celui d'un round sans match fini n'a pas de replay.
+
+**Le jeu dit lui-même quand le match est fini** : `0x40000000` dans le même mot, le bit que sa propre question
+« un round de plus ? » va lire. D'où la règle, et elle est simple :
+
+> poser le bit 3 à la première image où `ADV_INFO_STATUS` porte déjà `0x40000000`.
+
+Une écriture, jamais tenue, comme toutes les demandes de ce portage. Le jeu réécrit le mot entier à chaque
+image depuis `0x000122C4` en conservant sa valeur, donc une écriture posée avant une image vaut pour les
+lectures de cette image-là.
+
+### Ce que la ligne `ENDING` fait maintenant
+
+Deux choses, que gauche et droite choisissent :
+
+| valeur | ce que *valider* fait |
+|---|---|
+| `ROLL NOW` | le générique tout de suite, par-dessus l'écran titre. Les crédits sont entiers, les passages de replay sont nus — il n'y a pas de match à rediffuser |
+| `AFTER A MATCH` | **arme**. Au premier match qui se termine, le jeu prend sa propre branche et donne sa fin entière, replays sur leurs décors |
+
+Armée, la ligne le dit (`>`) et la page reste ouverte : il y a une partie à aller jouer. L'armement tient
+jusqu'à ce qu'un match se termine.
+
+### Le tour de vérification
+
+Joué dans l'hôte, en partie cachée, de bout en bout : la liste, `OPTIONS`, `DISPLAY`, `ENDING` mis sur
+`AFTER A MATCH`, *valider*, sortie de la page, puis `ARCADE` et un match. Le journal :
+
+```
+the console's list: OPTIONS chosen
+the console's list: ARCADE chosen
+the console ENDING: the match is over -- the game's own ending asked for     image 6258
+image 6835 mode 12 sub 19     ENDING_INT, par la branche du jeu
+image 6847 mode 13 sub 19     ENDING_DSP
+image 7073 : 336 modeles      le passage de replay, garni
+```
+
+**336 modèles** dans le passage 3D, là où la demande nue n'en donnait que les restes.
 
 ### Le tour de vérification
 

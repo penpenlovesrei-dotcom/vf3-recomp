@@ -206,6 +206,12 @@ struct console_play
 	// What the pictures really say is in the next comment, and it is not about timing.
 	void ask_ending(m3::Model3 &b) { b.fv2_request_ending(); }
 
+	// And asking for the REAL one: the game's own ending at the end of the match being played, with its
+	// replays. Armed here, laid in step() at the first frame the game says the match is over -- which is the
+	// moment measured in model3.cpp, and the reason this is not simply written on the spot.
+	bool want_real_ending = false;
+	void arm_real_ending() { want_real_ending = true; }
+
 	// Once a frame, before the game runs. Returns what to hand the game on top of the player's own controls.
 	void step(m3::Model3 &b, m3::Controls &out)
 	{
@@ -224,6 +230,14 @@ struct console_play
 			if (tidy && no_skip) skip_logo = 0;
 			else if (tidy) { b.fv2_request_title(); skip_logo = 0; }
 			else skip_logo--;
+		}
+		// The real ending, once the game says the MATCH is over. Earlier than that and the next round own
+		// branch point takes it with nothing recorded to replay; later is too late, the branch has read the
+		// bit already. Written once and not held, as every request here is.
+		if (want_real_ending && b.fv2_match_over()) {
+			b.fv2_finish_ladder();
+			want_real_ending = false;
+			fprintf(stderr, "the console ENDING: the match is over -- the game's own ending asked for\n");
 		}
 		if (inject_start > 0) { out.start[0] = true; inject_start--; }
 		if (inject_start_p2 > 0) { out.start[1] = true; inject_start_p2--; }
