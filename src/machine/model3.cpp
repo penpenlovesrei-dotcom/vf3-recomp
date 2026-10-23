@@ -1,4 +1,5 @@
 // The Model 3 Step 1.0 board. See model3.h.
+#include <cmath>
 #include "model3.h"
 #include "romset.h"
 #include <cstdio>
@@ -1816,8 +1817,50 @@ void Model3::murs_note()
 	// 0x00027B30 `addi r17,r12,0x210` -- deux tampons de 33 entrees. Le jeu s'en sert comme d'un
 	// registre global ; on l'imprime pour voir s'il est stable a la frontiere d'image, faute de
 	// l'avoir trouve pose dans le code.
-	fprintf(stderr, "murs : masque %08x  r12 %08x  parois %u  etats %s\n",
-	        masque, cpu.gpr(12), ram[0x005818D9 ^ 3], etats.c_str());
+	fprintf(stderr, "murs : masque %08x  parois %u  etats %s\n",
+	        masque, ram[0x005818D9 ^ 3], etats.c_str());
+
+	// OU VIVENT LES TRENTE-DEUX MORCEAUX, trouve par leur FORME et non par une adresse supposee.
+	//
+	// 0x00027C04 les aligne le long de la paroi qui vient de tomber :
+	//
+	//     pas = 2 * demi_cote_ring / 32
+	//     x   = demi_cote_ring + pas/k, puis -= pas a chaque entree
+	//     y   = une constante
+	//     z   = -demi_cote_ring          le plan du mur
+	//
+	// et les entrees font 0x10 octets. Leur base est r12, le contexte d'une tache atteinte par
+	// pointeur depuis la table 0x001150CC : elle est allouee a l'execution, donc introuvable dans
+	// l'image. On la cherche donc par sa signature -- huit entrees de suite dont le x descend d'un
+	// pas constant et dont le |z| vaut le demi-cote. Rien d'autre en RAM n'a cette forme.
+	if (!masque) return;
+	static bool trouve = false;
+	if (trouve) return;
+	float D = 0;
+	{ const uint32_t w = word(ram, 0x005813F8); memcpy(&D, &w, 4); }
+	if (!(D > 0.1f && D < 100.0f)) return;
+	const float pas = 2.0f * D / 32.0f;
+	auto flot = [&](uint32_t a) { const uint32_t w = word(ram, a); float f; memcpy(&f, &w, 4); return f; };
+	for (uint32_t a = 0x00100000; a + 0x10 * 9 < ram.size(); a += 4) {
+		bool bon = true;
+		for (int i = 0; i < 8 && bon; i++) {
+			const float x0 = flot(a + uint32_t(i) * 0x10), x1 = flot(a + uint32_t(i + 1) * 0x10);
+			const float z0 = flot(a + uint32_t(i) * 0x10 + 8);
+			if (!(std::fabs(std::fabs(z0) - D) < 0.05f)) bon = false;
+			else if (!(std::fabs((x0 - x1) - pas) < pas * 0.1f)) bon = false;
+		}
+		if (bon) {
+			trouve = true;
+			fprintf(stderr, "morceaux de paroi : base %08x  pas %.4f  demi-cote %.3f\n", a, pas, D);
+			for (int i = 0; i < 4; i++)
+				fprintf(stderr, "   %2d  x %8.3f  y %8.3f  z %8.3f  etat %u  id %u\n", i,
+				        flot(a + uint32_t(i) * 0x10), flot(a + uint32_t(i) * 0x10 + 4),
+				        flot(a + uint32_t(i) * 0x10 + 8),
+				        ram[(a + uint32_t(i) * 0x10 + 0xC) ^ 3],
+				        unsigned(word(ram, a + uint32_t(i) * 0x10 + 0xC) & 0xFFFF));
+			break;
+		}
+	}
 }
 
 // Honey's other costume: the one players have passed around for twenty years, and which turns out to be in
