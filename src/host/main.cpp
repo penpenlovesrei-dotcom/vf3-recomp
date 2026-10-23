@@ -2270,6 +2270,9 @@ int main(int argc, char **argv)
 	// What was playing under the console's surface, and whether a mode was chosen on the way out (above).
 	int music_held = -1;
 	bool music_mode_chosen = false;
+	// The pump's own clock, out here so that going into a surface can prime it (see there).
+	double menu_sound_owed = 0;
+	uint64_t menu_sound_last = 0;
 	if (cplay.on) {
 		console_font.load(ren, find_assets(), stderr);
 		options.load(ren, find_assets(), &console_font, stderr);
@@ -2683,8 +2686,16 @@ int main(int argc, char **argv)
 	};
 	bool sound_paused = false;
 	auto sync_menu_sound = [&] {
-		// the game is frozen behind the menu and behind the console's list of modes alike, and so is its sound
-		const bool quiet_now = menu.is_open() || modes.shown || options.shown;
+		// THE CONSOLE'S SURFACES ARE NOT SILENT ANY MORE, and this rule was written when they were. The Escape
+		// menu is this port's own and has always been quiet, so the device still sleeps under it; the list and
+		// the OPTIONS tree now turn the sound board themselves and play the game's own three notes.
+		//
+		// Pausing the device under them was what Frederic heard as "des bruitages en decale". Measured with
+		// the probe on a real machine: the queue grew by exactly one sound frame per frame made -- 0, 1, 2, 3,
+		// 4, 5, 6, 7 frames of backlog -- because nothing was consuming it. Every beep went in behind that
+		// backlog and only came out when the surface closed and the device woke up, which is word for word
+		// what he described: late, and only once the game started again.
+		const bool quiet_now = menu.is_open();
 		if (!audio || quiet_now == sound_paused) return;
 		sound_paused = quiet_now;
 		if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
@@ -3107,6 +3118,11 @@ int main(int argc, char **argv)
 				// makes exactly as much as real time asks for.
 				if (audio) SDL_ClearAudioStream(audio);
 				game.audio.clear();
+				// Emptied, then PRIMED. Left at nothing the device is starved, which is the other way to make
+				// it rasp: the pump only makes what real time asks for, so it never gets ahead on its own.
+				// Three frames is what the game itself keeps ahead (QUEUED).
+				menu_sound_owed = QUEUED;
+				menu_sound_last = 0;
 				music_held = game.music_now;
 				if (music_held >= 0) {
 					game.stop_music();
@@ -3147,14 +3163,12 @@ int main(int argc, char **argv)
 			if (options.want_sound) { heard(options.want_sound); options.want_sound = fv2_options::SND_NONE; }
 		}
 		if (stopped && cplay.on && (modes.shown || options.shown)) {
-			static uint64_t last_ns = 0;
-			static double owed = 0;
 			const uint64_t now = SDL_GetTicksNS();
-			if (last_ns) owed += double(now - last_ns) / 1e9 * FRAME_HZ;
-			last_ns = now;
-			owed = std::min(owed, 4.0);   // (a window dragged or a breakpoint: catch up a little, never a flood)
+			if (menu_sound_last) menu_sound_owed += double(now - menu_sound_last) / 1e9 * FRAME_HZ;
+			menu_sound_last = now;
+			menu_sound_owed = std::min(menu_sound_owed, 4.0);   // (a window dragged: catch up a little, never a flood)
 			int made = 0;
-			while (owed >= 1.0) { owed -= 1.0; game.sound_only_frame(); made++; }
+			while (menu_sound_owed >= 1.0) { menu_sound_owed -= 1.0; game.sound_only_frame(); made++; }
 			// (tests: VF3_MENU_SOUND=1 reports what the board made under the surface, which is the measure the
 			// plan asks for -- the peak rises on a move where it was at zero -- and the rate, which is what
 			// the undone version got wrong: 30 a second where the board wants 57.5.)

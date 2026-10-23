@@ -28,6 +28,13 @@ if not exist "build\bin\vf3.exe" (
 )
 set VF3_PIC_LOG=1
 set VF3_MIDI_LOG=60
+rem La sonde du son du menu : pour chaque image de son fabriquee sous la liste
+rem ou sous OPTIONS, la cadence, le pic, et surtout CE QUI ATTEND DANS LA FILE
+rem DE SDL. La carte a ete mesuree fabriquant les bruitages sur l'image meme de
+rem la touche, donc un bruitage entendu en retard est un bruitage qui attend
+rem derriere quelque chose -- et c'est ce que cette ligne dit. Ne se mesure que
+rem sur une vraie machine : une partie sans fenetre n'a pas de carte son.
+set VF3_MENU_SOUND=1
 "build\bin\vf3.exe" "%ROM%" --console %*
 echo.
 echo ---- fini. Le journal est dans log.txt, les captures dans Screenshots. ----
