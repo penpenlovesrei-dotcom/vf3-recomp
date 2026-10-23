@@ -390,7 +390,28 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						if (sien) break;
 					}
 					if (sien) {
-						const float h = float(tic % uint64_t(sien->periode + 1));
+						// LE SENS DU CYLINDRE ALTERNE AVEC LE ROUND.
+						//
+						// La routine Dreamcast lit un octet en 0x8C1E6354, en garde le BIT 0 dans
+						// 0x8C110FD0, et ce drapeau ne sert qu'a une chose (0x8C0488DC) :
+						//
+						//     drapeau 1 -> neg r1,r1   la translation vaut -hauteur
+						//     drapeau 0 ->             elle vaut +hauteur
+						//
+						// Et 0x8C1E6354 est le NUMERO DE ROUND : releve a 1 sur deux sauvegardes
+						// prises au round 1, a 2 sur trois prises au round 2, le drapeau suivant
+						// son bit 0 a chaque fois. Le cylindre descend aux rounds impairs et monte
+						// aux rounds pairs.
+						//
+						// La borne a le meme compteur en 0x00581456 : 0x0000BF90 le pose a 1 au
+						// debut du match et 0x0000DD38 l'incremente a chaque round.
+						//
+						// anime.txt donne le sens du round 1 ; on l'inverse quand le round est pair.
+						float signe = 1.0f;
+						if (board.ram.size() > (0x00581456 ^ 3)
+						    && !(board.ram[0x00581456 ^ 3] & 1))
+							signe = -1.0f;
+						const float h = float(tic % uint64_t(sien->periode + 1)) * signe;
 						// Les copies d'abord : le meme modele, decale d'un multiple du pas. Celle du
 						// decalage nul est la derniere, et c'est elle qui suit le chemin commun.
 						for (int k = -sien->copies; k <= sien->copies; k++) {
