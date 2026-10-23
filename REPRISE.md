@@ -247,9 +247,17 @@ une image qui n'est pas celle qu'on croit. Et `2>/dev/null` fait taire le journa
 est vrai pour `NUL`, donc l'hôte ne fait pas son `freopen` — rediriger vers un vrai fichier, le journal est
 alors dans `$VF3_DATA/log.txt`.
 
-**Ce qui reste.** Les décors 3, 10 et 11 ont une lumière **par combattant** : il y faut deux cartes, une par
-combattant, et le nuanceur prend la plus sombre des deux. Pas fait. Et il n'y a pas encore d'option d'hôte sur
-le patron de `hd_3d` : seule la variable d'environnement allume les ombres.
+**Les décors 3, 10 et 11 sont faits** : la direction de projection n'est plus prise au soleil des vues mais
+**lue dans les matrices des ombres du jeu**, par combattant (`S·Sᵀ = I − N·Nᵀ + w·wᵀ`, donc `d = N + w`). Les
+vues sont groupées par direction et chaque groupe a sa carte, deux au plus. Au barrage les deux combattants
+donnent la même direction à quatre décimales : une seule carte, aucun coût ajouté. Aux trois décors à lumière
+locale, deux cartes — et elles sont plus fines, chacune ne couvrant qu'un combattant (remplissage 9,1 % et
+10,4 % contre 4,1 %). `VF3_SHADOW_MAP` écrit les deux.
+
+**Ce qui reste.** Pas d'option d'hôte sur le patron de `hd_3d` : seule la variable d'environnement allume les
+ombres. Et `VF3_FORCE_STAGE` ne recharge pas la mémoire de textures, donc les arènes atteintes en forçant
+sortent avec les textures d'un autre décor — sans effet sur la géométrie des ombres, mais les captures de ces
+décors ne valent pas pour juger à l'œil.
 
 ## Ce qui reste ouvert, et qui bloque quoi
 

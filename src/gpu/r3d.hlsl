@@ -90,15 +90,18 @@ COMBINED BIND(0, 2) SamplerState odepth_s : register(s0, space2);
 // it is odepth bound a second time and nothing reads it -- a sampler must always have a texture.
 COMBINED BIND(1, 2) Texture2D<float4> smap : register(t1, space2);
 COMBINED BIND(1, 2) SamplerState smap_s : register(s1, space2);
-BIND(2, 2) ByteAddressBuffer texram : register(t2, space2);
+COMBINED BIND(2, 2) Texture2D<float4> smap2 : register(t2, space2);
+COMBINED BIND(2, 2) SamplerState smap2_s : register(s2, space2);
+BIND(3, 2) ByteAddressBuffer texram : register(t3, space2);
 // (raw buffers, read by byte offset: SDL_GPU's Direct3D 12 binds every storage buffer as a raw view, and a raw view
 // in a structured buffer's slot is undefined there: some cards, an AMD Radeon 780M and a GTX 970, drew nothing)
-BIND(3, 2) ByteAddressBuffer draws : register(t3, space2);
-BIND(4, 2) ByteAddressBuffer vps : register(t4, space2);
+BIND(4, 2) ByteAddressBuffer draws : register(t4, space2);
+BIND(5, 2) ByteAddressBuffer vps : register(t5, space2);
 BIND(0, 3) cbuffer Frame : register(b0, space3)
 {
 	float gx, xscale, yscale, shadow_on;
-	float4 srow0, srow1, srow2, srow3;   // view space -> the shadow map's clip space, by rows
+	float4 srow0, srow1, srow2, srow3;   // view space -> the first map's clip space, by rows
+	float4 trow0, trow1, trow2, trow3;   // the second map's, the same when there is only one
 	float4 shadow_k;                     // x: how much of the ambient the shadow takes as well (0: none)
 	float4 floorp;                       // the floor: xyz its direction, w its offset, in the casters' units
 };
@@ -266,11 +269,20 @@ FsOut main(PolyV i)
 		// falls through it; ours is cast from a map and would, and on a stage whose floor is a grating it
 		// landed on the structure a metre under the openings -- measured, 1102 pixels of 13415.
 		const bool under = dot(floorp.xyz, wv.xyz) < floorp.w - 0.05;
+		// The two maps, and the darker of the two wins. At stages 3, 10 and 11 the game flattens each
+		// fighter along a light worked out from that fighter's position, so the two shadows do not share a
+		// direction and one map cannot hold both (r3d_gpu.cpp, fit_light). Everywhere else the second map
+		// holds the first's matrix and texture, and reading it twice costs a fetch that changes nothing.
 		const float4 lp = float4(dot(srow0, wv), dot(srow1, wv), dot(srow2, wv), dot(srow3, wv));
 		const float2 suv = float2(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
 		const bool inside = lp.z >= 0.0 && lp.z <= 1.0 && all(suv >= 0.0) && all(suv <= 1.0);
 		const float near_light = smap.SampleLevel(smap_s, saturate(suv), 0).r;
 		if (inside && !under && lp.z - 0.002 > near_light) shade = 0.0;
+		const float4 lq = float4(dot(trow0, wv), dot(trow1, wv), dot(trow2, wv), dot(trow3, wv));
+		const float2 tuv = float2(lq.x * 0.5 + 0.5, 0.5 - lq.y * 0.5);
+		const bool inside2 = lq.z >= 0.0 && lq.z <= 1.0 && all(tuv >= 0.0) && all(tuv <= 1.0);
+		const float near2 = smap2.SampleLevel(smap2_s, saturate(tuv), 0).r;
+		if (inside2 && !under && lq.z - 0.002 > near2) shade = 0.0;
 		// shadow_on 2 (VF3_SHADOW_DEBUG): what the lookup sees, painted instead of the picture --
 		// red and green the place read in the map, blue what was found there, black outside it
 		// rouge : le pixel est juge a l ombre ; vert : ce que la carte rend ; bleu : la lecture est dans la boite

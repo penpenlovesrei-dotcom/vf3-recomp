@@ -53,6 +53,10 @@ void R3dGpu::shutdown()
 	for (SDL_GPUBuffer *b : { vbuf, dbuf, pbuf, texram })
 		if (b) SDL_ReleaseGPUBuffer(dev, b);
 	if (tb) SDL_ReleaseGPUTransferBuffer(dev, tb);
+	// the shadow maps outlive a change of resolution, so free_targets does not hold them
+	for (SDL_GPUTexture *tx : { smap[0], smap[1], smap_ds })
+		if (tx) SDL_ReleaseGPUTexture(dev, tx);
+	smap[0] = smap[1] = smap_ds = nullptr;
 	if (sampler) SDL_ReleaseGPUSampler(dev, sampler);
 	p_opq = p_opq_l = p_tr = p_tr_l = p_fog = p_out = p_shadow = nullptr;
 	vbuf = dbuf = pbuf = texram = nullptr;
@@ -90,9 +94,9 @@ bool R3dGpu::init(SDL_GPUDevice *device)
 	};
 #define SH(n) r3d_##n##_spv, sizeof(r3d_##n##_spv), r3d_##n##_dxil, sizeof(r3d_##n##_dxil), r3d_##n##_msl, sizeof(r3d_##n##_msl)
 	SDL_GPUShader *vs_poly = shader(SH(vs_poly), SDL_GPU_SHADERSTAGE_VERTEX, 0, 0, 0);
-	// two samplers: the opaque layer's depth, and Fighting Vipers 2's shadow map (r3d.hlsl)
-	SDL_GPUShader *fs_opq = shader(SH(fs_opq), SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 3, 1);
-	SDL_GPUShader *fs_tr = shader(SH(fs_tr), SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 3, 1);
+	// three samplers: the opaque layer's depth, and Fighting Vipers 2's two shadow maps (r3d.hlsl)
+	SDL_GPUShader *fs_opq = shader(SH(fs_opq), SDL_GPU_SHADERSTAGE_FRAGMENT, 3, 3, 1);
+	SDL_GPUShader *fs_tr = shader(SH(fs_tr), SDL_GPU_SHADERSTAGE_FRAGMENT, 3, 3, 1);
 	SDL_GPUShader *vs_quad = shader(SH(vs_quad), SDL_GPU_SHADERSTAGE_VERTEX, 0, 0, 1);
 	SDL_GPUShader *fs_fog = shader(SH(fs_fog), SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 1);
 	SDL_GPUShader *fs_out = shader(SH(fs_out), SDL_GPU_SHADERSTAGE_FRAGMENT, 3, 0, 1);
@@ -479,10 +483,10 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 	};
 	// Fighting Vipers 2's shadow map, before anything is drawn: the fighters seen from the light. Its only
 	// reader for now is read_shadow_map, which is how it is checked before anything leans on it.
-	if (shadows) {
-		if (light_ok && make_shadow_map()) {
+	if (shadows && light_ok && make_shadow_map()) {
+		for (int g = 0; g < nmaps; g++) {
 			SDL_GPUColorTargetInfo sc = {};
-			sc.texture = smap;
+			sc.texture = smap[g];
 			sc.load_op = SDL_GPU_LOADOP_CLEAR;
 			sc.store_op = SDL_GPU_STOREOP_STORE;
 			sc.clear_color = { 1, 1, 1, 1 };
@@ -497,7 +501,7 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 			SDL_GPUBufferBinding vb = { vbuf, 0 };
 			SDL_BindGPUVertexBuffers(rp, 0, &vb, 1);
 			SDL_BindGPUGraphicsPipeline(rp, p_shadow);
-			SDL_PushGPUVertexUniformData(cmd, 0, light_m, sizeof(light_m));
+			SDL_PushGPUVertexUniformData(cmd, 0, light_m[g], sizeof(light_m[g]));
 			const SDL_GPUViewport gv = { 0, 0, float(SMAP), float(SMAP), 0, 1 };
 			SDL_SetGPUViewport(rp, &gv);
 			const SDL_Rect rc = { 0, 0, SMAP, SMAP };
@@ -508,28 +512,30 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 				const size_t iv = size_t(dr.vp - scene.viewports.data());
 				// VF3_SHADOW_ALL: every viewport into the map, to see which ones share the casters' space
 				static const bool all = getenv("VF3_SHADOW_ALL") != nullptr;
-				if (iv >= 64 || (!all && !caster_vp[iv])) continue;
+				if (iv >= 64 || (!all && vp_group[iv] != g)) continue;
 				if (dr.mesh->colour_index == video::SHADOW_COLOUR_INDEX) continue;
 				if (!dr.mesh->in_layer(0, dr.model->alpha)) continue;
 				SDL_DrawGPUPrimitives(rp, uint32_t(rg.count), 1, uint32_t(rg.first), 0);
 				cast++;
 			}
-			if (debug_now) fprintf(stderr, "shadow pass: %d draws of %zu\n", cast, ranges.size());
+			if (debug_now) fprintf(stderr, "shadow pass %d: %d draws of %zu\n", g, cast, ranges.size());
 			SDL_EndGPURenderPass(rp);
 		}
 	}
 	// the picture's own numbers, then whether this port's shadows are on and the matrix that reads their map
-	float frame_u[28] = { float(prep.game_x()), prep.game_xscale(), prep.game_yscale(),
-	                      (shadows && light_ok && smap) ? (getenv("VF3_SHADOW_DEBUG") ? 1.0f + float(atoi(getenv("VF3_SHADOW_DEBUG"))) : 1.0f) : 0.0f };
+	float frame_u[44] = { float(prep.game_x()), prep.game_xscale(), prep.game_yscale(),
+	                      (shadows && light_ok && smap[0]) ? (getenv("VF3_SHADOW_DEBUG") ? 1.0f + float(atoi(getenv("VF3_SHADOW_DEBUG"))) : 1.0f) : 0.0f };
 	memcpy(frame_u + 4, light_m, sizeof(light_m));
+	// the second map is only read when there is one; with one light, both slots hold the same matrix
+	if (nmaps < 2) memcpy(frame_u + 20, light_m[0], sizeof(light_m[0]));
 	// VF3_SHADOW_DARK: how much of the ambient the shadow takes as well, on top of the sun it already
 	// takes whole. 0 (the default) is the game's own light left alone.
-	frame_u[20] = getenv("VF3_SHADOW_DARK") ? float(atof(getenv("VF3_SHADOW_DARK"))) : 0.0f;
+	frame_u[36] = getenv("VF3_SHADOW_DARK") ? float(atof(getenv("VF3_SHADOW_DARK"))) : 0.0f;
 	// VF3_SHADOW_NONE: the game's own shadows left out and ours not applied either -- the lit ground, to
 	// measure what a shadow actually takes away
 	if (getenv("VF3_SHADOW_NONE")) frame_u[3] = 0;
 	// the floor measure_scales found, which is also where the shadow stops: nothing under it takes one
-	memcpy(frame_u + 24, floor_p, sizeof(floor_p));
+	memcpy(frame_u + 40, floor_p, sizeof(floor_p));
 	// the fog layers first, into the cleared layers
 	{
 		SDL_GPUColorTargetInfo c[3] = { colour(base, true), colour(t1, true), colour(t2, true) };
@@ -611,8 +617,11 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 		SDL_GPUBuffer *storage[3] = { texram, dbuf, pbuf };
 		auto draw_batch = [&](SDL_GPURenderPass *rp, int b, SDL_GPUGraphicsPipeline *plain, SDL_GPUGraphicsPipeline *layered, SDL_GPUTexture *od) {
 			SDL_BindGPUVertexBuffers(rp, 0, &vb, 1);
-			// the shadow map second; with the shadows off it is the depth again, since a sampler must have a texture
-			SDL_GPUTextureSamplerBinding sb[2] = { { od, sampler }, { (shadows && smap) ? smap : od, sampler } };
+			// the two shadow maps after it; with the shadows off they are the depth again, since a sampler
+			// must always have a texture
+			SDL_GPUTexture *m0 = (shadows && smap[0]) ? smap[0] : od;
+			SDL_GPUTexture *m1 = (shadows && nmaps > 1 && smap[1]) ? smap[1] : m0;
+			SDL_GPUTextureSamplerBinding sb[3] = { { od, sampler }, { m0, sampler }, { m1, sampler } };
 			int last_vp = -1;
 			SDL_GPUGraphicsPipeline *bound = nullptr;
 			for (size_t r = batch_first[b]; r < batch_end[b]; r++) {
@@ -624,7 +633,7 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 				SDL_GPUGraphicsPipeline *p = d.mesh->layered ? layered : plain;
 				if (p != bound) {
 					SDL_BindGPUGraphicsPipeline(rp, p);
-					SDL_BindGPUFragmentSamplers(rp, 0, sb, 2);
+					SDL_BindGPUFragmentSamplers(rp, 0, sb, 3);
 					SDL_BindGPUFragmentStorageBuffers(rp, 0, storage, 3);
 					SDL_PushGPUFragmentUniformData(cmd, 0, frame_u, sizeof(frame_u));
 					SDL_SetGPUStencilReference(rp, 0);
@@ -690,7 +699,7 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 
 bool R3dGpu::make_shadow_map()
 {
-	if (smap && smap_ds) return true;
+	if (smap[0] && smap[MAPS - 1] && smap_ds) return true;
 	SDL_GPUTextureCreateInfo ci = {};
 	ci.type = SDL_GPU_TEXTURETYPE_2D;
 	ci.width = ci.height = uint32_t(SMAP);
@@ -699,11 +708,11 @@ bool R3dGpu::make_shadow_map()
 	ci.sample_count = SDL_GPU_SAMPLECOUNT_1;
 	ci.format = SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
 	ci.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
-	smap = SDL_CreateGPUTexture(dev, &ci);
+	for (SDL_GPUTexture *&tx : smap) if (!tx) tx = SDL_CreateGPUTexture(dev, &ci);
 	ci.format = ds_format;
 	ci.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
 	smap_ds = SDL_CreateGPUTexture(dev, &ci);
-	if (!smap || !smap_ds) { err = std::string("the shadow map: ") + SDL_GetError(); return false; }
+	if (!smap[0] || !smap[MAPS - 1] || !smap_ds) { err = std::string("the shadow map: ") + SDL_GetError(); return false; }
 	return true;
 }
 
@@ -903,145 +912,205 @@ void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep
 				        double(scene.viewports[iv].sun_intensity));
 	}
 }
-
-// Where the light is, and what the map has to cover. Both are read from the scene rather than invented: the
-// direction is the stage's sun -- the one the game projects its own shadows along, measured to five decimals
-// (docs/fv2-ombres.md) -- and the ground to cover is where those shadows fall, which the game has already
-// worked out for us. The fighters' own viewports carry a different sun (the light seen from each fighter),
-// so they are not the ones to ask.
+// Where the light is, and what each map has to cover -- read from the scene, and from the game's own shadows
+// rather than from any sun it happens to carry.
+//
+// A shadow piece's matrix is S = C.P.R: the camera, the projection that flattens it, the limb's own rotation.
+// C and R being orthonormal, S.S^T = C.P.P^T.C^T no longer depends on the limb, so every piece of one fighter
+// gives the same six numbers -- measured, they agree to five decimals. And with N the floor's direction, a
+// projection onto the floor along d is P = I - k.N^T with k = d/(d.N), so that
+//
+//     S.S^T = I - N.N^T + w.w^T   with   w = k - N,   w perpendicular to N
+//
+// which is the identity plus a rank-one term. So w.w^T = S.S^T - I + N.N^T is read straight off, w with it,
+// and d = N + w. Checked at the dam against the direction the previous measurement fitted offline, and
+// against the stage's own sun: the same to four decimals.
+//
+// This is done per caster viewport, because the game does not always flatten the two fighters the same way.
+// Measured at a fight frame: at the dam the two fighters' S.S^T are the same to five decimals, while at
+// stages 3, 10 and 11 -- where the game works the light out from each fighter's POSITION -- they are not
+// (2.2595 against 1.0389 on the first of the six). So the viewports are grouped by the direction they give,
+// and each group gets a map of its own, up to two. One group, one map, which is every other stage.
 void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 {
+	nmaps = 0;
 	light_ok = false;
 	for (bool &b : caster_vp) b = false;
+	for (int &g : vp_group) g = -1;
+	// the shadows' own places, which is where the ground is
 	float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
 	int n = 0;
-	char say[1024];
-	int say_len = 0;
+	double sst[64][6] = {};
+	int pieces[64] = {};
 	for (size_t iv = 0; iv < scene.viewports.size() && iv < 64; iv++) {
-		const video::Viewport &vp = scene.viewports[iv];
-		int here = 0;
-		for (const video::Model &m : vp.models) {
+		for (const video::Model &m : scene.viewports[iv].models) {
 			bool sh = false;
 			for (const video::Mesh &me : *m.meshes)
 				if (me.colour_index == video::SHADOW_COLOUR_INDEX) { sh = true; break; }
 			if (!sh) continue;
-			here++;
 			const float *M = m.matrix.m;
 			const float p[3] = { M[12], M[13], M[14] };
 			for (int k = 0; k < 3; k++) { lo[k] = std::min(lo[k], p[k]); hi[k] = std::max(hi[k], p[k]); }
+			const double r0[3] = { M[0], M[4], M[8] }, r1[3] = { M[1], M[5], M[9] }, r2[3] = { M[2], M[6], M[10] };
+			const double s[6] = {
+				r0[0]*r0[0]+r0[1]*r0[1]+r0[2]*r0[2], r1[0]*r1[0]+r1[1]*r1[1]+r1[2]*r1[2],
+				r2[0]*r2[0]+r2[1]*r2[1]+r2[2]*r2[2], r0[0]*r1[0]+r0[1]*r1[1]+r0[2]*r1[2],
+				r0[0]*r2[0]+r0[1]*r2[1]+r0[2]*r2[2], r1[0]*r2[0]+r1[1]*r2[1]+r1[2]*r2[2] };
+			for (int q = 0; q < 6; q++) sst[iv][q] += s[q];
+			pieces[iv]++;
+			caster_vp[iv] = true;
 			n++;
 		}
-		if (here) caster_vp[iv] = true;
-		if (debug_now && !vp.models.empty() && say_len < 900)
-			say_len += snprintf(say + say_len, sizeof(say) - size_t(say_len), " vp%zu[%zu models, %d shadow]",
-			                    iv, vp.models.size(), here);
 	}
-	if (debug_now) fprintf(stderr, "shadows per viewport:%s\n", say_len ? say : " none");
 	if (!n) return;
-	// The stage's light, taken by agreement rather than by picking a viewport: each fighter's own viewport
-	// carries the light as THAT fighter sees it (ROB_LIGHT is a point at distance 30, not a direction), while
-	// the rest of the scene shares the one the game projects its own shadows along -- measured, fourteen
-	// viewports of sixteen agree on it at a fight frame (docs/fv2-ombres.md).
-	int agreed = 0;
-	float d[3] = { 0, 0, 0 };
-	for (const video::Viewport &a : scene.viewports) {
-		int same = 0;
-		for (const video::Viewport &b : scene.viewports) {
-			float dd = 0;
-			for (int k = 0; k < 3; k++) dd += (a.sun[k] - b.sun[k]) * (a.sun[k] - b.sun[k]);
-			if (dd < 1e-8f) same++;
+	// the floor, and the units each layer is drawn in. The direction to start it off is any viewport's sun:
+	// it is only used to turn the shadow quads' normals the right way up.
+	float any_sun[3] = { 0, 1, 0 };
+	for (const video::Viewport &v : scene.viewports)
+		if (v.sun[0] || v.sun[1] || v.sun[2]) { for (int k = 0; k < 3; k++) any_sun[k] = v.sun[k]; break; }
+	measure_scales(scene, prep, any_sun);
+	const float *N = floor_p;
+	if (!(N[0] || N[1] || N[2])) return;
+	// each caster's own direction, out of its pieces' S.S^T
+	float dirs[64][3] = {};
+	for (size_t iv = 0; iv < 64; iv++) {
+		if (!caster_vp[iv] || !pieces[iv]) continue;
+		double a[6];
+		for (int q = 0; q < 6; q++) a[q] = sst[iv][q] / pieces[iv];
+		// w.w^T = S.S^T - I + N.N^T, a rank-one matrix: its biggest column is w, and its trace is w.w
+		double b[3][3] = {
+			{ a[0] - 1 + double(N[0]) * N[0], a[3] + double(N[0]) * N[1], a[4] + double(N[0]) * N[2] },
+			{ a[3] + double(N[1]) * N[0], a[1] - 1 + double(N[1]) * N[1], a[5] + double(N[1]) * N[2] },
+			{ a[4] + double(N[2]) * N[0], a[5] + double(N[2]) * N[1], a[2] - 1 + double(N[2]) * N[2] } };
+		const double ww = std::max(0.0, b[0][0] + b[1][1] + b[2][2]);
+		int best = 0;
+		double bl = -1;
+		for (int c = 0; c < 3; c++) {
+			const double l = b[0][c] * b[0][c] + b[1][c] * b[1][c] + b[2][c] * b[2][c];
+			if (l > bl) { bl = l; best = c; }
 		}
-		if (same > agreed) { agreed = same; d[0] = a.sun[0]; d[1] = a.sun[1]; d[2] = a.sun[2]; }
+		if (!(bl > 1e-12)) {      // w is zero: the light is straight down the floor's own direction
+			for (int k = 0; k < 3; k++) dirs[iv][k] = N[k];
+			continue;
+		}
+		const double s = std::sqrt(ww / bl);
+		double w[3] = { b[0][best] * s, b[1][best] * s, b[2][best] * s };
+		// the sign the column came out with is arbitrary; the light is the way this viewport's sun leans
+		const video::Viewport &v = scene.viewports[iv];
+		if (w[0] * v.sun[0] + w[1] * v.sun[1] + w[2] * v.sun[2] < 0) for (double &q : w) q = -q;
+		float d[3] = { float(N[0] + w[0]), float(N[1] + w[1]), float(N[2] + w[2]) };
+		const float dl = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+		if (!(dl > 1e-6f)) { for (int k = 0; k < 3; k++) dirs[iv][k] = N[k]; continue; }
+		for (int k = 0; k < 3; k++) dirs[iv][k] = d[k] / dl;
 	}
-	if (agreed < 2) return;
-	const float dl = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-	if (!(dl > 1e-6f)) return;
-	for (int k = 0; k < 3; k++) d[k] /= dl;
-	measure_scales(scene, prep, d);
-	// The box, read off the casters' own VERTICES. A model's place is one point and says nothing of its size,
-	// and a box fitted to the shadows' places alone left the fighters outside it -- measured, the map came out
-	// empty for 143 draws. prep.tris already carries every vertex in the camera's space, the space this matrix
-	// works in, so the box is simply read off them, then taken down to the floor and widened the way the ray
-	// runs so that what RECEIVES a shadow is covered too.
+	// the groups: viewports whose directions agree to within a degree share a map, up to two maps
+	float gdir[2][3] = {};
+	for (size_t iv = 0; iv < 64; iv++) {
+		if (!caster_vp[iv] || !pieces[iv]) continue;
+		int g = -1;
+		for (int q = 0; q < nmaps; q++) {
+			const float dot = dirs[iv][0] * gdir[q][0] + dirs[iv][1] * gdir[q][1] + dirs[iv][2] * gdir[q][2];
+			if (dot > 0.99985f) { g = q; break; }   // a degree
+		}
+		if (g < 0 && nmaps < 2) { g = nmaps++; for (int k = 0; k < 3; k++) gdir[g][k] = dirs[iv][k]; }
+		if (g < 0) g = 0;   // a third direction would need a third map; it joins the first
+		vp_group[iv] = g;
+	}
+	if (!nmaps) return;
 	const float ground = std::max(lo[1], hi[1]);
-	for (int k = 0; k < 3; k++) { lo[k] = 1e30f; hi[k] = -1e30f; }
-	int nv = 0;
-	for (const video::Raster::Tri &t : prep.tris) {
-		const video::Raster::Draw &dr = prep.draws[t.draw];
-		const size_t ivv = size_t(dr.vp - scene.viewports.data());
-		if (ivv >= 64 || !caster_vp[ivv]) continue;
-		if (dr.mesh->colour_index == video::SHADOW_COLOUR_INDEX) continue;
-		for (int k = 0; k < t.n; k++) {
-			// a vertex keeps its attributes divided by w (that is how they interpolate): w back on, and it is
-			// the position in the camera's space again -- the space this matrix works in
-			const float wv = 1.0f / t.iw[k];
-			for (int q = 0; q < 3; q++) {
-				const float v = t.a[k][q] * wv;
-				lo[q] = std::min(lo[q], v);
-				hi[q] = std::max(hi[q], v);
+	for (int g = 0; g < nmaps; g++) {
+		// The box, read off that group's casters' own VERTICES. A model's place is one point and says nothing
+		// of its size, and a box fitted to the shadows' places alone left the fighters outside it -- measured,
+		// the map came out empty for 143 draws. prep.tris already carries every vertex in the camera's space,
+		// the space this matrix works in, so the box is simply read off them, then taken down to the floor and
+		// widened the way the ray runs so that what RECEIVES a shadow is covered too.
+		const float *d = gdir[g];
+		float blo[3] = { 1e30f, 1e30f, 1e30f }, bhi[3] = { -1e30f, -1e30f, -1e30f };
+		int nv = 0;
+		for (const video::Raster::Tri &t : prep.tris) {
+			const video::Raster::Draw &dr = prep.draws[t.draw];
+			const size_t ivv = size_t(dr.vp - scene.viewports.data());
+			if (ivv >= 64 || vp_group[ivv] != g) continue;
+			if (dr.mesh->colour_index == video::SHADOW_COLOUR_INDEX) continue;
+			for (int k = 0; k < t.n; k++) {
+				// a vertex keeps its attributes divided by w (that is how they interpolate): w back on, and it
+				// is the position in the camera's space again -- the space this matrix works in
+				const float wv = 1.0f / t.iw[k];
+				for (int q = 0; q < 3; q++) {
+					const float v = t.a[k][q] * wv;
+					blo[q] = std::min(blo[q], v);
+					bhi[q] = std::max(bhi[q], v);
+				}
+				nv++;
 			}
-			nv++;
 		}
+		if (nv < 3) { nmaps = 0; return; }
+		const float PAD = 0.3f;
+		blo[0] -= PAD; bhi[0] += PAD;
+		blo[2] -= PAD; bhi[2] += PAD;
+		blo[1] = std::min(blo[1], ground) - 0.2f;
+		bhi[1] += 0.2f;
+		const float tall = bhi[1] - blo[1];
+		const float ox = d[1] > 0.1f ? tall * d[0] / d[1] : 0.0f;
+		const float oz = d[1] > 0.1f ? tall * d[2] / d[1] : 0.0f;
+		blo[0] = std::min(blo[0], blo[0] - ox); bhi[0] = std::max(bhi[0], bhi[0] - ox);
+		blo[2] = std::min(blo[2], blo[2] - oz); bhi[2] = std::max(bhi[2], bhi[2] - oz);
+		// the light looks along -d, with a frame around it
+		const float z[3] = { -d[0], -d[1], -d[2] };
+		float up[3] = { 0, 1, 0 };
+		if (std::fabs(z[1]) > 0.99f) { up[1] = 0; up[2] = 1; }
+		float x[3] = { up[1] * z[2] - up[2] * z[1], up[2] * z[0] - up[0] * z[2], up[0] * z[1] - up[1] * z[0] };
+		const float xl = std::sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+		if (!(xl > 1e-6f)) { nmaps = 0; return; }
+		for (int k = 0; k < 3; k++) x[k] /= xl;
+		const float y[3] = { z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0] };
+		const float c[3] = { (blo[0] + bhi[0]) * 0.5f, (blo[1] + bhi[1]) * 0.5f, (blo[2] + bhi[2]) * 0.5f };
+		float ex[2] = { 1e30f, -1e30f }, ey[2] = { 1e30f, -1e30f }, ez[2] = { 1e30f, -1e30f };
+		for (int i = 0; i < 8; i++) {
+			const float p[3] = { (i & 1) ? bhi[0] : blo[0], (i & 2) ? bhi[1] : blo[1], (i & 4) ? bhi[2] : blo[2] };
+			const float q[3] = { p[0] - c[0], p[1] - c[1], p[2] - c[2] };
+			const float qx = x[0] * q[0] + x[1] * q[1] + x[2] * q[2];
+			const float qy = y[0] * q[0] + y[1] * q[1] + y[2] * q[2];
+			const float qz = z[0] * q[0] + z[1] * q[1] + z[2] * q[2];
+			ex[0] = std::min(ex[0], qx); ex[1] = std::max(ex[1], qx);
+			ey[0] = std::min(ey[0], qy); ey[1] = std::max(ey[1], qy);
+			ez[0] = std::min(ez[0], qz); ez[1] = std::max(ez[1], qz);
+		}
+		const float hx = std::max(1e-3f, (ex[1] - ex[0]) * 0.5f), hy = std::max(1e-3f, (ey[1] - ey[0]) * 0.5f);
+		const float cx = (ex[0] + ex[1]) * 0.5f, cy = (ey[0] + ey[1]) * 0.5f;
+		const float z0 = ez[0] - 0.5f, dz = std::max(1e-3f, (ez[1] + 0.5f) - z0);
+		const float dxc = x[0] * c[0] + x[1] * c[1] + x[2] * c[2];
+		const float dyc = y[0] * c[0] + y[1] * c[1] + y[2] * c[2];
+		const float dzc = z[0] * c[0] + z[1] * c[1] + z[2] * c[2];
+		float *m = light_m[g];
+		auto row = [&](int r, const float a[3], float sc, float off) {
+			m[r * 4 + 0] = a[0] * sc; m[r * 4 + 1] = a[1] * sc;
+			m[r * 4 + 2] = a[2] * sc; m[r * 4 + 3] = off;
+		};
+		row(0, x, 1.0f / hx, (-dxc - cx) / hx);
+		row(1, y, 1.0f / hy, (-dyc - cy) / hy);
+		row(2, z, 1.0f / dz, (-dzc - z0) / dz);
+		m[12] = m[13] = m[14] = 0;
+		m[15] = 1;
+		if (debug_now)
+			fprintf(stderr, "light %d: [%.4f %.4f %.4f], %d caster vertices, box x %.2f..%.2f y %.2f..%.2f "
+			        "z %.2f..%.2f, half %.2f %.2f, depth %.2f\n", g, double(d[0]), double(d[1]), double(d[2]),
+			        nv, blo[0], bhi[0], blo[1], bhi[1], blo[2], bhi[2], hx, hy, dz);
 	}
-	if (nv < 3) return;
-	const float PAD = 0.3f;
-	lo[0] -= PAD; hi[0] += PAD;
-	lo[2] -= PAD; hi[2] += PAD;
-	lo[1] = std::min(lo[1], ground) - 0.2f;
-	hi[1] += 0.2f;
-	const float tall = hi[1] - lo[1];
-	const float ox = d[1] > 0.1f ? tall * d[0] / d[1] : 0.0f;
-	const float oz = d[1] > 0.1f ? tall * d[2] / d[1] : 0.0f;
-	lo[0] = std::min(lo[0], lo[0] - ox); hi[0] = std::max(hi[0], hi[0] - ox);
-	lo[2] = std::min(lo[2], lo[2] - oz); hi[2] = std::max(hi[2], hi[2] - oz);
-	// the light looks along -d, with a frame around it
-	const float z[3] = { -d[0], -d[1], -d[2] };
-	float up[3] = { 0, 1, 0 };
-	if (std::fabs(z[1]) > 0.99f) { up[1] = 0; up[2] = 1; }
-	float x[3] = { up[1] * z[2] - up[2] * z[1], up[2] * z[0] - up[0] * z[2], up[0] * z[1] - up[1] * z[0] };
-	const float xl = std::sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
-	if (!(xl > 1e-6f)) return;
-	for (int k = 0; k < 3; k++) x[k] /= xl;
-	const float y[3] = { z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0] };
-	const float c[3] = { (lo[0] + hi[0]) * 0.5f, (lo[1] + hi[1]) * 0.5f, (lo[2] + hi[2]) * 0.5f };
-	float ex[2] = { 1e30f, -1e30f }, ey[2] = { 1e30f, -1e30f }, ez[2] = { 1e30f, -1e30f };
-	for (int i = 0; i < 8; i++) {
-		const float p[3] = { (i & 1) ? hi[0] : lo[0], (i & 2) ? hi[1] : lo[1], (i & 4) ? hi[2] : lo[2] };
-		const float q[3] = { p[0] - c[0], p[1] - c[1], p[2] - c[2] };
-		const float qx = x[0] * q[0] + x[1] * q[1] + x[2] * q[2];
-		const float qy = y[0] * q[0] + y[1] * q[1] + y[2] * q[2];
-		const float qz = z[0] * q[0] + z[1] * q[1] + z[2] * q[2];
-		ex[0] = std::min(ex[0], qx); ex[1] = std::max(ex[1], qx);
-		ey[0] = std::min(ey[0], qy); ey[1] = std::max(ey[1], qy);
-		ez[0] = std::min(ez[0], qz); ez[1] = std::max(ez[1], qz);
-	}
-	const float hx = std::max(1e-3f, (ex[1] - ex[0]) * 0.5f), hy = std::max(1e-3f, (ey[1] - ey[0]) * 0.5f);
-	const float cx = (ex[0] + ex[1]) * 0.5f, cy = (ey[0] + ey[1]) * 0.5f;
-	const float z0 = ez[0] - 0.5f, dz = std::max(1e-3f, (ez[1] + 0.5f) - z0);
-	const float dxc = x[0] * c[0] + x[1] * c[1] + x[2] * c[2];
-	const float dyc = y[0] * c[0] + y[1] * c[1] + y[2] * c[2];
-	const float dzc = z[0] * c[0] + z[1] * c[1] + z[2] * c[2];
-	auto row = [&](int r, const float a[3], float sc, float off) {
-		light_m[r * 4 + 0] = a[0] * sc; light_m[r * 4 + 1] = a[1] * sc;
-		light_m[r * 4 + 2] = a[2] * sc; light_m[r * 4 + 3] = off;
-	};
-	row(0, x, 1.0f / hx, (-dxc - cx) / hx);
-	row(1, y, 1.0f / hy, (-dyc - cy) / hy);
-	row(2, z, 1.0f / dz, (-dzc - z0) / dz);
-	light_m[12] = light_m[13] = light_m[14] = 0;
-	light_m[15] = 1;
 	light_ok = true;
-	if (debug_now)
-		fprintf(stderr, "light: sun [%.4f %.4f %.4f] (%d viewports of %zu agree), %d shadow models, %d caster "
-		        "vertices, box x %.2f..%.2f y %.2f..%.2f z %.2f..%.2f, half %.2f %.2f, depth %.2f\n",
-		        d[0], d[1], d[2], agreed, scene.viewports.size(), n, nv,
-		        lo[0], hi[0], lo[1], hi[1], lo[2], hi[2], hx, hy, dz);
+	if (debug_now) {
+		fprintf(stderr, "%d shadow models, %d map%s\n", n, nmaps, nmaps > 1 ? "s" : "");
+		for (size_t iv = 0; iv < 64; iv++)
+			if (caster_vp[iv])
+				fprintf(stderr, "  vp%zu: %d pieces, direction [%.4f %.4f %.4f], map %d\n", iv, pieces[iv],
+				        double(dirs[iv][0]), double(dirs[iv][1]), double(dirs[iv][2]), vp_group[iv]);
+	}
 }
 
-bool R3dGpu::read_shadow_map(std::vector<float> &px, int &side)
+bool R3dGpu::read_shadow_map(std::vector<float> &px, int &side, int which)
 {
 	side = SMAP;
-	if (!smap) return false;
+	if (which < 0 || which >= MAPS || !smap[which]) return false;
 	SDL_GPUTransferBufferCreateInfo ti = {};
 	ti.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
 	ti.size = uint32_t(SMAP) * uint32_t(SMAP) * 4;
@@ -1051,7 +1120,7 @@ bool R3dGpu::read_shadow_map(std::vector<float> &px, int &side)
 	if (!cmd) { SDL_ReleaseGPUTransferBuffer(dev, dl); return false; }
 	SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
 	SDL_GPUTextureRegion src = {};
-	src.texture = smap;
+	src.texture = smap[which];
 	src.w = uint32_t(SMAP);
 	src.h = uint32_t(SMAP);
 	src.d = 1;

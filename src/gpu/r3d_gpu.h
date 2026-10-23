@@ -46,7 +46,7 @@ public:
 	// whichever one came first. Every number read off the wrong frame costs an hour.
 	bool debug_now = false;
 	// The shadow map read back, to look at it (tests): side x side distances, 1 where nothing was drawn
-	bool read_shadow_map(std::vector<float> &px, int &side);
+	bool read_shadow_map(std::vector<float> &px, int &side, int which = 0);
 
 private:
 	SDL_GPUDevice *dev = nullptr;
@@ -58,11 +58,17 @@ private:
 	SDL_GPUTexture *base = nullptr, *t1 = nullptr, *t2 = nullptr, *odepth = nullptr, *ds = nullptr, *out = nullptr;
 	// the shadow map: a fixed size, having nothing to do with the output's
 	static constexpr int SMAP = 1024;
-	SDL_GPUTexture *smap = nullptr, *smap_ds = nullptr;
+	// Two of them: at stages 3, 10 and 11 the game flattens each fighter along a light of its own, measured
+	// from that fighter's position, so one map cannot hold both. Everywhere else the two agree and only the
+	// first is made (fit_light).
+	static constexpr int MAPS = 2;
+	SDL_GPUTexture *smap[MAPS] = {}, *smap_ds = nullptr;
 	SDL_GPUGraphicsPipeline *p_shadow = nullptr;
-	float light_m[16] = {};      // view space -> the light's clip space, by rows (fit_light)
+	float light_m[MAPS][16] = {};   // view space -> each light's clip space, by rows (fit_light)
+	int nmaps = 0;
 	bool light_ok = false;
 	bool caster_vp[64] = {};     // the viewports that carry the game's own shadows: their models cast
+	int vp_group[64] = {};       // which map each caster goes into (-1: none)
 	// How many of a viewport's units make one of the casters' (fit_light): the game draws its stage in
 	// several layers, each with its own depth buffer AND its own units, and nothing in the scene says by how
 	// much they differ -- it is measured off the one surface they share, the floor. 0: not measured, no shadow.

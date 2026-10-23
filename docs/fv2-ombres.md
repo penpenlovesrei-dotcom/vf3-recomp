@@ -830,3 +830,62 @@ mettent à 0 ne sont pas des arènes : respecter leur choix n'a aucune conséque
 - **`2>/dev/null` fait taire le journal.** Sous Windows `isatty()` est vrai pour `NUL`, donc l'hôte ne fait
   pas son `freopen` vers `log.txt` et tout se perd. Rediriger l'erreur vers un **vrai fichier** ; le journal
   atterrit alors dans `$VF3_DATA/log.txt`.
+
+## La direction, lue dans les ombres du jeu, et les deux cartes
+
+La direction de projection ne vient plus du soleil des vues ni d'un accord entre elles : elle est lue dans les
+matrices des ombres du jeu, **par combattant**.
+
+Une matrice d'ombre vaut `S = C·P·R` — la caméra, la projection, la rotation du membre. `C` et `R` étant
+orthonormales, `S·Sᵀ = C·P·Pᵀ·Cᵀ` ne dépend plus du membre. Et avec `N` la direction du sol et
+`P = I − k·Nᵀ`, `k = d/(d·N)`, on a
+
+```
+S·Sᵀ = I − N·Nᵀ + w·wᵀ      avec   w = k − N,   w perpendiculaire a N
+```
+
+c'est-à-dire l'identité plus un terme de rang un. Donc `w·wᵀ = S·Sᵀ − I + N·Nᵀ` se lit directement : sa plus
+grande colonne donne la direction de `w`, sa trace donne `w·w`, et `d = N + w`. Le signe de la colonne est
+arbitraire ; on le prend du côté où penche le soleil de cette vue.
+
+Vérifié au barrage : `d = [0,2068 0,8434 0,4959]`, **exactement** ce que l'ancienne règle d'accord donnait, et
+ce que la mesure hors ligne avait ajusté.
+
+### Les deux fiches, mesurées
+
+`S·Sᵀ` moyenné sur les pièces de chaque combattant, à l'image 3101 :
+
+| décor | combattant de gauche (17 pièces) | combattant de droite (20 pièces) | écart entre pièces |
+|---|---|---|---|
+| 9 | `1,0574 0,0015 1,2938 −0,0044 0,1301 −0,0442` | **les mêmes** | 0,00000 |
+| 3 | `2,2595 0,0012 1,0050 −0,0030 0,0880 −0,0342` | `1,0389 0,0012 0,9996 −0,0002 0,0053 −0,0340` | 0,0005 |
+| 10 et 11 | `1,4531 …` | `1,0141 …` | 0,0006 |
+
+Donc **une seule projection au barrage**, deux aux décors 3, 10 et 11 — ce que la lecture du programme
+annonçait, retrouvé dans les matrices. Les directions qui en sortent :
+
+| décor | gauche | droite |
+|---|---|---|
+| 3 | `[−0,7455 0,6658 −0,0308]`, 48,2° de la verticale | `[−0,1939 0,9810 0,0066]`, 11,2° |
+| 10 | `[−0,5581 0,8297 −0,0108]`, 33,9° | `[−0,1175 0,9929 0,0177]`, 6,8° |
+| 11 | `[−0,5580 0,8298 −0,0117]` | `[−0,1178 0,9929 0,0176]` |
+
+### Ce que deux cartes coûtent, et ce qu'elles rapportent
+
+Les vues sont regroupées par direction (un degré de tolérance) et chaque groupe a sa carte, deux au plus. Au
+barrage les deux combattants tombent dans le même groupe : **une carte, une passe**, exactement comme avant.
+Aux trois décors à lumière locale, deux passes de 157 et 140 tracés au lieu d'une de 297 — le même nombre de
+triangles, dans deux cibles.
+
+Et un gain qui n'était pas cherché : une carte ne couvrant plus qu'un combattant, sa boîte se resserre.
+Au décor 3, demi-largeur **0,72 × 1,62** et **0,79 × 1,34**, contre 2,73 × 2,42 pour la carte unique du
+barrage — et le remplissage passe de 4,1 % à **9,1 %** et **10,4 %**. L'ombre y est donc plus fine.
+
+`VF3_SHADOW_MAP=<image>` écrit maintenant les deux, `build/shadow_map.png` et `build/shadow_map_2.png`.
+
+### Un avertissement sur `VF3_FORCE_STAGE`
+
+Forcer le décor en plein combat change la fiche du décor et sa géométrie, mais **ne recharge pas la mémoire
+de textures** : les arènes ainsi atteintes sortent avec des textures d'un autre décor. C'est sans effet sur la
+géométrie des ombres — ce qui est mesuré ici — mais les captures de ces décors ne sont pas représentatives.
+Pour juger une arène à l'œil, il faut l'atteindre en jouant.

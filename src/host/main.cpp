@@ -1928,9 +1928,16 @@ int main(int argc, char **argv)
 				static bool map_done = false;
 				if (const char *sm = getenv("VF3_SHADOW_MAP"); sm && !map_done && game_frame >= strtoull(sm, nullptr, 10)) {
 					map_done = true;
-					std::vector<float> dm;
-					int side = 0;
-					if (gpu3d.read_shadow_map(dm, side) && side > 0) {
+					// both of them: stages 3, 10 and 11 flatten each fighter along a light of its own, so
+					// there are two maps there and one everywhere else (r3d_gpu.cpp, fit_light)
+					for (int which = 0; which < 2; which++) {
+						std::vector<float> dm;
+						int side = 0;
+						if (!gpu3d.read_shadow_map(dm, side, which) || side <= 0) {
+							if (!which) fprintf(stderr, "shadow map at frame %llu: could not be read back\n",
+							                    (unsigned long long)game_frame);
+							continue;
+						}
 						std::vector<uint32_t> px(dm.size());
 						size_t drawn = 0;
 						for (size_t i = 0; i < dm.size(); i++) {
@@ -1939,12 +1946,13 @@ int main(int argc, char **argv)
 							const uint32_t g = uint32_t(v * 255.0f + 0.5f);
 							px[i] = 0xFF000000u | (g << 16) | (g << 8) | g;
 						}
-						write_png("build/shadow_map.png", px.data(), side, side);
-						fprintf(stderr, "shadow map at frame %llu: %zu x %zu, %zu texels drawn (%.2f %%)\n",
-						        (unsigned long long)game_frame, size_t(side), size_t(side), drawn,
+						char name[64];
+						snprintf(name, sizeof(name), "build/shadow_map%s.png", which ? "_2" : "");
+						write_png(name, px.data(), side, side);
+						fprintf(stderr, "shadow map %d at frame %llu: %zu x %zu, %zu texels drawn (%.2f %%)\n",
+						        which, (unsigned long long)game_frame, size_t(side), size_t(side), drawn,
 						        100.0 * double(drawn) / double(dm.size()));
-					} else fprintf(stderr, "shadow map at frame %llu: could not be read back\n",
-					               (unsigned long long)game_frame);
+					}
 				}
 			}
 		}
