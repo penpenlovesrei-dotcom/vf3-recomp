@@ -196,13 +196,17 @@ struct console_play
 	// THE ENDING IS ASKED FOR FROM THE TITLE SCREEN, AND NOT STRAIGHT AWAY. Measured with vf3run --shots,
 	// poking MODE_REQUEST one frame at a time, with the title screen installed at frame 1193:
 	//
-	//   asked at 1201, 1205, 1210  ->  a demonstration's stage, white, with "Old Armstone Town" over it and
-	//                                  "v.s. GRACE" under: the screen the title was replacing is still drawing
-	//   asked at 1215, 1220, 1250  ->  the staff roll, clean, over the viper
+	//   asked at 1201 to 1210  ->  black, with a bare white ground plane and a figure the size of a thumb.
+	//                              NO SCENERY IS LOADED AT ALL -- the white plane is the empty floor, not a
+	//                              stage drawn wrong -- and the "Old Armstone Town" banner and "v.s. GRACE"
+	//                              strip over it are 2D layers left behind, not part of what is being drawn.
+	//   asked at 1211           ->  the staff roll, but a piece of the viper still missing at the bottom
+	//   asked at 1212 and after ->  the whole roll, over the whole viper
 	//
-	// So the title screen takes about twenty frames to finish installing itself, and the ending asked before
-	// that lands on top of what has not finished leaving. Forty frames is the wait here: twice what was
-	// measured, and the title screen lasts about 190, so there is room.
+	// So the boundary is 1212, eighteen frames after FV2_TITLE_DSP, and 1211 is what makes it readable: late
+	// enough for the roll to come out, too early for it to come out whole. The ending asked before that gets
+	// nothing loaded to draw. Forty frames is the wait here, more than twice what was measured, and the title
+	// screen lasts about 190, so there is room.
 	//
 	// The attract loop's restart was tried first, since that is the road that TIDIES for the title screen --
 	// and it does not serve here: asked at 1206 after a restart, the same broken stage came out. The ending

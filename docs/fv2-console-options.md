@@ -652,14 +652,14 @@ fois, l'écran titre étant installé à l'image 1193 :
 
 | demandée à | ce qui sort |
 |---|---|
-| 1201 à 1210 | le décor d'une démonstration, tout blanc, « Old Armstone Town » en bandeau et « v.s. GRACE » en bas |
+| 1201 à 1210 | du noir, un plan blanc nu et une silhouette grosse comme le pouce : **aucun décor n'est chargé**. Le plan blanc est le sol vide, pas un décor mal dessiné ; le bandeau « Old Armstone Town » et la bande « v.s. GRACE » sont des couches 2D restées là |
 | 1211 | **le générique**, mais un morceau du viper manque encore en bas |
 | 1212 et au-delà | le générique entier |
 
-La frontière est donc nette : **1212**, soit dix-huit images après `FV2_TITLE_DSP`. L'écran titre met ce
-temps-là à finir de s'installer, et la fin demandée avant cela se pose sur ce qui n'a pas fini de partir.
-L'image 1211 est le pas de trop juste avant : assez tard pour que le générique sorte, trop tôt pour qu'il
-sorte complet — c'est elle qui dit que le défaut est une installation inachevée et non un état mal choisi.
+La frontière est donc nette : **1212**, soit dix-huit images après `FV2_TITLE_DSP`. Avant cela la fin n'a
+rien à dessiner : demandée trop tôt, elle arrive avant que son décor soit chargé, et l'écran reste au sol nu.
+L'image 1211 est le pas de trop juste avant — assez tard pour que le générique sorte, trop tôt pour qu'il
+sorte complet — et c'est elle qui le dit : un chargement inachevé, et non un état mal choisi.
 
 L'attente est de quarante images, soit plus du double, et l'écran titre dure environ 190, donc il y a de la
 place.
