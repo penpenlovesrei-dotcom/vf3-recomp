@@ -66,6 +66,15 @@ struct Injected {
 	std::vector<uint16_t> tex;
 	std::vector<Anime> animes;
 	std::vector<Morceau> morceaux;
+	// LA LISTE D'OBJETS DU DECOR, relevee sur Dreamcast (`objets.txt`, ecrit par
+	// tools/objets_dc.py) : trente-deux identifiants, un par entree de morceau.
+	//
+	// Pourquoi ne pas lire celle de la borne. Le champ +0x24 de la fiche de TEST
+	// est du remplissage -- sa propre table de sons relue en demi-mots -- et
+	// donne des identifiants de 160 et 161. La Dreamcast, elle, en a une vraie :
+	// `5 9 9 9 8 9 ...`, ou 9 est un terminateur qui ne dessine rien. Huit
+	// morceaux seulement sont dessines sur les trente-deux.
+	std::vector<int> objets;
 	uint32_t viewport_addr = 0x808000;
 };
 

@@ -147,6 +147,22 @@ Injected load()
 			     " (%g, %g, %g) a (%g, %g, %g)",
 			     m.id, m.lo[0], m.lo[1], m.lo[2], m.hi[0], m.hi[1], m.hi[2]);
 	}
+
+	// La liste d'objets du decor, relevee sur Dreamcast. Sans elle on lirait celle de la borne,
+	// qui pour TEST est du remplissage.
+	if (FILE *f = fopen((d + "objets.txt").c_str(), "r")) {
+		char ligne[256];
+		while (fgets(ligne, sizeof ligne, f)) {
+			if (ligne[0] == '#' || ligne[0] == '\n') continue;
+			int rang = 0, ident = 0, mat = 0;
+			if (sscanf(ligne, "%d %d %d", &rang, &ident, &mat) >= 2 && rang >= 0 && rang < 64) {
+				if (int(in.objets.size()) <= rang) in.objets.resize(size_t(rang) + 1, 0);
+				in.objets[size_t(rang)] = ident;
+			}
+		}
+		fclose(f);
+		note("objets : %zu identifiants releves sur Dreamcast", in.objets.size());
+	}
 	return in;
 }
 

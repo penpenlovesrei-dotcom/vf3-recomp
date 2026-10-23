@@ -518,10 +518,14 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					for (int i = 0; i < 32; i++) {
 						const uint32_t e = board.morceaux_base + uint32_t(i) * 0x10;
 						if (octet(e + 0xC) == 2) continue;
-						// L'identifiant de CE morceau. Celui qui n'a pas de modele -- 9, le
-						// terminateur, de loin le plus frequent -- ne dessine rien, et c'est
-						// le comportement du jeu, pas un trou dans le portage.
-						const unsigned id = (unsigned(octet(e + 0xE)) << 8) | octet(e + 0xF);
+						// L'identifiant de CE morceau, PRIS SUR LA DREAMCAST et non dans
+						// l'entree de la borne : le champ +0x24 de la fiche de TEST est du
+						// remplissage, et le jeu y lit des identifiants de 160 et 161. La
+						// liste Dreamcast vaut `5 9 9 9 8 9 ...`, ou 9 est un terminateur :
+						// huit morceaux seulement sont dessines sur les trente-deux.
+						const unsigned id = size_t(i) < in->objets.size()
+						                  ? unsigned(in->objets[size_t(i)])
+						                  : ((unsigned(octet(e + 0xE)) << 8) | octet(e + 0xF));
 						const Model *piece = id < 16 ? par_id[id] : nullptr;
 						if (piece) {
 							const uint32_t M = 0x00581A1C + uint32_t(i) * 0x1B4 + 0xD4;
