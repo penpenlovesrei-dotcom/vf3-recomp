@@ -171,7 +171,8 @@ is decided by one question -- is the game's OWN title screen on screen? -- and `
 it from the game's state machine (`docs/fv2-etats.md`), which is not the question `fv2_in_attract` answers.
 
     on the title screen   ->  the list of modes opens over that screen
-    anywhere else         ->  the game is asked for its title screen
+    elsewhere in the attract loop  ->  the game is asked for its title screen
+    while a game is running        ->  NOTHING, and the press goes to the game
 
 The decision is `console_play::take_start`, so the windowed host and `vf3run` make it the same way, and
 `vf3run --modes --console-start N` measures it without a window. What that measured, with the game's own mode
@@ -181,6 +182,24 @@ from the SEGA logo, from the demonstration, from the select screen and from insi
 **But a request does not end a game.** Read back afterwards, the entry1 task is still in its playing state
 (0x2A from a fight, 0x2D from the select screen). The title screen is back over a game that is still running,
 so `fv2_in_attract` stays false. Leaving a fight properly is the game's own road, and it is not wired.
+
+### Et ce que ça donnait à l'écran, mesuré le 2026-10-23
+
+Ce paragraphe était écrit depuis le 21 sans que personne ait regardé le résultat. Frédéric l'a trouvé en
+versus : **Start en plein combat, et l'écran titre revient déchiré.** Les couches de tuiles hachées les unes
+dans les autres, les noms du roster imprimés à travers le logo, toute l'image en rayures. Reproduit sans
+fenêtre sur la route `tools/scripts/fv2-console-vs-start.txt` — image 3001 d'un combat versus, le mode passe
+de `GAME_DSP / FIGHT_DSP` à `ADV_DSP / FV2_TITLE_DSP` et la photo est illisible.
+
+**Donc on ne demande plus rien depuis une partie.** Il n'y a pas de bon écran à demander de l'intérieur d'un
+combat : la demande déplace l'écran sans arrêter la partie, et c'est cette superposition qui déchire l'image.
+La règle devient `fv2_in_attract` — hors attraction, cette couche ne fait rien.
+
+**Et elle ne retient pas l'appui non plus** : il part au jeu comme le Start de la borne, ce qui est ce qui
+laisse un deuxième joueur s'inviter dans un match en cours. Vérifié : à la même image 3001, le combat
+continue, l'image est intacte, et le match va jusqu'à son `NEXT_PROG_SEL` et son round suivant.
+
+Ce qui reste non résolu est ce qui l'était déjà : **sortir d'un combat proprement**, par la route du jeu.
 
 The press is withheld whichever way it went, and the next one is not read until this one has been let go --
 otherwise the button that opened the list would still be down on the frame the list hands the game a Start of

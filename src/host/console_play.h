@@ -157,6 +157,19 @@ struct console_play
 		start_for what = start_for::none;
 		if (swallow_start) { if (!pressed) swallow_start = false; }   // (held back until it has been let go)
 		else if (pressed && !start_was) {
+			// A GAME IS RUNNING: THE BUTTON IS THE GAME'S, and this layer keeps its hands off it.
+			//
+			// Asking for the title screen from a select screen or a fight was always known to leave the game
+			// running underneath -- the comment below says so -- but what that looks like was never measured.
+			// Frederic found it in versus: Start during a fight, and the title screen comes back SHREDDED,
+			// its tile layers torn across each other, the roster names printed through the logo, the whole
+			// picture in stripes. Measured here the same way, frame 3001 of a versus fight.
+			//
+			// There is no good screen to ask for from inside a game, so nothing is asked: the press is not
+			// swallowed either, and goes to the game as the board's own Start, which is what lets a second
+			// player cut into a match. Leaving a fight properly is the game's own road -- finish the match
+			// off screen -- and it is still not wired (docs/fv2-etats.md).
+			if (!b.fv2_in_attract()) { start_was = pressed; return start_for::none; }
 			what = b.fv2_on_title() ? start_for::list : start_for::title;
 			// Two roads to the title screen, and they are not interchangeable. From the attract loop, the
 			// game's own: the sequencer is pushed to the end of its list and walks off it, which installs the
