@@ -208,7 +208,10 @@ struct fv2_options
 	// pad and the keyboard, never an input -- the surface's own keys are read from events, as everywhere.
 	enum { L_UP = 1, L_DOWN = 2, L_LEFT = 4, L_RIGHT = 8, L_PUNCH = 16, L_GUARD = 32, L_KICK = 64 };
 	uint8_t live[2] = { 0, 0 };
-	const player_controls *ctl = nullptr;      // the host's bindings, for naming the keys
+	player_controls *ctl = nullptr;   // the host's bindings: CONTROLLER reads them AND writes them
+	int ctl_row = 0, ctl_col = 0;     // which line and which player the cursor is on
+	bool ctl_capturing = false;       // waiting for the key or button that will be the new binding
+	bool ctl_changed = false;         // something was really rebound: the host saves and clears this
 	fv2_texte *font = nullptr;   // the sheet, loaded once by the host and shared
 
 	// The backdrop is authored 16:9 with the 4:3 picture inset in it and flat purple outside; only the inset is
@@ -372,19 +375,8 @@ struct fv2_options
 		// B goes to the chosen line first, and only then up a screen. A line that has something of its own to
 		// undo -- a track the SOUNDS page started playing -- keeps the press by saying so, and the next B
 		// leaves. Frederic asked for exactly that: the music plays on A and stops on B.
-		auto back = [&] {
-			want_sound = SND_CANCEL;
-			if (sel() >= 0 && sel() < lines()) {
-				const line &l = page(at)[size_t(sel())];
-				if (l.what == line::OWN) {
-					const own_line &o = own[at][size_t(l.which)];
-					if (o.cancel && o.cancel()) return -1;
-				}
-			}
-			if (at == SCR_OPTIONS) return CANCELLED;
-			at = SCR_OPTIONS;
-			return -1;
-		};
+		auto back = [&] { return go_back(); };
+
 		auto sideways = [&](int d) {
 			if (sel() < 0 || sel() >= lines()) return;
 			const line &l = page(at)[size_t(sel())];
@@ -402,17 +394,7 @@ struct fv2_options
 		// So the fix is not a better binding but one less thing to bind: BOTH PLAYERS ARE DRAWN AT ONCE,
 		// nothing is chosen, and the only control the screen keeps is the one it never draws -- Start, plus
 		// Backspace for a keyboard without a pad. Everything else falls through to the mirror untouched.
-		if (at == SCR_CONTROLLER) {
-			if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
-				const SDL_Scancode sc = e.key.scancode;
-				if (sc == SDL_SCANCODE_BACKSPACE || sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER
-					|| bound(C_START, sc))
-					return back();
-			} else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && e.gbutton.button == SDL_GAMEPAD_BUTTON_START) {
-				return back();
-			}
-			return -1;
-		}
+		if (at == SCR_CONTROLLER) return controller_event(e);
 		switch (e.type) {
 		case SDL_EVENT_KEY_DOWN: {
 			if (e.key.repeat) return -1;
@@ -474,9 +456,12 @@ struct fv2_options
 		// on CONTROLLER, where A and B belong to the mirror and only Start goes back.
 		const float fh = foot_cell(mid);
 		const bool mirror = at == SCR_CONTROLLER;
-		font->draw_mid(ren, mirror ? "HOLD A DIRECTION OR A BUTTON" : "USE THE DIRECTION BUTTON TO SELECT",
+		font->draw_mid(ren, mirror ? (ctl_capturing ? "PRESS THE KEY OR BUTTON TO SET"
+												   : "A : SET        START : BACK")
+								   : "USE THE DIRECTION BUTTON TO SELECT",
 					   mid.x + mid.w * 0.5f, mid.y + FOOT1 * mid.h, fh, PLAIN);
-		font->draw_mid(ren, mirror ? "START : BACK" : "A : DECIDE        B : BACK",
+		font->draw_mid(ren, mirror ? (ctl_capturing ? "BACKSPACE : CANCEL" : "AN ICON LIGHTS WHILE IT IS HELD")
+								   : "A : DECIDE        B : BACK",
 					   mid.x + mid.w * 0.5f, mid.y + FOOT2 * mid.h, fh, PLAIN);
 	}
 
@@ -653,68 +638,150 @@ private:
 		SDL_SetTextureAlphaMod(inputs, 255);
 	}
 
-	// The key a binding names, for the player to read. The pad's button is not named: SDL's names are its
-	// own ("Left Shoulder"), and this sheet has no lower case.
-	std::string key_name(int player, int action) const
+	// The eight things this page binds, in the order it lists them. The four directions carry no pad binding
+	// in this port -- the d-pad and the left stick always move, whatever is set -- so their pad cell reads as
+	// a dash unless someone binds one on purpose.
+	struct ctl_row_def { int action; const char *name; int icon; uint8_t bit; };
+	static const ctl_row_def *ctl_rows()
+	{
+		static const ctl_row_def R[8] = {
+			{ C_UP,    "UP",    IC_UP,    L_UP },     { C_DOWN,  "DOWN",  IC_DOWN,  L_DOWN },
+			{ C_LEFT,  "LEFT",  IC_LEFT,  L_LEFT },   { C_RIGHT, "RIGHT", IC_RIGHT, L_RIGHT },
+			{ C_PUNCH, "PUNCH", IC_P,     L_PUNCH },  { C_GUARD, "GUARD", IC_G,     L_GUARD },
+			{ C_KICK,  "KICK",  IC_K,     L_KICK },   { C_START, "START", -1,       0 },
+		};
+		return R;
+	}
+	static constexpr int CTL_ROWS = 8;
+
+	// What a cell says: the key, then the pad button when one is bound.
+	std::string binding_text(int player, int action) const
 	{
 		if (!ctl) return "-";
-		const SDL_Scancode sc = ctl[size_t(player)].key[action];
-		if (sc == SDL_SCANCODE_UNKNOWN) return "-";
-		const char *n = SDL_GetScancodeName(sc);
-		if (!n || !*n) return "-";
 		std::string out;
-		for (const char *q = n; *q && out.size() < 10; q++) out += char(toupper((unsigned char)*q));
-		return out;
+		const SDL_Scancode sc = ctl[size_t(player)].key[action];
+		if (sc != SDL_SCANCODE_UNKNOWN) {
+			const char *n = SDL_GetScancodeName(sc);
+			for (const char *q = n ? n : ""; *q && out.size() < 9; q++) out += char(toupper((unsigned char)*q));
+		}
+		const int pb = ctl[size_t(player)].pad[action];
+		if (pb != PAD_NONE) {
+			std::string pl = player_controls::pad_label(pb);
+			for (char &c : pl) c = char(toupper((unsigned char)c));
+			if (pl.size() > 9) pl.resize(9);
+			out += out.empty() ? pl : " / " + pl;
+		}
+		return out.empty() ? "-" : out;
 	}
 
-	// One player's half: the compass, the three buttons, and the keys they are bound to.
-	void render_player(SDL_Renderer *ren, const SDL_FRect &mid, int player, float cx)
+	int go_back()
 	{
-		const uint8_t v = live[size_t(player)];
-		const float cap = ROW_CAP * mid.h;
-		const float h = cap / fv2_texte::CAP;
-
-		char who[8];
-		snprintf(who, sizeof who, "%dP", player + 1);
-		font->draw_mid(ren, who, cx, mid.y + 0.215f * mid.h, h, CHOSEN);
-
-		// The compass: the eight arrows at their own points, on a square of three by three with nothing in
-		// the middle. The pitch is the arrow's height and a third, which keeps them clear of each other.
-		const float ih = 0.062f * mid.h, pitch = ih * 1.3f;
-		const float ccy = mid.y + 0.435f * mid.h;
-		struct place { int which; int dx, dy; uint8_t a, b; };
-		static const place P8[8] = {
-			{ IC_UP,    0, -1, L_UP,    0 },  { IC_UR,    1, -1, L_UP,   L_RIGHT },
-			{ IC_RIGHT, 1,  0, L_RIGHT, 0 },  { IC_DR,    1,  1, L_DOWN, L_RIGHT },
-			{ IC_DOWN,  0,  1, L_DOWN,  0 },  { IC_DL,   -1,  1, L_DOWN, L_LEFT },
-			{ IC_LEFT, -1,  0, L_LEFT,  0 },  { IC_UL,   -1, -1, L_UP,   L_LEFT },
-		};
-		for (const place &q : P8) {
-			// A diagonal lights on its two; a straight one lights on its own AND only while no diagonal is
-			// held, which is what tells a stick's corners apart at a glance.
-			const bool lit = q.b ? ((v & q.a) && (v & q.b)) : ((v & q.a) != 0 && (v & dirmask(q.a)) == 0);
-			draw_icon(ren, q.which, cx + float(q.dx) * pitch, ccy + float(q.dy) * pitch, ih, lit);
+		want_sound = SND_CANCEL;
+		if (sel() >= 0 && sel() < lines()) {
+			const line &l = page(at)[size_t(sel())];
+			if (l.what == line::OWN) {
+				const own_line &o = own[at][size_t(l.which)];
+				if (o.cancel && o.cancel()) return -1;
+			}
 		}
-
-		// The three buttons under the compass, each over the key it is bound to.
-		static const int B3[3] = { IC_P, IC_G, IC_K };
-		static const int ACT[3] = { C_PUNCH, C_GUARD, C_KICK };
-		static const uint8_t BIT[3] = { L_PUNCH, L_GUARD, L_KICK };
-		const float by = ccy + pitch + ih * 1.25f, bpitch = ih * 1.45f;
-		for (int i = 0; i < 3; i++) {
-			const float bx = cx + float(i - 1) * bpitch;
-			draw_icon(ren, B3[i], bx, by, ih, (v & BIT[i]) != 0);
-			font->draw_mid(ren, key_name(player, ACT[i]).c_str(), bx, by + ih * 0.72f, h * 0.58f,
-						   (v & BIT[i]) ? CHOSEN : MUTED);
-		}
+		if (at == SCR_OPTIONS) return CANCELLED;
+		at = SCR_OPTIONS;
+		return -1;
 	}
 
-	// BOTH PLAYERS AT ONCE, which is what lets the page keep nothing for itself: with no one to choose, no
-	// direction and no attack button has to be read by the menu, and all of them are free to be mirrored.
+	// ONE EVENT ON THE CONTROLLER PAGE.
+	//
+	// The first version of this screen was a mirror and nothing else, and Frederic's verdict was the right
+	// one: it checked the buttons and set nothing. An options page that cannot set anything is not one.
+	//
+	// Making it a binder also dissolves the trouble the mirror had. A mirror must leave every control free,
+	// which left it only Start; a binder WANTS to swallow whatever is pressed, because that press is the
+	// answer to its question. So: up and down walk the eight lines, left and right pass from 1P to 2P, A
+	// opens a line for a new binding, and then the very next key or pad button becomes it. Backspace calls
+	// that off, which is why Backspace is the one key that cannot be bound here.
+	int controller_event(const SDL_Event &e)
+	{
+		if (ctl_capturing) {
+			const int action = ctl_rows()[size_t(ctl_row)].action;
+			if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
+				ctl_capturing = false;
+				if (e.key.scancode == SDL_SCANCODE_BACKSPACE) { want_sound = SND_CANCEL; return -1; }
+				if (ctl) ctl[size_t(ctl_col)].key[action] = e.key.scancode;
+				ctl_changed = true;
+				want_sound = SND_VALIDATE;
+			} else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+				ctl_capturing = false;
+				if (ctl) ctl[size_t(ctl_col)].pad[action] = int(e.gbutton.button);
+				ctl_changed = true;
+				want_sound = SND_VALIDATE;
+			}
+			return -1;
+		}
+		if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
+			switch (e.key.scancode) {
+			case SDL_SCANCODE_UP: ctl_row = (ctl_row + CTL_ROWS - 1) % CTL_ROWS; want_sound = SND_MOVE; return -1;
+			case SDL_SCANCODE_DOWN: ctl_row = (ctl_row + 1) % CTL_ROWS; want_sound = SND_MOVE; return -1;
+			case SDL_SCANCODE_LEFT: case SDL_SCANCODE_RIGHT: ctl_col ^= 1; want_sound = SND_MOVE; return -1;
+			case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE:
+				ctl_capturing = true; want_sound = SND_VALIDATE; return -1;
+			case SDL_SCANCODE_BACKSPACE: return go_back();
+			default: break;
+			}
+			// The key set as Start goes back, so a player who has rebound everything else still has a way out.
+			for (int p = 0; p < 2; p++) if (ctl && ctl[p].key[C_START] == e.key.scancode) return go_back();
+			return -1;
+		}
+		if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+			switch (e.gbutton.button) {
+			case SDL_GAMEPAD_BUTTON_DPAD_UP: ctl_row = (ctl_row + CTL_ROWS - 1) % CTL_ROWS; want_sound = SND_MOVE; break;
+			case SDL_GAMEPAD_BUTTON_DPAD_DOWN: ctl_row = (ctl_row + 1) % CTL_ROWS; want_sound = SND_MOVE; break;
+			case SDL_GAMEPAD_BUTTON_DPAD_LEFT: case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: ctl_col ^= 1; want_sound = SND_MOVE; break;
+			case SDL_GAMEPAD_BUTTON_SOUTH: ctl_capturing = true; want_sound = SND_VALIDATE; break;
+			case SDL_GAMEPAD_BUTTON_START: return go_back();
+			default: break;
+			}
+			return -1;
+		}
+		if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) {
+			const int dir = e.gaxis.value < -16000 ? -1 : e.gaxis.value > 16000 ? 1 : 0;
+			if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY) {
+				if (dir && dir != stick_y) { ctl_row = (ctl_row + CTL_ROWS + dir) % CTL_ROWS; want_sound = SND_MOVE; }
+				stick_y = dir;
+			} else if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
+				if (dir && dir != stick_x) { ctl_col ^= 1; want_sound = SND_MOVE; }
+				stick_x = dir;
+			}
+		}
+		return -1;
+	}
+
+	// The grid: an icon that lights while its control is held, the action's name, and the two players'
+	// bindings side by side. The icon is the mirror the first version was made of, kept because it answers
+	// the question a binding list cannot -- "is this actually arriving?" -- and it costs no room of its own.
 	void render_controller(SDL_Renderer *ren, const SDL_FRect &mid)
 	{
-		render_player(ren, mid, 0, mid.x + 0.305f * mid.w);
-		render_player(ren, mid, 1, mid.x + 0.695f * mid.w);
+		const float cap = ROW_CAP * mid.h * 0.78f;
+		const float h = cap / fv2_texte::CAP;
+		const float top = 0.235f * mid.h, pitch = 0.066f * mid.h;
+		const float icon_x = mid.x + 0.205f * mid.w, name_x = mid.x + 0.265f * mid.w;
+		const float col_x[2] = { mid.x + 0.545f * mid.w, mid.x + 0.745f * mid.w };
+		const float ih = pitch * 0.72f;
+
+		font->draw_mid(ren, "1P", col_x[0], mid.y + top - pitch, h, ctl_col == 0 ? CHOSEN : MUTED);
+		font->draw_mid(ren, "2P", col_x[1], mid.y + top - pitch, h, ctl_col == 1 ? CHOSEN : MUTED);
+
+		for (int r = 0; r < CTL_ROWS; r++) {
+			const ctl_row_def &d = ctl_rows()[size_t(r)];
+			const float y = mid.y + top + float(r) * pitch;
+			if (d.icon >= 0)
+				draw_icon(ren, d.icon, icon_x, y + cap * 0.45f, ih, (live[size_t(ctl_col)] & d.bit) != 0);
+			font->draw(ren, d.name, name_x, y, h, r == ctl_row ? CHOSEN : PLAIN);
+			for (int c = 0; c < 2; c++) {
+				const bool here = r == ctl_row && c == ctl_col;
+				const std::string t = here && ctl_capturing ? std::string("...") : binding_text(c, d.action);
+				font->draw_mid(ren, t.c_str(), col_x[size_t(c)], y, h, here ? CHOSEN : PLAIN);
+			}
+		}
 	}
 
 	// The other three straight directions, for the test above: a straight arrow stays dark while the stick

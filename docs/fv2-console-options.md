@@ -346,7 +346,7 @@ OPTIONS
 ├─ GAME ASSIGNMENTS  → les treize réglages, puis INITIALIZE
 ├─ DISPLAY           → un écran
 ├─ SOUNDS            → un écran
-├─ CONTROLLER        → un écran : le miroir des commandes
+├─ CONTROLLER        → un écran : les affectations, avec leur témoin
 └─ STATS             → un écran
 ```
 
@@ -403,60 +403,44 @@ et passées, jamais retirées : « *une ligne avec rien à basculer est enjambé
 Les jauges sont `option_vol_up_on.png` et `option_vol_up_off.png`, vingt segments, **dans leurs couleurs à
 lui** : les teinter au jaune de la ligne choisie ne disait rien, le segment allumé étant déjà jaune.
 
-### `CONTROLLER` — le miroir
+### `CONTROLLER` — les affectations
 
-Titre et rien d'autre en août, où elle fut demandée ainsi le 18, et les trois autres portes ayant été
-remplies depuis, celle-ci l'est à son tour. **Pas avec un réglage** : les affectations de ce portage
-s'éditent dans son propre menu, qui a la place qu'il faut. Avec ce qu'un écran d'options de console a et
-qu'une liste de réglages ne peut pas avoir — **un miroir**.
+Titre et rien d'autre en août, où elle fut demandée ainsi le 18. Elle règle maintenant les commandes :
+**huit lignes** — les quatre directions, poing, garde, pied, et Start — **sur deux colonnes**, `1P` et `2P`.
+Haut et bas parcourent les lignes, gauche et droite passent d'un joueur à l'autre, `A` ouvre une ligne et
+**la touche ou le bouton suivant devient l'affectation**. Retour arrière annule, ce qui en fait la seule
+touche qu'on ne puisse pas lier ici. Start ressort.
 
-Les huit directions et les trois boutons, allumés tant qu'on les tient, **pour les deux joueurs à la fois**.
-On y voit d'un coup d'œil qu'une manette est vue, quelle touche est le poing, et si les diagonales d'un stick
-passent. Chaque bouton porte le nom de la touche qui lui est liée.
+Chaque ligne porte l'icône du jeu correspondante, **allumée tant que la commande est tenue** par le joueur de
+la colonne choisie. C'est le témoin qu'une liste d'affectations ne donne pas : on voit non seulement ce qui
+est lié, mais que ça arrive vraiment.
 
-### Un miroir ne peut rien consommer
+Les icônes viennent de `assets/menu-console/inputs.png`, 512 × 512, qui ne servait nulle part. Ses onze cases
+ont été **mesurées sur l'encre** : les flèches n'ont pas toutes la même largeur — 71 pour les droites, 59 pour
+les diagonales, 70 pour haut et bas — et les forcer dans une case unique engraisserait les diagonales. Chacune
+est dessinée à hauteur commune. L'éteint est la même image à l'alpha 70.
 
-La première version montrait un joueur et faisait passer de `1P` à `2P` avec gauche et droite. Frédéric l'a
-essayée à la manette et le défaut a sauté en moins d'une minute : **tester les directions faisait changer de
-joueur**. En regardant mieux, c'était pire — sur cette page le **poing valide** et le **pied ressort**, le
-pied étant le `B` de la manette.
+### Deux versions, et pourquoi la première ne valait rien
 
-Toutes les commandes que cette page doit refléter, le menu les lisait.
+La première version était **un miroir seul** : les huit directions et les trois boutons allumés, rien à
+régler. Elle avait déjà un défaut de commandes — Frédéric l'a essayée à la manette et a vu en moins d'une
+minute que **tester gauche et droite changeait de joueur** ; en regardant mieux, le **poing validait** et le
+**pied ressortait**, le pied étant le `B` de la manette. Toutes les commandes que la page devait refléter, le
+menu les lisait.
 
-La correction n'est pas une meilleure affectation mais **une chose de moins à affecter** : les deux joueurs
-sont dessinés ensemble, il n'y a donc plus rien à choisir, et la page ne garde que la seule commande qu'elle
-ne dessine jamais — **Start** (plus Retour arrière et Entrée pour un clavier sans manette). Tout le reste
-traverse intact jusqu'au miroir. Le pied de page le dit : `START : BACK` au lieu du `A : DECIDE  B : BACK`
-des autres écrans.
+J'ai corrigé ça en dessinant les deux joueurs ensemble, pour n'avoir plus rien à commuter et ne garder que
+Start. Techniquement juste, et **à côté de la question** : son verdict suivant a été *« en l'état cette page
+ne sert à rien, on ne peut rien régler, juste vérifier que les touches fonctionnent »*. Un miroir est un
+diagnostic, pas un écran d'options.
 
-C'est la leçon générale d'un écran-miroir : il ne peut pas partager ses commandes avec ce qu'il mesure.
+**Et en faire un éditeur dissout le problème de commandes au lieu de le contourner.** Un miroir doit laisser
+toutes les commandes libres — d'où l'impasse. Un éditeur **veut** avaler ce qu'on presse, puisque cet appui
+est la réponse à sa question. Les mêmes touches qui gênaient le miroir sont exactement ce dont la capture a
+besoin.
 
-**Une règle d'allumage, et elle est voulue** : une flèche droite reste éteinte tant qu'une diagonale est
-tenue. C'est ce qui rend un coin de stick indiscutable — sinon haut, droite et haut-droite s'allumeraient
-ensemble et on ne saurait pas ce que le jeu reçoit.
-
-Les icônes sont celles du jeu, `assets/menu-console/inputs.png`, 512 × 512, qui ne servait encore nulle part.
-Ses onze cases ont été **mesurées sur l'encre**, pas devinées sur une grille : les flèches n'ont pas toutes
-la même largeur — 71 pour les droites, 59 pour les diagonales, 70 pour haut et bas — et les forcer dans une
-case unique engraisserait les diagonales. Chacune est donc dessinée à **hauteur commune**, ce qui en fait un
-jeu cohérent. L'éteint est la même image à l'alpha 70 : une seconde planche « non pressé » serait une seconde
-chose à tenir à jour.
-
-**Le miroir ne touche à rien.** Il lit le clavier et la manette, et rien de ce que `read_inputs` possède —
-pas de front, pas de compteur de pièce, pas de raccourci — parce que celui-là est appelé une fois par image
-et doit le rester. Il n'est rempli que pendant que cet écran est à l'écran.
-
-**Vérifié** en partie cachée, avec `VF3_LIVE` qui force les bits (un événement poussé ne change pas l'état
-clavier que SDL rapporte, donc aucun autre crochet n'atteint cette page) :
-
-| forcé | ce qui s'allume |
-|---|---|
-| `25` sur `1P` = haut + droite + poing | la **diagonale haut-droite** seule, haut et droite restant éteintes ; `P` allumé, sa touche `X` en jaune |
-| `70` sur `2P` = bas + gauche + pied | la **diagonale bas-gauche**, `K` allumé sur `M` — les touches du deuxième joueur, `N` `B` `M` |
-
-Et les commandes, vérifiées dans la même passe : gauche puis droite ne changent plus rien ; `C` (pied) et `X`
-(poing) ne font plus sortir — la preuve étant qu'un `Entrée` envoyé ensuite ramène à `OPTIONS` avec
-`CONTROLLER` sélectionné, ce qui n'aurait pas pu arriver si la page avait déjà été quittée.
+**Vérifié** en partie cachée : descendre jusqu'à `PUNCH`, `A`, puis `Q` — et `p1_key_punch` passe de `X` à
+`Q` dans `settings.ini`, la ligne affichant `Q / A`. Le réglage survit au redémarrage. `VF3_LIVE=n,m` allume
+les bits de chaque joueur, un événement poussé ne changeant pas l'état clavier que SDL rapporte.
 
 ### `STATS` — le VS DIAGRAM
 

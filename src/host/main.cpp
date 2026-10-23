@@ -2968,7 +2968,7 @@ int main(int argc, char **argv)
 				  game.sound.set_volumes(1.0f, 1.0f);
 			  }, {}, 0, true, 1.2f },
 		};
-		options.ctl = cfg.ctl;   // CONTROLLER names the keys it lights
+		options.ctl = cfg.ctl;   // CONTROLLER reads the bindings and writes them
 		options.build_pages();
 	}
 	auto close_options = [&] {
@@ -3222,6 +3222,8 @@ int main(int argc, char **argv)
 				// freezes the game, but the frame that was in flight when it opened may not have finished.
 				if (game.emu_thread.joinable()) game.job_wait();
 				if (options.handle_event(e, cfg.ctl, board) == fv2_options::CANCELLED) close_options();
+				// CONTROLLER rebound something: kept like any other setting of this port.
+				if (options.ctl_changed) { options.ctl_changed = false; cfg_dirty = true; }
 				// ENDING was asked for: the page has nothing more to say and the roll is behind it.
 				if (ending_asked) { ending_asked = false; close_options(); }
 				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
