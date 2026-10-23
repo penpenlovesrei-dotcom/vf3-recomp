@@ -2273,6 +2273,9 @@ int main(int argc, char **argv)
 	// The pump's own clock, out here so that going into a surface can prime it (see there).
 	double menu_sound_owed = 0;
 	uint64_t menu_sound_last = 0;
+	// the probe's counters, reset each time a surface opens so its rate means something (see it)
+	int menu_sound_frames = 0;
+	uint64_t menu_sound_t0 = 0;
 	if (cplay.on) {
 		console_font.load(ren, find_assets(), stderr);
 		options.load(ren, find_assets(), &console_font, stderr);
@@ -3123,6 +3126,8 @@ int main(int argc, char **argv)
 				// Three frames is what the game itself keeps ahead (QUEUED).
 				menu_sound_owed = QUEUED;
 				menu_sound_last = 0;
+				menu_sound_frames = 0;
+				menu_sound_t0 = 0;
 				music_held = game.music_now;
 				if (music_held >= 0) {
 					game.stop_music();
@@ -3172,15 +3177,16 @@ int main(int argc, char **argv)
 			// (tests: VF3_MENU_SOUND=1 reports what the board made under the surface, which is the measure the
 			// plan asks for -- the peak rises on a move where it was at zero -- and the rate, which is what
 			// the undone version got wrong: 30 a second where the board wants 57.5.)
+			// (tests: the rate and the counters start again at each opening. Counted across them they said
+			// 43/s where the board makes 57.5, because the wall clock went on running while the surface was
+			// shut and the frames did not -- a figure that reads like a fault and is one of the instrument.)
 			if (static const bool say = getenv("VF3_MENU_SOUND") != nullptr; say && made) {
-				static int frames = 0;
-				static double since = 0;
-				static uint64_t t0 = 0;
 				int peak = 0;
 				for (int16_t s : game.audio) peak = std::max(peak, std::abs(int(s)));
-				frames += made;
-				if (!t0) t0 = now;
-				since = double(now - t0) / 1e9;
+				menu_sound_frames += made;
+				if (!menu_sound_t0) menu_sound_t0 = now;
+				const int frames = menu_sound_frames;
+				const double since = double(now - menu_sound_t0) / 1e9;
 				// The queue is in the line too, and it is the only thing left that can make a sound late: the
 				// board was measured making them on the key's own frame, so a beep heard late is a beep sitting
 				// behind something. frame_bytes is one sound frame's worth, so the figure reads as frames of
