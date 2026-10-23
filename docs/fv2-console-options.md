@@ -605,13 +605,13 @@ remplir ces deux cases ; d'ici là une case vide dit ce qu'on sait, un zéro pr�
 
 ### Ce que la page montre
 
-Photographiée sur la sauvegarde des trois premiers matchs (F12, qui traverse maintenant les surfaces de la
+Photographiée sur la sauvegarde des quatre matchs (F12, qui traverse maintenant les surfaces de la
 console) :
 
 ```
-CHARLIE   FIGHT 10   WIN 0   LOSE 4   DRAW 6   KO 0   JUDGE 0
-EMI       FIGHT 10   WIN 4   LOSE 0   DRAW 6   KO 3   JUDGE 1
-TOTAL           20         4        4       12      3         1
+CHARLIE   FIGHT 13   WIN 0   LOSE 7   DRAW 6   KO 0   JUDGE 0
+EMI       FIGHT 13   WIN 7   LOSE 0   DRAW 6   KO 6   JUDGE 1
+TOTAL           26         7        7       12      6         1
 ```
 
 Les lignes tombent sur les bons personnages, et le total est la somme des colonnes — chaque combat y compte
