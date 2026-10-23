@@ -388,3 +388,89 @@ l'a à 0,50 — donc chacune doit être glissée pour amener son encre au milieu
 
 `verifier-vf3.cmd` : les cinq contrôles IDENTIQUE, et 2231 images en pas à pas entre l'interpréteur et le code
 recompilé.
+
+## Journal du 2026-10-23 — la page OPTIONS finie, et la fin du jeu
+
+Tout est dans `docs/fv2-console-options.md` et `docs/fv2-etats.md` ; ceci est le fil, pas le détail.
+
+### `ROUND TIME` ne faisait rien, et pourquoi
+
+Le match **ne lit pas le réglage**. Il lit un mot déjà converti — `0x00581418` pour un joueur, `0x0058141C`
+pour deux — et cette conversion n'a lieu **qu'une fois, à l'amorçage**, valeur × 64. Écrire le réglage après
+coup ne pouvait donc pas se voir. `fv2_set_option` écrit maintenant les trois : la sauvegarde, la copie de
+travail, et le cache quand il y en a un. Deux boots comparés sur tout `0x00580000`-`0x00582000` disent
+lesquels sont cachés : les deux `ROUND TIME` et `ADVERTISE SOUND`, rien d'autre.
+
+Le round de vérification a été joué de la touche au chrono, en partie cachée : deux rounds partis de 1280
+images, les vingt secondes posées par la page.
+
+### `VS DIAGRAM` sur de vrais chiffres
+
+Le tableau lisait déjà la sauvegarde, mais sur rien : sans match mené à terme, tout est à zéro, et un tableau
+de zéros ne dit pas si on lit au bon endroit. Quatre matchs joués en caché, chacun contre la sauvegarde du
+précédent, l'ont rempli — et ont corrigé la description :
+
+- **`0x020` est `DRAW`**, que la note d'août donnait pour nulle part ;
+- le codage est **contigu** (deux octets gros-boutiens en `+0`/`+1` d'une case de huit), pas espacé comme
+  celui des réglages ;
+- `SKO 1` et `SKO 2` tombent presque sûrement dans les deux trous à `0x008` et `0x010`, et **restent vides**
+  faute d'un Super K.O. joué. Une case vide dit ce qu'on sait ; un zéro prétendrait savoir.
+
+Un match ARCADE n'écrit rien de tout ça : c'est un relevé de versus.
+
+### `DISPLAY` : les deux lignes enjambées
+
+`HD ART` est un vrai interrupteur. Aucun nouveau levier n'a été nécessaire : `load()` vide ce qu'il tient
+avant de lire, donc charger depuis nulle part repose un pack, et le rendu GPU vérifiait déjà le nombre de
+pages. `NONE` quand il n'y a rien à charger, et la ligne est alors enjambée.
+
+`ENDING` fait deux choses. `ROLL NOW` donne le générique par-dessus l'écran titre ; `AFTER A MATCH` arme la
+vraie fin. Et elle a demandé une vraie recherche.
+
+### Ce que la fin du jeu est vraiment
+
+**Les noms que Sega a laissés en clair l'ont dit.** `0x00024494` n'est pas une suite de chaînes mais une table
+de quatre-vingts pointeurs, avec les gestionnaires à `0x00024354` au même indice. Les sept sous-états de la
+fin : `ending_trans_init`, `ending_trans_wait`, `ending_replay_init`, `ending_replay_ctrl`,
+`ending_replay_next`, `ending_final_mask1`, `ending_final_mask2`. **Trois sur sept sont des replays.** Le
+générique alterne les crédits et les rediffusions des matchs gagnés ; les bandeaux « lieu » et « v.s. NOM »
+sont ceux du replay, pas des restes.
+
+Le levier : `fv2_game_NEXT_PROG_SEL` branche sur la fin quand `ADV_INFO_STATUS` porte le bit 3, « l'échelle
+est finie » — bit que les notes d'été donnaient comme lu dans le code et jamais vu posé. Mais c'est le point
+de branche de **chaque round**, donc le poser trop tôt le fait consommer par un round qui n'a rien à
+rediffuser. La règle tient en une ligne : **le poser à la première image où le mot porte déjà `0x40000000`**,
+le drapeau par lequel le jeu dit que le *match* est fini.
+
+Joué de bout en bout : liste, `OPTIONS`, `DISPLAY`, `ENDING` sur `AFTER A MATCH`, `ARCADE`, un match — et la
+fin sort par la branche du jeu, avec Cross River Damsite, la cage et les deux combattants.
+
+### Deux erreurs de méthode, la même deux fois
+
+La fin **alterne** toutes les 225 images : des crédits, puis un replay. Je m'en suis fait prendre deux fois.
+
+1. En photographiant **toujours l'image 1900** pendant que je déplaçais le moment de la demande, j'ai cru
+   trouver une frontière nette à l'image 1212 et j'ai posé une attente de quarante images dessus. Il n'y avait
+   pas de frontière : je changeais seulement la phase dans laquelle tombait l'image 1900. L'attente a été
+   retirée.
+2. En photographiant le **second** passage de replay, j'ai cru que l'hôte ne chargeait pas les décors alors
+   que `vf3run` les chargeait, et j'allais isoler le rendu processeur contre le rendu GPU. Il n'y avait aucun
+   écart : l'image de `vf3run` était le premier passage, les miennes le second — et le second est un
+   adversaire jamais affronté, donc un replay qui n'existe pas.
+
+**Sur un phénomène qui alterne, comparer à décalage égal, jamais au même numéro d'image absolu.** Et le
+balayage à l'image près (`VF3_KEYS=touche@image`, qui écrit la fenêtre trois images plus tard) est ce qui a
+fini par trancher, parce qu'il ne dépend pas de la vitesse de la machine.
+
+### Au passage
+
+`F12` traverse maintenant les surfaces de la console, et les surfaces sont dessinées en un seul endroit : une
+photo de la page est une photo de la page. Avant, elle recomposait la fenêtre sans elles et rendait l'écran
+titre.
+
+### Ce qui reste
+
+- `SKO 1` et `SKO 2` : jouer un vrai Super K.O. et voir si `0x008` et `0x010` bougent.
+- `CONTROLLER`, vide, et `BGM SET`, les packs de musique du fork.
+- Les combattants noirs du 2026-10-23 : la soumission tronquée après un redémarrage de l'attraction, cause
+  toujours ouverte.
