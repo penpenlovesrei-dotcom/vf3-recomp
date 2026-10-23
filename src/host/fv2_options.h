@@ -212,6 +212,7 @@ struct fv2_options
 	int ctl_row = 0, ctl_col = 0;     // which line and which player the cursor is on
 	bool ctl_capturing = false;       // waiting for the key or button that will be the new binding
 	bool ctl_changed = false;         // something was really rebound: the host saves and clears this
+	int ctl_testing = -1;             // -1: the grid; 0 or 1: that player's mirror, opened by its TEST line
 	fv2_texte *font = nullptr;   // the sheet, loaded once by the host and shared
 
 	// The backdrop is authored 16:9 with the 4:3 picture inset in it and flat purple outside; only the inset is
@@ -456,13 +457,14 @@ struct fv2_options
 		// on CONTROLLER, where A and B belong to the mirror and only Start goes back.
 		const float fh = foot_cell(mid);
 		const bool mirror = at == SCR_CONTROLLER;
-		font->draw_mid(ren, mirror ? (ctl_capturing ? "PRESS THE KEY OR BUTTON TO SET"
-												   : "A : SET        START : BACK")
-								   : "USE THE DIRECTION BUTTON TO SELECT",
-					   mid.x + mid.w * 0.5f, mid.y + FOOT1 * mid.h, fh, PLAIN);
-		font->draw_mid(ren, mirror ? (ctl_capturing ? "START OR BACKSPACE : CANCEL" : "AN ICON LIGHTS WHILE IT IS HELD")
-								   : "A : DECIDE        B : BACK",
-					   mid.x + mid.w * 0.5f, mid.y + FOOT2 * mid.h, fh, PLAIN);
+		const char *f1 = "USE THE DIRECTION BUTTON TO SELECT", *f2 = "A : DECIDE        B : BACK";
+		if (mirror) {
+			if (ctl_testing >= 0) { f1 = "HOLD A DIRECTION OR A BUTTON"; f2 = "START : BACK"; }
+			else if (ctl_capturing) { f1 = "PRESS THE KEY OR BUTTON TO SET"; f2 = "START OR BACKSPACE : CANCEL"; }
+			else { f1 = "A : SET        START : BACK"; f2 = "AN ICON LIGHTS WHILE IT IS HELD"; }
+		}
+		font->draw_mid(ren, f1, mid.x + mid.w * 0.5f, mid.y + FOOT1 * mid.h, fh, PLAIN);
+		font->draw_mid(ren, f2, mid.x + mid.w * 0.5f, mid.y + FOOT2 * mid.h, fh, PLAIN);
 	}
 
 private:
@@ -652,7 +654,12 @@ private:
 		};
 		return R;
 	}
-	static constexpr int CTL_ROWS = 8;
+	// Eight bindings, and a ninth line that binds nothing: TEST, one under each column, which opens that
+	// player's mirror. The editor says what is bound; the mirror says it arrives. Frederic asked for exactly
+	// that split, and it is the right one -- the first version of this page was the mirror alone, and setting
+	// nothing made it useless; the mirror hung off the editor is worth having.
+	static constexpr int CTL_TEST = 8;    // the row index of that line
+	static constexpr int CTL_ROWS = 9;
 
 	// What a cell says: the key, then the pad button when one is bound.
 	std::string binding_text(int player, int action) const
@@ -701,6 +708,17 @@ private:
 	// that off, which is why Backspace is the one key that cannot be bound here.
 	int controller_event(const SDL_Event &e)
 	{
+		// THE MIRROR TAKES ALMOST NOTHING, for the reason that sank the first version of this page: every
+		// direction and every attack button is a thing the player came here to see lit. Only Start and
+		// Backspace are kept, and they go back to the grid.
+		if (ctl_testing >= 0) {
+			const bool leave = (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat
+								&& (e.key.scancode == SDL_SCANCODE_BACKSPACE || e.key.scancode == SDL_SCANCODE_RETURN
+									|| e.key.scancode == SDL_SCANCODE_KP_ENTER))
+							   || (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && e.gbutton.button == SDL_GAMEPAD_BUTTON_START);
+			if (leave) { ctl_testing = -1; want_sound = SND_CANCEL; }
+			return -1;
+		}
 		if (ctl_capturing) {
 			const int action = ctl_rows()[size_t(ctl_row)].action;
 			if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
@@ -727,7 +745,7 @@ private:
 			case SDL_SCANCODE_DOWN: ctl_row = (ctl_row + 1) % CTL_ROWS; want_sound = SND_MOVE; return -1;
 			case SDL_SCANCODE_LEFT: case SDL_SCANCODE_RIGHT: ctl_col ^= 1; want_sound = SND_MOVE; return -1;
 			case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE:
-				ctl_capturing = true; want_sound = SND_VALIDATE; return -1;
+				ctl_act(); return -1;
 			case SDL_SCANCODE_BACKSPACE: return go_back();
 			default: break;
 			}
@@ -740,7 +758,7 @@ private:
 			case SDL_GAMEPAD_BUTTON_DPAD_UP: ctl_row = (ctl_row + CTL_ROWS - 1) % CTL_ROWS; want_sound = SND_MOVE; break;
 			case SDL_GAMEPAD_BUTTON_DPAD_DOWN: ctl_row = (ctl_row + 1) % CTL_ROWS; want_sound = SND_MOVE; break;
 			case SDL_GAMEPAD_BUTTON_DPAD_LEFT: case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: ctl_col ^= 1; want_sound = SND_MOVE; break;
-			case SDL_GAMEPAD_BUTTON_SOUTH: ctl_capturing = true; want_sound = SND_VALIDATE; break;
+			case SDL_GAMEPAD_BUTTON_SOUTH: ctl_act(); break;
 			case SDL_GAMEPAD_BUTTON_START: return go_back();
 			default: break;
 			}
@@ -759,11 +777,60 @@ private:
 		return -1;
 	}
 
+	// A opens a capture on a binding line, and the mirror on the TEST line.
+	void ctl_act()
+	{
+		if (ctl_row == CTL_TEST) ctl_testing = ctl_col;
+		else ctl_capturing = true;
+		want_sound = SND_VALIDATE;
+	}
+
+	// THE MIRROR, which this page began as: the eight directions and the three buttons of one player, lit
+	// while they are held. A diagonal lights on its two, and a straight arrow stays dark while a diagonal is
+	// held -- which is what makes a stick's corner unmistakable.
+	void render_mirror(SDL_Renderer *ren, const SDL_FRect &mid)
+	{
+		const int player = ctl_testing;
+		const uint8_t v = live[size_t(player)];
+		const float cap = ROW_CAP * mid.h;
+		const float h = cap / fv2_texte::CAP;
+
+		char who[8];
+		snprintf(who, sizeof who, "%dP", player + 1);
+		font->draw_mid(ren, who, mid.x + mid.w * 0.5f, mid.y + 0.215f * mid.h, h, CHOSEN);
+
+		const float ih = 0.075f * mid.h, pitch = ih * 1.3f;
+		const float ccx = mid.x + 0.5f * mid.w, ccy = mid.y + 0.445f * mid.h;
+		struct place { int which; int dx, dy; uint8_t a, b; };
+		static const place P8[8] = {
+			{ IC_UP,    0, -1, L_UP,    0 },  { IC_UR,    1, -1, L_UP,   L_RIGHT },
+			{ IC_RIGHT, 1,  0, L_RIGHT, 0 },  { IC_DR,    1,  1, L_DOWN, L_RIGHT },
+			{ IC_DOWN,  0,  1, L_DOWN,  0 },  { IC_DL,   -1,  1, L_DOWN, L_LEFT },
+			{ IC_LEFT, -1,  0, L_LEFT,  0 },  { IC_UL,   -1, -1, L_UP,   L_LEFT },
+		};
+		for (const place &q : P8) {
+			const bool lit = q.b ? ((v & q.a) && (v & q.b)) : ((v & q.a) != 0 && (v & dirmask(q.a)) == 0);
+			draw_icon(ren, q.which, ccx + float(q.dx) * pitch, ccy + float(q.dy) * pitch, ih, lit);
+		}
+
+		static const int B3[3] = { IC_P, IC_G, IC_K };
+		static const int ACT[3] = { C_PUNCH, C_GUARD, C_KICK };
+		static const uint8_t BIT[3] = { L_PUNCH, L_GUARD, L_KICK };
+		const float by = ccy + pitch + ih * 1.35f, bpitch = ih * 1.6f;
+		for (int i = 0; i < 3; i++) {
+			const float bx = ccx + float(i - 1) * bpitch;
+			draw_icon(ren, B3[i], bx, by, ih, (v & BIT[i]) != 0);
+			font->draw_mid(ren, binding_text(player, ACT[i]).c_str(), bx, by + ih * 0.72f, h * 0.58f,
+						   (v & BIT[i]) ? CHOSEN : MUTED);
+		}
+	}
+
 	// The grid: an icon that lights while its control is held, the action's name, and the two players'
 	// bindings side by side. The icon is the mirror the first version was made of, kept because it answers
 	// the question a binding list cannot -- "is this actually arriving?" -- and it costs no room of its own.
 	void render_controller(SDL_Renderer *ren, const SDL_FRect &mid)
 	{
+		if (ctl_testing >= 0) { render_mirror(ren, mid); return; }
 		const float cap = ROW_CAP * mid.h * 0.78f;
 		const float h = cap / fv2_texte::CAP;
 		const float top = 0.235f * mid.h, pitch = 0.066f * mid.h;
@@ -775,8 +842,15 @@ private:
 		font->draw_mid(ren, "2P", col_x[1], mid.y + top - pitch, h, ctl_col == 1 ? CHOSEN : MUTED);
 
 		for (int r = 0; r < CTL_ROWS; r++) {
-			const ctl_row_def &d = ctl_rows()[size_t(r)];
 			const float y = mid.y + top + float(r) * pitch;
+			// The TEST line binds nothing: it carries no name of its own and says TEST under each column.
+			if (r == CTL_TEST) {
+				for (int c = 0; c < 2; c++)
+					font->draw_mid(ren, "TEST", col_x[size_t(c)], y + pitch * 0.35f, h,
+								   r == ctl_row && c == ctl_col ? CHOSEN : PLAIN);
+				continue;
+			}
+			const ctl_row_def &d = ctl_rows()[size_t(r)];
 			if (d.icon >= 0)
 				draw_icon(ren, d.icon, icon_x, y + cap * 0.45f, ih, (live[size_t(ctl_col)] & d.bit) != 0);
 			font->draw(ren, d.name, name_x, y, h, r == ctl_row ? CHOSEN : PLAIN);

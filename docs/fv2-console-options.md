@@ -416,6 +416,14 @@ capture. À la manette il n'y avait donc **aucune sortie** : tout bouton liait. 
 prouvé en une session —  est passé de  à , ce qui n'est pas un réglage qu'on demande mais un
 Start pressé pour ressortir. Une capture qui avale tout enferme.
 
+**Et une neuvième ligne qui ne lie rien** : `TEST`, une sous chaque colonne, qui ouvre le **miroir** de ce
+joueur — les huit directions et les trois boutons en grand, allumés tant qu'on les tient, avec leur
+affectation sous chacun. Une diagonale s'allume seule, les deux droites restant éteintes, ce qui rend un coin
+de stick indiscutable. Start revient à la grille.
+
+Le partage est le bon, et c'est Frédéric qui l'a demandé ainsi : **la grille dit ce qui est lié, le miroir dit
+que ça arrive**. Le miroir seul ne réglait rien ; accroché à l'éditeur, il vaut d'être là.
+
 Chaque ligne porte l'icône du jeu correspondante, **allumée tant que la commande est tenue** par le joueur de
 la colonne choisie. C'est le témoin qu'une liste d'affectations ne donne pas : on voit non seulement ce qui
 est lié, mais que ça arrive vraiment.
