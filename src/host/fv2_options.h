@@ -511,11 +511,24 @@ private:
 	// A win that counts as none of the three ordinary endings and lands in one of the two gaps IS the Super
 	// K.O., and that settles the pitch for the pair.
 	//
-	// WHICH OF THE TWO NAMES IT CARRIES is the one thing still taken rather than measured. The pair is drawn
-	// as SKO 1 at 0x008 and SKO 2 at 0x010 because the other scalars follow the screen's own column order --
-	// KO before JUDGE, on screen and in memory alike -- so the two gaps between them should be SKO 1 then
-	// SKO 2. If the game ever shows a count under the other one, these two constants swap and nothing else
-	// changes.
+	// AND WHAT SEPARATES THE TWO IS NOT TWO MOVES. Read in Ghidra afterwards (docs/fv2-flux-de-match.md
+	// section 8): FUN_000701C8 is the routine that files a match, and both columns count THE SAME ending --
+	// 0x00581452 == 3 either way. What picks the column is the SUPER K.O. SETTING itself:
+	//
+	//     lbz r0, 0x554(r9)      the setting at 0x00120554
+	//     beq -> +0x04           OFF: the first counter   (backup 0x008, SKO 1 here)
+	//         -> +0x08           ON:  the second          (backup 0x010, SKO 2 here)
+	//
+	// So an operator who turns SUPER K.O. off does not stop the ending happening; he moves where it is
+	// counted. The two cells hold the Super K.O.s won with the setting off and those won with it on. Which
+	// is why Frederic's one, played with the setting on, landed in the second -- and why the order drawn
+	// here, the off one first, is the order the game's own code uses.
+	//
+	// THE COUNTERS ARE 32-BIT, lwz and stw, on a live table at 0x0011F7E0 with a stride of 0xD4 -- exactly
+	// half the backup's 0x1A8, the backup being that table spaced two useful bytes in four. In the backup
+	// each counter takes eight bytes and the value reads in the FIRST TWO, measured: 00 01 00 00 00 00 00 00
+	// for a count of one. So the 16-bit read below is right up to 65535 and would need the other half past
+	// that, which no one will reach by playing.
 	//
 	// ITS BASE HAD TO BE MOVED, and this is the one number not taken from August. Its offsets are into ITS
 	// NVRAM dump, not this port's `backup`. The two are related by a constant, found from the fingerprint it

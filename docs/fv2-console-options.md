@@ -670,10 +670,26 @@ KO, JUDGE et DRAW ne bougent pas du tout
 Une victoire qui ne compte comme aucune des trois fins ordinaires et qui tombe dans l'un des deux trous
 **est** le Super K.O. Les deux cases sont donc remplies, et le tableau n'en a plus de vide.
 
-**Lequel des deux noms elle porte** est la seule chose encore prise plutôt que mesurée. La paire est dessinée
-SKO 1 à `0x008` et SKO 2 à `0x010` parce que les autres scalaires suivent l'ordre des colonnes de l'écran —
-KO avant JUDGE, à l'écran comme en mémoire — donc les deux trous entre eux devraient être SKO 1 puis SKO 2.
-Si le jeu montre un jour un compte sous l'autre, les deux constantes s'échangent et rien d'autre ne change.
+**Et ce qui sépare les deux colonnes a été lu dans le code** (`docs/fv2-flux-de-match.md`, section 8), parce
+que Frédéric a demandé à le vérifier là plutôt qu'à l'écran. Ce n'est pas deux coups : `FUN_000701C8`, la
+routine qui range un match, compte **la même fin** dans les deux cas — `0x00581452` vaut 3 de part et d'autre
+— et ce qui décide de la colonne est **le réglage `SUPER K.O.` lui-même** :
+
+```
+lbz r0, 0x554(r9)      le reglage, a 0x00120554
+beq -> +0x04           ETEINT : la premiere colonne   (sauvegarde 0x008, SKO 1 ici)
+    -> +0x08           ALLUME : la seconde            (sauvegarde 0x010, SKO 2 ici)
+```
+
+L'exploitant qui éteint `SUPER K.O.` n'empêche donc pas la fin d'arriver : il la fait compter ailleurs. Les
+deux cases séparent **les Super K.O. gagnés réglage éteint de ceux gagnés réglage allumé**. Celui de Frédéric,
+joué réglage allumé, est tombé dans la seconde — et l'ordre dessiné ici, l'éteint d'abord, est celui du code.
+
+**Les compteurs sont des entiers 32 bits**, sur une table vivante à `0x0011F7E0` au pas de `0xD4` — soit
+exactement la moitié des `0x1A8` de la sauvegarde, celle-ci n'étant que cette table espacée à deux octets
+utiles sur quatre. Dans la sauvegarde chaque compteur prend huit octets et **la valeur se lit dans les deux
+premiers**, mesuré : `00 01 00 00 00 00 00 00` pour un compte de 1. La lecture 16 bits de la page est donc
+juste jusqu'à 65535.
 
 ### Ce que la page montre
 

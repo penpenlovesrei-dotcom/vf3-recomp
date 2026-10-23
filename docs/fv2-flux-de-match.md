@@ -757,3 +757,89 @@ variable is set and only reads RAM. Measured against the binary as it stood befo
   `0x0000ABC4` as `fn_ecrit_progression`. Measured here, it is the main mode machine's tick:
   `--watch 58FD98` reports `B_MAIN_MODE` written at `0x0000AC10` with `LR 0x00039068`, and
   `0x00039064` is `bl 0x0000ABC4`.
+
+## 8. Le relevé des combats : `FUN_000701C8`
+
+Lu dans Ghidra le 2026-10-23, à la demande de Frédéric, pour savoir ce qui sépare `SKO 1` de `SKO 2`.
+C'est **la routine qui range un match dans le tableau des statistiques**, celui que la borne montre sous
+`VS DIAGRAM` dans son menu de test et que la Dreamcast reprend en plus large.
+
+### La table vivante
+
+Trouvée par l'écran de la borne lui-même (`FUN_00070924`, qui l'affiche) :
+
+```
+base      0x0011F7E0
+pas       0xD4 par personnage        (index = fighter[0xB8], le *1P CHARA du flux)
+  +0x00   KO          entier 32 bits
+  +0x04   SKO 1       entier 32 bits
+  +0x08   SKO 2       entier 32 bits
+  +0x0C   JUDGE       entier 32 bits
+  +0x10   DRAW        entier 32 bits
+  +0x14   FIGHT[16]   un entier par adversaire, de 4 en 4
+  +0x54   WIN[16]
+  +0x94   LOSE[16]
+```
+
+**Ce sont des entiers 32 bits**, `lwz`/`stw`, et non des mots de 16 bits. Dans la sauvegarde, où tout est
+espacé à deux octets utiles sur quatre, chaque entier occupe huit octets et **la valeur se lit dans les deux
+premiers** — mesuré : `00 01 00 00 00 00 00 00` pour un compteur à 1. Une lecture 16 bits au décalage du
+champ donne donc le bon compte tant qu'il reste sous 65536 ; au-delà il faudrait la moitié haute, quatre
+octets plus loin.
+
+Les décalages de la sauvegarde sont exactement le double de ceux-ci : `0x1A8` pour `0xD4`, `0x28` pour
+`0x14`, `0xA8` pour `0x54`, `0x128` pour `0x94`, et 8 entre adversaires pour 4. La sauvegarde est une image
+espacée de cette table, rien de plus.
+
+### Ce que la routine fait
+
+```
+char0 = fighter0[0xB8]        /* [0x0007511C] + 0xB8 */
+char1 = fighter1[0xB8]        /* [0x00075120] + 0xB8 */
+
+FIGHT[char0][char1]++ ;  FIGHT[char1][char0]++        /* toujours, des deux cotes */
+
+if (0x00581453 == 2) {                                 /* match nul */
+        DRAW[char0]++ ;  DRAW[char1]++
+} else {
+        gagnant = (0x00581453 == 0) ? char0 : char1
+        perdant = l'autre
+        WIN[gagnant][perdant]++ ;  LOSE[perdant][gagnant]++
+
+        switch (0x00581452) {                          /* LE GENRE DE FIN */
+        case 2:   JUDGE[gagnant]++                     /* decision au juge */
+        case 3:   SUPER_K_O ? SKO2[gagnant]++ : SKO1[gagnant]++
+        default:  KO[gagnant]++
+        }
+}
+```
+
+### Deux variables nommées au passage
+
+| adresse | ce que c'est |
+|---|---|
+| `0x00581452` | **le genre de fin** : 2 au juge, 3 Super K.O., le reste un KO ordinaire |
+| `0x00581453` | **qui a gagné** : 0 le combattant 0, 2 un nul, sinon le combattant 1 |
+
+La section 7 donnait `0x00581454` / `0x00581455` comme « on ne sait pas lequel est quel côté » ; ces deux-ci
+sont juste avant et ne sont pas les mêmes.
+
+### Et `SKO 1` contre `SKO 2` : ce n'est pas deux coups
+
+C'est ce que la lecture apporte de plus inattendu. Les deux colonnes comptent **la même fin** — `0x00581452`
+vaut 3 dans les deux cas — et ce qui décide de la colonne est **le réglage `SUPER K.O.` lui-même** :
+
+```
+00070304  lis   r9, 0x12
+00070308  lbz   r0, 0x554(r9)      ; le reglage SUPER K.O., 0x00120554
+0007030c  cmpwi cr1, r0, 0x0
+00070310  beq   cr1, 0x00070324
+00070314  lwz   r0, 0x8(r10)       ; reglage ALLUME  -> +0x08, la seconde colonne
+0007031c  stw   r0, 0x8(r10)
+00070324  lwz   r0, 0x4(r10)       ; reglage ETEINT  -> +0x04, la premiere
+0007032c  stw   r0, 0x4(r10)
+```
+
+Autrement dit l'exploitant qui éteint `SUPER K.O.` ne supprime pas la fin : il la fait compter dans l'autre
+colonne. Les deux cases séparent donc **les Super K.O. obtenus réglage éteint de ceux obtenus réglage
+allumé**, et non deux manières de les faire.
