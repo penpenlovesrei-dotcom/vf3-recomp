@@ -23,7 +23,7 @@ rem 8 S_REPLAY et 9 SR2GAME_INIT -- short replay to game. Contrairement a
 rem SUPER_KO, qui sort vers VIC_INIT, celui-la REND LA MAIN au combat : il
 rem arrive donc en pleine manche.
 rem
-rem Ce lanceur ne pose AUCUN levier, exprès : on regarde ce que fait le jeu.
+rem Ce lanceur ne pose AUCUN levier, expres : on regarde ce que fait le jeu.
 rem Pour voir la camera sans casser d'armure, prends
 rem "SHORT REPLAY - TOWER.cmd", qui porte VF3_SREP.
 rem
