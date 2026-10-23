@@ -1528,6 +1528,44 @@ int Model3::force_stage(int n)
 				word(ram, REC + c.off) = c.devient;
 				fprintf(stderr, "decor TEST : %s, comme sur Dreamcast\n", c.quoi);
 			}
+
+		// L'ENCEINTE ELARGIE A 6,0 : UN ECART ASSUME, PAS UN CORRECTIF.
+		//
+		// Que personne ne reprenne ceci pour une fidelite retrouvee. L'enceinte est le carre de demi-cote
+		// `fiche_decor + 0x30`, que 0x0001809C recopie en 0x005813F8 et que 0x00046A60 applique au X
+		// (+0x94) et au Z (+0x9C) du combattant. La Dreamcast y met 5,0, comme la borne et comme les dix-neuf
+		// decors jouables des deux machines. Verifie quatre fois :
+		//
+		//     la fiche TEST de la DC, +0x30                              5,000
+		//     le global vivant 0x8C1E62F0, sauvegarde Flycast sur TEST   5,000
+		//     le combattant DC colle au mur, meme sauvegarde             X = -4,574
+		//     le combattant du port au meme mur                          X = -4,645
+		//
+		// Le 5,0 du port est donc deja celui de la Dreamcast, et il n'y avait rien a corriger.
+		//
+		// CE QUI MOTIVE L'ECART. Le ring VISIBLE est plus large que l'enceinte : le moteur decode les
+		// quatre panneaux de deflecteurs a x et z = +-6,0 et les faisceaux a +-5,698..6,841, pour un sol de
+		// rayon 4,781. Le combattant s'arrete donc un metre avant les deflecteurs -- 17 % trop tot a l'oeil.
+		// C'est vrai sur Dreamcast aussi, mais Frederic veut aller jusqu'aux deflecteurs ; on pose donc 6,0,
+		// le plan des panneaux.
+		//
+		// VF3_RING=<valeur> change ce nombre sans recompiler -- pour en essayer d'autres a l'ecran.
+		{
+			float bord = 6.0f;
+			if (const char *s = getenv("VF3_RING")) bord = float(atof(s));
+			uint32_t mot;
+			memcpy(&mot, &bord, 4);
+			// On n'ecrit que sur le 5,0 d'origine : avant que l'amorce ait decompresse le programme,
+			// l'enregistrement est encore a zero, et il ne faut rien poser dedans.
+			if (word(ram, REC + 0x30) == 0x40A00000 && mot != 0x40A00000) {
+				float avant;
+				const uint32_t a = word(ram, REC + 0x30);
+				memcpy(&avant, &a, 4);
+				word(ram, REC + 0x30) = mot;
+				fprintf(stderr, "decor TEST : enceinte elargie de %.2f a %.2f -- ECART ASSUME,"
+				        " la Dreamcast tient 5,00 (VF3_RING)\n", avant, bord);
+			}
+		}
 	}
 
 	// L'ARENE DE TEST, prise chez TOWER parce que c'est litteralement la meme.

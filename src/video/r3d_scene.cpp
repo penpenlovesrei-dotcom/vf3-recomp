@@ -282,6 +282,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// construise les modeles dans l'ordre de la conversion -- et c'est pour avoir suppose le
 				// contraire que le cylindre ne bougeait pas : on animait un autre objet.
 				static uint64_t tic = 0;
+				static bool echelle_dite = false;   // VF3_ECHELLE : la mesure ne se fait qu'une fois
 				tic++;
 				for (Model &m : mien.viewports[0].models) {
 					const Anime *sien = nullptr;
@@ -314,10 +315,42 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						m.matrix = t * m.matrix;
 					}
 					m.matrix = jeu.root * m.matrix;
+					// VF3_ECHELLE=1 : la taille de chaque modele injecte, TELLE QUE LE MOTEUR LA
+					// DECODE, une seule fois.
+					//
+					// La regle est donnee par la borne elle-meme : le plan bouche-trou qu'on retire
+					// plus haut fait x -6..6 et z -6..6 en espace modele, pour une arene qui vaut
+					// +-5 (fiche_decor+0x30). Notre sol doit donc sortir a un rayon de 4,78 dans la
+					// MEME echelle. S'il en sort deux fois plus grand, le combattant s'arrete au bon
+					// endroit en coordonnees mais parait bute trop tot sur un ring trop large -- et
+					// c'est la conversion qu'il faut corriger, pas la borne de collision.
+					if (!echelle_dite && getenv("VF3_ECHELLE") && m.meshes) {
+						float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+						size_t nv = 0;
+						for (const Mesh &me : *m.meshes)
+							for (const Vertex &s : me.verts) {
+								nv++;
+								for (int k = 0; k < 3; k++) {
+									lo[k] = std::min(lo[k], s.pos[k]);
+									hi[k] = std::max(hi[k], s.pos[k]);
+								}
+							}
+						float r = 0;
+						for (const Mesh &me : *m.meshes)
+							for (const Vertex &s : me.verts)
+								r = std::max(r, std::sqrt(s.pos[0] * s.pos[0] + s.pos[2] * s.pos[2]));
+						fprintf(stderr, "echelle : modele %2zu  %zu sommets  rayon %8.3f"
+						        "  x %8.3f..%8.3f  y %8.3f..%8.3f  z %8.3f..%8.3f\n",
+						        a_nous.models.size(), nv, r, lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]);
+					}
 					// Marquer les maillages : eux seuls prennent la planche injectee (r3d_raster.cpp).
 					if (m.meshes)
 						for (Mesh &me : *m.meshes) me.injected = true;
 					a_nous.models.push_back(std::move(m));
+				}
+				if (getenv("VF3_ECHELLE") && !echelle_dite) {
+					echelle_dite = true;
+					fprintf(stderr, "echelle : fin (%zu modeles)\n", a_nous.models.size());
 				}
 				injected_note(int(a_nous.models.size()));
 				// NOTRE DECOR AMPUTE : la plainte, des que le compte baisse. Le decor converti est

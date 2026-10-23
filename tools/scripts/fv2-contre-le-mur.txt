@@ -1,0 +1,11 @@
+# Pousser le combattant 1 dans le mur de GAUCHE -- l'adversaire est a sa
+# droite et le bloquait. 700 images de marche, puis vidage de la RAM.
+1900 press p1.coin
+1930 press p1.coin
+1960 press p1.start
+2100 press p1.right
+2140 press p1.right
+2220 press p1.punch
+2700 hold p1.left
+3000 shot mur
+3600 quit
