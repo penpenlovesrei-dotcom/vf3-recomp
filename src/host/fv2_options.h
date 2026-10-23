@@ -201,8 +201,15 @@ struct fv2_options
 	bool changed = false;        // something was really written, as against stepped there and back
 	SDL_Texture *bg = nullptr, *cursor = nullptr, *init = nullptr;
 	SDL_Texture *vol_on = nullptr, *vol_off = nullptr, *vs_table = nullptr;
+	SDL_Texture *inputs = nullptr;   // the game's own icons for the three buttons and the eight directions
 	int init_w = 0, init_h = 0, vs_w = 0, vs_h = 0;
 	int stick_x = 0, stick_y = 0;
+	// What CONTROLLER draws lit: the host fills this each frame while that screen is up. A mirror of the
+	// pad and the keyboard, never an input -- the surface's own keys are read from events, as everywhere.
+	enum { L_UP = 1, L_DOWN = 2, L_LEFT = 4, L_RIGHT = 8, L_PUNCH = 16, L_GUARD = 32, L_KICK = 64 };
+	uint8_t live[2] = { 0, 0 };
+	int ctl_player = 0;                        // 1P or 2P, chosen with left and right
+	const player_controls *ctl = nullptr;      // the host's bindings, for naming the keys
 	fv2_texte *font = nullptr;   // the sheet, loaded once by the host and shared
 
 	// The backdrop is authored 16:9 with the 4:3 picture inset in it and flat purple outside; only the inset is
@@ -253,6 +260,9 @@ struct fv2_options
 		one("option_vol_up_off.png", vol_off, nullptr, nullptr, 0, 0);
 		// The VS DIAGRAM's table, which STATS fills in. Its own grid is measured on the file.
 		one("vs_global.png", vs_table, &vs_w, &vs_h, 0, 0);
+		// The icons CONTROLLER lights: three buttons and eight arrows, the game's own. Its boxes below were
+		// measured on the file, so the page stays right if it is exported again at another size.
+		one("inputs.png", inputs, nullptr, nullptr, 512, 512);
 		ready = true;
 		build_pages();
 		if (log) fprintf(log, "the console's OPTIONS: its pictures and the glyph sheet are in\n");
@@ -261,7 +271,7 @@ struct fv2_options
 
 	void textures_lost(SDL_Renderer *ren, const std::string &assets)
 	{
-		for (SDL_Texture **t : { &bg, &cursor, &init, &vol_on, &vol_off, &vs_table })
+		for (SDL_Texture **t : { &bg, &cursor, &init, &vol_on, &vol_off, &vs_table, &inputs })
 			if (*t) { SDL_DestroyTexture(*t); *t = nullptr; }
 		ready = false;
 		tried = false;
@@ -377,6 +387,8 @@ struct fv2_options
 			return -1;
 		};
 		auto sideways = [&](int d) {
+			// CONTROLLER has no lines: left and right pass from one player to the other instead.
+			if (at == SCR_CONTROLLER) { ctl_player = (ctl_player + 2 + d) % 2; want_sound = SND_MOVE; return; }
 			if (sel() < 0 || sel() >= lines()) return;
 			const line &l = page(at)[size_t(sel())];
 			if (l.what == line::SETTING) { step(board, size_t(l.which), d); want_sound = SND_MOVE; }
@@ -438,6 +450,7 @@ struct fv2_options
 						 TITLE_CAP * mid.h, PLAIN);
 
 		if (at == SCR_STATS) render_stats(ren, mid, board);
+		else if (at == SCR_CONTROLLER && inputs) render_controller(ren, mid);
 		else if (page(at).empty()) render_child(ren, mid);
 		else render_lines(ren, mid, board);
 
@@ -578,6 +591,115 @@ private:
 			const std::string s = std::to_string(n[c]);
 			font->draw_mid(ren, s.c_str(), gl + (c + 0.5f) * cw, y + rh * 0.5f - h * 0.5f, h, col);
 		}
+	}
+
+	// ---- CONTROLLER: the pad, drawn with the game's own icons, lit as it is held ----
+	//
+	// August's page was its title and nothing else, asked for that way on the 2026-08-18, and the three other
+	// doors have since been filled. What belongs behind this one is not a setting -- this port's bindings are
+	// edited in its own menu, which has the room for it -- but the thing a console options screen has that a
+	// settings list cannot: A MIRROR. The eight directions and the three buttons, lit while they are held, so
+	// a player can see at a glance that a pad is seen, which button is punch, and whether a stick's diagonals
+	// come through. Left and right pass from 1P to 2P.
+	//
+	// The icons are the game's own (assets/menu-console/inputs.png, 512 x 512), and the boxes below were
+	// measured on its ink rather than guessed at a grid: the arrows are not all the same width -- 71 for the
+	// straight ones, 59 for the diagonals, 70 for up and down -- and forcing them into one box would fatten
+	// the diagonals. Each is drawn at a common HEIGHT, which is what keeps them a set.
+	struct icon { int x, y, w, h; };
+	static const icon *icons()
+	{
+		// P, G, K, then left, up-left, up, up-right, right, down-right, down, down-left
+		static const icon I[11] = {
+			{   8,   8,  80, 80 }, { 104,   8,  80, 80 }, { 200,   8,  80, 80 },
+			{   5, 105,  71, 74 }, { 116, 105,  59, 74 }, { 205, 105,  70, 74 }, { 305, 105,  59, 74 },
+			{  16, 205,  71, 74 }, { 113, 205,  59, 74 }, { 205, 205,  70, 74 }, { 308, 205,  59, 74 },
+		};
+		return I;
+	}
+	enum { IC_P, IC_G, IC_K, IC_LEFT, IC_UL, IC_UP, IC_UR, IC_RIGHT, IC_DR, IC_DOWN, IC_DL };
+
+	void draw_icon(SDL_Renderer *ren, int which, float cx, float cy, float h, bool lit)
+	{
+		const icon &i = icons()[which];
+		const float w = h * float(i.w) / float(i.h);
+		const SDL_FRect src = { float(i.x), float(i.y), float(i.w), float(i.h) };
+		const SDL_FRect dst = { cx - w * 0.5f, cy - h * 0.5f, w, h };
+		// Unlit is the same icon, dimmed: a second artwork for "not pressed" would be a second thing to keep
+		// in step with the first.
+		SDL_SetTextureAlphaMod(inputs, lit ? 255 : 70);
+		SDL_SetTextureColorMod(inputs, 255, 255, 255);
+		SDL_RenderTexture(ren, inputs, &src, &dst);
+		SDL_SetTextureAlphaMod(inputs, 255);
+	}
+
+	// The key a binding names, for the player to read. The pad's button is not named: SDL's names are its
+	// own ("Left Shoulder"), and this sheet has no lower case.
+	std::string key_name(int action) const
+	{
+		if (!ctl) return "-";
+		const SDL_Scancode sc = ctl[size_t(ctl_player)].key[action];
+		if (sc == SDL_SCANCODE_UNKNOWN) return "-";
+		const char *n = SDL_GetScancodeName(sc);
+		if (!n || !*n) return "-";
+		std::string out;
+		for (const char *q = n; *q && out.size() < 10; q++) out += char(toupper((unsigned char)*q));
+		return out;
+	}
+
+	void render_controller(SDL_Renderer *ren, const SDL_FRect &mid)
+	{
+		const uint8_t v = live[size_t(ctl_player)];
+		const float cap = ROW_CAP * mid.h;
+		const float h = cap / fv2_texte::CAP;
+
+		// Which player, with the arrows that change it -- drawn as text because this page has no cursor.
+		char who[24];
+		snprintf(who, sizeof who, "< %dP >", ctl_player + 1);
+		font->draw_mid(ren, who, mid.x + mid.w * 0.5f, mid.y + 0.205f * mid.h, h, CHOSEN);
+
+		// The compass: the eight arrows at their own points, on a square of three by three with nothing in
+		// the middle. The pitch is the arrow's height and a quarter, which keeps them clear of each other.
+		const float ih = 0.072f * mid.h, pitch = ih * 1.3f;
+		const float ccx = mid.x + 0.355f * mid.w, ccy = mid.y + 0.50f * mid.h;
+		struct place { int which; int dx, dy; uint8_t a, b; };
+		static const place P8[8] = {
+			{ IC_UP,    0, -1, L_UP,    0 },       { IC_UR,    1, -1, L_UP,   L_RIGHT },
+			{ IC_RIGHT, 1,  0, L_RIGHT, 0 },       { IC_DR,    1,  1, L_DOWN, L_RIGHT },
+			{ IC_DOWN,  0,  1, L_DOWN,  0 },       { IC_DL,   -1,  1, L_DOWN, L_LEFT },
+			{ IC_LEFT, -1,  0, L_LEFT,  0 },       { IC_UL,   -1, -1, L_UP,   L_LEFT },
+		};
+		for (const place &q : P8) {
+			// A diagonal lights on its two, a straight one on its own -- and a straight one does NOT light
+			// while a diagonal is held, which is what tells a stick's corners apart at a glance.
+			const bool two = q.b != 0;
+			const bool both = (v & q.a) && (v & q.b);
+			const bool lit = two ? both : ((v & q.a) != 0 && (v & dirmask(q.a)) == 0);
+			draw_icon(ren, q.which, ccx + float(q.dx) * pitch, ccy + float(q.dy) * pitch, ih, lit);
+		}
+
+		// The three buttons, each over the key it is bound to.
+		static const int B3[3] = { IC_P, IC_G, IC_K };
+		static const int ACT[3] = { C_PUNCH, C_GUARD, C_KICK };
+		static const uint8_t BIT[3] = { L_PUNCH, L_GUARD, L_KICK };
+		const float bx = mid.x + 0.675f * mid.w, bpitch = ih * 1.5f;
+		for (int i = 0; i < 3; i++) {
+			const float cx = bx + float(i - 1) * bpitch;
+			draw_icon(ren, B3[i], cx, ccy - ih * 0.35f, ih, (v & BIT[i]) != 0);
+			font->draw_mid(ren, key_name(ACT[i]).c_str(), cx, ccy + ih * 0.35f, h * 0.62f,
+						   (v & BIT[i]) ? CHOSEN : MUTED);
+		}
+
+		font->draw_mid(ren, "HOLD A DIRECTION OR A BUTTON", mid.x + mid.w * 0.5f, mid.y + 0.785f * mid.h,
+					   h * 0.62f, MUTED);
+	}
+
+	// The other three straight directions, for the test above: a straight arrow stays dark while the stick
+	// is in a corner, so the corner is unmistakable.
+	static uint8_t dirmask(uint8_t a)
+	{
+		if (a == L_UP || a == L_DOWN) return L_LEFT | L_RIGHT;
+		return L_UP | L_DOWN;
 	}
 
 	// A screen behind a door. Nothing is drawn but its title and the way out -- which is exactly what August's

@@ -346,7 +346,7 @@ OPTIONS
 ├─ GAME ASSIGNMENTS  → les treize réglages, puis INITIALIZE
 ├─ DISPLAY           → un écran
 ├─ SOUNDS            → un écran
-├─ CONTROLLER        → un écran (titre seul, comme en août)
+├─ CONTROLLER        → un écran : le miroir des commandes
 └─ STATS             → un écran
 ```
 
@@ -403,9 +403,39 @@ et passées, jamais retirées : « *une ligne avec rien à basculer est enjambé
 Les jauges sont `option_vol_up_on.png` et `option_vol_up_off.png`, vingt segments, **dans leurs couleurs à
 lui** : les teinter au jaune de la ligne choisie ne disait rien, le segment allumé étant déjà jaune.
 
-### `CONTROLLER`
+### `CONTROLLER` — le miroir
 
-Titre et rien d'autre, comme en août où elle fut demandée ainsi le 18. **Complète.**
+Titre et rien d'autre en août, où elle fut demandée ainsi le 18, et les trois autres portes ayant été
+remplies depuis, celle-ci l'est à son tour. **Pas avec un réglage** : les affectations de ce portage
+s'éditent dans son propre menu, qui a la place qu'il faut. Avec ce qu'un écran d'options de console a et
+qu'une liste de réglages ne peut pas avoir — **un miroir**.
+
+Les huit directions et les trois boutons, allumés tant qu'on les tient. On y voit d'un coup d'œil qu'une
+manette est vue, quelle touche est le poing, et si les diagonales d'un stick passent. Gauche et droite font
+passer de `1P` à `2P`, et chaque bouton porte le nom de la touche qui lui est liée.
+
+**Une règle d'allumage, et elle est voulue** : une flèche droite reste éteinte tant qu'une diagonale est
+tenue. C'est ce qui rend un coin de stick indiscutable — sinon haut, droite et haut-droite s'allumeraient
+ensemble et on ne saurait pas ce que le jeu reçoit.
+
+Les icônes sont celles du jeu, `assets/menu-console/inputs.png`, 512 × 512, qui ne servait encore nulle part.
+Ses onze cases ont été **mesurées sur l'encre**, pas devinées sur une grille : les flèches n'ont pas toutes
+la même largeur — 71 pour les droites, 59 pour les diagonales, 70 pour haut et bas — et les forcer dans une
+case unique engraisserait les diagonales. Chacune est donc dessinée à **hauteur commune**, ce qui en fait un
+jeu cohérent. L'éteint est la même image à l'alpha 70 : une seconde planche « non pressé » serait une seconde
+chose à tenir à jour.
+
+**Le miroir ne touche à rien.** Il lit le clavier et la manette, et rien de ce que `read_inputs` possède —
+pas de front, pas de compteur de pièce, pas de raccourci — parce que celui-là est appelé une fois par image
+et doit le rester. Il n'est rempli que pendant que cet écran est à l'écran.
+
+**Vérifié** en partie cachée, avec `VF3_LIVE` qui force les bits (un événement poussé ne change pas l'état
+clavier que SDL rapporte, donc aucun autre crochet n'atteint cette page) :
+
+| forcé | ce qui s'allume |
+|---|---|
+| `25` = haut + droite + poing, `1P` | la **diagonale haut-droite** seule, haut et droite restant éteintes ; `P` allumé, sa touche `X` en jaune |
+| `70` = bas + gauche + pied, `2P` | la **diagonale bas-gauche**, `K` allumé sur `M` — et les trois touches passées à celles du deuxième joueur, `N` `B` `M` |
 
 ### `STATS` — le VS DIAGRAM
 
@@ -413,11 +443,11 @@ Le tableau du jeu, `vs_global.png`, avec les chiffres posés dans ses cases : qu
 en jaune, et huit colonnes. La grille est relevée sur l'image par ses filets blancs — `x` de 327 à 2219 en
 huit parts égales, `y` de 99 à 1391 — ce qui retombe exactement sur la mesure d'août.
 
-Les compteurs viennent de la sauvegarde, dans le même codage espacé que les réglages, par la disposition de
-son §12 : `bloc = base + n × 0x1A8`, `KO` à +0x000, `JUDGE` à +0x018, puis `FIGHT`, `WIN` et `LOSE` par
-adversaire tous les 8 octets — **seize adversaires et non quatorze**, parce que la rangée fait 0x80 et que Del
-Sol est l'adversaire 14. `DRAW` n'est rangé nulle part : c'est `FIGHT − WIN − LOSE`, calculé au dessin, ce
-qui explique qu'aucune recherche en mémoire ne l'ait jamais trouvé.
+Les compteurs viennent de la sauvegarde, par la disposition du §12 d'août : `bloc = base + n × 0x1A8`,
+`KO` à +0x000, `JUDGE` à +0x018, puis `FIGHT`, `WIN` et `LOSE` par adversaire tous les 8 octets — **seize
+adversaires et non quatorze**, parce que la rangée fait 0x80 et que Del Sol est l'adversaire 14. Deux points
+de cette description ont été corrigés par la mesure, plus bas : **`DRAW` est rangé**, à +0x020, et le codage
+est **contigu** et non espacé.
 
 **Une seule chose a dû être retrouvée** : ses offsets sont dans *son* vidage de NVRAM, pas dans le `backup`
 de ce portage. L'empreinte qu'il imprime les relie — à son `0x188` il lit `210 210 120 120 69 180`, qui est

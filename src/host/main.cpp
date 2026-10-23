@@ -95,6 +95,8 @@
 //                        VF3_MENU_KEYS goes off in the first second. Seconds, because the clock is the only
 //                        thing still moving. Use with VF3_QUIT_AFTER_S.
 //   VF3_SHOT_AT=n,...    the window as drawn at these passes of the loop, to build/host_window_at_N.png
+//   VF3_LIVE=n           the console CONTROLLER page lit as if those bits were held (1 up, 2 down, 4 left,
+//                        8 right, 16 punch, 32 guard, 64 kick): pushed key events cannot reach it
 //   VF3_OPTION_LOG=1     what the console OPTIONS page writes: the setting, and the cooked copy it keeps in step
 //   VF3_TIMER_LOG=1      the match's own clock: the cooked word a round starts from, and the seconds left
 //                        (model3.h, fv2_recook_option). The one way to see the page write rather than trust it.
@@ -385,6 +387,48 @@ hotkey read_inputs(m3::Controls &c, SDL_Gamepad *pads[2], pad_state ps[2], const
 		}
 	}
 	return hk;
+}
+
+// What the console's CONTROLLER page lights: the eight directions and the three buttons as they are held,
+// right now. It is a MIRROR and not an input, so it reads and nothing else -- no edges, no coin timer, no
+// hotkeys, none of the state read_inputs owns, which is called once a frame and must stay that way. The
+// pairs light both of their buttons, as they hand the game both.
+uint8_t live_controls(int p, SDL_Gamepad *gp, const player_controls ctl[2])
+{
+	const bool *ks = SDL_GetKeyboardState(nullptr);
+	uint8_t v = 0;
+	auto hit = [&](int action, uint8_t bits) {
+		const SDL_Scancode sc = ctl[p].key[action];
+		if (sc != SDL_SCANCODE_UNKNOWN && ks[sc]) v |= bits;
+		if (gp && player_controls::pad_down(gp, ctl[p].pad[action])) v |= bits;
+	};
+	hit(C_UP, fv2_options::L_UP);
+	hit(C_DOWN, fv2_options::L_DOWN);
+	hit(C_LEFT, fv2_options::L_LEFT);
+	hit(C_RIGHT, fv2_options::L_RIGHT);
+	hit(C_GUARD, fv2_options::L_GUARD);
+	hit(C_PUNCH, fv2_options::L_PUNCH);
+	hit(C_KICK, fv2_options::L_KICK);
+	hit(C_GUARD_PUNCH, fv2_options::L_GUARD | fv2_options::L_PUNCH);
+	hit(C_PUNCH_KICK, fv2_options::L_PUNCH | fv2_options::L_KICK);
+	hit(C_GUARD_KICK, fv2_options::L_GUARD | fv2_options::L_KICK);
+	hit(C_ALL_THREE, fv2_options::L_GUARD | fv2_options::L_PUNCH | fv2_options::L_KICK);
+	// The d-pad and the left stick always move, whatever the bindings say -- the same rule read_inputs follows.
+	if (gp) {
+		auto btn = [&](SDL_GamepadButton x) { return SDL_GetGamepadButton(gp, x); };
+		if (btn(SDL_GAMEPAD_BUTTON_DPAD_UP)) v |= fv2_options::L_UP;
+		if (btn(SDL_GAMEPAD_BUTTON_DPAD_DOWN)) v |= fv2_options::L_DOWN;
+		if (btn(SDL_GAMEPAD_BUTTON_DPAD_LEFT)) v |= fv2_options::L_LEFT;
+		if (btn(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) v |= fv2_options::L_RIGHT;
+		const int lx = SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_LEFTX);
+		const int ly = SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_LEFTY);
+		const int dead = 12000;
+		if (lx < -dead) v |= fv2_options::L_LEFT;
+		if (lx > dead) v |= fv2_options::L_RIGHT;
+		if (ly < -dead) v |= fv2_options::L_UP;
+		if (ly > dead) v |= fv2_options::L_DOWN;
+	}
+	return v;
 }
 
 // A save is used only if it's the right size.
@@ -2924,6 +2968,7 @@ int main(int argc, char **argv)
 				  game.sound.set_volumes(1.0f, 1.0f);
 			  }, {}, 0, true, 1.2f },
 		};
+		options.ctl = cfg.ctl;   // CONTROLLER names the keys it lights
 		options.build_pages();
 	}
 	auto close_options = [&] {
@@ -3709,6 +3754,14 @@ int main(int argc, char **argv)
 					}
 				}
 			}
+		}
+		// The CONTROLLER page's mirror, filled while that screen is up and not otherwise: it reads the pads
+		// every pass, and there is no reason to do it behind a page that does not show it.
+		if (options.shown && options.at == fv2_options::SCR_CONTROLLER) {
+			for (int p = 0; p < 2; p++) options.live[p] = live_controls(p, pads[p], cfg.ctl);
+			// (tests: VF3_LIVE=n lights that set of bits on the player shown. A pushed key event does not
+			// change the keyboard state SDL reports, so the test hooks cannot reach this page any other way.)
+			if (const char *lv = getenv("VF3_LIVE")) options.live[options.ctl_player] = uint8_t(atoi(lv));
 		}
 		compose();
 		draw_console(board);
