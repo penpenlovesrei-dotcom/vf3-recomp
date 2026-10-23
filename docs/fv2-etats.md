@@ -370,3 +370,45 @@ largeur suit les proportions de l'image.
   le voyage attendait un écran titre qui ne viendrait jamais.
 - **Deux changements livrés d'un coup**, sur un mécanisme dont le document disait lui-même qu'il n'avait jamais
   été essayé. Frédéric n'avait aucun moyen de savoir lequel des deux cassait quoi, et il a fallu tout défaire.
+
+
+## Le replay qui suit Start : les combattants sont sombres — 2026-10-23
+
+Rapporté par Frédéric : « *à la relance du replay, l'éclairage des personnages est anormalement sombre* ».
+Reproduit sans fenêtre, avec témoin, et **isolé**.
+
+### Ce n'est pas un manque de modèles
+
+Le journal des images le dit tout de suite : le replay d'après dessine **457 à 532 modèles dans 16 à 18 vues**,
+autant que le témoin. Rien ne manque — tout est là et mal éclairé. C'est un défaut distinct de celui des
+modèles restés sur l'écran titre, même s'il vient du même geste.
+
+### Ce n'est pas le menu non plus
+
+Trois captures, toutes dans le sous-état `0A` :
+
+| | comment on y arrive | les combattants |
+|---|---|---|
+| témoin | le jeu seul, replay naturel à l'image 6284 | **éclairés** |
+| essai | Start coupe la démo, **la liste s'ouvre et on en ressort par B** | **sombres** |
+| essai sans liste | Start coupe la démo, **et rien d'autre** | **sombres** |
+
+La troisième est celle qui tranche : sans qu'aucun menu se soit ouvert, le défaut est là. **La cause est le
+redémarrage de la boucle d'attraction par Start**, pas la surface de la console. Le menu n'y est pour rien.
+
+Les décors, eux, sont normalement éclairés dans les trois. Ce sont **les modèles des combattants seuls** qui
+sont sombres — des silhouettes bleutées.
+
+### Où ça rejoint ce qui était déjà écrit
+
+Le § « Ce que ça donne, et où ça bute » dit que la route propre range tout depuis la démonstration « mais pas
+depuis le replay », où le jeu rallume les trois tâches qu'on avait éteintes, et conclut qu'il faut trouver
+**ce que le jeu exécute quand son séquenceur installe l'écran titre**. Ce défaut-ci ajoute un symptôme à cette
+même question : ce n'est pas seulement ce qui reste à l'écran, c'est aussi **une lumière qui n'est pas
+reposée**.
+
+### La mesure suivante
+
+Trouver qui écrit les paramètres d'éclairage des modèles, et comparer ce qu'ils valent dans le témoin et dans
+l'essai à la même image du replay. La reproduction tient sans fenêtre, donc elle ne coûte rien à répéter :
+`tools/scripts` n'a pas encore ces trois scénarios, ils sont dans le bac à sable de la session.
