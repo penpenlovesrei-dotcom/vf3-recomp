@@ -1557,6 +1557,16 @@ int Model3::force_stage(int n)
 		// CE QUE FAIT LA DREAMCAST. Son champ +0x20 porte des pointeurs la ou la borne porte des
 		// octets, mais la liste de son TEST est identique a celle de son TOWER, sur les 21 entrees.
 		// On recopie donc le meme choix : le +0x20 de TEST pointe celui de TOWER.
+		//
+		// ET CE N'EST PAS EMPRUNTER LES TACHES DE TOWER. Comparees sur les douze decors jouables,
+		// les listes ont un NOYAU COMMUN de vingt et une taches -- et ce noyau est exactement la
+		// liste de TOWER :
+		//
+		//     1 2 3 4 5 6 8 9 11 13 14 16 18 19 21 28 29 30 31 32 43
+		//
+		// TOWER et BUILDING n'ajoutent rien ; tous les autres empilent les leurs par-dessus
+		// (WESTERN 7, 20, 42 ; ROOM_00 12, 20 ; DAM 24, 26 ; FURNACE 10, 23 ...). Donner celle de
+		// TOWER a TEST, c'est donc lui donner le generique et rien d'autre.
 		{
 			constexpr uint32_t CHAMP = REC + 0x20;
 			constexpr uint32_t VIDE = 0x001155CE;   // la liste vide de TEST
