@@ -529,3 +529,37 @@ accrochés dessus.
 **À vérifier avant d'y croire** : compter tous les transferts d'une image et voir si l'un couvre le mot 580.
 La même vérification sur le témoin dira si ce nœud y est écrit ou s'il y est aussi un reste — auquel cas
 l'explication est ailleurs. Rien ne doit être corrigé avant cette réponse.
+
+
+### Le quatrième maillon, fermé : la liste d'affichage est tronquée
+
+`VF3_DMA_LOG=1` date chaque transfert par son image. Tous ceux qui vont dans la RAM de culling (`0x8E...`),
+pour une image de replay de chaque côté :
+
+```
+TEMOIN, replay naturel, image 6400        ESSAI, replay apres Start, image 1800
+  8E000000,  870 mots                       8E000000,  464 mots
+  8E00AA00,   24 mots                       8E00AA00,   24 mots
+  8E00B030, 3480 mots                       8E0136A0,    8 mots
+  8E002D00, 3240 mots
+  8E0136A0,  300 mots
+  ---------------------                     ---------------------
+  7 914 mots en tout                          496 mots en tout
+```
+
+**Le nœud des combattants est le mot 580.** Le témoin en écrit 870 d'un coup : il est dedans, réécrit à chaque
+image. L'essai en écrit 464 : il est **dehors**, et rien d'autre ne l'atteint. Ce que la scène y lit est donc
+ce qu'une scène précédente y a laissé — dont un soleil qui éclaire par en dessous.
+
+Et il ne manque pas qu'un peu : l'essai écrit **496 mots** là où le témoin en écrit **7 914**, et les deux gros
+transferts du témoin (`8E00B030` et `8E002D00`) n'ont aucun équivalent. Pourtant la scène de l'essai cite
+**17 vues** et dessine **457 à 532 modèles**, autant que le témoin : elle a donc besoin de ces nœuds et lit
+au-delà de ce que le jeu a écrit.
+
+**C'est la même cause que les modèles restés sur l'écran titre**, consignés le 2026-10-21 : après le
+redémarrage de la boucle, le jeu n'écrit plus sa liste en entier, et ce qui traîne est lu comme s'il l'avait
+écrit. Un seul défaut, deux symptômes.
+
+**Ce qu'il ne faut pas faire** : rapiécer le soleil. La valeur lue n'est pas fausse, elle est périmée. La
+sortie est celle que ce fichier cherche depuis le 2026-10-21 — ce que le jeu exécute quand son séquenceur
+installe l'écran titre, et qui remet son émetteur de liste en état.

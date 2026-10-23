@@ -1012,7 +1012,8 @@ void Model3::r3d_dma_write32(unsigned reg, uint32_t data)
 		// is filled by THIS, not by the CPU's stores, which is why --watch on 0x8E... reports nothing: a
 		// viewport node's words have to be followed back to the main RAM they were copied from.)
 		if (static const bool say = getenv("VF3_DMA_LOG") != nullptr; say && dma_len)
-			fprintf(stderr, "r3d dma: %08X -> %08X, %u words\n", dma_src, dma_dst, dma_len);
+			fprintf(stderr, "r3d dma: frame %llu  %08X -> %08X, %u words\n",
+					(unsigned long long)frame, dma_src, dma_dst, dma_len);
 		while (dma_len) {
 			uint32_t v = read32(dma_src);
 			write32(dma_dst, (dma_config & 0x80) ? bswap32(v) : v);
