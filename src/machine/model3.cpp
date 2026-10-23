@@ -1851,6 +1851,7 @@ void Model3::murs_note()
 		}
 		if (bon) {
 			trouve = true;
+			morceaux_base = a;
 			fprintf(stderr, "morceaux de paroi : base %08x  pas %.4f  demi-cote %.3f\n", a, pas, D);
 			for (int i = 0; i < 4; i++)
 				fprintf(stderr, "   %2d  x %8.3f  y %8.3f  z %8.3f  etat %u  id %u\n", i,

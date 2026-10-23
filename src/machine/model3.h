@@ -200,6 +200,12 @@ public:
 	int force_stage(int n);   // VF3_STAGE : patche le tireur de decor (model3.cpp)
 	void stage_note();        // VF3_STAGE_LOG : dit le decor courant quand il change
 	void murs_note();         // dit le masque des murs quand il change (model3.cpp)
+	// Les trente-deux morceaux d'une paroi qui casse : leur base, trouvee par la FORME des entrees
+	// des que le masque cesse d'etre nul (model3.cpp, murs_note). Zero tant qu'aucune paroi n'est
+	// tombee. Une entree fait 0x10 octets : x, y, z, puis l'etat en +0xC et l'identifiant en +0xE.
+	// Mesure du 23 octobre sur TOWER : base 0x0070F014, soit [0x00075124] + 0xB14, pas 0,3125 pour
+	// un demi-cote de 5,0, et les identifiants dans l'ordre de la liste d'objets du decor.
+	uint32_t morceaux_base = 0;
 	void pmg_note();          // dit l'assertion du gestionnaire de polygones quand elle saute (model3.cpp)
 	void hang_watch();        // dit ou le PowerPC tourne en rond quand le jeu gele (model3.cpp)
 	void hang_sample();       // appele apres chaque tranche d'execution

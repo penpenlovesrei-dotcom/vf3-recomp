@@ -409,6 +409,54 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					echelle_dite = true;
 					fprintf(stderr, "echelle : fin (%zu modeles)\n", a_nous.models.size());
 				}
+				// LES MORCEAUX DE LA PAROI TOMBEE, POSES SUR LES POSITIONS DU JEU.
+				//
+				// La borne aligne trente-deux morceaux le long de la paroi (0x00027C04) et les anime
+				// par image (0x000280AC). Leurs entrees font 0x10 octets -- x, y, z, l'etat en +0xC,
+				// l'identifiant en +0xE -- et leur base est trouvee par la forme des entrees, faute
+				// de pouvoir lire r12 (model3.cpp, murs_note). On ne simule rien : on lit SES
+				// positions et on y pose notre geometrie.
+				//
+				// Quelle geometrie. On n'a pas de modele d'eclat : on reprend un panneau de
+				// deflecteur, reduit au quart par sa matrice. C'est un premier jet assume, pas la
+				// forme d'origine -- la Dreamcast a ses propres morceaux et ils restent a extraire.
+				if (board.morceaux_base && !a_nous.models.empty()) {
+					const Model *piece = nullptr;
+					for (const Model &m : a_nous.models) {
+						if (!m.meshes) continue;
+						float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+						for (const Mesh &me : *m.meshes)
+							for (const Vertex &s : me.verts)
+								for (int k = 0; k < 3; k++) {
+									lo[k] = std::min(lo[k], s.pos[k]);
+									hi[k] = std::max(hi[k], s.pos[k]);
+								}
+						// un panneau : mince sur un axe, large sur l'autre, et pas l'enveloppe
+						const float ex = hi[0] - lo[0], ez = hi[2] - lo[2];
+						if (ex < 1.0f && ez > 4.0f && ez < 40.0f) { piece = &m; break; }
+					}
+					auto octet = [&](uint32_t a) {
+						return a < board.ram.size() ? board.ram[a ^ 3] : uint8_t(0);
+					};
+					auto flot = [&](uint32_t a) {
+						uint32_t w = 0;
+						for (int k = 0; k < 4; k++) w = (w << 8) | octet(a + uint32_t(k));
+						float f; memcpy(&f, &w, 4); return f;
+					};
+					if (piece)
+						for (int i = 0; i < 32; i++) {
+							const uint32_t e = board.morceaux_base + uint32_t(i) * 0x10;
+							if (octet(e + 0xC) == 2) continue;
+							Model c = *piece;
+							Mat4 t = Mat4::identity();
+							for (int k = 0; k < 3; k++) t.m[k * 5] = 0.25f;
+							t.m[12] = flot(e + 0) ; t.m[13] = flot(e + 4); t.m[14] = flot(e + 8);
+							c.matrix = jeu.root * t;
+							if (c.meshes)
+								for (Mesh &me : *c.meshes) me.injected = true;
+							a_nous.models.push_back(std::move(c));
+						}
+				}
 				injected_note(int(a_nous.models.size()));
 				// NOTRE DECOR AMPUTE : la plainte, des que le compte baisse. Le decor converti est
 				// statique, donc son nombre de modeles ne PEUT pas varier d'une image a l'autre --
