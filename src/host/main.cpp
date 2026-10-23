@@ -3761,7 +3761,12 @@ int main(int argc, char **argv)
 			for (int p = 0; p < 2; p++) options.live[p] = live_controls(p, pads[p], cfg.ctl);
 			// (tests: VF3_LIVE=n lights that set of bits on the player shown. A pushed key event does not
 			// change the keyboard state SDL reports, so the test hooks cannot reach this page any other way.)
-			if (const char *lv = getenv("VF3_LIVE")) options.live[options.ctl_player] = uint8_t(atoi(lv));
+			// (tests: VF3_LIVE=n[,m] lights those bits on 1P and 2P.)
+			if (const char *lv = getenv("VF3_LIVE")) {
+				options.live[0] = uint8_t(atoi(lv));
+				const char *c = strchr(lv, 44);
+				if (c) options.live[1] = uint8_t(atoi(c + 1));
+			}
 		}
 		compose();
 		draw_console(board);

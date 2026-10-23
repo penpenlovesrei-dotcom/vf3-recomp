@@ -208,7 +208,6 @@ struct fv2_options
 	// pad and the keyboard, never an input -- the surface's own keys are read from events, as everywhere.
 	enum { L_UP = 1, L_DOWN = 2, L_LEFT = 4, L_RIGHT = 8, L_PUNCH = 16, L_GUARD = 32, L_KICK = 64 };
 	uint8_t live[2] = { 0, 0 };
-	int ctl_player = 0;                        // 1P or 2P, chosen with left and right
 	const player_controls *ctl = nullptr;      // the host's bindings, for naming the keys
 	fv2_texte *font = nullptr;   // the sheet, loaded once by the host and shared
 
@@ -387,8 +386,6 @@ struct fv2_options
 			return -1;
 		};
 		auto sideways = [&](int d) {
-			// CONTROLLER has no lines: left and right pass from one player to the other instead.
-			if (at == SCR_CONTROLLER) { ctl_player = (ctl_player + 2 + d) % 2; want_sound = SND_MOVE; return; }
 			if (sel() < 0 || sel() >= lines()) return;
 			const line &l = page(at)[size_t(sel())];
 			if (l.what == line::SETTING) { step(board, size_t(l.which), d); want_sound = SND_MOVE; }
@@ -397,6 +394,25 @@ struct fv2_options
 				want_sound = SND_MOVE;
 			}
 		};
+		// CONTROLLER IS A MIRROR, SO IT TAKES ALMOST NOTHING. Every direction and every attack button is a
+		// thing the player came here to see lit, and the menu's own reading of them made the page useless:
+		// left and right passed from one player to the other, punch counted as A, and kick -- which is the
+		// pad's B -- walked straight out. Frederic hit the first of those within a minute.
+		//
+		// So the fix is not a better binding but one less thing to bind: BOTH PLAYERS ARE DRAWN AT ONCE,
+		// nothing is chosen, and the only control the screen keeps is the one it never draws -- Start, plus
+		// Backspace for a keyboard without a pad. Everything else falls through to the mirror untouched.
+		if (at == SCR_CONTROLLER) {
+			if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
+				const SDL_Scancode sc = e.key.scancode;
+				if (sc == SDL_SCANCODE_BACKSPACE || sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER
+					|| bound(C_START, sc))
+					return back();
+			} else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && e.gbutton.button == SDL_GAMEPAD_BUTTON_START) {
+				return back();
+			}
+			return -1;
+		}
 		switch (e.type) {
 		case SDL_EVENT_KEY_DOWN: {
 			if (e.key.repeat) return -1;
@@ -454,10 +470,14 @@ struct fv2_options
 		else if (page(at).empty()) render_child(ren, mid);
 		else render_lines(ren, mid, board);
 
-		// The foot the Dreamcast puts on this very screen, in three lines there and two here.
+		// The foot the Dreamcast puts on this very screen, in three lines there and two here -- and its own
+		// on CONTROLLER, where A and B belong to the mirror and only Start goes back.
 		const float fh = foot_cell(mid);
-		font->draw_mid(ren, "USE THE DIRECTION BUTTON TO SELECT", mid.x + mid.w * 0.5f, mid.y + FOOT1 * mid.h, fh, PLAIN);
-		font->draw_mid(ren, "A : DECIDE        B : BACK", mid.x + mid.w * 0.5f, mid.y + FOOT2 * mid.h, fh, PLAIN);
+		const bool mirror = at == SCR_CONTROLLER;
+		font->draw_mid(ren, mirror ? "HOLD A DIRECTION OR A BUTTON" : "USE THE DIRECTION BUTTON TO SELECT",
+					   mid.x + mid.w * 0.5f, mid.y + FOOT1 * mid.h, fh, PLAIN);
+		font->draw_mid(ren, mirror ? "START : BACK" : "A : DECIDE        B : BACK",
+					   mid.x + mid.w * 0.5f, mid.y + FOOT2 * mid.h, fh, PLAIN);
 	}
 
 private:
@@ -635,10 +655,10 @@ private:
 
 	// The key a binding names, for the player to read. The pad's button is not named: SDL's names are its
 	// own ("Left Shoulder"), and this sheet has no lower case.
-	std::string key_name(int action) const
+	std::string key_name(int player, int action) const
 	{
 		if (!ctl) return "-";
-		const SDL_Scancode sc = ctl[size_t(ctl_player)].key[action];
+		const SDL_Scancode sc = ctl[size_t(player)].key[action];
 		if (sc == SDL_SCANCODE_UNKNOWN) return "-";
 		const char *n = SDL_GetScancodeName(sc);
 		if (!n || !*n) return "-";
@@ -647,51 +667,54 @@ private:
 		return out;
 	}
 
-	void render_controller(SDL_Renderer *ren, const SDL_FRect &mid)
+	// One player's half: the compass, the three buttons, and the keys they are bound to.
+	void render_player(SDL_Renderer *ren, const SDL_FRect &mid, int player, float cx)
 	{
-		const uint8_t v = live[size_t(ctl_player)];
+		const uint8_t v = live[size_t(player)];
 		const float cap = ROW_CAP * mid.h;
 		const float h = cap / fv2_texte::CAP;
 
-		// Which player, with the arrows that change it -- drawn as text because this page has no cursor.
-		char who[24];
-		snprintf(who, sizeof who, "< %dP >", ctl_player + 1);
-		font->draw_mid(ren, who, mid.x + mid.w * 0.5f, mid.y + 0.205f * mid.h, h, CHOSEN);
+		char who[8];
+		snprintf(who, sizeof who, "%dP", player + 1);
+		font->draw_mid(ren, who, cx, mid.y + 0.215f * mid.h, h, CHOSEN);
 
 		// The compass: the eight arrows at their own points, on a square of three by three with nothing in
-		// the middle. The pitch is the arrow's height and a quarter, which keeps them clear of each other.
-		const float ih = 0.072f * mid.h, pitch = ih * 1.3f;
-		const float ccx = mid.x + 0.355f * mid.w, ccy = mid.y + 0.50f * mid.h;
+		// the middle. The pitch is the arrow's height and a third, which keeps them clear of each other.
+		const float ih = 0.062f * mid.h, pitch = ih * 1.3f;
+		const float ccy = mid.y + 0.435f * mid.h;
 		struct place { int which; int dx, dy; uint8_t a, b; };
 		static const place P8[8] = {
-			{ IC_UP,    0, -1, L_UP,    0 },       { IC_UR,    1, -1, L_UP,   L_RIGHT },
-			{ IC_RIGHT, 1,  0, L_RIGHT, 0 },       { IC_DR,    1,  1, L_DOWN, L_RIGHT },
-			{ IC_DOWN,  0,  1, L_DOWN,  0 },       { IC_DL,   -1,  1, L_DOWN, L_LEFT },
-			{ IC_LEFT, -1,  0, L_LEFT,  0 },       { IC_UL,   -1, -1, L_UP,   L_LEFT },
+			{ IC_UP,    0, -1, L_UP,    0 },  { IC_UR,    1, -1, L_UP,   L_RIGHT },
+			{ IC_RIGHT, 1,  0, L_RIGHT, 0 },  { IC_DR,    1,  1, L_DOWN, L_RIGHT },
+			{ IC_DOWN,  0,  1, L_DOWN,  0 },  { IC_DL,   -1,  1, L_DOWN, L_LEFT },
+			{ IC_LEFT, -1,  0, L_LEFT,  0 },  { IC_UL,   -1, -1, L_UP,   L_LEFT },
 		};
 		for (const place &q : P8) {
-			// A diagonal lights on its two, a straight one on its own -- and a straight one does NOT light
-			// while a diagonal is held, which is what tells a stick's corners apart at a glance.
-			const bool two = q.b != 0;
-			const bool both = (v & q.a) && (v & q.b);
-			const bool lit = two ? both : ((v & q.a) != 0 && (v & dirmask(q.a)) == 0);
-			draw_icon(ren, q.which, ccx + float(q.dx) * pitch, ccy + float(q.dy) * pitch, ih, lit);
+			// A diagonal lights on its two; a straight one lights on its own AND only while no diagonal is
+			// held, which is what tells a stick's corners apart at a glance.
+			const bool lit = q.b ? ((v & q.a) && (v & q.b)) : ((v & q.a) != 0 && (v & dirmask(q.a)) == 0);
+			draw_icon(ren, q.which, cx + float(q.dx) * pitch, ccy + float(q.dy) * pitch, ih, lit);
 		}
 
-		// The three buttons, each over the key it is bound to.
+		// The three buttons under the compass, each over the key it is bound to.
 		static const int B3[3] = { IC_P, IC_G, IC_K };
 		static const int ACT[3] = { C_PUNCH, C_GUARD, C_KICK };
 		static const uint8_t BIT[3] = { L_PUNCH, L_GUARD, L_KICK };
-		const float bx = mid.x + 0.675f * mid.w, bpitch = ih * 1.5f;
+		const float by = ccy + pitch + ih * 1.25f, bpitch = ih * 1.45f;
 		for (int i = 0; i < 3; i++) {
-			const float cx = bx + float(i - 1) * bpitch;
-			draw_icon(ren, B3[i], cx, ccy - ih * 0.35f, ih, (v & BIT[i]) != 0);
-			font->draw_mid(ren, key_name(ACT[i]).c_str(), cx, ccy + ih * 0.35f, h * 0.62f,
+			const float bx = cx + float(i - 1) * bpitch;
+			draw_icon(ren, B3[i], bx, by, ih, (v & BIT[i]) != 0);
+			font->draw_mid(ren, key_name(player, ACT[i]).c_str(), bx, by + ih * 0.72f, h * 0.58f,
 						   (v & BIT[i]) ? CHOSEN : MUTED);
 		}
+	}
 
-		font->draw_mid(ren, "HOLD A DIRECTION OR A BUTTON", mid.x + mid.w * 0.5f, mid.y + 0.785f * mid.h,
-					   h * 0.62f, MUTED);
+	// BOTH PLAYERS AT ONCE, which is what lets the page keep nothing for itself: with no one to choose, no
+	// direction and no attack button has to be read by the menu, and all of them are free to be mirrored.
+	void render_controller(SDL_Renderer *ren, const SDL_FRect &mid)
+	{
+		render_player(ren, mid, 0, mid.x + 0.305f * mid.w);
+		render_player(ren, mid, 1, mid.x + 0.695f * mid.w);
 	}
 
 	// The other three straight directions, for the test above: a straight arrow stays dark while the stick

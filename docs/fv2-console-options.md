@@ -410,9 +410,26 @@ remplies depuis, celle-ci l'est à son tour. **Pas avec un réglage** : les affe
 s'éditent dans son propre menu, qui a la place qu'il faut. Avec ce qu'un écran d'options de console a et
 qu'une liste de réglages ne peut pas avoir — **un miroir**.
 
-Les huit directions et les trois boutons, allumés tant qu'on les tient. On y voit d'un coup d'œil qu'une
-manette est vue, quelle touche est le poing, et si les diagonales d'un stick passent. Gauche et droite font
-passer de `1P` à `2P`, et chaque bouton porte le nom de la touche qui lui est liée.
+Les huit directions et les trois boutons, allumés tant qu'on les tient, **pour les deux joueurs à la fois**.
+On y voit d'un coup d'œil qu'une manette est vue, quelle touche est le poing, et si les diagonales d'un stick
+passent. Chaque bouton porte le nom de la touche qui lui est liée.
+
+### Un miroir ne peut rien consommer
+
+La première version montrait un joueur et faisait passer de `1P` à `2P` avec gauche et droite. Frédéric l'a
+essayée à la manette et le défaut a sauté en moins d'une minute : **tester les directions faisait changer de
+joueur**. En regardant mieux, c'était pire — sur cette page le **poing valide** et le **pied ressort**, le
+pied étant le `B` de la manette.
+
+Toutes les commandes que cette page doit refléter, le menu les lisait.
+
+La correction n'est pas une meilleure affectation mais **une chose de moins à affecter** : les deux joueurs
+sont dessinés ensemble, il n'y a donc plus rien à choisir, et la page ne garde que la seule commande qu'elle
+ne dessine jamais — **Start** (plus Retour arrière et Entrée pour un clavier sans manette). Tout le reste
+traverse intact jusqu'au miroir. Le pied de page le dit : `START : BACK` au lieu du `A : DECIDE  B : BACK`
+des autres écrans.
+
+C'est la leçon générale d'un écran-miroir : il ne peut pas partager ses commandes avec ce qu'il mesure.
 
 **Une règle d'allumage, et elle est voulue** : une flèche droite reste éteinte tant qu'une diagonale est
 tenue. C'est ce qui rend un coin de stick indiscutable — sinon haut, droite et haut-droite s'allumeraient
@@ -434,8 +451,12 @@ clavier que SDL rapporte, donc aucun autre crochet n'atteint cette page) :
 
 | forcé | ce qui s'allume |
 |---|---|
-| `25` = haut + droite + poing, `1P` | la **diagonale haut-droite** seule, haut et droite restant éteintes ; `P` allumé, sa touche `X` en jaune |
-| `70` = bas + gauche + pied, `2P` | la **diagonale bas-gauche**, `K` allumé sur `M` — et les trois touches passées à celles du deuxième joueur, `N` `B` `M` |
+| `25` sur `1P` = haut + droite + poing | la **diagonale haut-droite** seule, haut et droite restant éteintes ; `P` allumé, sa touche `X` en jaune |
+| `70` sur `2P` = bas + gauche + pied | la **diagonale bas-gauche**, `K` allumé sur `M` — les touches du deuxième joueur, `N` `B` `M` |
+
+Et les commandes, vérifiées dans la même passe : gauche puis droite ne changent plus rien ; `C` (pied) et `X`
+(poing) ne font plus sortir — la preuve étant qu'un `Entrée` envoyé ensuite ramène à `OPTIONS` avec
+`CONTROLLER` sélectionné, ce qui n'aurait pas pu arriver si la page avait déjà été quittée.
 
 ### `STATS` — le VS DIAGRAM
 
