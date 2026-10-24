@@ -25,9 +25,16 @@
 > Every number above was measured, and how is written down in **[docs/fv2-ombres.md](docs/fv2-ombres.md)**
 > (in French), with what each measurement does not cover. `REPRISE.md` says where the work stands.
 >
-> Being 0.1 means: it has been played, defects have been found by playing and fixed, and more will be. The
-> five checks of `verifier-vf3.cmd` pass on every commit of this branch -- Virtua Fighter 3's state, its 8 MB
-> of RAM, its rendered pictures, the host's picture, and 2231 frames step by step.
+> Being 0.1 means: it has been played, defects have been found by playing and fixed, and more will be. One
+> of them, a shadow that would not settle on Honey's stage, was traced to the port changing its mind about
+> where the floor was on one picture in three; that is fixed and measured, but it has not been played again
+> since, so take it as measured and not as seen.
+>
+> Every shadow commit here is checked against Virtua Fighter 3 before it lands: the five checks of
+> `verifier-vf3.cmd` -- its PowerPC state, its 8 MB of RAM, its rendered pictures, the host's picture, and
+> 2231 frames step by step, all identical to the port without these changes. That is this project's rule:
+> nothing is delivered without it. It says nothing about the commits this branch inherits from the port
+> itself, which are not mine to vouch for.
 
 <p align="center"><img src="assets/icon/icon.png" alt="Virtua Fighter 3 Recomp" width="160"></p>
 
