@@ -483,7 +483,10 @@ void Model3::set_crom_bank(uint8_t v)
 {
 	// VF3_BANK_LOG=1: each change of the banked CROM's window, for a game that reads from one this port put
 	// nothing in (debugging)
-	if (getenv("VF3_BANK_LOG") && v != crom_bank_reg)
+	// Le `getenv` une fois, et le test du banc d'abord : il est bien moins chaud que read32, mais il
+	// payait sa lecture d'environnement avant meme de savoir si le banc avait change.
+	static const bool dire = getenv("VF3_BANK_LOG") != nullptr;
+	if (dire && v != crom_bank_reg)
 		fprintf(stderr, "crom bank: register %02X -> window %u (frame %llu)\n", v, unsigned((~v) & 0xF),
 		        (unsigned long long)frame);
 	crom_bank_reg = v;
@@ -1151,8 +1154,20 @@ uint32_t Model3::read32(uint32_t a)
 	case 0xFF: {
 		const uint32_t v = *reinterpret_cast<const uint32_t *>(&(a < 0xFF800000 ? crom_bank : crom.data())[a & 0x7FFFFF]);
 		// VF3_CROM_WATCH=<hex address>: every read of that word in the CROM, with the window it came from
-		if (const char *w = getenv("VF3_CROM_WATCH"))
-			if (a == uint32_t(strtoul(w, nullptr, 16)))
+		//
+		// L'ADRESSE EST LUE UNE FOIS, pas a chaque mot. Ce `getenv` etait dans le chemin le plus
+		// chaud du port -- chaque lecture de la CROM, des millions de fois par image -- et il
+		// coutait 6,68 ms par image au lieu de 2,81 : les combats sous 50 images/s et le son qui
+		// gresillait. Signale par une autre session, verifie ici avant d'etre corrige.
+		//
+		// Zero vaut « eteinte » sans risque : 0 ne peut pas etre une adresse de ce `case`, qui ne
+		// traite que 0xFFxxxxxx. Meme forme que VF3_DMA_LOG plus bas dans ce fichier.
+		static const uint32_t watch = [] {
+			const char *w = getenv("VF3_CROM_WATCH");
+			return w ? uint32_t(strtoul(w, nullptr, 16)) : 0u;
+		}();
+		if (watch)
+			if (a == watch)
 				fprintf(stderr, "crom read %08X = %08X (window %u, frame %llu)\n", a, bswap32(v),
 				        unsigned((~crom_bank_reg) & 0xF), (unsigned long long)frame);
 		return v;
