@@ -2,6 +2,7 @@
 // copyright-holders:ElSemi, R. Belmont
 // From MAME's sound/scspdsp.cpp; the DSP reads and writes the sound RAM directly.
 #include "scspdsp.h"
+#include "sound_prof.h"
 
 #include <cstring>
 
@@ -73,7 +74,16 @@ void SCSPDSP::Step()
 {
 	if (Stopped)
 		return;
+	// the body without the controls this program never sets (scspdsp.h: uses)
+	if (uses == 0)
+		Run<0>();
+	else
+		Run<USES_ALL>();
+}
 
+template <unsigned U>
+void SCSPDSP::Run()
+{
 	std::fill(std::begin(EFREG), std::end(EFREG), 0);
 
 #if 0
@@ -89,13 +99,31 @@ void SCSPDSP::Step()
 	s32 Y_REG = 0;      //24 bit
 	u32 ADRS_REG = 0;  //13 bit
 
-	for (int step = 0; step < /*128*/LastStep; ++step)
+	// The loop's own copies of what it reads over and over. A step that writes the delay line writes
+	// through `ram`, and the compiler has no way to know that the sound RAM is not inside this very
+	// object: without these, DEC, RBL, RBP and LastStep have to be loaded again after every such
+	// write, and so does every word of TEMP and MEMS. `rp` is restrict because the promise is a true
+	// one -- the sound RAM is the 68000's, a separate allocation, and nothing else in this function
+	// reaches it. None of the four can change while a step runs: DEC only after the loop, RBL and RBP
+	// from the 68000 between samples, LastStep at Start.
+	u32 const dec = DEC, rbl = RBL, rbp = RBP;
+	int const last = LastStep;
+	u16 *const __restrict rp = ram;
+	u32 const rbytes = ram_bytes;
+	auto const rword = [&](u32 a) -> u16 { return a < rbytes ? rp[a >> 1] : 0; };
+	auto const wword = [&](u32 a, u16 v) { if (a < rbytes) rp[a >> 1] = v; };
+
+	for (int step = 0; step < last; ++step)
 	{
 		const Inst &I = prog[step];
-		u32 const TRA = I.TRA, TWT = I.TWT, TWA = I.TWA, XSEL = I.XSEL, YSEL = I.YSEL, IRA = I.IRA, IWT = I.IWT, IWA = I.IWA;
-		u32 const TABLE = I.TABLE, MWT = I.MWT, MRD = I.MRD, EWT = I.EWT, EWA = I.EWA, ADRL = I.ADRL, FRCL = I.FRCL;
-		u32 const SHIFT = I.SHIFT, YRL = I.YRL, NEGB = I.NEGB, ZERO = I.ZERO, BSEL = I.BSEL, NOFL = I.NOFL, COEF = I.COEF;
-		u32 const MASA = I.MASA, ADREB = I.ADREB, NXADR = I.NXADR;
+		// the single-bit controls in one word (scspdsp.h: Inst::f), the rest as they are
+		u32 const F = I.f;
+		u32 const TWT = F & F_TWT, XSEL = F & F_XSEL, IWT = F & F_IWT, EWT = F & F_EWT;
+		u32 const MWT = F & F_MWT, MRD = F & F_MRD, ZERO = F & F_ZERO, BSEL = F & F_BSEL;
+		u32 const SHIFT = (F & F_SHIFT) >> F_SHIFT_SH, YSEL = (F & F_YSEL) >> F_YSEL_SH;
+		u32 const TRA = I.TRA, TWA = I.TWA, IRA = I.IRA, IWA = I.IWA, EWA = I.EWA, COEF = I.COEF;
+		// ADRL, FRCL, YRL and NEGB are read where they are used, inside if constexpr (uses);
+		// TABLE, ADREB, NXADR, NOFL and MASA only inside the memory block
 
 		//operations are done at 24 bit precision
 #if 0
@@ -149,37 +177,36 @@ void SCSPDSP::Step()
 		}
 
 		//Operand sel
+		// the same TEMP word feeds B and X: read and sign-extended once, not twice
+		s32 const TEMPV = util::sext(TEMP[(TRA + dec) & 0x7f], 24);
+
 		s32 B; // 26-bit
 		if (!ZERO)
 		{
-			if (BSEL)
-				B = ACC;
-			else
-				B = util::sext(TEMP[(TRA + DEC) & 0x7f], 24);
-			if (NEGB)
-				B = 0 - B;
+			B = BSEL ? ACC : TEMPV;
+			if constexpr (U & USES_NEGB)
+				if (I.NEGB)
+					B = 0 - B;
 		}
 		else
 			B = 0;
 
-		s32 X; // 24-bit
-		if (XSEL)
-			X = INPUTS;
-		else
-			X = util::sext(TEMP[(TRA + DEC) & 0x7f], 24);
+		s32 const X = XSEL ? INPUTS : TEMPV; // 24-bit
 
 		s32 Y = 0;  //13 bit
-		if (YSEL == 0)
-			Y = FRC_REG;
-		else if (YSEL == 1)
+		// the COEF case first: 87 of Fighting Vipers 2's 112 steps take it, and 84 of 127 in the fight's
+		if (YSEL == 1)
 			Y = this->COEF[COEF] >> 3;   //COEF is 16 bits
+		else if (YSEL == 0)
+			Y = FRC_REG;
 		else if (YSEL == 2)
 			Y = (Y_REG >> 11) & 0x1fff;
 		else if (YSEL == 3)
 			Y = (Y_REG >> 4) & 0x0fff;
 
-		if (YRL)
-			Y_REG = INPUTS;
+		if constexpr (U & USES_YRL)
+			if (I.YRL)
+				Y_REG = INPUTS;
 
 		//Shifter
 		s32 SHIFTED = 0;    //24 bit
@@ -199,60 +226,64 @@ void SCSPDSP::Step()
 		ACC = int(v + B);
 
 		if (TWT)
-			TEMP[(TWA + DEC) & 0x7f] = SHIFTED;
+			TEMP[(TWA + dec) & 0x7f] = SHIFTED;
 
-		if (FRCL)
-		{
-			if (SHIFT == 3)
-				FRC_REG = SHIFTED & 0x0fff;
-			else
-				FRC_REG = (SHIFTED >> 11) & 0x1fff;
-		}
+		if constexpr (U & USES_FRCL)
+			if (I.FRCL)
+			{
+				if (SHIFT == 3)
+					FRC_REG = SHIFTED & 0x0fff;
+				else
+					FRC_REG = (SHIFTED >> 11) & 0x1fff;
+			}
 
 		if (MRD || MWT)
 		//if (0)
 		{
-			u32 ADDR = MADRS[MASA];
+			u32 const MF = I.mf, TABLE = MF & M_TABLE, NOFL = MF & M_NOFL;
+			u32 ADDR = MADRS[I.MASA];
 			if (!TABLE)
-				ADDR += DEC;
-			if (ADREB)
+				ADDR += dec;
+			if (MF & M_ADREB)
 				ADDR += ADRS_REG & 0x0FFF;
-			if (NXADR)
+			if (MF & M_NXADR)
 				ADDR++;
 			if (!TABLE)
-				ADDR &= RBL - 1;
+				ADDR &= rbl - 1;
 			else
 				ADDR &= 0xffff;
-			ADDR += RBP << 12;
+			ADDR += rbp << 12;
 			ADDR <<= 1;
 			if (MRD && (step & 1)) //memory only allowed on odd? DoA inserts NOPs on even
 			{
 				if (NOFL)
-					MEMVAL = read_word(ADDR) << 8;
+					MEMVAL = rword(ADDR) << 8;
 				else
-					MEMVAL = UNPACK(read_word(ADDR));
+					MEMVAL = UNPACK(rword(ADDR));
 			}
 			if (MWT && (step & 1))
 			{
 				if (NOFL)
-					write_word(ADDR, SHIFTED >> 8);
+					wword(ADDR, SHIFTED >> 8);
 				else
-					write_word(ADDR, PACK(SHIFTED));
+					wword(ADDR, PACK(SHIFTED));
 			}
 		}
 
-		if (ADRL)
-		{
-			if (SHIFT == 3)
-				ADRS_REG = (SHIFTED >> 12) & 0xfff;
-			else
-				ADRS_REG = INPUTS >> 16;
-		}
+		if constexpr (U & USES_ADRL)
+			if (I.ADRL)
+			{
+				if (SHIFT == 3)
+					ADRS_REG = (SHIFTED >> 12) & 0xfff;
+				else
+					ADRS_REG = INPUTS >> 16;
+			}
 
 		if (EWT)
 			EFREG[EWA] += SHIFTED >> 8;
 	}
-	--DEC;
+	DEC = dec - 1;
+	if (sndprof::on) sndprof::dsp_steps += unsigned(last);
 	std::fill(std::begin(MIXS), std::end(MIXS), 0);
 	//if (f)
 		//fclose(f);
@@ -277,7 +308,20 @@ void SCSPDSP::Start()
 			break;
 	}
 	LastStep = i + 1;
+	uses = 0;   // worked out afresh over the whole program (scspdsp.h)
 	for (int step = 0; step < 128; step++) Decode(step);
+	if (sndprof::on) {   // what the program is made of, so an optimisation aims at what is there
+		int n[16] = {};
+		for (int step = 0; step < LastStep; step++) {
+			const Inst &I = prog[step];
+			n[0] += I.IWT; n[1] += I.TWT; n[2] += I.FRCL; n[3] += I.ADRL; n[4] += I.YRL;
+			n[5] += I.MRD; n[6] += I.MWT; n[7] += (I.MRD || I.MWT); n[8] += ((I.MRD || I.MWT) && (step & 1));
+			n[9] += I.EWT; n[10] += I.ZERO; n[11] += I.BSEL; n[12] += I.NEGB; n[13] += I.XSEL;
+			n[14] += (I.YSEL == 1); n[15] += (I.IRA <= 0x1f);
+		}
+		fprintf(stderr, "dspprog %d steps: iwt %d twt %d frcl %d adrl %d yrl %d | mrd %d mwt %d mem %d mem-odd %d | ewt %d | zero %d bsel %d negb %d xsel %d ysel=coef %d ira<mems %d\n",
+		        LastStep, n[0], n[1], n[2], n[3], n[4], n[5], n[6], n[7], n[8], n[9], n[10], n[11], n[12], n[13], n[14], n[15]);
+	}
 }
 
 void SCSPDSP::Decode(int step)
@@ -294,5 +338,16 @@ void SCSPDSP::Decode(int step)
 		I.NEGB = (IPtr[2] >> 2) & 0x01; I.ZERO = (IPtr[2] >> 1) & 0x01; I.BSEL = IPtr[2] & 0x01;
 		I.NOFL = (IPtr[3] >> 15) & 0x01; I.COEF = (IPtr[3] >> 9) & 0x3f; I.MASA = (IPtr[3] >> 2) & 0x1f;
 		I.ADREB = (IPtr[3] >> 1) & 0x01; I.NXADR = IPtr[3] & 0x01;
+		// the same controls again, grouped for the loop (scspdsp.h: Inst::f, Inst::mf)
+		I.f = u16((I.ZERO ? F_ZERO : 0) | (I.BSEL ? F_BSEL : 0) | (I.XSEL ? F_XSEL : 0) | (I.TWT ? F_TWT : 0)
+		          | (I.IWT ? F_IWT : 0) | (I.EWT ? F_EWT : 0) | (I.MRD ? F_MRD : 0) | (I.MWT ? F_MWT : 0)
+		          | (u32(I.SHIFT) << F_SHIFT_SH) | (u32(I.YSEL) << F_YSEL_SH));
+		I.mf = u8((I.TABLE ? M_TABLE : 0) | (I.ADREB ? M_ADREB : 0) | (I.NXADR ? M_NXADR : 0) | (I.NOFL ? M_NOFL : 0));
+		// only ever added to, never taken away: a step rewritten to stop using one of these keeps
+		// the full body until the next Start, which costs speed and nothing else
+		if (I.FRCL) uses |= USES_FRCL;
+		if (I.ADRL) uses |= USES_ADRL;
+		if (I.YRL) uses |= USES_YRL;
+		if (I.NEGB) uses |= USES_NEGB;
 	}
 }

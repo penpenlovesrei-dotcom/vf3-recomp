@@ -2,6 +2,7 @@
 // copyright-holders:R. Belmont, Ville Linde
 // The Model 3 sound board. See soundboard.h.
 #include "soundboard.h"
+#include "sound_prof.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -217,6 +218,7 @@ void SoundBoard::fire_due()
 void SoundBoard::run(double seconds, std::vector<int16_t> &out)
 {
 	frames++;
+	sndprof::Scope prof_run(sndprof::RUN);
 	frac += seconds * 44100.0;
 	const uint64_t samples_now = uint64_t(frac);
 	frac -= double(samples_now);
@@ -230,13 +232,20 @@ void SoundBoard::run(double seconds, std::vector<int16_t> &out)
 			for (auto &t : c)
 				if (t.on && t.at > now && t.at < next) next = t.at;
 		running = true;
-		int used = cpu->run(int(next - now));
+		int used;
+		{
+			sndprof::Scope prof_cpu(sndprof::M68K);
+			used = cpu->run(int(next - now));
+		}
 		running = false;
 		now += uint64_t(std::max(used, 1));
 		fire_due();
 	}
-	scsp[0]->update();
-	scsp[1]->update();
+	{
+		sndprof::Scope prof_flush(sndprof::FLUSH);
+		scsp[0]->update();
+		scsp[1]->update();
+	}
 	std::vector<float> &a = scsp[0]->m_out, &b = scsp[1]->m_out;
 	const size_t n = std::min(a.size(), b.size());
 	float ga = scsp[0]->output_gain(), gb = scsp[1]->output_gain();
@@ -246,6 +255,7 @@ void SoundBoard::run(double seconds, std::vector<int16_t> &out)
 	// above the board's own level (gain 1), a peak limiter keeps the loudest moments under -1 dBFS: down at
 	// once, back up over about 0.1 s (as VF2's)
 	constexpr double CEILING = 0.891, RELEASE = 1.0 / (0.1 * 44100);
+	sndprof::Scope prof_mix(sndprof::MIX);
 	for (size_t i = 0; i + 1 < n; i += 2) {
 		double l = (double(a[i]) * ga + double(b[i]) * gb) * gain, r = (double(a[i + 1]) * ga + double(b[i + 1]) * gb) * gain;
 		if (gain > 1.0) {

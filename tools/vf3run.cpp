@@ -30,6 +30,7 @@
 #include "../src/video/r3d_raster.h"
 #include "../src/video/tex3d_hd.h"
 #include "../src/sound/soundboard.h"
+#include "../src/sound/sound_prof.h"
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -412,7 +413,12 @@ int main(int argc, char **argv)
 			auto a = std::chrono::steady_clock::now();
 			scene_builder.build(board, ps);
 			t_scene += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - a).count();
-			if (f % 500 == 499) printf("prof %llu: board %.2f ms (tile layers %.2f of it), sound %.2f, scene build %.2f a frame\n", (unsigned long long)f + 1, t_board / 500, tile_ms / 500, t_sound / 500, t_scene / 500), t_board = t_sound = t_scene = tile_ms = 0;
+			if (f % 500 == 499) {
+				printf("prof %llu: board %.2f ms (tile layers %.2f of it), sound %.2f, scene build %.2f a frame\n", (unsigned long long)f + 1, t_board / 500, tile_ms / 500, t_sound / 500, t_scene / 500);
+				// where the sound's share goes, when VF3_SND_PROF=1 asked for it (src/sound/sound_prof.h)
+				sndprof::report((std::string("frames ") + std::to_string(f + 1 - 500) + "-" + std::to_string(f + 1)).c_str(), 500);
+				t_board = t_sound = t_scene = tile_ms = 0;
+			}
 		}
 		auto ts0 = std::chrono::steady_clock::now();
 		struct SoundTime { std::chrono::steady_clock::time_point t; double &acc; ~SoundTime() { acc += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count(); } } sound_time{ ts0, t_sound };

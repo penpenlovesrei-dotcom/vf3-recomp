@@ -34,6 +34,7 @@
 
 // TODO : Envelope/LFO times are based on 44100Hz case?
 #include "scsp.h"
+#include "sound_prof.h"
 
 #define COMBINE_DATA(varptr) (*(varptr) = (*(varptr) & ~mem_mask) | (data & mem_mask))
 
@@ -251,7 +252,10 @@ void scsp_device::timer_fired(int timer)
 
 void scsp_device::sound_stream_update(int samples)
 {
-	DoMasterSamples(samples);
+	{
+		sndprof::Scope prof_scsp(sndprof::SCSP);
+		DoMasterSamples(samples);
+	}
 
 	// MSLC     |  CA   |SGC|EG
 	// f e d c b a 9 8 7 6 5 4 3 2 1 0
@@ -1297,7 +1301,10 @@ void scsp_device::DoMasterSamples(int samples)
 #endif
 		}
 
-		m_DSP.Step();
+		{
+			sndprof::Scope prof_dsp(sndprof::DSP);
+			m_DSP.Step();
+		}
 
 		if (m_group_gains) {   // the effects' leveller: its gain for the next sample
 			const float l = float(fxl >> 2) / 32768, r = float(fxr >> 2) / 32768;
