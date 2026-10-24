@@ -567,3 +567,45 @@ ses binaires refaits : **quatre IDENTIQUE** — l'état du PowerPC image par ima
 rendues, l'image de l'hôte complet — et **2231 images identiques** entre l'interpréteur et le code recompilé.
 Virtua Fighter 3 n'a pas bougé. Et `vf3run` dit enfin ce que Start en plein combat veut dire
 (`start_for::pause`), que son `switch` laissait de côté depuis la construction du menu de pause.
+
+## Les branches, posees le 2026-10-24
+
+Frederic a essaye la version nue et elle tourne a pleine vitesse, la branche de travail non. Donc une
+**copie de reference** existe desormais, et elle ne bouge plus :
+
+| branche | ce qu'elle est | ce qu'on y fait |
+|---|---|---|
+| `main` | l'amont, `mr-finster/vf3-recomp`, en miroir | on l'avance par fusion depuis l'amont. **Jamais un commit de nous** |
+| `fv2-stable` | la version nue et rapide : `889a691`, « Fighting Vipers 2 tourne », etiquetee `fv2-stable-1` | **rien**. On n'y pousse pas. Elle n'avance que le jour ou une version de travail est a la fois complete et rapide, et alors on l'etiquette `fv2-stable-2` |
+| `fv2` | le travail en cours, tout ce qu'on ajoute | la branche de tous les jours |
+| `fv2-<sujet>` | un arbre de travail par sujet (`git worktree list`) | une recherche a la fois, fusionnee dans `fv2` quand elle aboutit |
+
+La copie de reference est a **`C:\Users\frede\fv2-stable`**, plus dans `C:\Temp` : un dossier temporaire
+n'est pas un endroit pour ce qu'on ne doit pas perdre. Elle a ses propres `settings.ini`, `backup-fvipers2`
+et `eeprom-fvipers2` (free play), et un raccourci sur le bureau, **Fighting Vipers 2 - version stable**,
+qui pointe sur son `jouer-fv2.cmd`.
+
+### Le rythme, mesure a decalage egal le 2026-10-24
+
+Meme route, aucune entree, `--rec`, `VF3_PROF`, memes numeros d'image. La demonstration de l'attraction est
+un vrai combat joue par la machine, donc elle mesure ce qu'un combat coute :
+
+| fenetre d'images | `fv2-stable` (889a691) | `fv2` au 2026-10-24 |
+|---|---|---|
+| 1500 | 2,64 ms | 4,27 ms |
+| 2000 | 3,12 | 10,03 |
+| 2500 | 2,66 | 5,96 |
+| 3000 | 2,86 | 6,36 |
+| 3500 | 2,55 | 4,19 |
+| 4000 | 2,94 | 9,25 |
+| **moyenne** | **2,78 ms** | **6,68 ms** |
+
+Et ce n'est **pas** la fusion de l'amont : les deux `vf3run` d'avant et d'apres la fusion donnent 16,74 et
+16,24 ms sur l'attraction, donc a egalite. C'est une de nos additions entre `889a691` et aujourd'hui, et
+elle n'est pas encore nommee. Une bissection a ete tentee et **son verdict est faux** : elle a juge
+« rapide » le commit de fusion lui-meme, qui mesure 6,68 ms, donc son harnais mesurait un binaire perime.
+A refaire en s'assurant que chaque etape reconstruit vraiment et que le juge imprime son chiffre.
+
+Dans la fenetre, un combat coute encore plus que ces 6,68 ms — 15,5 ms avec le son, 16,37 sans — donc il
+restera une seconde part a chercher dans l'hote une fois la premiere nommee. Le grésillement du son en
+decoule : la file de SDL tombe a 1300 octets, soit 7 ms d'avance.
