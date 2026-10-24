@@ -418,10 +418,24 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					// cylindre tourne sur lui-meme comme Frederic le decrit depuis le debut.
 					(void)manche;
 					if (pas != 0.0) {
-						const double a = -double(tic) * pas * 2.0 * 3.14159265358979 / 65536.0;
+						const double a = double(tic) * pas * 2.0 * 3.14159265358979 / 65536.0;
 						const double c = cos(a), s = sin(a), u = 1.0 - c;
-						// L'axe mesure : 25 degres de la verticale, dans le plan YZ.
-						const double ax = 0.0, ay = 0.90630779, az = 0.42261826;
+						// L'AXE, MESURE DANS LA BONNE CONVENTION : l'axe X DU MONDE.
+						//
+						// Je l'avais d'abord lu a 25 degres de la verticale, et c'etait faux :
+						// j'avais traite les seize flottants comme des RANGEES. Or FUN_8C0B9BC0
+						// ecrit fr0..fr15, c'est-a-dire XMTRX, qui est en COLONNES. Le calcul refait
+						// dans les deux conventions tranche sans ambiguite :
+						//
+						//   colonnes, monde  R = M2.M1t   axe ( 1,000 -0,000  0,000)
+						//   colonnes, modele S = M1t.M2   axe (-0,000  0,906  0,423)
+						//   rangees,  monde              axe ( 0,000 -0,906 -0,423)   <- mon erreur
+						//
+						// Les 25 degres existent bien, mais c'est l'axe dans l'espace du MODELE. En
+						// coordonnees de monde -- celles que la conversion produit, cf. --cam
+						// identite -- la rotation est un basculement autour de X. C'est-a-dire
+						// « oblique, plongeant vers la droite », la description de Frederic.
+						const double ax = 1.0, ay = 0.0, az = 0.0;
 						// Rodrigues, en colonnes (Mat4 est en colonnes : m[col*4 + ligne]).
 						const double R[3][3] = {
 							{ c + ax*ax*u,      ax*ay*u + az*s,  ax*az*u - ay*s },
