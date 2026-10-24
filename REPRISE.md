@@ -858,3 +858,12 @@ mesure, le jour même où il me l'avait reproché deux fois.
 - La réverbération de Fighting Vipers 2, jamais comparée à une référence (`docs/fv2-console-son.md`).
 - Sortir d'un combat proprement, qui bloque trois des quatre lignes du menu de pause.
 - `BGM SET`, et les combattants noirs du 2026-10-23.
+
+> **Note sur le commit `b0eadeb`.** Il a emporté, sans que je le veuille, des lignes de ce journal qu'une
+> autre session avait écrites et pas encore commises — l'en-tête « État au 2026-10-24 » et le tableau des
+> outils du son (`VF3_SND_PROF`, `tools\son\comparer-son.cmd`, `docs/scsp_audit.md`,
+> `docs/scsp_validation.md`). **Elles sont d'elle, pas de moi.** `git status` montrait `REPRISE.md` modifié
+> avant que j'y touche et j'ai commis le fichier entier au lieu de ne commettre que mon ajout. La parade
+> existe et avait déjà servi le matin du 2026-10-24 : `git update-index --cacheinfo` pour ne mettre à l'index
+> que sa propre version d'un fichier partagé. L'histoire n'est pas réécrite — elle est poussée — donc cette
+> note est la correction.
