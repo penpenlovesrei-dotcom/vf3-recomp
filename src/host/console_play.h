@@ -153,24 +153,48 @@ struct console_play
 	// original does with this button during the fight's presentation and during the replay (take_start)
 	enum class start_for { none, list, title, pause, cut };
 
-	// THE STATES WHERE START CUTS INSTEAD OF OPENING THE MENU, by the names Sega left in the code
+	// THE MENU IS THE FIGHT'S AND NOTHING ELSE'S. Frederic, the 2026-10-24: "le menu ne doit etre
+	// accessible uniquement pendant la phase de combat", and everywhere else Start is the game's own
+	// button again. So of the twenty GAME sub-states Sega named (docs/fv2-etats.md, 0x000244F4):
 	// (docs/fv2-etats.md, the twenty GAME sub-states at 0x000244F4):
 	//
 	//   0 ROUND_MASK_INT  1 ROUND_MASK_IN  2 ROUND_MASK_DSP  3 ROUND_MASK_OUT   the STAGE n / VS name screen
 	//   4 ROUND_INT       5 ROUND_DSP                                           the round's own announcement
 	//   6 SET_INT         7 SET_INT_POSE   8 SET_DSP                            the stage and the fighters placed
 	//   9 READY_INT      10 READY_DSP                                           "ready"
-	//  15 REPLAY_INT     16 REPLAY_DSP                                          the replay
+	//                                                                          -> the port cuts the state
+	//  11 FIGHT_INT      12 FIGHT_DSP                 THE FIGHT                -> the pause menu, here only
+	//  13 JUDGE          14 JUDGE_DSP   15 REPLAY_INT  16 REPLAY_DSP
+	//  17 VIC_INT        18 VIC_DSP     19 NEXT_PROG_SEL                        -> the game's own button
 	//
-	// Everything from the STAGE screen to "ready" is the fight's presentation (docs/fv2-flux-de-match.md calls
-	// ROUND_MASK_* the STAGE n / VS name screen and SET_* where "the stage and the two fighters are placed"),
-	// and the replay is the replay. In the original, Start cuts them short; here it was opening the pause menu
-	// instead. FIGHT_DSP, JUDGE and VIC are NOT in the list: the menu belongs there.
+	// WHY THE STATES AFTER THE FIGHT GET THE GAME'S BUTTON AND NOT A LEVER OF MINE. I tried cutting the
+	// replay the way the presentation is cut, and it ends
+	// the state all right -- Frederic's log shows sub-state 16 cut at frame 3561 -- but ROUND 2 THEN FROZE in
+	// SET_INT_POSE, a state that lasts one frame of its own accord. Measured from the same log: his three
+	// presses at frames 4228, 4256 and 4270 all report sub-state 7, so the game was already stuck there before
+	// the first of them and those presses are him trying to shake it loose, not the cause. Asking for the next
+	// sub-state is not how the game ends its replay -- it leaves something of the replay running, and the next
+	// round's setup waits for it. And my reason for reaching for a lever at all was wrong: I had measured
+	// that a press reaching the game does nothing during ROUND_MASK_DSP and took that for everywhere. The
+	// replay is a different handler, and it was never measured. So nothing of this port touches these
+	// states: the press goes to the game and Sega's handler does what it does.
+	//
+	// The presentation keeps the cut because there the game really does ignore the button -- measured, a real
+	// Start at image 2360 of tools/scripts/fv2-start-presentation.txt leaves the state trace identical -- and
+	// because Frederic asked for it and tried it: sub-states 8 and 10 cut, the fight started normally.
 	static bool cut_states(const m3::Model3 &b)
 	{
 		if (b.fv2_mode() != 6 && b.fv2_mode() != 7) return false;   // GAME_INT, GAME_DSP
 		const int s = b.fv2_submode();
-		return (s >= 0 && s <= 10) || s == 15 || s == 16;
+		return s >= 0 && s <= 10;   // the presentation: the game ignores the button here, so we act
+	}
+
+	// The fight, and the fight alone: FIGHT_INT and FIGHT_DSP.
+	static bool fight_states(const m3::Model3 &b)
+	{
+		if (b.fv2_mode() != 6 && b.fv2_mode() != 7) return false;   // GAME_INT, GAME_DSP
+		const int s = b.fv2_submode();
+		return s == 11 || s == 12;
 	}
 
 	start_for take_start(m3::Model3 &b, bool pressed, bool list_open)
@@ -201,9 +225,12 @@ struct console_play
 				// at image 2360 of the bench road left ROUND_MASK_DSP running to 2450 exactly as without it, so
 				// the game does not read this button there. What does work is the game's own road between its
 				// handlers, the sub-state request: fv2_cut_submode, and the state ends on the next frame.
-				swallow_start = true; start_was = pressed;
-				if (cut_states(b)) { b.fv2_cut_submode(); return start_for::cut; }
-				return start_for::pause;
+				start_was = pressed;
+				if (fight_states(b)) { swallow_start = true; return start_for::pause; }
+				if (cut_states(b)) { swallow_start = true; b.fv2_cut_submode(); return start_for::cut; }
+				// everywhere else out of the fight -- the judgement, the replay, the victory, the select
+				// screen: nothing withheld, nothing done, the game has its button back
+				return start_for::none;
 			}
 			what = b.fv2_on_title() ? start_for::list : start_for::title;
 			// Two roads to the title screen, and they are not interchangeable. From the attract loop, the
