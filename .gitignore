@@ -32,3 +32,7 @@ assets-hd/
 build/
 releves/
 roms/
+.wrangler/
+functions/
+.refhit-url
+/*-recomp/
