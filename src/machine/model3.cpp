@@ -2078,6 +2078,25 @@ void Model3::camera_note()
 	struct Etat {
 		uint8_t mode, srep, mode_jeu, sous_etat, cause, reg4C, reg50, f1724, f188F, fFDB0, morceaux;
 		uint32_t suivi, porte, masque, arm1, arm2;
+		// LES TROIS TIRAGES DE PROTO2_INIT (0x0001DAA4), la camera du replay.
+		//
+		// Elle appelle trois fois le generateur congruentiel 0x0000A5BC (graine 0x005814CC) et garde
+		// chaque fois les deux bits de poids faible :
+		//   +0x338   choisit la POSITION DE L'OEIL parmi quatre, table 0x00111628 (4 x 3 flottants) :
+		//            (6,0 ; 1,0 ; 6,0) (5,5 ; 0,56 ; 2,5) (-6,0 ; 4,0 ; -5,4) (-4,7 ; 0,56 ; 4,7)
+		//   +0x33A   l'ANGLE, lu en 0x00111658 + (tirage << 16)
+		//   +0x339   une variante de cadrage, 0 a 3
+		//
+		// POURQUOI ON RELEVE L'ANGLE. 0x00111658 porte quatre demi-mots contigus a la table de
+		// positions -- 0x1000, 0x1800, 0x2000, 0x2800, soit 22,5 / 33,75 / 45 / 56,25 degres, un pas
+		// regulier de 11,25. Mais le decalage de l'instruction est de SEIZE bits, pas un : seul le
+		// tirage 0 tombe sur cette table, les trois autres lisent des donnees sans rapport
+		// (0x121658 des flottants, 0x131658 une plage de 0x39, 0x141658 des index). Soit Sega voulait
+		// un decalage de 1 et c'est un bug d'origine reste invisible parce que les valeurs tombees
+		// ressemblent quand meme a des angles, soit l'angle part vraiment dans le voisinage. La RAM
+		// le dira ; on ne le devinera pas.
+		uint8_t pos, cadrage;
+		uint16_t angle;
 	} e{};
 	e.mode      = octet(cam + 0xE2);
 	e.srep      = octet(cam + 0x38D);
@@ -2095,6 +2114,9 @@ void Model3::camera_note()
 	e.masque    = (combat && combat + 0xC4 <= ram.size()) ? mot(combat + 0xC0) : 0u;
 	e.arm1      = mot(p1 + 0xF44) & 0x30;
 	e.arm2      = mot(p2 + 0xF44) & 0x30;
+	e.pos       = octet(cam + 0x338);
+	e.cadrage   = octet(cam + 0x339);
+	e.angle     = uint16_t((octet(cam + 0x33A) << 8) | octet(cam + 0x33B));
 
 	static Etat vu{};
 	static bool premiere = true;
@@ -2103,13 +2125,15 @@ void Model3::camera_note()
 	vu = e;
 	fprintf(stderr,
 	        "CAM : image %llu  mode %u %-16s  srep %u  suivi %08x  etat %u/%u  cause %u"
-	        "  porte %08x%s  reg %u/%u  fanions %u/%u/%u  masque %x  morceaux %u  armure %x/%x\n",
+	        "  porte %08x%s  reg %u/%u  fanions %u/%u/%u  masque %x  morceaux %u  armure %x/%x"
+	        "  PROTO2 pos %u angle %04x (%.2f deg) cadrage %u\n",
 	        (unsigned long long)cam_image,
 	        e.mode, e.mode < 41 ? NOM[e.mode] : "(hors table)",
 	        e.srep, e.suivi, e.mode_jeu, e.sous_etat, e.cause,
 	        e.porte, (e.porte & 0x04000000u) ? " REPLAY COUPE" : "",
 	        e.reg4C, e.reg50, e.f1724, e.f188F, e.fFDB0,
-	        e.masque, e.morceaux, e.arm1, e.arm2);
+	        e.masque, e.morceaux, e.arm1, e.arm2,
+	        e.pos, e.angle, double(e.angle) * 360.0 / 65536.0, e.cadrage);
 }
 
 // VF3_SKO_LOG=1 : dire, quand ca change, l'etat de la chaine de la cinematique.
