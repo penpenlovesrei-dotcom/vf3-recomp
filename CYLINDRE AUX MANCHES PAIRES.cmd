@@ -75,6 +75,23 @@ set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\fvipers2.zip
 set "VF3_DATA=%~dp0"
 if "%VF3_DATA:~-1%"=="\" set "VF3_DATA=%VF3_DATA:~0,-1%"
 set "VF3_SCENE=C:\Users\frede\Documents\fv2-arcade-notes\real3d\TEST"
+rem LE RASTERISEUR LOGICIEL, OBLIGATOIRE ICI.
+rem
+rem L'injection de scene n'existe QUE dans le rasteriseur logiciel :
+rem r3d_gpu.cpp ne contient aucune occurrence de injected, inj_tex ni
+rem injected_scene. Le drapeau mesh.injected et la seconde planche de textures
+rem sont des notions du seul r3d_raster.cpp.
+rem
+rem Tant que le moteur GPU a echoue a sa sonde, ca ne se voyait pas : le port
+rem tombait sur le logiciel et l'injection marchait. Des que Vulkan repasse, la
+rem geometrie du jeu se retrouve habillee de la planche du ring -- des textures
+rem etrangeres plaquees sur les parois.
+rem
+rem VF3_3D=cpu force le logiciel pour CE lanceur seulement, sans toucher au
+rem settings.ini : les autres lanceurs gardent le GPU, qui fonctionne.
+rem C'est plus lent (environ 45 images/s au lieu du plein regime), et c'est le
+rem prix a payer tant que le moteur GPU ne connait pas la scene injectee.
+set VF3_3D=cpu
 set VF3_STAGE=0
 set VF3_STAGE_LOG=1
 set VF3_SCENE_ADD=0
