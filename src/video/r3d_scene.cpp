@@ -418,7 +418,19 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					// cylindre tourne sur lui-meme comme Frederic le decrit depuis le debut.
 					(void)manche;
 					if (pas != 0.0) {
-						const double a = double(tic) * pas * 2.0 * 3.14159265358979 / 65536.0;
+						// LE LACET FIXE DE 25 DEGRES, EN PLUS DE LA ROTATION PROPRE.
+						//
+						// La matrice de base, identique dans les quatre sauvegardes d'angle nul,
+						// porte 0,90631 et 0,42262 -- cos et sin de 25,00 degres -- dans sa partie
+						// HORIZONTALE : elle redresse le cylindre (modele X -> monde Y) et le
+						// lace de 25 degres. Notre geometrie est deja redressee (boite x et z de
+						// -1000 a +1000, y de -500 a +500), donc il ne reste que le lacet.
+						//
+						// C'est « il a un angle different du ring » : sur un cylindre de
+						// revolution le lacet ne change rien a la silhouette, mais il decale les
+						// barres verticales -- donc il se voit, et il fait partie du rendu.
+						const double LACET = 25.0 * 65536.0 / 360.0;
+						const double a = (double(tic) * pas + LACET) * 2.0 * 3.14159265358979 / 65536.0;
 						const double c = cos(a), s = sin(a), u = 1.0 - c;
 						// L'AXE EST Y : CELUI DU CYLINDRE, DANS LE REPERE DE NOTRE GEOMETRIE.
 						//
