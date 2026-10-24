@@ -489,3 +489,50 @@ dans l'attraction.
 **Pas encore mesuré** : la rediffusion elle-même (sous-état 16). Le levier est le même et la table est la
 même, mais aucune route hors-jeu n'atteint `REPLAY_DSP` pour l'instant — `fv2-vic-banc.txt` s'arrête dans
 `JUDGE_DSP`. C'est donc à vérifier en jouant, et c'est écrit ici pour que ça ne passe pas pour acquis.
+
+### Un choix de décor pour le VERSUS : la table des routes ne le commande pas
+
+Frédéric, le 2026-10-24 : « sur le travail de la rom de cet été, il avait été introduit le stage select pour
+le mode versus ». Avant d'écrire une page, mesuré — et la mesure dit non à l'évidence.
+
+Les deux leviers connus du décor, et ce que chacun fait :
+
+| levier | ce qu'il commande | mesuré |
+|---|---|---|
+| le sélecteur `0x0007111C`, patché en `li r3,<scene> ; blr` | rien pour un match qui démarre : il n'est atteint **que par un rematch passant par l'écran de choix**, et c'est ainsi que le `CHANGE STAGE` d'août l'utilise | 2026-10 : patché et tenu, le jeu a choisi le décor 9 quand même |
+| la table des routes, `0x000B4100` | le décor du premier combat **d'une route en solo** | l'octet à 3 met le combat dans MARBLE ARENA, l'index de scène lit 3 où il lisait 9 |
+
+**Et il ne commande pas un versus.** Sur `tools/scripts/fv2-vic-banc.txt`, un versus mené jusqu'au combat
+(`GAME_DSP`, `FIGHT_DSP`) :
+
+| | index de scène `0x0058FD9F` | octet de route `0x000B4100` |
+|---|---|---|
+| sans rien écrire | **8** | 09 |
+| l'octet tenu à 3 des images 1990 à 2900 | **8** | 3 (l'écriture a bien tenu, relue dans le vidage) |
+
+Deux faits s'additionnent : sans écriture, l'index de scène (8) **diverge déjà** du premier octet de la table
+(09), alors qu'en solo les deux concordaient ; et tenu à 3 pendant toute la mise en place du match — qui
+commence à `ROUND_MASK_INT`, image 2316 — le décor ne bouge pas. Le versus choisit son décor ailleurs.
+
+**Où, probablement : dans les états que le jeu saute.** Les six sous-états du choix (`docs/fv2-etats.md`) sont
+`0 SEL_START  1 SELECT  2 STAGE_SEL_INT  3 STAGE_SEL_DSP  4 DECIDE_INT  5 DECIDE_DSP`. **Le jeu a son propre
+choix de décor**, et la trace du versus montre qu'il l'enjambe :
+
+```
+  1963  SEL_DSP   0 SEL_START
+  2035  SEL_DSP   1 SELECT
+  2305  SEL_DSP   4 DECIDE_INT      <- 2 STAGE_SEL_INT et 3 STAGE_SEL_DSP sautes
+  2306  SEL_DSP   5 DECIDE_DSP
+  2316  GAME_INT  0 ROUND_MASK_INT
+```
+
+C'est très probablement ce que le travail d'été « a introduit » : non pas une page à dessiner, mais faire
+**entrer le jeu dans `STAGE_SEL`**, qui existe déjà et qui a ses propres images. Ce qu'il reste à trouver est
+ce qui décide, à la sortie de `SELECT`, d'aller en 2 plutôt qu'en 4 — un drapeau, un réglage d'opérateur, ou
+le nombre de joueurs. C'est une lecture de `fv2_sel_SELECT` dans Ghidra, pas une mesure.
+
+**Un piège d'outillage rencontré ici, et qui a coûté deux courses** : dans `VF3_POKE`, un `b` en tête d'une
+adresse signifie « la RAM de sauvegarde » (`tools/vf3run.cpp`, `const bool bk = *q == 'b'`). Donc
+`VF3_POKE=b4103=3` n'écrit **pas** à l'index `0x0B4103` de la RAM : il écrit dans la sauvegarde à l'offset
+`0x4103`, sans rien dire. Les adresses dont le premier chiffre hexadécimal est `b` s'écrivent avec un zéro
+devant : `0b4103`.
