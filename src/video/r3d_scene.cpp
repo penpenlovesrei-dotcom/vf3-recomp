@@ -418,7 +418,30 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					// cylindre tourne sur lui-meme comme Frederic le decrit depuis le debut.
 					(void)manche;
 					if (pas != 0.0) {
-						// LE LACET FIXE DE 25 DEGRES, EN PLUS DE LA ROTATION PROPRE.
+						// UNE INCLINAISON DE 25 DEGRES, PUIS UNE ROTATION AUTOUR DE L'AXE INCLINE.
+						//
+						// Etabli par le calcul, pas par l'oeil. Question posee aux deux matrices
+						// mesurees (angle 0 et angle -9860) : quel axe du MODELE est inchange ?
+						//
+						//   colonnes  X ecart 0,911   Y ecart 0,385   Z ecart 0,825   -> aucun
+						//   rangees   X ecart 0,0000  <- INCHANGE     Y 0,911   Z 0,911
+						//
+						// La matrice est donc stockee en RANGEES, l'axe du cylindre est son X de
+						// modele, et il va sur (0 ; 0,90631 ; 0,42262) -- 25,00 degres de la
+						// verticale. Etant preserve, c'est l'axe de la rotation : le cylindre
+						// TOURNE SUR LUI-MEME autour d'un axe incline. Les deux moities de la
+						// description de Frederic, par une seule mesure.
+						//
+						// En colonnes aucun axe n'est preserve : le cylindre basculerait, ce que sa
+						// description exclut. C'est ce qui departage les deux conventions, et c'est
+						// la verification que je n'avais pas faite quand j'ai pose X, puis Y.
+						//
+						// Notre geometrie exportee est DROITE (boite x et z de -1000 a +1000, y de
+						// -500 a +500, donc axe Y). On l'incline donc de 25 degres autour de X --
+						// ce qui emmene +Y sur (0 ; cos 25 ; sin 25) -- puis on tourne autour de Y
+						// AVANT cette inclinaison, ce qui revient a tourner autour de l'axe incline.
+						//
+						//     rotation = Rx(25 degres) . Ry(angle)
 						//
 						// La matrice de base, identique dans les quatre sauvegardes d'angle nul,
 						// porte 0,90631 et 0,42262 -- cos et sin de 25,00 degres -- dans sa partie
@@ -429,9 +452,14 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						// C'est « il a un angle different du ring » : sur un cylindre de
 						// revolution le lacet ne change rien a la silhouette, mais il decale les
 						// barres verticales -- donc il se voit, et il fait partie du rendu.
-						const double LACET = 25.0 * 65536.0 / 360.0;
-						const double a = (double(tic) * pas + LACET) * 2.0 * 3.14159265358979 / 65536.0;
-						const double c = cos(a), s = sin(a), u = 1.0 - c;
+						// LE SENS vient de la mesure : l'angle Dreamcast DESCEND (-9860 puis
+						// -11152), donc on tourne dans le sens negatif. La correspondance exacte
+						// entre son repere et le notre n'est pas etablie ; si le cylindre tourne a
+						// l'envers, c'est ce signe-la qu'il faut retourner, et rien d'autre.
+						const double TOUR = 2.0 * 3.14159265358979 / 65536.0;
+						const double th = -double(tic) * pas * TOUR;         // la rotation propre
+						const double ph = 25.0 * 3.14159265358979 / 180.0;   // l'inclinaison mesuree
+						const double ct = cos(th), st = sin(th), cp = cos(ph), sp = sin(ph);
 						// L'AXE EST Y : CELUI DU CYLINDRE, DANS LE REPERE DE NOTRE GEOMETRIE.
 						//
 						// J'ai d'abord pose X, en raisonnant sur la convention de XMTRX. A l'ecran
@@ -468,12 +496,13 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						// coordonnees de monde -- celles que la conversion produit, cf. --cam
 						// identite -- la rotation est un basculement autour de X. C'est-a-dire
 						// « oblique, plongeant vers la droite », la description de Frederic.
-						const double ax = 0.0, ay = 1.0, az = 0.0;
-						// Rodrigues, en colonnes (Mat4 est en colonnes : m[col*4 + ligne]).
+						// Ry(th) en colonnes : ( ct, 0, -st ) ( 0, 1, 0 ) ( st, 0, ct )
+						// Rx(ph) en colonnes : ( 1, 0, 0 ) ( 0, cp, sp ) ( 0, -sp, cp )
+						// Le produit Rx.Ry, en colonnes (Mat4 range m[col*4 + ligne]) :
 						const double R[3][3] = {
-							{ c + ax*ax*u,      ax*ay*u + az*s,  ax*az*u - ay*s },
-							{ ay*ax*u - az*s,   c + ay*ay*u,     ay*az*u + ax*s },
-							{ az*ax*u + ay*s,   az*ay*u - ax*s,  c + az*az*u    },
+							{  ct,    -st * sp,  -st * cp },   // colonne 0
+							{  0.0,    cp,        sp      },   // colonne 1
+							{  st,     ct * sp,   ct * cp },   // colonne 2
 						};
 						for (int col = 0; col < 3; col++)
 							for (int lig = 0; lig < 3; lig++)
