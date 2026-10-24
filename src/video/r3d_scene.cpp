@@ -420,7 +420,28 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					if (pas != 0.0) {
 						const double a = double(tic) * pas * 2.0 * 3.14159265358979 / 65536.0;
 						const double c = cos(a), s = sin(a), u = 1.0 - c;
-						// L'AXE, MESURE DANS LA BONNE CONVENTION : l'axe X DU MONDE.
+						// L'AXE EST Y : CELUI DU CYLINDRE, DANS LE REPERE DE NOTRE GEOMETRIE.
+						//
+						// J'ai d'abord pose X, en raisonnant sur la convention de XMTRX. A l'ecran
+						// Frederic a vu « la modification appliquee » -- une deformation -- et
+						// « il ne tourne toujours pas sur lui-meme ». C'est exactement ce que fait
+						// une rotation autour de X sur un cylindre dont l'axe est Y : elle le
+						// COUCHE au lieu de le faire tourner.
+						//
+						// Or la boite de export_decor/TEST/TEST.obj dit x et z de -1000 a +1000 et
+						// y de -500 a +500 : dans NOTRE geometrie, l'axe du cylindre est Y. C'est
+						// ce repere-la qui compte pour composer la matrice, pas celui de la
+						// Dreamcast. L'erreur etait de transporter un axe d'un repere a l'autre
+						// sans verifier lequel portait la donnee.
+						//
+						// Et une rotation autour de Y se VOIT malgre la symetrie de revolution,
+						// parce que le cylindre porte des barres verticales : c'est elles qui
+						// defilent.
+						//
+						// (Le calcul d'origine, conserve : les deux conventions donnaient
+						//  colonnes/monde X, colonnes/modele (0 ; 0,906 ; 0,423), rangees/monde
+						//  (0 ; -0,906 ; -0,423). Aucune ne vaut sans savoir dans quel repere la
+						//  geometrie convertie se trouve, et c'est la boite qui le dit.)
 						//
 						// Je l'avais d'abord lu a 25 degres de la verticale, et c'etait faux :
 						// j'avais traite les seize flottants comme des RANGEES. Or FUN_8C0B9BC0
@@ -435,7 +456,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						// coordonnees de monde -- celles que la conversion produit, cf. --cam
 						// identite -- la rotation est un basculement autour de X. C'est-a-dire
 						// « oblique, plongeant vers la droite », la description de Frederic.
-						const double ax = 1.0, ay = 0.0, az = 0.0;
+						const double ax = 0.0, ay = 1.0, az = 0.0;
 						// Rodrigues, en colonnes (Mat4 est en colonnes : m[col*4 + ligne]).
 						const double R[3][3] = {
 							{ c + ax*ax*u,      ax*ay*u + az*s,  ax*az*u - ay*s },
