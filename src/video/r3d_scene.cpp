@@ -332,6 +332,62 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				static bool echelle_dite = false;   // VF3_ECHELLE : la mesure ne se fait qu'une fois
 				std::vector<Model> modeles_morceaux;   // mis de cote, poses seulement a la casse
 				tic++;
+
+				// AUX MANCHES PAIRES, LE DECOR TOURNE SUR UN AXE INCLINE DE 25 DEGRES.
+				//
+				// C'est ce que Frederic decrivait depuis deux jours : « oblique, plongeant vers la
+				// droite, il tourne sur lui-meme ». Ce n'est pas le cylindre, c'est TOUT le decor, et
+				// ce n'est pas la routine d'animation : c'est la matrice de base.
+				//
+				// MESURE, dans ses propres sauvegardes Dreamcast. Les 64 octets en 0x8C1C03AC, juste
+				// avant la table d'objets, sont une matrice 4x4 -- FUN_8C0B9BC0 y ecrit les seize
+				// registres fr0..fr15, donc XMTRX, et FUN_8C0291AA l'appelle avec cette adresse.
+				//
+				//   manche 1 (deux sauvegardes)   matrice FIXE, identique
+				//   manche 2 (trois sauvegardes)  la meme, composee d'une rotation de
+				//                                 32,22  54,16  61,26 degres
+				//
+				// autour de l'axe (0 ; -0,9063 ; -0,4226), soit EXACTEMENT 25,00 degres de la
+				// verticale -- et (0 ; 0,9063 ; 0,4226) est la colonne 0 de la matrice de la manche 1.
+				// Le decor tourne donc autour de son propre premier axe.
+				//
+				// CONFIRME PAR UNE SECONDE VOIE, independante de la matrice : l'angle est range en
+				// 0x8C1C03A0, douze octets avant elle, en demi-mot signe d'unites binaires
+				// (65536 = 360 degres). Il vaut 0 aux deux sauvegardes de la manche 1, et -5866,
+				// -9860, -11152 a celles de la manche 2 -- soit -32,22, -54,16 et -61,26 degres, les
+				// memes valeurs au centieme. Deux mesures qui ne partagent rien et qui concordent.
+				//
+				// LA VITESSE N'EST PAS MESUREE, et je ne la devine pas. Les cinq sauvegardes viennent
+				// de parties differentes : l'ecart entre deux d'entre elles ne dit rien. En croisant
+				// avec le compteur 0x8C288528 (+46 par image) la premiere paire donne environ 12
+				// unites par image, soit 0,066 degre -- un tour en une minute et demie. C'est le
+				// defaut, et VF3_SPIN le change (en unites binaires par image, 0 pour couper).
+				Mat4 rotation = Mat4::identity();
+				{
+					const unsigned manche = board.ram.size() > (0x00581456 ^ 3)
+					                      ? board.ram[0x00581456 ^ 3] : 0u;
+					static double pas = -1.0;
+					if (pas < 0) {
+						const char *s = getenv("VF3_SPIN");
+						pas = s ? atof(s) : 12.0;
+					}
+					// Zero aux manches impaires, comme sur Dreamcast.
+					if (manche && !(manche & 1) && pas != 0.0) {
+						const double a = -double(tic) * pas * 2.0 * 3.14159265358979 / 65536.0;
+						const double c = cos(a), s = sin(a), u = 1.0 - c;
+						// L'axe mesure : 25 degres de la verticale, dans le plan YZ.
+						const double ax = 0.0, ay = 0.90630779, az = 0.42261826;
+						// Rodrigues, en colonnes (Mat4 est en colonnes : m[col*4 + ligne]).
+						const double R[3][3] = {
+							{ c + ax*ax*u,      ax*ay*u + az*s,  ax*az*u - ay*s },
+							{ ay*ax*u - az*s,   c + ay*ay*u,     ay*az*u + ax*s },
+							{ az*ax*u + ay*s,   az*ay*u - ax*s,  c + az*az*u    },
+						};
+						for (int col = 0; col < 3; col++)
+							for (int lig = 0; lig < 3; lig++)
+								rotation.m[col * 4 + lig] = float(R[col][lig]);
+					}
+				}
 				for (Model &m : mien.viewports[0].models) {
 					// UN MODELE DE MORCEAU NE SE DESSINE PAS DANS LA SCENE AU REPOS.
 					//
@@ -434,7 +490,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 							t.m[12] = sien->d[0] * h;
 							t.m[13] = sien->d[1] * h + sien->pas * float(k);
 							t.m[14] = sien->d[2] * h;
-							c.matrix = jeu.root * (t * c.matrix);
+							c.matrix = jeu.root * (rotation * (t * c.matrix));
 							if (c.meshes)
 								for (Mesh &me : *c.meshes) me.injected = true;
 							a_nous.models.push_back(std::move(c));
@@ -445,7 +501,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						t.m[14] = sien->d[2] * h;
 						m.matrix = t * m.matrix;
 					}
-					m.matrix = jeu.root * m.matrix;
+					m.matrix = jeu.root * (rotation * m.matrix);
 					// VF3_ECHELLE=1 : la taille de chaque modele injecte, TELLE QUE LE MOTEUR LA
 					// DECODE, une seule fois.
 					//
