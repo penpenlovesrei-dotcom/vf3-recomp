@@ -499,9 +499,16 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						t.m[12] = sien->d[0] * h;
 						t.m[13] = sien->d[1] * h;
 						t.m[14] = sien->d[2] * h;
-						m.matrix = t * m.matrix;
+						// LA ROTATION NE CONCERNE QUE LE CYLINDRE, PAS LE RING.
+						//
+						// Premier essai : elle etait appliquee a TOUS les modeles injectes, et le ring
+						// penchait avec -- les combattants se retrouvaient debout sur un sol incline.
+						// La liste de dessin Dreamcast le disait pourtant : elle dessine quinze fois
+						// LE MEME objet, [0x8C1C03EC + 0x14], et c'est le cylindre. La matrice de
+						// 0x8C1C03AC est la sienne, pas celle du decor entier.
+						m.matrix = rotation * (t * m.matrix);
 					}
-					m.matrix = jeu.root * (rotation * m.matrix);
+					m.matrix = jeu.root * m.matrix;
 					// VF3_ECHELLE=1 : la taille de chaque modele injecte, TELLE QUE LE MOTEUR LA
 					// DECODE, une seule fois.
 					//
