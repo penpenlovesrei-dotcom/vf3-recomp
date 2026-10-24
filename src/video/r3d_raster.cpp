@@ -145,7 +145,8 @@ void Raster::render(const Scene &scene, const uint16_t *tex_ram)
 	inj_tex = nullptr;
 	if (const Injected *in = injected_scene())
 		if (!in->tex.empty()) {
-			if (getenv("VF3_SCENE_ADD")) inj_tex = in->tex.data();
+			static const bool ajout = getenv("VF3_SCENE_ADD") != nullptr;
+			if (ajout) inj_tex = in->tex.data();
 			else tex_ram = in->tex.data();
 		}
 	tex = tex_ram;

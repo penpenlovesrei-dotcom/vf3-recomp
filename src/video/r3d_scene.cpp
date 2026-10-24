@@ -168,7 +168,10 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 	// viewport du jeu porte dans `root` la matrice de sa camera, monde -> vue. La composition est donc
 	// `root * la notre`, dans cet ordre : operator* applique son operande de droite d'abord.
 	static const int add_stage = [] {
-		const char *s = getenv("VF3_SCENE_ADD");
+		// L'environnement est lu UNE FOIS. Une autre session a mesure ce que coute un getenv
+		// laisse dans un chemin par-image : 6,68 ms par image au lieu de 2,81 pour celui de la
+		// lecture de CROM. Ceux-ci sont bien moins chauds, mais la regle est la meme.
+		static const char *const s = getenv("VF3_SCENE_ADD");
 		return (s && *s) ? int(strtol(s, nullptr, 0)) : -1;
 	}();
 	const bool additif = in && add_stage >= 0;
@@ -304,7 +307,8 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// VF3_MURS=<masque> : forcer le masque, pour VOIR le retrait sans avoir a reussir une
 				// vraie projection. Le jeu ne le pose que sur un coup assez fort, et un match joue au
 				// hasard ne le pose jamais -- 26 000 images sur TOWER l'ont laisse a zero.
-				if (const char *s = getenv("VF3_MURS")) murs_casses = uint32_t(strtoul(s, nullptr, 0));
+				static const char *const murs_env = getenv("VF3_MURS");
+				if (murs_env) murs_casses = uint32_t(strtoul(murs_env, nullptr, 0));
 				Viewport a_nous = jeu;
 				a_nous.models.clear();
 				a_nous.sun_intensity = 1.0f;
@@ -345,7 +349,8 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				a_nous.fog_ambient = 1.0f;
 				a_nous.fog_start = 0.0f;
 				a_nous.fog_density = 0.05f;
-				if (const char *s = getenv("VF3_FOG")) {
+				static const char *const fog_env = getenv("VF3_FOG");
+				if (const char *s = fog_env) {
 					float d = 0, st = 0;
 					if (sscanf(s, "%f,%f", &st, &d) == 2) { a_nous.fog_start = st; a_nous.fog_density = d; }
 					else if (sscanf(s, "%f", &d) == 1) a_nous.fog_density = d;
@@ -369,7 +374,8 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// construise les modeles dans l'ordre de la conversion -- et c'est pour avoir suppose le
 				// contraire que le cylindre ne bougeait pas : on animait un autre objet.
 				static uint64_t tic = 0;
-				static bool echelle_dite = false;   // VF3_ECHELLE : la mesure ne se fait qu'une fois
+				static bool echelle_dite = false;
+				static const bool echelle_voulue = getenv("VF3_ECHELLE") != nullptr;   // VF3_ECHELLE : la mesure ne se fait qu'une fois
 				std::vector<Model> modeles_morceaux;   // mis de cote, poses seulement a la casse
 				tic++;
 				for (Model &m : mien.viewports[0].models) {
@@ -526,7 +532,8 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						// VF3_CYL_LOG=1 : une ligne a chaque changement de manche, pour savoir si le
 						// signe est bien applique ici -- et non si l'octet bouge, ce que la sonde de
 						// camera a deja etabli (manche 1 a l'image 1744, 2 a l'image 3432).
-						if (getenv("VF3_CYL_LOG")) {
+						static const bool cyl_log = getenv("VF3_CYL_LOG") != nullptr;
+						if (cyl_log) {
 							static unsigned vue = 0xFFFFFFFF;
 							if (manche != vue) {
 								vue = manche;
@@ -567,7 +574,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					// MEME echelle. S'il en sort deux fois plus grand, le combattant s'arrete au bon
 					// endroit en coordonnees mais parait bute trop tot sur un ring trop large -- et
 					// c'est la conversion qu'il faut corriger, pas la borne de collision.
-					if (!echelle_dite && getenv("VF3_ECHELLE") && m.meshes) {
+					if (!echelle_dite && echelle_voulue && m.meshes) {
 						float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
 						size_t nv = 0;
 						for (const Mesh &me : *m.meshes)
@@ -591,7 +598,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						for (Mesh &me : *m.meshes) me.injected = true;
 					a_nous.models.push_back(std::move(m));
 				}
-				if (getenv("VF3_ECHELLE") && !echelle_dite) {
+				if (echelle_voulue && !echelle_dite) {
 					echelle_dite = true;
 					fprintf(stderr, "echelle : fin (%zu modeles)\n", a_nous.models.size());
 				}
@@ -620,7 +627,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// model3.cpp, morceaux_neutraliser.
 				//
 				// VF3_ECLATS=0 les eteint.
-				const char *eclats = getenv("VF3_ECLATS");
+				static const char *const eclats = getenv("VF3_ECLATS");
 				if ((!eclats || *eclats != '0') && board.morceaux_base && !modeles_morceaux.empty()) {
 					// Quel modele porte quel identifiant : `morceaux.txt` donne la BOITE de
 					// chacun, et on apparie sur elle. Les quatre boites sont tres differentes
@@ -716,7 +723,8 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// manquent pendant les etats de presentation et les replays, et c'est la qu'on saura si notre
 				// viewport ajoute y est pour quelque chose -- combien le jeu en produit, leurs priorites, et
 				// combien de modeles chacun porte.
-				if (getenv("VF3_SCENE_LOG")) {
+				static const bool scene_log = getenv("VF3_SCENE_LOG") != nullptr;
+				if (scene_log) {
 					std::string forme;
 					for (const Viewport &v : scene.viewports) {
 						// La lumiere et le brouillard viennent avec : le sol n'est blanc que dans
@@ -791,7 +799,8 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 	}
 	// VF3_TRANS_AUDIT=1: every translucent mesh in the scene, with where it came from and how big it is in the
 	// camera's space, for finding the one that covers the picture (debugging)
-	if (getenv("VF3_TRANS_AUDIT")) {
+	static const bool audit = getenv("VF3_TRANS_AUDIT") != nullptr;
+	if (audit) {
 		for (size_t iv = 0; iv < scene.viewports.size(); iv++) {
 			const Viewport &p = scene.viewports[iv];
 			for (const Model &m : p.models)
@@ -875,7 +884,8 @@ void SceneBuilder::viewport(uint32_t addr, Scene &scene, int guard)
 		p.ambient = ((v[0x24] >> 8) & 0xFF) / 255.0f;
 		// VF3_AMBIENT=<n>: force the ambient light, for telling a scene that is lit too brightly from one whose
 		// ambient is read wrongly (debugging; the game's own value is used when it isn't set)
-		if (const char *a = getenv("VF3_AMBIENT")) p.ambient = float(atof(a));
+		static const char *const amb_env = getenv("VF3_AMBIENT");
+		if (amb_env) p.ambient = float(atof(amb_env));
 		int spot = (v[0x20] >> 11) & 7, spot_fog = (v[0x20] >> 8) & 7;
 		p.spot_ellipse[0] = int16_t(v[0x1E] & 0xFFFF) / 8.0f;
 		p.spot_ellipse[1] = int16_t(v[0x1D] & 0xFFFF) / 8.0f;
@@ -1829,7 +1839,8 @@ bool interpolate(const Scene &a, const Scene &b, float t, Scene &out, InterpStat
 				if (!taken[i] && moved2(was[i], now[j]) < best_d) { best = int(i); best_d = moved2(was[i], now[j]); }
 			if (best >= 0) { pair[j] = best; taken[best] = 1; }
 		}
-		if (const char *pn = getenv("VF3_PAIR_NEAR")) {   // (tests: "x,y,r": the models whose place is near (x, y) on screen, and their pairs)
+		static const char *const pair_near = getenv("VF3_PAIR_NEAR");
+		if (const char *pn = pair_near) {   // (tests: "x,y,r": the models whose place is near (x, y) on screen, and their pairs)
 			float tx = 0, ty = 0, tr = 0;
 			sscanf(pn, "%f,%f,%f", &tx, &ty, &tr);
 			const Viewport &vp = b.viewports[v];
