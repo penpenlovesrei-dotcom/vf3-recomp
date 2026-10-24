@@ -536,3 +536,48 @@ adresse signifie « la RAM de sauvegarde » (`tools/vf3run.cpp`, `const bool bk 
 `VF3_POKE=b4103=3` n'écrit **pas** à l'index `0x0B4103` de la RAM : il écrit dans la sauvegarde à l'offset
 `0x4103`, sans rien dire. Les adresses dont le premier chiffre hexadécimal est `b` s'écrivent avec un zéro
 devant : `0b4103`.
+
+#### Lu dans le code : `STAGE_SEL` est une SOUCHE VIDE sur la borne
+
+Ghidra, le 2026-10-24, et ça ferme la question. La table des modes est à `0x00024354` ; son indice 5,
+`SEL_DSP`, donne `0x0000BA74`, le repartiteur du choix. Il fait trois choses :
+
+```
+0000ba88  lbz r6, 0x0058FD9B      SUBMODE_REQUEST
+0000ba94  stb r6, 0x0058FD99      MODE_SUB = la demande      <- il la recopie a chaque tour
+0000bac8  addi r2, r2, 0x4404     la table des gestionnaires du choix, 0x00024404
+0000bad4  bctr                    il saute dans le sous-gestionnaire
+```
+
+(La deuxieme ligne est la preuve directe de ce sur quoi `Model3::fv2_cut_submode` repose : le repartiteur
+recopie la demande dans le sous-etat, donc ecrire la demande suffit.)
+
+Et la table `0x00024404` :
+
+| indice | sous-etat | gestionnaire |
+|---|---|---|
+| 0 | `SEL_START` | `0x0000BADC` |
+| 1 | `SELECT` | `0x0000BB10` |
+| 2 | `STAGE_SEL_INT` | **`0x0000BBB4`** |
+| 3 | `STAGE_SEL_DSP` | **`0x0000BBB4`** — la meme adresse |
+| 4 | `DECIDE_INT` | `0x0000BBB8` — quatre octets plus loin |
+| 5 | `DECIDE_DSP` | `0x0000BC1C` |
+
+Et ces quatre octets sont :
+
+```
+0000bbb4   b 0x0000bad8        la sortie commune du repartiteur
+```
+
+**Les deux etats du choix de decor sont une souche vide.** Une seule instruction, partagee, qui ne fait que
+revenir. La borne n'a jamais eu de choix de decor : Sega a laisse les deux noms dans sa table de deboguage et
+les deux emplacements dans la table des gestionnaires, et rien dedans.
+
+Donc le travail de l'ete n'a pas « atteint » un ecran qui existait : il a fallu en **ecrire** un, ou detourner
+autre chose — ce qui explique que son `CHANGE STAGE` finisse sur le selecteur `0x0007111C` par le chemin du
+rematch, le seul endroit ou le jeu redemande un decor. Et ca double la premiere mesure : ni la table des
+routes (mesuree ici) ni les etats `STAGE_SEL` (lus ici) ne donnent un choix de decor en versus.
+
+Pour memoire, pendant qu'on y etait : `DECIDE_INT` finit par `li r0,5 ; stb r0,0x0058FD9B` — il demande
+`DECIDE_DSP` —, et `DECIDE_DSP` lit `0x00581892` et, s'il est nul, ecrit `6` dans `MODE_REQUEST`
+(`0x0058FD9A`), ce qui est le passage a GAME.
