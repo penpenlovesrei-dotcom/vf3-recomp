@@ -357,44 +357,47 @@ restent celles du decor deja charge.
 Mesuree en forcant `STAGE_TEST__STAGE` sur les treize arenes, une partie par decor. Le detail et les reserves
 sont dans `docs/fv2-ombres.md` ; l'essentiel :
 
-| decor | nom (celui du jeu) | cartes | angle a la verticale |
-|---|---|---|---|
-| 0 | `TEST` | — | aucune ombre a cette image |
-| 1 | `WESTERN` | 1 | 30,7° (les deux combattants) |
-| 2 | `AC_CARRIER` | 1 | 30,7° |
-| **3** | `ROOM_00` | **2** | **55,4°** et **30,0°** |
-| 4 | `GREAT_BM` | 1 | 30,7° |
-| 5 | `FURNACE` | 1 | 30,7° |
-| 6 | `STORE` | 1 | 30,7° |
-| 7 | `HANGAR` | 1 | 30,7° |
-| 8 | `CAPSULE` | 1 | 30,7° |
-| **9** | `DAM` — **le barrage** | 1 | 30,7° |
-| **10** | `TOWER` | **2** | **41,0°** et **19,1°** |
-| **11** | `BUILDING` — **celui de Honey** | **2** | **41,0°** et **19,1°** |
-| 12 | `MUSEUM` | 1 | 30,7° |
+| decor | nom | lumiere de l'arene | angle | chute hors du ring |
+|---|---|---|---|---|
+| 0 | `TEST` | `[-0,2070 0,8310 0,5163]` | 32,0° | 0 |
+| 1 | `WESTERN` | `[-0,1099 0,8117 0,5736]` | 33,8° | **0,2** |
+| 2 | `AC_CARRIER` | `[0,3250 0,9055 -0,2729]` | 26,6° | 0 |
+| 3 | `ROOM_00` | a l'aplomb (`w = 0`) | 0,0° | **0,25** |
+| 4 | `GREAT_BM` | *illisible, l'arene ne charge pas* | | 99,99 |
+| 5 | `FURNACE` | a l'aplomb (`w = 0`) | 0,0° | 99,99 |
+| 6 | `STORE` | `[0,4403 0,8521 -0,2829]` | 32,7° | **1,0** |
+| 7 | `HANGAR` | `[0,3813 0,9224 0,0621]` | 22,5° | **0,2** |
+| 8 | `CAPSULE` | `[-0,1815 0,8288 0,5293]` | 32,1° | **1,0** |
+| **9** | `DAM` — **le barrage** | `[0,1198 0,8424 0,5254]` | **30,6°** | 99,99 |
+| 10 | `TOWER` | `[-0,2059 0,8296 0,5190]` | 32,1° | 99,99 |
+| **11** | `BUILDING` — **celui de Honey** | `[-0,1994 0,5780 0,7913]` | **52,7°** | 99,99 |
+| 12 | `MUSEUM` | `[-0,2059 0,8296 0,5190]` | 32,1° | 99,99 |
 
-Les decors **13 a 18 sont `FINISH00` a `FINISH05`** : les decors ou j'avais mesure que le jeu coupe ses
-ombres sont les **scenes de fin**, pas des arenes.
+**Temoin** : le barrage ressort a 30,6°, mesure a 30,7° par un tout autre chemin. **`TOWER` et `MUSEUM`
+portent la meme lumiere** au dix-milliemes (captures differentes, donc deux arenes bien chargees).
+**`GREAT_BM`** ne charge pas ainsi : 6 pieces aplaties au lieu de 36, lumiere refusee sur 644 images, sol
+retourne. **La chute** (fiche `+0x34`, `CONFIG__STAGE_H`) dit ce qu'il y a sous le ring ; le demi-cote
+(`+0x30`) vaut 5,0 partout. Les six en gras ont un sol juste dessous, les autres n'ont rien.
 
-**Les noms viennent du code, pas d'une capture.** `charger_fiche_decor` fait
-`fiche = ((void **)0x0008D118)[STAGE_TEST__STAGE]` et garde la fiche dans `STAGE_TEST__ROB_LIGHT`
-(`0x0058FD90`). Les fiches font 0x70 octets a partir de `0x0007516C` et **leur deuxieme mot pointe sur le
-nom** (chaines a partir de `0x000887D9`). Verifie en jeu : la sonde `VF3_SHADOW_WHY` suit ce chemin et ecrit
-`decor 9, nom "DAM" (fiche 07555C)`. Chaque partie nomme son decor dans le journal.
+**Comment c'est pris** : plus par `VF3_FORCE_STAGE`, qui n'ecrit que le NUMERO et que le jeu reecrit —
+en forcant le 11, la sonde lisait encore la fiche du barrage. Maintenant par la **table des fiches** :
+`charger_fiche_decor` prend `((void **)0x0008D118)[numero]`, tout premier combat est le numero 9, et pointer
+cette entree sur une autre fiche charge cette arene par le chemin du jeu. Le journal nomme l'arene venue et
+les treize adresses valent `0x7516C + n x 0x70`. C'est `VF3_STAGE=<0..26>`.
 
-**Le forcage ne recharge pas la fiche** : en forcant le decor 11, la sonde lit quand meme `DAM`.
-`VF3_FORCE_STAGE` ecrit le numero apres le chargement de l'arene ; le numero atteint le code des lumieres,
-pas le chargeur. C'est pourquoi les 30,7° repetes sont ceux du barrage et ne disent rien de la lumiere propre
-des autres arenes.
+**Ce que ce chemin ne donne pas** : les textures (le ring porte celles du barrage ; forcer le chemin long via
+`0x0058FDA0` n'a rien change, image identique au pixel), et la lumiere **par combattant**, puisque le numero
+reste 9 — la branche locale des numeros 3, 10 et 11 n'est pas empruntee. Ce tableau donne la lumiere **rangee
+dans la fiche**. Ce que l'ancienne mesure garde : aux numeros 3, 10 et 11 le jeu prend **deux** lumieres tres
+ecartees, et une lumiere a l'aplomb met l'ombre SOUS le combattant. Au decor 11, 82 % des pixels assombris
+sont sur les corps ; en vraie partie, medianes **9,7°** et **16,3°**.
 
-**Reserve** : les decors forces gardent les positions des combattants du barrage. Aux decors 3, 10 et 11, ou
-l'angle vient de la position, les valeurs sont celles de CES positions. Dans une vraie partie au decor 11 les
-memes lumieres donnaient **9,7°** et **16,3°** de mediane, minimums **0,0°** et **0,6°**.
-
-**Ce qu'il etablit** : ces trois decors ont deux lumieres tres ecartees la ou les autres en ont une seule, et
-une lumiere a l'aplomb met l'ombre SOUS le combattant, ou son corps la cache. Au decor 11, 82 % des pixels
-assombris sont sur les corps et 18 % au sol -- ce que Frederic decrit par « elles sont collees aux
-combattants ».
+**Un ring out, mesure** : `ring_out` est le **bit 15** de `rob_flag` (`0x00700500` / `0x00707500`), lu dans la
+table de noms de Sega a `0x0007A1FC` et recoupe deux fois. C'est **la chute, pas la poussee de cote** : la
+place du combattant est aux flottants `+0x10 / +0x14 / +0x18` ; teleporte a x = 20 hors d'un ring de 5, le
+jeu continue ; descendu a y = -4, il pose `ring_out` tout seul a l'image suivante. Poser le bit a la main ne
+fait rien, le jeu l'efface en trois images. Pendant la chute le jeu **aplatit encore 29 pieces sur 36**.
+`VF3_EJECT=<image>[,x[,y]]`.
 
 ## Ce qui reste ouvert, et qui bloque quoi
 

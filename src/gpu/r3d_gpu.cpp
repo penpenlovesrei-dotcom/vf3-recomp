@@ -1115,6 +1115,33 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 	measure_scales(scene, prep);
 	const float *N = floor_p;
 	if (!(N[0] || N[1] || N[2])) return;   // measure_scales has already said why
+	// VF3_SHADOW_WHY: a ring out, found without asking the game. In Fighting Vipers 2 the casters' own
+	// viewport holds the fighters and nothing else -- the stage is drawn in its own layers, at twenty times
+	// the unit -- so the models there that are not flattened ARE the fighters. A fighter thrown out of the
+	// ring goes under the floor plane and stays there, which nothing else in that viewport does. The line
+	// says how far under, with the pieces the game is still flattening, so that a picture where the shadow
+	// goes missing can be told apart from one where the game stopped casting it.
+	if (getenv("VF3_SHADOW_WHY")) {
+		static unsigned tick = 0, said = 0;
+		tick++;
+		float lowest = 1e30f;
+		int bodies = 0;
+		for (size_t iv = 0; iv < scene.viewports.size() && iv < 64; iv++) {
+			if (!caster_vp[iv]) continue;
+			for (const video::Model &m : scene.viewports[iv].models) {
+				if (m.flattened) continue;
+				const float *M = m.matrix.m;
+				const float h = N[0] * M[12] + N[1] * M[13] + N[2] * M[14] - floor_p[3];
+				lowest = std::min(lowest, h);
+				bodies++;
+			}
+		}
+		if (lowest < -0.3f && lowest < 1e29f && tick - said > 10) {
+			said = tick;
+			fprintf(stderr, "sous le sol : %.2f, %d corps, %d pieces aplaties, image %u\n",
+			        double(lowest), bodies, n, tick);
+		}
+	}
 	// each caster's own direction, out of its pieces' S.S^T
 	float dirs[64][3] = {};
 	const float fn0[3] = { N[0], N[1], N[2] };
@@ -1308,6 +1335,27 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 			if ((saidN[0] || saidN[1] || saidN[2]) && dot < 0.999f) nmoves++;
 			for (int q = 0; q < 3; q++) saidN[q] = floor_p[q];
 		}
+		// Could the light come from the game's OWN sun instead of its shadow matrices? Each viewport
+		// carries a sun direction, and if it agreed with the direction read out of the flattened pieces
+		// the port would not need those pieces at all. So the two are held against each other, picture
+		// after picture, and the gap is reported in degrees.
+		static double sun_sum = 0, sun_max = 0;
+		static unsigned sun_n = 0, sun_flat = 0;
+		for (size_t iv = 0; iv < scene.viewports.size() && iv < 64; iv++) {
+			if (!caster_vp[iv] || !pieces[iv]) continue;
+			const float *s = scene.viewports[iv].sun;
+			const float sl = std::sqrt(s[0] * s[0] + s[1] * s[1] + s[2] * s[2]);
+			if (!(sl > 1e-6f)) { sun_flat++; continue; }
+			double d2 = 0;
+			for (int q = 0; q < 3; q++) d2 += double(dirs[iv][q]) * (s[q] / sl);
+			const double ang = std::acos(std::min(1.0, std::max(-1.0, std::fabs(d2)))) * 57.2957795;
+			sun_sum += ang;
+			sun_n++;
+			if (ang > sun_max) sun_max = ang;
+		}
+		if ((seen % 120) == 0)
+			fprintf(stderr, "le soleil du jeu contre la lumiere lue : %u mesures, moyenne %.2f deg, pire %.1f deg, %u viewports sans soleil" "\n",
+				sun_n, sun_n ? sun_sum / sun_n : 0.0, sun_max, sun_flat);
 		if ((seen % 120) == 0)
 			fprintf(stderr, "direction : %u images, %u retournements, %u ecarts (moyenne %.2f deg, pire %.1f deg, %u au dela de 5 deg) ; le sol bouge %u fois\n",
 			        seen, flips, moves, n_ang ? sum_ang / n_ang : 0.0, max_ang, over5, nmoves);

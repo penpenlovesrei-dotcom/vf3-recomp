@@ -3085,6 +3085,98 @@ int main(int argc, char **argv)
 				// that switch the shadow off are reached without playing to them (docs/fv2-ombres.md).
 				if (const char *fs = getenv("VF3_FORCE_STAGE");
 				    fs && board.ram.size() > 0x58FD9F) board.ram[0x58FD9F ^ 3] = uint8_t(atoi(fs));
+				// VF3_STAGE=<0..26>: the arena the first arcade fight loads, by its own loader.
+				//
+				// VF3_FORCE_STAGE above writes the stage NUMBER, and the game writes that byte itself, so the
+				// loader does not reliably see ours: measured, forcing 11 still left STAGE_TEST__ROB_LIGHT on the
+				// dam's record. This writes the TABLE instead. charger_fiche_decor takes the record from
+				// ((void **)0x0008D118)[number], and every first arcade fight is number 9 (measured over four
+				// different character picks). Pointing that one entry at another arena's record makes the game
+				// load that arena through its own path, at its own moment -- record, light, geometry and all.
+				// The journal says which arena really came up, so a reading can be kept or thrown away.
+				if (const char *vs = getenv("VF3_STAGE"); vs && board.ram.size() > 0x8D140) {
+					const uint32_t fiche = 0x7516C + uint32_t(atoi(vs)) * 0x70;
+					for (int k = 0; k < 4; k++)
+						board.ram[(0x8D13C + uint32_t(k)) ^ 3] = uint8_t(fiche >> (24 - 8 * k));
+					// What this does NOT bring is the arena's textures: the ring comes out wearing the dam's, and
+					// the picture is no good for judging an arena by eye. The obvious culprit was cleared --
+					// charger_fiche_decor skips its heavy path when the record it had before shares the byte at
+					// +0x66, and that skip is guarded by `previous stage < 0x81`, so holding 0x0058FDA0 above it
+					// takes the long path every time. Tried: the picture came out identical to the pixel. The
+					// texture upload is driven from somewhere else. It leaves the GEOMETRY alone, which is what
+					// the light and the floor are read from, so a reading taken this way stands.
+				}
+				// VF3_RING=<demi-cote>: the ring's half side, held at +0x30 of every stage record (the word
+				// charger_fiche_decor copies into the global it names demi_cote_ring; it is 5.0 on all 27
+				// records). Making it small is how a RING OUT is reached without playing to one: the fighters
+				// start outside a ring that narrow and the game ejects one at once. Written to every record,
+				// every frame, since the loader copies the word when the stage loads and not after.
+				if (const char *rs = getenv("VF3_RING"); rs && board.ram.size() > 0x76000) {
+					const float v = float(atof(rs));
+					uint32_t bits;
+					memcpy(&bits, &v, 4);
+					for (uint32_t f = 0x7516C; f < 0x75F00; f += 0x70)
+						for (int k = 0; k < 4; k++)
+							board.ram[(f + 0x30 + uint32_t(k)) ^ 3] = uint8_t(bits >> (24 - 8 * k));
+					// and the global the loader copies it into: Sega calls it CONFIG__STAGE_X, and
+					// charger_fiche_decor fills it from the record's +0x30 (CONFIG__STAGE_H, the fall
+					// depth, is the word after). Written too, since the copy happens at load and not after.
+					for (int k = 0; k < 4; k++)
+						board.ram[(0x5813F8 + uint32_t(k)) ^ 3] = uint8_t(bits >> (24 - 8 * k));
+				}
+				// VF3_EJECT=<image>[,<x>]: player 1 put outside the ring at that frame, which is how a RING OUT
+				// is reached without playing to one. His block is at 0x00700500 (player 2's at 0x00707500) and
+				// his place is the three floats at +0x10, +0x14, +0x18 -- found by taking RAM at two frames of
+				// the same fight and keeping what moved: x sits within the ring's half side (CONFIG__STAGE_X,
+				// 5.0), y is the height above the floor and is zero standing, z is the depth. Written for a few
+				// frames so the game's own step cannot put it straight back.
+				if (const char *es = getenv("VF3_EJECT"); es && board.ram.size() > 0x700520) {
+					const unsigned long long at = strtoull(es, nullptr, 10);
+					const char *comma = strchr(es, ',');
+					const float x = comma ? float(atof(comma + 1)) : 20.0f;
+					const char *comma2 = comma ? strchr(comma + 1, ',') : nullptr;
+					const float y = comma2 ? float(atof(comma2 + 1)) : 0.0f;
+					if (game_frame >= at && game_frame < at + 4) {
+						uint32_t bits;
+						memcpy(&bits, &x, 4);
+						for (int k = 0; k < 4; k++)
+							board.ram[(0x700510 + uint32_t(k)) ^ 3] = uint8_t(bits >> (24 - 8 * k));
+						if (comma2) {
+							memcpy(&bits, &y, 4);
+							for (int k = 0; k < 4; k++)
+								board.ram[(0x700514 + uint32_t(k)) ^ 3] = uint8_t(bits >> (24 - 8 * k));
+						}
+					}
+				}
+				// A RING OUT, as the game itself calls it. rob_flag, the status word at the head of each
+				// fighter's block (0x00700500 and 0x00707500), has 32 bits Sega named one by one in the table
+				// of name pointers at 0x0007A1FC, bit 31 first. ring_out is the seventeenth name, so bit 15 --
+				// checked twice against the two bits already settled in docs/fv2-honey.md: rob_calc is the
+				// sixteenth and bit 16, hadaka the thirty-first and bit 1.
+				// VF3_RINGOUT=<image>: that bit set on player 1 at that frame, to see what the game does with it.
+				if (board.ram.size() > 0x707504) {
+					auto flag = [&](uint32_t a) {
+						uint32_t v = 0;
+						for (int k = 0; k < 4; k++) v = (v << 8) | board.ram[(a + uint32_t(k)) ^ 3];
+						return v;
+					};
+					if (const char *ro = getenv("VF3_RINGOUT")) {
+						const unsigned long long at = strtoull(ro, nullptr, 10);
+						if (game_frame >= at && game_frame < at + 3)
+							board.ram[(0x700502) ^ 3] = uint8_t(board.ram[(0x700502) ^ 3] | 0x80);
+					}
+					if (getenv("VF3_SHADOW_WHY")) {
+						static bool was[2] = {};
+						for (int q = 0; q < 2; q++) {
+							const bool now = (flag(q ? 0x707500 : 0x700500) & 0x8000) != 0;
+							if (now != was[q]) {
+								was[q] = now;
+								fprintf(stderr, "ring_out joueur %d : %s, image %llu" "\n", q + 1,
+									now ? "pose" : "retire", (unsigned long long)game_frame);
+							}
+						}
+					}
+				}
 				// VF3_SHADOW_WHY: the stage this port is on, said once each time it changes, with the
 				// picture that follows asked to tell what the shadows are doing on it. A player who
 				// sees something wrong on a stage can then name it, instead of describing it.
@@ -3116,7 +3208,10 @@ int main(int argc, char **argv)
 								nom[k] = char(c);
 							}
 						}
-						fprintf(stderr, "decor %d, nom \"%s\" (fiche %06X)\n", st, nom, fiche);
+						float ring = 0;
+						const uint32_t rb = mot(fiche + 0x30);
+						memcpy(&ring, &rb, 4);
+						fprintf(stderr, "decor %d, nom \"%s\" (fiche %06X, +0x30 = %g)\n", st, nom, fiche, double(ring));
 						stage_changed = true;
 					}
 				}

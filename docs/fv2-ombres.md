@@ -1031,58 +1031,113 @@ chaque couche. C'est ce qui a transformé « ça ne marche pas sur ce décor » 
 
 ## La lumière de chaque arène, décor par décor
 
-Mesurée en forçant `STAGE_TEST__STAGE` sur chacune des treize arènes, une partie par décor, et en lisant la
-direction **dans les matrices d'ombre du jeu** (`S·Sᵀ = I − N·Nᵀ + w·wᵀ`, donc `d = N + w`). L'angle est
-celui que fait cette direction avec la normale du sol mesurée à la même image.
+Chaque arène chargée **par le chargeur du jeu**, une partie par arène, et la direction lue **dans les matrices
+d'ombre** qu'il produit alors (`S·Sᵀ = I − N·Nᵀ + w·wᵀ`, donc `d = N + w`). L'angle est celui que fait cette
+direction avec la normale du sol mesurée à la même image.
 
-| décor | nom (celui du jeu) | cartes | la lumière, lue dans les matrices | angle à la verticale |
-|---|---|---|---|---|
-| 0 | `TEST` | — | aucune ombre à l'image de combat | |
-| 1 | `WESTERN` | 1 | `[0,2673 0,8443 0,4645]` pour les deux | 30,7° |
-| 2 | `AC_CARRIER` | 1 | idem | 30,7° |
-| **3** | `ROOM_00` *(lumière locale)* | **2** | `[0,8226 0,5666 0,0489]` / `[0,4974 0,8644 0,0734]` | **55,4°** et **30,0°** |
-| 4 | `GREAT_BM` | 1 | idem | 30,7° |
-| 5 | `FURNACE` | 1 | idem | 30,7° |
-| 6 | `STORE` | 1 | idem | 30,7° |
-| 7 | `HANGAR` | 1 | idem | 30,7° |
-| 8 | `CAPSULE` | 1 | idem | 30,7° |
-| **9** | `DAM` — **le barrage** | 1 | idem | 30,7° |
-| **10** | `TOWER` *(lumière locale)* | **2** | `[0,6557 0,7534 0,0494]` / `[0,3255 0,9436 0,0611]` | **41,0°** et **19,1°** |
-| **11** | `BUILDING` — **celui de Honey** | **2** | idem au décor 10 | **41,0°** et **19,1°** |
-| 12 | `MUSEUM` | 1 | idem | 30,7° |
+| décor | nom | la lumière de l'arène | angle | le sol, et sa couche | pièces aplaties |
+|---|---|---|---|---|---|
+| 0 | `TEST` | `[−0,2070 0,8310 0,5163]` | 32,0° | `[0,0000 0,9994 0,0347]` à −1,983, vp13 | 36 |
+| 1 | `WESTERN` | `[−0,1099 0,8117 0,5736]` | 33,8° | `[0,0001 0,9994 0,0353]` à −1,312, vp14 | 36 |
+| 2 | `AC_CARRIER` | `[0,3250 0,9055 −0,2729]` | 26,6° | `[0,0000 0,9993 0,0380]` à −1,201, vp14 | 36 |
+| 3 | `ROOM_00` | `[0,0000 0,9993 0,0380]` — **à l'aplomb** | 0,0° | `[0,0000 0,9993 0,0380]` à −1,201, vp13 | 36 |
+| 4 | `GREAT_BM` | *illisible, voir plus bas* | | `[−0,0001 −0,9994 −0,0353]` à 1,320 | 6 |
+| 5 | `FURNACE` | `[0,0000 0,9993 0,0380]` — **à l'aplomb** | 0,0° | `[0,0000 0,9993 0,0380]` à −1,201, vp13 | 36 |
+| 6 | `STORE` | `[0,4403 0,8521 −0,2829]` | 32,7° | `[0,0000 0,9994 0,0356]` à −1,201, vp13 | 36 |
+| 7 | `HANGAR` | `[0,3813 0,9224 0,0621]` | 22,5° | `[0,0000 0,9993 0,0362]` à −1,201, vp14 | 36 |
+| 8 | `CAPSULE` | `[−0,1815 0,8288 0,5293]` | 32,1° | `[0,0000 0,9994 0,0355]` à −1,201, vp13 | 36 |
+| **9** | **`DAM`** | `[0,1198 0,8424 0,5254]` | **30,6°** | `[0,0000 0,9993 0,0364]` à −1,807, vp13 | 36 |
+| 10 | `TOWER` | `[−0,2059 0,8296 0,5190]` | 32,1° | `[0,0000 0,9994 0,0356]` à −1,201, vp13 | 36 |
+| 11 | `BUILDING` | `[−0,1994 0,5780 0,7913]` | **52,7°** | `[0,0000 0,9994 0,0355]` à −1,201, vp13 | 25 |
+| 12 | `MUSEUM` | `[−0,2059 0,8296 0,5190]` | 32,1° | `[0,0000 0,9994 0,0356]` à −1,201, vp15 | 36 |
 
-Et au-delà des treize arènes, les fiches continuent : **13 à 18 sont `FINISH00` à `FINISH05`**, puis
-`ADV_SQUARE`, `ADV_SQUARE2`, `ADV_TOWER`, `ADV_TOWER2`, `ADV_DAM`, `ADV_DAM2`, `ADV_BM`, `SELECT`. Les décors
-13 à 17, où j'avais mesuré que le jeu coupe ses ombres, sont donc les **scènes de fin** : ce n'est pas une
-bizarrerie d'arène, ce sont les cinématiques.
+**Le témoin : le barrage ressort à 30,6°**, là où il avait été mesuré à 30,7° par un tout autre chemin, en y
+jouant de bout en bout. Deux méthodes indépendantes, un dixième de degré d'écart.
 
-### D'où viennent ces noms
+Trois lignes demandent une réserve, et elles l'ont :
 
-Pas d'une capture, pas d'une devinette : de la table que le jeu lui-même indexe. `charger_fiche_decor` fait
+- **`GREAT_BM` est illisible ainsi.** L'arène sort en bouillie, le jeu n'y aplatit que **6** pièces au lieu de
+  36, et la lumière est refusée sur **644** images de la partie (`[pas de faces de combattant]`). Le sol
+  lui-même sort retourné, normale vers le bas. Ce n'est pas une mesure, c'est un décor qui n'a pas chargé.
+- **`ROOM_00` et `FURNACE` donnent exactement la normale du sol**, et dans les deux vues de combattant à la
+  fois (vp5 et vp9, seize et vingt pièces). C'est le cas `w = 0` : l'ombre tombe droit sous le combattant.
+  Une lumière à l'aplomb, donc — mais c'est aussi la valeur de repli du code quand la direction ne peut pas
+  être extraite, et rien dans la mesure ne départage les deux.
+- **`TOWER` et `MUSEUM` donnent la même direction au dix-millième.** Ce n'est pas un artefact : les deux
+  captures diffèrent, donc deux arènes différentes ont bien été chargées. Elles portent la même lumière.
 
-    fiche = ((void **)0x0008D118)[STAGE_TEST__STAGE]
+### Comment ces relevés ont été pris, et ce qu'ils ne disent pas
 
-et garde la fiche trouvée dans `STAGE_TEST__ROB_LIGHT` (`0x0058FD90`). Les fiches font 0x70 octets et
-commencent à `0x0007516C` ; **le deuxième mot de chaque fiche pointe sur son nom**, dans la suite de chaînes
-qui commence à `0x000887D9`. Le décor 9 donne la fiche `0x0007555C` (= `0x7516C + 9×0x70`) et le nom `DAM`.
+Les valeurs ne viennent plus d'un décor **forcé**. `VF3_FORCE_STAGE` écrit le *numéro*
+(`STAGE_TEST__STAGE`, `0x0058FD9F`), et le jeu écrit ce même octet lui-même : mesuré, en forçant le 11 la
+sonde lisait encore la fiche du barrage, `07555C`, et le nom `DAM`. Le numéro atteignait le code des lumières,
+pas le chargeur — d'où les 30,7° répétés de l'ancien tableau, qui étaient tous ceux du barrage.
 
-Vérifié en jeu, pas seulement lu : la sonde `VF3_SHADOW_WHY` suit maintenant ce chemin à chaque changement de
-fiche et a écrit `decor 9, nom "DAM" (fiche 07555C)` — plus `ADV_TOWER` et `SELECT` pendant l'attente, que la
-même table nomme aussi. Chaque partie nomme donc son décor dans le journal.
+Ce qui est écrit maintenant, c'est la **table des fiches**. `charger_fiche_decor` prend la fiche dans
+`((void **)0x0008D118)[numéro]`, et tout premier combat d'une partie est le numéro **9** (mesuré sur quatre
+choix de personnage différents). Pointer cette seule entrée sur la fiche d'une autre arène la fait charger
+**par le chemin du jeu, à son moment à lui** : fiche, lumière, géométrie. Le journal dit ensuite quelle arène
+est réellement venue — `decor 9, nom "WESTERN" (fiche 0751DC)` — et les treize adresses de fiche relevées
+valent exactement `0x7516C + n × 0x70`, donc chaque ligne repose sur une preuve et non sur une intention.
+C'est `VF3_STAGE=<0..26>`.
 
-**Deux réserves qui comptent autant que le tableau.**
+**Deux choses que ce chemin ne donne pas.**
 
-1. Les décors forcés gardent les **positions** des combattants du combat du barrage. Aux décors 3, 10 et 11,
-   où l'angle est calculé depuis la position, les deux valeurs sont donc celles de *ces* positions-là. Dans
-   une vraie partie au décor 11, les mêmes lumières mesuraient **9,7°** et **16,3°** de médiane, avec des
-   minimums à **0,0°** et **0,6°**.
-2. **Le forçage ne recharge pas la fiche du décor**, et ce n'est plus une supposition : en forçant le décor 11,
-   la sonde a lu la fiche `07555C` et le nom `DAM`. `VF3_FORCE_STAGE` écrit le numéro après que le jeu a
-   chargé son arène ; le numéro atteint le code des lumières, pas le chargeur. Les 30,7° répétés sont donc
-   ceux du barrage et ne disent rien de la lumière propre des autres arènes. Ce qui est établi, c'est qu'au
-   numéro 3, 10 ou 11 le jeu passe par **deux** lumières au lieu d'une — ça, le forçage ne peut pas l'inventer.
+1. **Les textures.** Le ring sort habillé de celles du barrage. La piste évidente a été écartée :
+   `charger_fiche_decor` saute son chemin lourd quand la fiche précédente partage l'octet `+0x66` avec la
+   nouvelle, et ce saut est gardé par `décor précédent < 0x81` ; tenir `0x0058FDA0` au-dessus force donc le
+   chemin long. Essayé : **l'image est sortie identique au pixel près**. Le téléversement des textures est
+   commandé d'ailleurs. Il laisse la géométrie intacte, et c'est dans la géométrie que la lumière et le sol
+   sont lus — mais les captures ne valent rien pour juger une arène à l'œil.
+2. **La lumière par combattant.** Le *numéro* reste 9, donc la branche qui calcule une lumière depuis la
+   position du combattant — celle que prennent les numéros 3, 10 et 11 — n'est pas empruntée. Ce tableau
+   donne la lumière **rangée dans la fiche** de chaque arène. Les deux mesures se complètent : forcer le
+   numéro dit quels numéros prennent la branche locale, pointer la fiche dit quelle lumière porte l'arène.
 
-**Ce que le tableau établit.** Les décors 3, 10 et 11 ont deux lumières très écartées — 55° contre 30°, 41°
-contre 19° — là où les autres en ont une seule. Un combattant y est éclairé de biais, l'autre presque à
-l'aplomb. Et une lumière à l'aplomb met l'ombre **sous** le combattant, où son propre corps la cache : c'est
-ce qu'on voit au décor 11, où 82 % des pixels assombris sont sur les corps et 18 % au sol.
+Et ce qui reste de l'ancienne mesure, parce que le forçage ne peut pas l'inventer : **aux numéros 3, 10 et 11
+le jeu passe par deux lumières au lieu d'une**, très écartées — 55° contre 30°, 41° contre 19°. Un combattant
+éclairé de biais, l'autre presque à l'aplomb. Et une lumière à l'aplomb met l'ombre **sous** le combattant, où
+son corps la cache : au décor 11, 82 % des pixels assombris sont sur les corps et 18 % au sol. Dans une vraie
+partie à `BUILDING`, ces deux lumières mesuraient **9,7°** et **16,3°** de médiane, jusqu'à **0,0°** et
+**0,6°**.
+
+## Le ring de chaque arène, et ce qu'il y a dessous
+
+Lu dans les mêmes fiches : `+0x30` est le demi-côté du ring (`CONFIG__STAGE_X`) et `+0x34` la profondeur de
+chute hors du ring (`CONFIG__STAGE_H`). Le demi-côté vaut **5,0 sur les vingt-six fiches** ; c'est la chute
+qui distingue les arènes.
+
+| décor | nom | chute | décor | nom | chute |
+|---|---|---|---|---|---|
+| 0 | `TEST` | 0 | 7 | `HANGAR` | **0,2** |
+| 1 | `WESTERN` | **0,2** | 8 | `CAPSULE` | **1,0** |
+| 2 | `AC_CARRIER` | 0 | 9 | `DAM` | 99,99 |
+| 3 | `ROOM_00` | **0,25** | 10 | `TOWER` | 99,99 |
+| 4 | `GREAT_BM` | 99,99 | 11 | `BUILDING` | 99,99 |
+| 5 | `FURNACE` | 99,99 | 12 | `MUSEUM` | **1,0** |
+| 6 | `STORE` | **1,0** | 13 à 18 | `FINISH00`..`05` | 99 |
+
+Les six en gras ont **un sol juste sous le ring**, à vingt centimètres ou à un mètre : un combattant éjecté y
+retombe sur quelque chose. Les cinq à 99,99 n'ont rien dessous. `BUILDING`, l'arène où le ring out a été vu,
+est de celles-là.
+
+### Ce qu'un ring out est, mesuré
+
+`ring_out` est le **bit 15** de `rob_flag`, le mot d'état en tête du bloc de chaque combattant
+(`0x00700500` et `0x00707500`). Les 32 bits sont nommés un à un par Sega dans la table de pointeurs de noms à
+`0x0007A1FC`, bit 31 d'abord ; `ring_out` est le dix-septième nom. Recoupé deux fois contre les deux bits déjà
+établis dans `docs/fv2-honey.md` : `rob_calc` est le seizième et vaut le bit 16, `hadaka` le trente-et-unième
+et vaut le bit 1.
+
+Et un ring out est **la chute, pas la poussée de côté**. Le bloc du combattant porte sa place aux trois
+flottants `+0x10`, `+0x14`, `+0x18` — x à l'intérieur du demi-côté, y la hauteur au-dessus du sol, z la
+profondeur ; trouvés en prenant la RAM à deux images du même combat et en gardant ce qui bougeait. Téléporté à
+x = 20, bien hors d'un ring de demi-côté 5, le jeu continue la manche comme si de rien n'était. Descendu à
+y = −4, **le jeu pose `ring_out` tout seul à l'image suivante**. Poser le bit à la main ne déclenche rien : le
+jeu l'efface en trois images. `VF3_EJECT=<image>[,x[,y]]` fait l'un et l'autre.
+
+Pendant cette chute, le jeu **continue d'aplatir 29 de ses 36 pièces** : il ne cesse pas de projeter ses
+ombres. Ce qui refuse l'ombre à l'éjecté est donc de notre côté, et il y a trois règles candidates, toutes
+lisibles dans le code : seule une couche mesurée à l'échelle 1 reçoit (`light[3]`) ; rien à plus de 0,05
+sous le plan du sol ne reçoit (`under`) ; et seule une vue portant des pièces aplaties projette
+(`vp_group = −1` ailleurs). **Laquelle des trois se déclenche n'est pas mesuré.**
