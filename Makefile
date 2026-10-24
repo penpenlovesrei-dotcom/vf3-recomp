@@ -71,8 +71,17 @@ $(BIN)/vf3: $(call objs,$(CORE) $(HOST) $(RML_SRC)) $(SLJIT_OBJ)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(SDL_LIBS) $(FT_LIBS) $(LDLIBS) -lpthread
 
+# The effects DSP's two bodies against a reference that decodes MPRO in the loop (tools/son/test_scspdsp.cpp).
+# No ROM, no window, fixed seeds. Not in `all`: `make test` builds and runs it.
+$(BIN)/test_scspdsp: $(call objs,src/sound/scspdsp.cpp src/core/mame_shim.cpp tools/son/test_scspdsp.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+test: $(BIN)/test_scspdsp
+	$(BIN)/test_scspdsp
+
 clean:
 	rm -rf build
 
-.PHONY: all clean FORCE
+.PHONY: all clean test FORCE
 -include $(shell find $(OBJ) -name '*.d' 2>/dev/null)

@@ -38,6 +38,51 @@ Ce que ça ne couvre pas : les cas limites que *ce jeu, cette fois* ne traverse 
 `EGHOLD`, un DMA, une valeur réservée : si le pilote de son de Fighting Vipers 2 ne les demande jamais, le
 harnais ne les regarde pas.
 
+### Les deux corps du DSP, l'un contre l'autre et contre une référence
+
+`make test` → `build/bin/test_scspdsp` (`tools/son/test_scspdsp.cpp`). Pas de ROM, pas de RAM de jeu, pas de
+fenêtre : les programmes sont engendrés depuis des graines fixes, donc deux lancements font la même chose.
+
+Le test porte une **référence naïve** du DSP : elle décode les champs de bits du MPRO **dans** la boucle, comme
+MAME `master` et Supermodel le font encore, sans table décodée, sans contrôles groupés, sans patron et sans
+copies locales de `DEC`/`RBL`/`RBP`. Elle teste donc exactement la machinerie que ce portage a ajoutée. Les
+deux côtés reçoivent le même programme, les mêmes tables, la même RAM, les mêmes `MIXS` à chaque échantillon,
+et après **chacun** des 64 échantillons on compare `EFREG`, `TEMP`, `MEMS`, `DEC` et les **524 288 mots** de la
+ligne de retard.
+
+Les seize cas, et ce que chacun attrape :
+
+| cas | ce qu'il exerce |
+|---|---|
+| deux programmes sans aucun des quatre | `Run<0>`, le corps que les deux jeux prennent |
+| le même, `uses` forcé à `USES_ALL` | **les deux corps doivent s'accorder sur le même programme** |
+| les quatre ensemble, 48 puis 112 pas | `Run<USES_ALL>` sur ce que personne ne jouait |
+| `FRCL`, `ADRL`, `YRL`, `NEGB` seuls | chacun isolé, et `uses` vaut exactement son bit |
+| `RBL` 16k/64k, `RBP` 1/3 | l'adressage de la ligne de retard hors du cas par défaut |
+| `IRA` hors plage au pas 20, puis au pas 0 | l'abandon du pas entier : ni `DEC` ni `MIXS` ne bougent |
+| « les quatre mordent » | garde-fou : les quatre contrôles **changent** la RAM de retard (296 mots), donc le générateur les a bien posés et le cas n'est pas secrètement celui d'à côté |
+| `Decode` ajoute un bit | un pas réécrit sans `Start` : `uses` gagne le bit et le corps générique prend le relais |
+| `Start` recalcule `uses` | sur un objet réutilisé, `uses` **redescend** de 15 à 0 — la seule affirmation de `scspdsp.h` que rien ne tenait |
+
+**Et le test a montré qu'il sait échouer**, ce qui est la seule chose qui rende un test vert intéressant. Quatre
+fautes injectées puis défaites :
+
+| faute injectée | cas en échec |
+|---|---|
+| `NEGB` ne nie plus, dans le corps générique | 5 |
+| la boucle lit `TWT` à la place de `XSEL` | 12 |
+| `SHIFT` lu avec un décalage de trop | 13 |
+| `Start` ne remet pas `uses` à zéro | 1 (celui écrit pour ça) |
+
+Une cinquième, l'échange de deux valeurs de l'énumération `F_XSEL`/`F_TWT`, **n'a rien fait échouer** — et à
+raison : échanger deux étiquettes change l'écriture et la lecture ensemble, c'est un renommage, pas une faute.
+Noté parce qu'une mutation qui ne mute rien n'est pas une preuve que le test est aveugle.
+
+Ce que ce test ne dit pas : il ne redérive pas le comportement du chip depuis une documentation matérielle, et
+`PACK`/`UNPACK` y sont **transcrits** plutôt que re-raisonnés (ce portage n'y touche pas). Un `IDENTIQUE` ici
+veut dire « le portage calcule toujours ce que la boucle simple calcule », qui est la question posée, et pas
+« le matériel fait ça ».
+
 ### Le reste de la carte, déjà en place avant ce travail
 
 | | ce que ça compare |
@@ -52,8 +97,9 @@ harnais ne les regarde pas.
 | `m_probe_*` / `energy_on` | l'énergie que chaque fente a envoyée, directe et vers le DSP, et l'énergie des sorties du DSP |
 | `VF3_SCSP_MADRS_SEPARATE` / `_MIRROR`, `VF3_SCSP_MSLC_LATCH` | forcer un choix de fidélité dans un sens ou l'autre, pour comparer |
 
-Ce dépôt est donc **bien outillé pour l'enquête** et peu outillé pour le test automatique. C'est l'inverse de
-ce qu'on voudrait pour une réécriture, et c'est le point à corriger avant d'en entamer une.
+Ce dépôt est donc **bien outillé pour l'enquête** et peu outillé pour le test automatique — `make test` est le
+premier, et il ne couvre qu'un bloc sur huit. C'est l'inverse de ce qu'on voudrait pour une réécriture, et
+c'est le point à corriger avant d'en entamer une.
 
 
 ## 3. Ce qui manque
@@ -72,8 +118,9 @@ Il n'y a **qu'une scène** pour le son : `fv2-fight.txt`. Il manque, et le cahie
 
 ### b. Les tests par bloc
 
-Aucun. Il n'y a pas de cadre de test unitaire dans le dépôt, et rien n'exerce le SCSP en dehors du jeu. La
-liste de ce qu'il faudrait, par ordre de dépendance (le découpage est celui de `docs/scsp_architecture.md` §3) :
+**Un sur huit**, le DSP (`make test`, décrit plus haut). Les sept autres n'existent pas, et rien n'exerce le
+SCSP lui-même en dehors du jeu. La liste de ce qu'il faudrait, par ordre de dépendance (le découpage est celui
+de `docs/scsp_architecture.md` §3) :
 
 1. **registres** — écrire chaque mot de 0x000 à 0xFFF et le relire ; les bits réservés ; la plage 0x7C0-0x7FF,
    où ce portage et MAME ne font pas la même chose (`docs/scsp_references.md`) ;
@@ -83,11 +130,10 @@ liste de ce qu'il faudrait, par ordre de dépendance (le découpage est celui de
    attaque, les rates 0 et 1 (« infinity » dans les tables) ;
 4. **pitch, LFO, modulation** — `OCT`/`FNS` aux extrêmes, les quatre formes, et la modulation par anneau avec
    la profondeur de ce portage ;
-5. **DSP** — `PACK`/`UNPACK` sur toute la plage 24 bits, la saturation du shifter, l'accumulateur, les quatre
-   `SHIFT`, les retards, et les quatre contrôles que le programme de ces jeux ne pose jamais (`FRCL`, `ADRL`,
-   `YRL`, `NEGB`) — **ceux-là sont désormais les plus importants à tester**, parce que le corps spécialisé
-   (`Run<0>` / `Run<USES_ALL>`) fait que *le chemin qui les gère n'est plus celui que ces jeux empruntent*.
-   Tant qu'aucun test ne l'exerce, `Run<USES_ALL>` n'est vérifié par rien ;
+5. **DSP** — ✔ **fait** (`make test`) : les deux corps, les quatre contrôles que ces jeux ne posent jamais,
+   l'adressage de la ligne de retard, l'abandon du pas, `uses` ajouté par `Decode` et recalculé par `Start`.
+   Reste dehors : `PACK`/`UNPACK` sur toute la plage 24 bits pour eux-mêmes (le test les transcrit, donc une
+   faute partagée passerait), et la saturation du shifter aux bords exacts plutôt qu'au hasard des graines ;
 6. **timers et interruptions** — A/B/C et leurs périodes, `SCIEB`/`SCIPD`/`SCILV`, le décodage de priorité, le
    DMA, et l'ordre relatif des accès du 68000 ;
 7. **les deux chips et le mélange** — `DISDL`/`EFSDL`, le panoramique, `MVOL`, `DAC18B` ;
@@ -102,12 +148,18 @@ observables, des interruptions et des timers, pas seulement du WAV final. `VF3_S
 d'accès ; il manque le rejoueur.
 
 
-## 4. Le trou que ce travail a creusé, et qu'il faut nommer
+## 4. Le trou que ce travail a creusé, et qui est bouché
 
 Le lot 1 du 2026-10-24 a coupé le corps du DSP en deux chemins (`docs/scsp_audit.md` §7). Pour les deux jeux de
-ce portage, c'est le chemin maigre qui tourne, et il est vérifié à l'octet. **L'autre chemin ne l'est pas**, et
-il ne le sera par rien tant qu'aucun test ne pose `FRCL`, `ADRL`, `YRL` ou `NEGB`.
+ce portage, c'est le chemin maigre qui tourne, et il est vérifié à l'octet ; l'autre n'était vérifié par rien,
+et c'était le premier test à écrire si ce portage servait un jour un troisième jeu.
 
-Le risque est borné — `Run<USES_ALL>` est le code d'avant, à quatre `if constexpr` près, et un `uses` mal
-calculé ne peut que choisir le corps **lent**, jamais le mauvais — mais il est réel pour un troisième jeu.
-C'est le premier test à écrire si ce portage en sert un jour un autre.
+**Il est écrit** (`tools/son/test_scspdsp.cpp`, §2) : `Run<USES_ALL>` est exercé par onze des seize cas, sur des
+programmes qui posent les quatre contrôles ensemble puis chacun seul, et sur le programme même des jeux avec
+`uses` forcé — ce dernier cas étant celui qui dit que **les deux corps s'accordent**. Quatre fautes injectées
+dans le corps générique ont bien fait tomber le test.
+
+Ce qui reste du trou, et il est petit : le test compare le portage à une transcription de la même sémantique,
+pas à une documentation matérielle. Il attraperait un `if constexpr` mal câblé, un bit de `Inst::f` mal lu, un
+`uses` périmé, une copie locale décalée — c'est-à-dire tout ce que ce lot pouvait casser. Il n'attraperait pas
+une erreur que MAME aurait déjà, ni une faute recopiée à l'identique dans la référence.

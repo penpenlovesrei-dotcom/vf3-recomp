@@ -34,10 +34,10 @@ le premier venu.
 | le harnais | `tools/son/comparer-son.cmd` : le son contre un commit de référence, octet par octet |
 | gagner | trois lots sur `scspdsp`, **−24,3 %** sur la carte son, WAV identique à l'octet sur les deux jeux |
 | le lot défait | un quatrième, sur les voix, qui ne gagnait rien : défait, et le résultat négatif consigné |
+| tester | `tools/son/test_scspdsp.cpp` (`make test`) : les deux corps du DSP contre une référence qui décode dans la boucle, seize cas, et quatre fautes injectées pour montrer qu'il sait échouer |
 
-Ce que l'étape 0 **n'a pas** fait, et il faut le lire avant la suite : aucun test par bloc n'existe, il n'y a
-qu'une scène de mesure, rien n'est mesuré sous `--rec` ni dans l'hôte, et le corps générique du DSP
-(`Run<USES_ALL>`) n'est exercé par rien (`docs/scsp_validation.md` §4).
+Ce que l'étape 0 **n'a pas** fait, et il faut le lire avant la suite : il n'y a qu'un test par bloc sur huit,
+qu'une seule scène de mesure, et rien n'est mesuré sous `--rec` ni dans l'hôte.
 
 
 ## Étape 1 — le reste du gain processeur, s'il en faut
@@ -65,8 +65,9 @@ qu'elle est là.
 
 Rien ne s'écrit avant ces trois-là, et c'est le gros du travail :
 
-1. **Les tests par bloc** de `docs/scsp_validation.md` §3b, écrits avant les blocs qu'ils testent. Y compris,
-   d'abord, celui qui manque déjà : un programme DSP qui pose `FRCL`, `ADRL`, `YRL` et `NEGB`.
+1. **Les tests par bloc** de `docs/scsp_validation.md` §3b, écrits avant les blocs qu'ils testent. Le premier
+   des huit existe depuis le 2026-10-24 (`make test` : le DSP, ses deux corps et les quatre contrôles que les
+   jeux ne posent jamais) ; les sept autres non.
 2. **Le sélecteur et le rejoueur** : les deux cœurs dans le même binaire, la même séquence d'accès rejouée dans
    les deux (la trace de `VF3_SCSP_WLOG` existe, le rejoueur non), et la comparaison des PCM, des états
    observables, des interruptions et des timers — pas seulement du WAV.
