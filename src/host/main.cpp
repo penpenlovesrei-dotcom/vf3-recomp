@@ -131,6 +131,7 @@
 #include "fv2_mode_list.h"
 #include "fv2_options.h"
 #include "fv2_pause.h"
+#include "fv2_stage_list.h"
 #include "fv2_texte.h"
 #include "menu.h"
 #include "controls.h"
@@ -2508,13 +2509,14 @@ int main(int argc, char **argv)
 	fv2_texte console_font;
 	fv2_options options;
 	fv2_pause pause;   // Start during a match, over the fight
+	fv2_stage_list stages;   // VERSUS's arena, chosen before the match (fv2_stage_list.h)
 	// The console's surfaces, over the picture the game made (and under this port's menu, if that is open as
 	// well): mid is the game's own 4:3 screen, which is what their placement was measured against. ONE place
 	// draws them, because F12 photographs the window by composing it again -- and a photograph that left the
 	// page out would not be a photograph of what is on screen.
 	auto draw_console = [&](m3::Model3 &b) {
 		SDL_FRect all, mid;
-		if (!modes.shown && !options.shown && !pause.shown) return;
+		if (!modes.shown && !options.shown && !pause.shown && !stages.shown) return;
 		picture_rect(all, mid);
 		if (modes.shown) modes.render(ren, all, mid);
 		// The OPTIONS page's backdrop covers the 4:3 screen and NOTHING IS DIMMED: the Dreamcast does not dim
@@ -2522,6 +2524,7 @@ int main(int argc, char **argv)
 		if (options.shown) options.render(ren, mid, b);
 		// The pause menu goes over the fight, dimmed, which is why it is drawn last and takes `all` too.
 		if (pause.shown) pause.render(ren, all, mid);
+		if (stages.shown) stages.render(ren, all, mid);
 	};
 	// What was playing under the console's surface, and whether a mode was chosen on the way out (above).
 	int music_held = -1;
@@ -2543,6 +2546,7 @@ int main(int argc, char **argv)
 		console_font.load(ren, find_assets(), stderr);
 		options.load(ren, find_assets(), &console_font, stderr);
 		pause.load(ren, find_assets(), &console_font, stderr);
+		stages.load(ren, find_assets(), &console_font, stderr);
 	}
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
@@ -2750,6 +2754,7 @@ int main(int argc, char **argv)
 					console_font.load(ren, find_assets(), stderr);
 					options.load(ren, find_assets(), &console_font, stderr);
 					pause.load(ren, find_assets(), &console_font, stderr);
+					stages.load(ren, find_assets(), &console_font, stderr);
 				}
 				g_pc_mode = !cfg.arcade;
 				cfg_dirty = true;
@@ -3165,6 +3170,18 @@ int main(int argc, char **argv)
 		// that was recorded in August -- that one, Start held across the fighter's validation, was measured
 		// here to do nothing at all (console_play.h, model3.cpp).
 		else if (line == fv2_mode_list::RANDOM) cplay.choose_random();
+		// VERSUS opens the stage select first and starts nothing, the way OPTIONS gives way to its page: the
+		// game stays frozen behind it, and it is the stage chosen there that starts the versus. If the page
+		// could not be built -- no glyph sheet, no cursor -- the versus starts as it always did, with the
+		// game's own arena.
+		else if (line == fv2_mode_list::VERSUS && stages.ready) {
+			modes.hide();
+			stages.show();
+			cplay.swallow_start = true;
+			cplay.start_was = true;
+			sync_menu_sound();
+			return;
+		}
 		else if (line == fv2_mode_list::VERSUS) cplay.choose_versus();
 		// TRAINING is not a mode this board has -- Sega's twenty-four hold none -- so it is one this port
 		// builds, and what exists of it today is its arena: MARBLE ARENA, by one byte of the game's own route
@@ -3190,6 +3207,21 @@ int main(int argc, char **argv)
 		music_mode_chosen = true;   // the select screen lays its own music: nothing to put back
 		// The press that chose must not reach the game as a player's Start as well: the mode's own injection is
 		// what hands the game one, and it goes on last (frame_inputs below).
+		cplay.swallow_start = true;
+		cplay.start_was = true;
+		sync_menu_sound();
+	};
+
+	// A stage chosen on the versus page: the scene goes to console_play, which holds the picker once the
+	// game has left its attract loop and gives it back when the game ends (console_play.h). Entry 0 holds
+	// nothing and the game chooses as it does on the board.
+	auto chose_stage = [&](int line) {
+		const int scene = fv2_stage_list::scene_of(line);
+		fprintf(stderr, "the console's stage select: %s chosen%s\n", fv2_stage_list::name(line),
+				scene ? "" : " -- the game picks its own");
+		stages.hide();
+		cplay.choose_versus(scene);
+		music_mode_chosen = true;   // the select screen lays its own music: nothing to put back
 		cplay.swallow_start = true;
 		cplay.start_was = true;
 		sync_menu_sound();
@@ -3342,6 +3374,7 @@ int main(int argc, char **argv)
 			console_font.textures_lost(ren, find_assets());
 			options.textures_lost(ren, find_assets());
 			pause.textures_lost(ren, find_assets());
+			stages.textures_lost(ren, find_assets());
 		}
 		new_frame = true;   // (the next picture sends the 2D again)
 	};
@@ -3432,6 +3465,26 @@ int main(int argc, char **argv)
 				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
 					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
 			}
+			// VERSUS's stage select, the same way. It touches no RAM of the game's at all -- it only hands a
+			// scene number to console_play, which holds the patch later -- but it waits for the frame in flight
+			// like the others, so a surface never acts half inside a frame.
+			if (stages.shown && !ours(e)) {
+				if (game.emu_thread.joinable()) game.job_wait();
+				const int chose = stages.handle_event(e, cfg.ctl);
+				if (chose == fv2_stage_list::CANCELLED) {
+					// backed out: the list of modes comes back where it was, nothing started
+					stages.hide();
+					modes.show();
+					cplay.swallow_start = true;
+					cplay.start_was = true;
+					sync_menu_sound();
+					fprintf(stderr, "the console's stage select: backed out, the list is back\n");
+				} else if (chose >= 0) {
+					chose_stage(chose);
+				}
+				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
+					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
+			}
 			// The OPTIONS page, the same way, and the same two keys left alone for the same reasons.
 			if (options.shown && !ours(e)) {
 				// This page reads and writes the game's own RAM, so not while a frame runs alongside. The page
@@ -3512,7 +3565,7 @@ int main(int argc, char **argv)
 		// a list over a demonstration
 		if (modes.shown && menu.is_open()) modes.hide();   // (Escape opened this port's menu over it)
 		if (options.shown && menu.is_open()) close_options();
-		const bool stopped = paused || menu.is_open() || modes.shown || options.shown || pause.shown;
+		const bool stopped = paused || menu.is_open() || modes.shown || options.shown || pause.shown || stages.shown;
 		const bool ff = !stopped && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB];
 		int due = 0;
 		// ---- the console's surfaces keep the sound board turning ----
@@ -3614,6 +3667,7 @@ int main(int argc, char **argv)
 			if (modes.want_sound) { heard(modes.want_sound); modes.want_sound = fv2_mode_list::SND_NONE; }
 			if (options.want_sound) { heard(options.want_sound); options.want_sound = fv2_options::SND_NONE; }
 			if (pause.want_sound) { heard(pause.want_sound); pause.want_sound = fv2_pause::SND_NONE; }
+			if (stages.want_sound) { heard(stages.want_sound); stages.want_sound = fv2_stage_list::SND_NONE; }
 		}
 		if (stopped && cplay.on && (modes.shown || options.shown)) {
 			const uint64_t now = SDL_GetTicksNS();
@@ -3740,7 +3794,7 @@ int main(int argc, char **argv)
 				// the first time round.
 				if (cplay.on) {
 					const bool st = live.start[0] || live.start[1] || script_ctl.start[0] || script_ctl.start[1];
-					switch (cplay.take_start(board, st, modes.shown || pause.shown)) {
+					switch (cplay.take_start(board, st, modes.shown || pause.shown || stages.shown)) {
 					case console_play::start_for::list:
 						modes.show();
 						sync_menu_sound();

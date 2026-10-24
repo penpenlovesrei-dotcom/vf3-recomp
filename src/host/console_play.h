@@ -99,10 +99,18 @@ struct console_play
 	// come back. That is the roster patch's discipline. It is released when the game ends.
 	//
 	// The first lever tried was the stage picker at 0x0007111C, the one the owner's CHANGE STAGE uses, and it
-	// does NOT command this: patched and held -- `li r3,3 ; blr` read back out of the running game -- the game
-	// picked stage 9 all the same. The picker is reached only by a rematch THROUGH the select screen. What
-	// commands a game's first arena is one byte of the game's own route table (Model3::fv2_hold_training_stage),
-	// found by watching who writes the scene index and reading the dozen instructions above that write.
+	// does NOT command THIS: patched and held -- `li r3,3 ; blr` read back out of the running game -- the game
+	// picked stage 9 all the same. What commands a game's FIRST arena is one byte of the game's own route
+	// table (Model3::fv2_hold_training_stage), found by watching who writes the scene index and reading the
+	// dozen instructions above that write.
+	//
+	// AND THE SENTENCE THAT USED TO FOLLOW WAS TOO WIDE, corrected the 2026-10-24: it said the picker "is
+	// reached only by a rematch THROUGH the select screen". That is true of the first fight of a solo route,
+	// which is what was measured. It is NOT true of a VERSUS, where the picker commands the arena outright --
+	// held at scene 3 from frame 1990 to 2900 of tools/scripts/fv2-vic-banc.txt, both patched words read back
+	// out of the dump, the versus fought in scene 3 where it fought in scene 8 untouched. That is what the
+	// stage select below rests on, and it is why the route table is NOT used for it: held at 3, a versus
+	// still fought in scene 8.
 	//
 	// What is NOT here either, and should not be mistaken for it: everything else a training mode is -- the
 	// timer that does not run out, the health that comes back, the dummy's behaviour. The owner has a draft
@@ -120,7 +128,25 @@ struct console_play
 	void choose_survival(m3::Model3 &b) { survival = ARMED; armed_frames = 0; survival_was = b.fv2_survival(); choose_arcade(); }
 	void choose_random() { random_mode = R_ARMED; random_armed = 0; random_was = 0; choose_arcade(); }
 	void choose_training() { training = T_ARMED; training_armed = 0; choose_arcade(); }
-	void choose_versus() { at_select = SEL_VERSUS; sel_frames = -1; since_choice = -1; choose_arcade(); }
+	// ---- VERSUS's arena ----
+	// The page (fv2_stage_list.h) hands the scene in, 0 meaning the game chooses as it does on the board.
+	// The lever is the picker, HELD exactly as TRAINING holds its route byte and for the same reason -- the
+	// game unpacks and reloads its own code, so the patch goes back whenever Sega's words come back -- and
+	// GIVEN BACK when the game ends, or the next game would fight there too.
+	enum { S_OFF, S_ARMED, S_HELD } vs_stage = S_OFF;
+	int vs_scene = 0;
+	int vs_stage_armed = 0;
+
+	void choose_versus(int scene = 0)
+	{
+		at_select = SEL_VERSUS;
+		sel_frames = -1;
+		since_choice = -1;
+		vs_scene = scene >= 1 && scene <= 12 ? scene : 0;
+		vs_stage = vs_scene ? S_ARMED : S_OFF;
+		vs_stage_armed = 0;
+		choose_arcade();
+	}
 
 	// ---- what Start does, and it is two jobs told apart by one question ----
 	// Is the game's own title screen on screen? Model3::fv2_on_title answers it: the mode is ADV and the
@@ -377,6 +403,24 @@ struct console_play
 			else b.fv2_hold_training_stage(MARBLE_ARENA);
 			break;
 		case T_OFF: break;
+		}
+		switch (vs_stage) {
+		case S_ARMED:
+			// the same wait as TRAINING's and Survival's: the game is still in its attract loop when the page
+			// closes, and the arena is read when the match starts, well after this
+			if (!b.fv2_in_attract()) {
+				const int said = b.fv2_hold_stage(vs_scene);
+				fprintf(stderr, "the console's stage: holding scene %d, the picker says %d (1 patched, 0 nothing to do)\n",
+				        vs_scene, said);
+				vs_stage = S_HELD;
+			}
+			else if (++vs_stage_armed > 300) vs_stage = S_OFF;   // (the game never started: give up)
+			break;
+		case S_HELD:
+			if (b.fv2_in_attract()) { b.fv2_release_stage(); vs_stage = S_OFF; }
+			else b.fv2_hold_stage(vs_scene);
+			break;
+		case S_OFF: break;
 		}
 	}
 };
