@@ -13,6 +13,13 @@ rem
 rem VF3_SHADOW_DARK, de 0 a 1, assombrit en plus l'ambiante (0,6) qu'un pixel
 rem a l'ombre garde entiere. 0 : la lumiere du jeu intacte. ~0,8 : la noirceur
 rem de l'ombre du jeu, mais avec la texture conservee.
+rem
+rem   jouer-fv2-ombres.cmd journal    note dans log.txt, a chaque changement de
+rem                                   decor, son numero et ce que les ombres y
+rem                                   font : combien de cartes, la direction de
+rem                                   la lumiere, et quelles couches recoivent.
+rem                                   Pour nommer un decor ou quelque chose
+rem                                   cloche, au lieu de le decrire.
 setlocal
 set PATH=C:\msys64\mingw64\bin;%PATH%
 set ROM=%~dp0roms\fvipers2.zip
@@ -20,7 +27,8 @@ if not exist "%ROM%" set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\fvipers2
 set "VF3_DATA=%~dp0"
 if "%VF3_DATA:~-1%"=="\" set "VF3_DATA=%VF3_DATA:~0,-1%"
 set VF3_SHADOWS=1
-if not "%~1"=="" set VF3_SHADOW_DARK=%~1
+if /i "%~1"=="journal" (set VF3_SHADOW_WHY=1) else if not "%~1"=="" set VF3_SHADOW_DARK=%~1
+if /i "%~1"=="journal" if not "%~2"=="" set VF3_SHADOW_DARK=%~2
 cd /d "%~dp0"
 if not exist "build\bin\vf3.exe" (
   echo build\bin\vf3.exe manque : installer SDL 3 puis lancer construire-hote.cmd.

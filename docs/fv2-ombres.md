@@ -989,3 +989,42 @@ compte, et il rejoint les chiffres : 1,15° d'écart par image en moyenne, jusqu
 **Une réserve.** Au premier combat du mode arcade de Virtua Fighter 3, sur le décor de plage, le sol n'est pas
 dessiné du tout dans le rendu 3D : fond noir sous les pieds, et les ombres du jeu y sont invisibles pour la
 même raison. C'est une autre question, sans rapport avec les ombres.
+
+## Le sol qui changeait de couche
+
+Vu en jouant au décor de Honey (**décor 11**, l'un des trois à lumière par combattant), puis mesuré sur les
+857 images de cette partie, grâce à la sonde `jouer-fv2-ombres.cmd journal` :
+
+| couche prise pour le sol | images | son plan |
+|---|---|---|
+| vp13 | **532** | −1,2 |
+| vp12 | **255** | **−220** |
+| vp14 | 47 | |
+| vp9 | 20 | |
+
+Deux couches se présentent comme le sol, à **un facteur 180** l'une de l'autre, et le portage basculait de
+l'une à l'autre environ **une image sur trois**. Tout ce qui suit s'appuie sur ce plan : quelles couches
+partagent les unités des combattants, et ce qui compte comme « sous le sol », où rien ne prend d'ombre.
+L'ombre au sol apparaissait et disparaissait au rythme du basculement.
+
+**La cause.** La règle était « la plus haute surface plate **au-dessous** des combattants », avec une
+tolérance de 2 %. Or le sol de ce décor, à −1,15, est d'un cheveu **au-dessus** du point le plus bas d'un
+combattant (−1,30 : un pied qui traverse le sol). Il était donc écarté comme « pas le sol », et le seul
+candidat restant était la couche lointaine du décor, à −220.
+
+**La correction.** Le sol est la surface plate **la plus proche des pieds**. Pas de tolérance à régler, et
+c'est juste dans les deux cas : un combattant en l'air reste plus près de son sol à −1,3 que de la couche
+lointaine à −220.
+
+| parcours | le sol change de couche | images perdues |
+|---|---|---|
+| décor 11 forcé | **1 sur 480** | — |
+| combat au barrage | **1 sur 480** | 0 |
+| boucle d'attraction | 40 sur 960, mais elle change de décor | **0** |
+
+Et la régression que l'ancienne règle évitait — 159 images perdues quand les combattants quittaient le sol —
+n'est pas revenue : zéro sur les 3 360 images de la boucle.
+
+**Au passage**, la sonde qui a permis tout cela : `VF3_SHADOW_WHY=1` fait écrire, à chaque changement de
+décor, son numéro (`STAGE_TEST__STAGE`), le nombre de cartes, la direction de chaque lumière et l'échelle de
+chaque couche. C'est ce qui a transformé « ça ne marche pas sur ce décor » en un tableau de chiffres.

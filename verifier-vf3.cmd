@@ -10,7 +10,12 @@ set PATH=%MINGW%;C:\msys64\usr\bin;%PATH%
 set SCRATCH=%LOCALAPPDATA%\Temp
 set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\vf3.zip
 set UP=C:\Temp\vf3up
-set CMP=C:\Temp\cmp
+rem Le dossier de comparaison porte le nom de CET arbre de travail. Partage, il est
+rem ecrase par une autre session qui verifie en meme temps : mesure le 2026-10-23,
+rem deux executions dans le meme dossier ont donne un etat tronque a 2000 images
+rem contre 3000, donc un *** DIFFERENT *** qui n'en etait pas.
+for %%I in ("%~dp0.") do set WT=%%~nxI
+set CMP=C:\Temp\cmp-%WT%
 set IMAGES=%1
 if "%IMAGES%"=="" set IMAGES=3000
 cd /d "%~dp0"

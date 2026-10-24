@@ -354,6 +354,17 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 		o.light[3] = (shadows && light_ok && i < 64 && (own_units || far_on)) ? vp_scale[i] : 0.0f;
 		memcpy(o.spot_ellipse, v.spot_ellipse, sizeof(o.spot_ellipse));
 		o.spot_range[0] = v.spot_range[0]; o.spot_range[1] = v.spot_range[1];
+		// Which shadow map this viewport may be judged by: its own, when it carries a fighter, and both
+		// when it carries none. A fighter lit by one light has no business being darkened by a map drawn
+		// along the other's.
+		//
+		// Measured, and it changes nothing at a fight frame of stage 3: a fighter's pixels that fall inside
+		// the other map's box read an empty texel there, since that map holds only the other fighter. It is
+		// kept because it costs a branch and it is right the day the two boxes hold each other's fighter --
+		// a throw, a clinch. What makes stage 3's fighters darker than the dam's (51.2 %% and 57.9 %% of
+		// their pixels in shadow against 31.8 %% and 39.3 %%) is not this: it is the light, 48.5 degrees off
+		// the floor's own direction there against 32 at the dam, so more of a body turns away from it. -1: both.
+		o.spot_range[2] = (shadows && light_ok && i < 64 && caster_vp[i]) ? float(vp_group[i]) : -1.0f;
 		memcpy(o.spot_colour, v.spot_colour, 12);
 		memcpy(o.spot_fog_colour, v.spot_fog_colour, 12);
 		memcpy(o.fog, v.fog_colour, 12);
@@ -910,28 +921,39 @@ void R3dGpu::measure_scales(const video::Scene &scene, const video::Raster &prep
 		for (const Flat &f : flats)
 			if (caster_vp[f.vp]) feet = std::min(feet, f.mid[0] * fn[0] + f.mid[1] * fn[1] + f.mid[2] * fn[2]);
 		if (feet > 1e29f) { why[2]++; return; }
-		// The floor is the highest flat surface the fighters are standing ON, so it lies at or below their
-		// lowest face -- and "below" is settled, fn having been turned the fighters' way. Taking the nearest
-		// instead failed whenever they left the ground: measured, 159 pictures of 3180 in the attract loop,
-		// and on each of those the game's own shadows came back.
-		float best_off = -1e30f;
+		// The floor is the flat surface NEAREST the fighters' feet. It was "the highest one at or below
+		// them", which is the same thing when they stand on it and sounder when they leave the ground -- but
+		// it turns on a tolerance, and that tolerance decided a stage.
+		//
+		// Measured over 857 pictures of Honey's stage, played: the floor at -1.15 sits a hair ABOVE the
+		// lowest face of a fighter (-1.30, a foot dipping through it), so the old test threw it out as "not
+		// the floor", and the only candidate left was the stage's far layer at -220. The port therefore
+		// changed its mind about where the floor was on one picture in three -- vp13 532 times, vp12 255 --
+		// by a factor of 180. Everything downstream leans on that plane: which layers share the casters'
+		// units, and what counts as under the floor, where no shadow falls. So the ground's shadow came and
+		// went with it.
+		//
+		// Nearest needs no tolerance, and it is right in both cases: a fighter in the air is still nearer
+		// his floor at -1.3 than the far layer's at -220.
+		float nearest = 1e30f;
 		ref_vp = 64;
 		for (int iv = 0; iv < 64; iv++) {
 			if (plane[iv] == 0 || caster_vp[iv]) continue;
-			if (plane[iv] > feet + 0.02f * std::fabs(feet)) continue;   // above them: not the floor
-			if (plane[iv] > best_off) { best_off = plane[iv]; ref_vp = size_t(iv); }
+			const float gap = std::fabs(plane[iv] - feet);
+			if (gap < nearest) { nearest = gap; ref_vp = size_t(iv); }
 		}
-		if (ref_vp >= 64) {
-			// nothing below them at all: the nearest flat surface, whichever side it is on
-			float nearest = 1e30f;
-			for (int iv = 0; iv < 64; iv++) {
-				if (plane[iv] == 0 || caster_vp[iv]) continue;
-				const float rel = std::fabs(plane[iv] - feet) / std::max(1e-6f, std::fabs(feet));
-				if (rel < nearest) { nearest = rel; ref_vp = size_t(iv); }
-			}
-			if (ref_vp >= 64) { why[3]++; return; }
-		}
+		if (ref_vp >= 64) { why[3]++; return; }
 		ref = plane[ref_vp];
+		// VF3_SHADOW_WHY: how often the floor changes layer. It should not: everything that leans on it
+		// -- which layers share the casters' units, what counts as under the floor -- changes with it.
+		if (pass == 1 && getenv("VF3_SHADOW_WHY")) {
+			static size_t said_ref = 64;
+			static unsigned moves = 0, seen = 0;
+			if (said_ref != 64 && ref_vp != said_ref) moves++;
+			said_ref = ref_vp;
+			if (++seen % 240 == 0)
+				fprintf(stderr, "le sol change de couche %u fois sur %u images\n", moves, seen);
+		}
 		if (pass == 1) break;
 		// the direction again, from that layer's own floor rather than from the flattened quads, and the
 		// casters' feet along it

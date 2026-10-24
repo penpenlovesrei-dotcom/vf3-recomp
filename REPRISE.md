@@ -328,6 +328,30 @@ lanceur montre le comportement commite, c'est-a-dire les ombres du jeu.
 **Une reserve.** Au premier combat arcade de Virtua Fighter 3, sur la plage, le sol n'est pas dessine du tout
 dans le rendu 3D ; les ombres du jeu y sont invisibles aussi. Autre question.
 
+## Le sol qui changeait de couche, le 2026-10-24
+
+Vu en jouant au decor de Honey (**decor 11**), mesure sur 857 images de cette partie : le portage changeait
+d'avis sur l'emplacement du sol **une image sur trois**, entre deux couches a un facteur 180 l'une de l'autre
+(vp13 a −1,2 : 532 fois ; vp12 a −220 : 255 fois). Tout en depend — les unites de chaque couche, et ce qui
+compte comme « sous le sol » — donc l'ombre au sol apparaissait et disparaissait.
+
+**Cause** : la regle etait « la plus haute surface plate AU-DESSOUS des combattants », avec une tolerance de
+2 %. Le sol de ce decor, a −1,15, est d'un cheveu au-dessus du point le plus bas d'un combattant (−1,30, un
+pied qui traverse le sol) : il etait ecarte, et il ne restait que la couche lointaine a −220.
+
+**Correction** : le sol est la surface plate **la plus proche des pieds**. Aucune tolerance a regler.
+Resultat : 1 changement sur 480 images au decor 11 et au barrage, zero image perdue partout, et la regression
+que l'ancienne regle evitait (159 images quand les combattants quittent le sol) n'est pas revenue.
+
+**La sonde qui a permis tout cela** : `jouer-fv2-ombres.cmd journal` (`VF3_SHADOW_WHY=1`) ecrit dans
+`log.txt`, a chaque changement de decor, son numero, le nombre de cartes, la direction de chaque lumiere et
+l'echelle de chaque couche. C'est ce qui transforme « ca ne marche pas sur ce decor » en un tableau.
+
+**Mesure utile au passage** : le decor du premier combat **ne depend pas du combattant choisi**. Les douze
+positions du curseur de selection donnent toutes le decor 9. Le decor suit l'adversaire, et le premier
+adversaire est fixe. Et `VF3_FORCE_STAGE` change la fiche et la geometrie mais **pas les textures**, qui
+restent celles du decor deja charge.
+
 ## Ce qui reste ouvert, et qui bloque quoi
 
 - **Le jeu tient 43 images par seconde en combat, au lieu de 57,5, et on ne sait pas pourquoi.** Mesuré dans

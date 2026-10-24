@@ -36,7 +36,7 @@ struct Vp
 	float4 light;       // x ambient, y sun clamp (1/0), z the light intensity clamped at full (1/0: Step 1.0 only),
 	                    // w how many of this viewport's units make one of the shadow casters' (0: not measured)
 	float4 spot_ellipse;
-	float4 spot_range;  // xy
+	float4 spot_range;  // xy; z which shadow map may judge this viewport (-1: both)
 	float4 spot_colour, spot_fog_colour;
 	float4 fog;         // rgb colour, a density
 	float4 fog2;        // x start, y attenuation, z ambient
@@ -276,13 +276,16 @@ FsOut main(PolyV i)
 		const float4 lp = float4(dot(srow0, wv), dot(srow1, wv), dot(srow2, wv), dot(srow3, wv));
 		const float2 suv = float2(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
 		const bool inside = lp.z >= 0.0 && lp.z <= 1.0 && all(suv >= 0.0) && all(suv <= 1.0);
+		// A fighter is judged by HIS map only; the ground, which carries none, by both.
+		const float only = vp.spot_range.z;
+		const bool use0 = only < 0.5, use1 = only < -0.5 || only > 0.5;
 		const float near_light = smap.SampleLevel(smap_s, saturate(suv), 0).r;
-		if (inside && !under && lp.z - 0.002 > near_light) shade = 0.0;
+		if (use0 && inside && !under && lp.z - 0.002 > near_light) shade = 0.0;
 		const float4 lq = float4(dot(trow0, wv), dot(trow1, wv), dot(trow2, wv), dot(trow3, wv));
 		const float2 tuv = float2(lq.x * 0.5 + 0.5, 0.5 - lq.y * 0.5);
 		const bool inside2 = lq.z >= 0.0 && lq.z <= 1.0 && all(tuv >= 0.0) && all(tuv <= 1.0);
 		const float near2 = smap2.SampleLevel(smap2_s, saturate(tuv), 0).r;
-		if (inside2 && !under && lq.z - 0.002 > near2) shade = 0.0;
+		if (use1 && inside2 && !under && lq.z - 0.002 > near2) shade = 0.0;
 		// shadow_on 2 (VF3_SHADOW_DEBUG): what the lookup sees, painted instead of the picture --
 		// red and green the place read in the map, blue what was found there, black outside it
 		// rouge : le pixel est juge a l ombre ; vert : ce que la carte rend ; bleu : la lecture est dans la boite

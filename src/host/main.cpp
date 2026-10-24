@@ -1647,6 +1647,7 @@ int main(int argc, char **argv)
 	auto chosen_scale = [&] { return cfg.scale ? cfg.scale : auto_scale; };
 	static video::Raster raster;
 	bool want_shadows = false;   // this port's own shadows asked for (switched on after the GPU check)
+	bool stage_changed = false;  // VF3_SHADOW_WHY: tell what the shadows do on the stage just entered
 	// ---- the 3D on the GPU ----
 	static R3dGpu gpu3d;
 	struct { bool on = false, failed = false, checked = false; SDL_Texture *tex = nullptr; int w = 0, h = 0, k = 1; double cpu_ms = 0, gpu_ms = 0; } g3;
@@ -1890,6 +1891,8 @@ int main(int argc, char **argv)
 				gpu3d.debug_now = !said_once && game_frame >= strtoull(at, nullptr, 10);
 				if (gpu3d.debug_now) said_once = true;
 			}
+			// the first picture of a stage tells what the shadows do on it (VF3_SHADOW_WHY)
+			if (stage_changed) { gpu3d.debug_now = true; stage_changed = false; }
 			// the game's own shadows stay in the list the GPU renderer reads -- they mark the floor, which is how
 			// it measures the units each layer is drawn in -- and it leaves them out of the picture itself
 			raster.drop_game_shadows = false;
@@ -3082,6 +3085,18 @@ int main(int argc, char **argv)
 				// that switch the shadow off are reached without playing to them (docs/fv2-ombres.md).
 				if (const char *fs = getenv("VF3_FORCE_STAGE");
 				    fs && board.ram.size() > 0x58FD9F) board.ram[0x58FD9F ^ 3] = uint8_t(atoi(fs));
+				// VF3_SHADOW_WHY: the stage this port is on, said once each time it changes, with the
+				// picture that follows asked to tell what the shadows are doing on it. A player who
+				// sees something wrong on a stage can then name it, instead of describing it.
+				if (getenv("VF3_SHADOW_WHY") && board.ram.size() > 0x58FD9F) {
+					static int said_stage = -1;
+					const int st = board.ram[0x58FD9F ^ 3];
+					if (st != said_stage) {
+						said_stage = st;
+						fprintf(stderr, "decor %d (STAGE_TEST__STAGE)\n", st);
+						stage_changed = true;
+					}
+				}
 				// The arcade's test menu (RAM 0x102002 is 4 while it's up; 0 at the attract, a fight, the boot): Down
 				// moves (the service button) and Start selects (the test button), any pad or key, as VF1's and VF2's;
 				// the menu's Service menu presses test once the game is past its boot; leaving it, the PC way restarts
