@@ -48,6 +48,20 @@ struct SoundBoard::Bus : m68000_bus
 	void write(offs_t a, u16 data, u16 mem_mask) override
 	{
 		a &= 0xFFFFFE;
+		// VF3_SCSP_DSPLOG=file: every write to either chip's DSP registers (0x700 and up), with the
+		// frame. Written to settle one question the sound program's own code cannot answer: its
+		// effects-preset loader (snd_charger_preset_dsp at 0x602B32, see docs/fv2-son-programme.md)
+		// writes COEF at +0x700 and MADRS at +0x780 from a TABLE of commands, each carrying a byte
+		// offset -- so whether anything ever lands in 0x7C0-0x7FF, the range this port and MAME
+		// disagree about (docs/scsp_references.md), depends on data and not on the instructions.
+		// This says what actually happens.
+		if (static FILE *dl = getenv("VF3_SCSP_DSPLOG") ? fopen(getenv("VF3_SCSP_DSPLOG"), "w") : nullptr;
+		    dl && ((a >> 20) == 1 || (a >> 20) == 3) && (a & 0xFFF) >= 0x700) {
+			const unsigned off = a & 0xFFF;
+			const char *zone = off < 0x780 ? "COEF" : off < 0x7c0 ? "MADRS"
+			                 : off < 0x800 ? "7C0-7FF" : off < 0xc00 ? "MPRO" : "autre";
+			fprintf(dl, "%d chip%d %03x %-7s %04x mask %04x\n", b.frames, int((a >> 20) == 3), off, zone, data, mem_mask);
+		}
 		switch (a >> 20) {
 		case 0x0: case 0x2: {
 			u16 &w = b.ram[(a >> 20) == 2][(a & 0xFFFFF) >> 1];

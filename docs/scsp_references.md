@@ -86,10 +86,27 @@ Donc :
    ici : on ne sait pas si un des deux jeux la relit.
 3. **Et pour Virtua Fighter 3, ce dépôt garde le miroir** (`soundboard.h` : `madrs_mirror = true`), parce que
    sans lui la réverbération tenait plusieurs secondes là où la référence la coupe en une
-   (`src/sound/scsp.h`). Avec le comportement de MAME `master`, les zéros de VF3 seraient jetés et la
-   réverbération serait la longue. **C'est une divergence ouverte, et elle est consignée comme telle** : ou le
-   réglage de VF3 compense autre chose, ou la référence à laquelle il a été comparé n'était pas le matériel.
-   Rien dans ce document ne la tranche.
+   (`src/sound/scsp.h`).
+
+   **Mesuré depuis, et ça change la lecture** (`docs/fv2-son-programme.md` §5) : le programme son des **deux**
+   jeux charge MADRS puis écrit **32 zéros dans `0x7C0-0x7FF`**, dans cet ordre. Avec le miroir, ces zéros
+   écrasent MADRS : **878 adresses perdues sur Fighting Vipers 2, 176 sur Virtua Fighter 3**, et seules les 53
+   et 19 écrites après l'effacement survivent. Donc le miroir replie les lignes de retard du DSP sur l'adresse
+   0 pour VF3 aussi — le même mécanisme que la même journée a jugé faux sur Fighting Vipers 2, et que MAME a
+   corrigé pour `doa`.
+
+   **Mais l'ampleur n'y est pas, et il faut le dire.** Les deux sons produits sans fenêtre sur la même scène
+   VF3 (`tools/son/comparer-madrs.cmd vf3`, 2400 images) diffèrent de peu : pic moyen **+2,2 dB** sur la pièce
+   et **+0,0 dB** en combat, spectre à **±0,1 dB**, échos de la pièce et du start qui passent de 2,05 à 2,25 s
+   et de 0,95 à 1,15 s — et surtout **la corrélation gauche/droite ne bouge pas** (0,861 contre 0,865), alors
+   que c'est la signature de l'effondrement et qu'elle valait 0,99 contre 0,73-0,85 sur VF2. « Plusieurs
+   secondes » n'est pas reproduit. Soit VF3 utilise peu de lignes de retard, soit la scène ne va pas là où ça
+   se voit — elle ne traverse ni K.O. ni écran de victoire, et c'est là que vivait le défaut de FV2.
+
+   **Ce qui reste ouvert, et ne se tranche pas ici** : ce que fait le matériel. Si un vrai SCSP mirrore, la
+   borne tournait aussi avec ses lignes effondrées et la réverbération courte est le son d'époque. Et, plus
+   près de nous : si l'écart s'entend ailleurs que sur cette scène. Changer ce réglage change le son du
+   portage, c'est une décision et pas une correction.
 
 ### Mednafen — SASPlay
 
