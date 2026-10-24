@@ -1,0 +1,19 @@
+# Fighting Vipers 2 : atteindre VIC_DSP (la victoire de match) dans vf3run, sans main humaine.
+#
+# vf3run ne charge jamais la RAM de sauvegarde, donc la borne n'est pas en free play : il faut payer.
+# Le reste est le chemin de fv2-console-start.txt, puis un coup fatal force par VF3_POKE.
+#
+#   vf3run fvipers2.zip --script tools/scripts/fv2-vic-banc.txt --modes \
+#          --console-mode versus --console-at 1960 --frames 3600 --wav son.wav
+#   VF3_POKE=581457=1,70756b=0,70756a=0  VF3_POKE_FRAMES=2600-2604
+#
+# 581457 : le compteur de rounds gagnes du cote 0 (0x00581454 ^ 3), pousse a 1 pour que le coup
+#          suivant atteigne le match point. 70756b/70756a : la vie du combattant 1 (0x00707568),
+#          mise a zero, donc le round se termine par un K.O.
+1900 press p1.coin
+1930 press p1.coin
+2220 press p1.punch
+2240 press p2.punch
+2600 press p1.punch
+2610 press p1.punch
+2620 press p1.punch

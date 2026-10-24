@@ -127,6 +127,11 @@ void SoundBoard::reset()
 					a &= 0xFFFFFF;
 					return a < 0x100000 ? unsigned(ram[0][(a >> 1) & 0x7FFFF]) : (a >> 20) == 2 ? unsigned(ram[1][(a & 0xFFFFF) >> 1]) : 0u;
 				};
+				// the voice's own shape first, because a sound that SWELLS is an envelope question: tl is its
+				// attenuation, ar/d1r/d2r/rr its four rates, dl the level it decays to, and lpctl/lsa/lea how
+				// it loops. A note whose rr is 0 never lets go, and then every new note piles on the last.
+				fprintf(kl, "voix %d chip %d slot %2d tl %3d ar %2d d1r %2d d2r %2d rr %2d dl %2d eghold %d lpctl %d lsa %06x lea %06x sa %06x\n",
+						frames, n, k.slot, k.tl, k.ar, k.d1r, k.d2r, k.rr, k.dl, k.eghold, k.lpctl, k.lsa, k.lea, k.sa);
 				fprintf(kl, "%d %d %2d pc %06x a0 %06x a1 %06x a2 %06x a3 %06x a4 %06x a5 %06x a6 %06x d0 %08x d1 %08x d2 %08x d3 %08x [a0] %04x %04x [a1] %04x [a2] %04x [a3] %04x sa %06x\n",
 						frames, n, k.slot, cpu->pc(), cpu->reg(8), cpu->reg(9), cpu->reg(10), cpu->reg(11), cpu->reg(12), cpu->reg(13), cpu->reg(14),
 						cpu->reg(0), cpu->reg(1), cpu->reg(2), cpu->reg(3), w(cpu->reg(8)), w(cpu->reg(8) + 2), w(cpu->reg(9)), w(cpu->reg(10)), w(cpu->reg(11)), k.sa);
@@ -169,6 +174,21 @@ void SoundBoard::set_volumes(float music, float effects)
 uint16_t SoundBoard::reg_word(int n, uint32_t i)
 {
 	return scsp[n]->read(i);
+}
+
+void SoundBoard::energy_on(bool on)
+{
+	for (auto &s : scsp)
+		if (s) s->m_probe = on;
+}
+
+void SoundBoard::energy_take(double e[2][32])
+{
+	for (int n = 0; n < 2; n++)
+		for (int sl = 0; sl < 32; sl++) {
+			e[n][sl] = scsp[n] ? scsp[n]->m_probe_direct[sl] : 0.0;
+			if (scsp[n]) scsp[n]->m_probe_direct[sl] = 0.0;
+		}
 }
 
 void SoundBoard::midi_in(uint8_t byte)

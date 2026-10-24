@@ -41,6 +41,13 @@ public:
 	uint32_t pc() const { return cpu->pc(); }
 	uint16_t ram_word(int n, uint32_t i) const { return ram[n][i]; }
 	uint16_t reg_word(int n, uint32_t i);   // an SCSP's register word (tests: the slots' 0x000-0x3FF)
+	// WHICH VOICE IS MAKING THE NOISE. The chips carry the measurement already (scsp.h: m_probe_direct, the
+	// energy each slot sent out since it was last read); nothing turned it on. energy_on arms both, and
+	// energy_take empties them into e[chip][slot] -- so a caller can ask, frame by frame, where the sound is
+	// coming from instead of guessing from the total. Written for Fighting Vipers 2's victory screen, where a
+	// sound is born and swells 24 dB with no voice, envelope or effect to account for it (2026-10-24).
+	void energy_on(bool on);
+	void energy_take(double e[2][32]);
 
 private:
 	struct Bus;

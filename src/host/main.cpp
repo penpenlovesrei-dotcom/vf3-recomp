@@ -1135,6 +1135,31 @@ struct Game
 						(unsigned long long)frame, board.fv2_mode(), board.fv2_submode(), "-", peak);
 			}
 		}
+		// VF3_ENERGY_LOG=N: every N frames, WHICH SLOTS made the sound (soundboard.h: energy_on, energy_take),
+		// the loudest first as a share of the whole, with the state the game was in. The total says a sound is
+		// there; only this says where it comes from -- written for the victory screen's swell, which four
+		// measured hypotheses failed to account for (2026-10-24).
+		if (static const char *ev = getenv("VF3_ENERGY_LOG"); ev) {
+			static const uint64_t every = std::max<uint64_t>(1, strtoull(ev, nullptr, 10));
+			static const bool armed = (sound.energy_on(true), true);
+			(void)armed;
+			if (frame % every == 0) {
+				double e[2][32];
+				sound.energy_take(e);
+				std::vector<std::pair<double, int>> top;
+				double all = 0;
+				for (int n = 0; n < 2; n++)
+					for (int sl = 0; sl < 32; sl++)
+						if (e[n][sl] > 0) { top.push_back({ e[n][sl], n * 32 + sl }); all += e[n][sl]; }
+				std::sort(top.rbegin(), top.rend());
+				fprintf(stderr, "energy: frame %llu, mode %d sub %d, %zu voix, total %.4g:",
+				        (unsigned long long)frame, board.fv2_mode(), board.fv2_submode(), top.size(), all);
+				for (size_t i = 0; i < top.size() && i < 6; i++)
+					fprintf(stderr, " chip%d/slot%d %.0f%%", top[i].second / 32, top[i].second % 32,
+					        all > 0 ? 100.0 * top[i].first / all : 0.0);
+				fprintf(stderr, "\n");
+			}
+		}
 		note_music();
 		{
 			std::lock_guard<std::mutex> lk(sound_m);

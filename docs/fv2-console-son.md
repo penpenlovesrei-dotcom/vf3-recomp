@@ -417,3 +417,124 @@ Il est écrit et mesuré, et il **se tait** : il suit la musique dans les octets
 `A0 00 01` l'efface), et si rien ne joue il ne fait rien et le dit dans le journal. Il resterait utile le jour
 où la liste s'ouvrirait sur un écran où une musique tourne. Sur la boucle d'attraction telle qu'elle est, il
 ne se déclenche jamais.
+
+
+## L'écran de victoire : un son qui naît et qui enfle — NON RÉSOLU au 2026-10-24
+
+Frédéric : « ce son qui débute à l'écran WIN et qui augmente pour être très fort, **n'est pas normal** ».
+Il a raison, et ce n'est ni un jingle fort ni un volume mal réglé. Voici tout ce qui est mesuré, tout ce qui
+est éliminé, et où ça s'arrête.
+
+### Le phénomène, chiffré
+
+Mesuré avec `VF3_MIDI_LOG=1`, qui donne par image le mode, le sous-état et le pic du son fabriqué, sur de
+vraies parties de Frédéric menées jusqu'au bout. Le sous-état est **18, `VIC_DSP`** (`docs/fv2-etats.md`) —
+la victoire de *match*, pas la fin de round.
+
+À `--volume 25`, donc gain exactement 1 et **limiteur hors circuit**, le niveau brut du banc de son :
+
+| état | images | pic brut | % du plein régime |
+|---|---|---|---|
+| **`VIC_DSP` (18)** | 256 | **13805** | **42,1 %** |
+| `JUDGE_DSP` (14) | 384 | 4107 | 12,5 % |
+| `FIGHT_DSP` (12) | 2003 | 3942 | 12,0 % |
+| `REPLAY_DSP` (16) | 510 | 3441 | 10,5 % |
+| attraction | 1478 | 4117 | 12,6 % |
+
+Tout le jeu vit entre 10 et 13 % ; la victoire est à 42 %. Et elle **n'y arrive pas d'un coup** : le son naît
+à 2,3 % à l'entrée de l'état et monte à 36 % en moins de deux secondes — **24 dB** — puis plafonne autour de
+33–41 % jusqu'à ce que le jeu envoie son propre silence (`A0 00 01`). Une commande `A0 11 0D` arrive au milieu
+de la montée ; rejouée seule hors de cet état (`VF3_MIDI_SEND=A0110D@1500`), elle ne produit rien.
+
+### Pourquoi ça s'entend si mal
+
+`LEVEL = 4.0` dans `src/host/main.cpp` relève la sortie du banc de **12 dB**, au motif écrit dans son
+commentaire qu'elle « culmine bien en dessous du plein régime » — vrai de Virtua Fighter 3, pour qui il a été
+choisi. À 42 % de brut, la victoire demande 168 % du plein régime, et le limiteur
+(`CEILING = 0.891`, soit −1 dBFS = **29196**, attaque instantanée, retour en 0,1 s) retire 4,7 dB en continu.
+Mesuré : **120 images collées exactement sur 29196**. Un limiteur qui travaille à fond pendant deux secondes,
+c'est ce qu'on entend.
+
+Le limiteur n'est donc pas le défaut, c'est le révélateur. Baisser `LEVEL` pour FV2 **masquerait** la montée
+au lieu de l'enlever : c'est explicitement ce que Frédéric a refusé, et il avait raison.
+
+### LE COUPABLE EST NOMMÉ : deux voix, c0/s18 et c0/s19
+
+Les deux chips portaient déjà la mesure (`scsp.h` : `m_probe_direct`, l'énergie que chaque emplacement a
+envoyée) et **rien ne l'allumait**. Elle est maintenant câblée : `SoundBoard::energy_on` / `energy_take`, et
+`VF3_ENERGY_LOG=N` dans l'hôte imprime toutes les N images les voix qui sonnent, leur énergie totale, et les
+six plus fortes avec leur part. Sur une partie de Frédéric :
+
+```
+ image | voix | total     | les plus fortes
+  4724 |   13 |  2.98e+09 | c0/s13 31% c0/s17 16% c1/s24 14%
+  4748 |    5 |  2.12e+10 | c1/s12 39% c0/s18 32% c0/s19 20%
+  4796 |    4 |  5.34e+10 | c0/s19 56% c0/s18 40%
+  4892 |    4 |  7.28e+10 | c0/s19 61% c0/s18 37%
+  4940 |    4 |  1.49e+11 | c0/s19 57% c0/s18 42%
+```
+
+**Les emplacements 18 et 19 du premier chip portent 95 à 99 % de l'énergie, et leur total est multiplié par
+cinquante — 17 dB — en une seconde et demie.** Ce n'est pas un empilement de voix : c'est une **paire** qui
+s'emballe pendant qu'elle joue. Deux voix dont la sortie croît sans qu'on leur redonne d'ordre, c'est la
+signature d'une modulation croisée : la modulation lit `m_RINGBUF`, qui contient les sorties récentes, donc
+une voix peut se moduler avec le son de l'autre — une boucle de réinjection, dont la profondeur est le gain.
+
+### Quatre hypothèses mesurées et tombées
+
+1. **Les trois changements du SCSP de l'amont** (profondeur FM doublée, bit bas de `PLFOS` retiré, minuteries
+   recalées). Deux parties comparées, banc d'avant et banc d'après : pic 29196 des deux côtés, 182 contre 181
+   images au-dessus de 20000. **Cette comparaison ne vaut rien** et c'est une erreur à ne pas refaire : les
+   deux parties étaient à volume plein, donc **toutes deux contre le plafond du limiteur**, où un écart de
+   10 dB dans le signal brut donne le même chiffre. L'amont n'est ni accusé ni innocenté ; il faut refaire la
+   comparaison à `--volume 25`. Le binaire est prêt : `vf3-son-avant.exe` dans le dossier de travail.
+2. **L'accumulation dans les registres d'effet du DSP.** `EFREG[EWA] += SHIFTED >> 8` dans
+   `src/sound/scspdsp.cpp`, et `EFREG` n'est remis à zéro qu'à l'initialisation du chip, jamais entre deux
+   échantillons. Les vider à chaque échantillon (interrupteur d'essai) **ne change rien du tout** : pic
+   13805 et moyenne 8234, contre 13805 et 8238 sans. Donc non seulement ce n'est pas la cause, mais **le DSP
+   ne contribue pratiquement rien** à ce son. L'interrupteur a été retiré. (Le code vient de MAME et la copie
+   de référence `fv2-stable` a la même ligne.)
+3. **Des voix qui s'empilent sans se libérer.** `VF3_KEYON_LOG` : 81 voix démarrées pendant les 256 images de
+   `VIC_DSP`, réparties sur des emplacements différents, échantillons variés. Ordinaire.
+4. **Les enveloppes.** Le journal des voix imprime maintenant leur forme (`tl`, `ar`, `d1r`, `d2r`, `rr`,
+   `dl`, `eghold`, `lpctl`, `lsa`, `lea`) :
+
+   | | voix | `rr`=0 | `d2r`=0 | boucle | `tl` moyen |
+   |---|---|---|---|---|---|
+   | `VIC_DSP` | 81 | 8 | 81 | 81 | 49 |
+   | `FIGHT_DSP` | 1153 | 36 | 1153 | 1153 | 58 |
+   | attraction | 693 | 0 | 648 | 693 | 51 |
+
+   Tout le jeu joue en boucle sans décroissance de maintien : c'est sa manière. Les voix de la victoire sont
+   un peu plus fortes (`tl` 49 contre 58, quelques dB) et un peu plus nombreuses à ne jamais relâcher. Rien
+   qui approche 24 dB.
+
+### Ce qui a été essayé comme correction, et retiré
+
+Rendre à Fighting Vipers 2 les profondeurs de MAME, en ne laissant celles de Supermodel qu'à Virtua Fighter 3
+— elles sont, de l'aveu du commentaire, « as Supermodel's, **set by ear for VF3** », et doubler la profondeur
+d'une boucle de réinjection est exactement ce qui fait passer une résonance bornée à une montée jusqu'à
+saturation. Construit, joué : **le défaut est toujours là**. Le changement a donc été **retiré** plutôt que
+gardé — un changement de son non mesuré ne reste pas dans l'arbre. Le raisonnement, lui, reste valable et
+mérite d'être reprisé avec la bonne mesure (point 1 ci-dessus).
+
+### Où reprendre
+
+La question est maintenant étroite : **deux emplacements, 18 et 19 du premier chip, pendant `VIC_DSP`.**
+
+1. Lire leurs registres — `SoundBoard::reg_word(0, 0x000 + slot * 0x20 ...)` donne les mots d'un emplacement —
+   et regarder `MDL`, `MDXSL`, `MDYSL` : est-ce que 18 et 19 se modulent l'une l'autre, ou elles-mêmes ?
+2. Refaire la comparaison avant/après fusion **à `--volume 25`**, la seule qui ait un sens.
+3. Si c'est bien une paire en réinjection, le gain de la boucle est dans `smp >>= 0x18 - (MDL & 0xE)` et dans
+   l'indexation de `m_RINGBUF` (`SCSP_FM_DELAY`) : c'est là qu'il faut mesurer, pas à l'oreille.
+
+### Les outils laissés en place
+
+- `VF3_ENERGY_LOG=N` — quelle voix fait le son, par image (`energy_on` / `energy_take`, `soundboard.h`).
+- `VF3_KEYON_LOG=fichier` — chaque voix démarrée, **avec sa forme** d'enveloppe et de boucle.
+- `VF3_MIDI_LOG=N` — ce que le jeu envoie au banc, avec son état et le pic de l'image précédente.
+- `tools/scripts/fv2-vic-banc.txt` — une route qui **n'aboutit pas** : elle entre bien en combat dans
+  `vf3run` (crédits payés, V.S. choisi) et le chrono du round forcé à zéro (`VF3_POKE` sur `0x00581404`) fait
+  bien finir le round, mais le jeu reste ensuite dans `JUDGE_DSP` et `VIC_DSP` n'est jamais atteint. Et
+  `vf3run` tourne à 14 images par seconde sur ce jeu : six minutes par essai. **Un banc hors-jeu pour cet
+  état reste à trouver** ; en attendant, la seule route qui y mène est une partie jouée à la main.
