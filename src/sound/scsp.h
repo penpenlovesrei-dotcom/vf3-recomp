@@ -68,6 +68,10 @@ public:
 	double m_probe_state[2][4] = {};   // per group, per EG state: the energy sent (direct and into the DSP)
 	int m_probe_efsdl[16] = {};   // EFSDL per DSP output, as last seen
 
+	// The DSP's MADRS mirror, which belongs to the game and not to the chip: see m_madrs_mirror below, and
+	// SoundBoard::madrs_mirror, which sets it from the set once the chip is made.
+	void set_madrs_mirror(bool on) { m_madrs_mirror = on; }
+
 	// Separate volumes for groups of voices (not the chip's: a host's mixer). The board says
 	// which group a slot's next voice belongs to (set_next_group); each slot's output is scaled
 	// by its group's gain before it goes out and into the DSP. At 1 (the default) nothing is
@@ -175,7 +179,17 @@ private:
 	// reverb's addresses, then clears that range, which with the mirror leaves them all at one place: the reverb
 	// short, as the reference's (the coin's and start's echoes die in about a second; kept apart, VF2's way, they
 	// rang on for several). VF3_SCSP_MADRS_SEPARATE=1: kept apart.
-	const bool m_madrs_mirror = [] { const char *e = getenv("VF3_SCSP_MADRS_SEPARATE"); return !(e && *e == '1'); }();
+	// AND IT IS WRONG FOR FIGHTING VIPERS 2, measured the 2026-10-24. With the mirror every MADRS entry lands
+	// at one place, so each of the DSP's delay lines reads and writes the same buffer: on the victory screen
+	// (VIC_DSP) that fed itself, and a sound was born there and climbed 24 dB to the host's limiter, which held
+	// 120 frames at -1 dBFS. Kept apart, it goes: the state's mean peak falls from 22831 to 6532 while every
+	// other state stays where it was (the fight's mean even rises, 6714 to 6979). MAME has since corrected
+	// this on its own account -- mamedev/mame#16527, "Don't mirror MADRS at 0x7c0-0x7ff, fixes corrupted and
+	// then silent sound" -- and Supermodel kept ElSemi's older DSP for this very game until it made its DSP's
+	// memory access follow the manual. So: the mirror for the game it was measured right on, apart for the
+	// other. The board sets it per game (soundboard.h); VF3_SCSP_MADRS_SEPARATE=1 and VF3_SCSP_MADRS_MIRROR=1
+	// force it either way, for comparing. See docs/fv2-console-son.md.
+	bool m_madrs_mirror = true;
 	// VF3_SCSP_MSLC_LATCH=1: MAME's MSLC status latched once a sample (for comparisons)
 	const bool m_latch_mslc_per_sample = [] { const char *e = getenv("VF3_SCSP_MSLC_LATCH"); return e && *e == '1'; }();
 	u8 m_BUFPTR;

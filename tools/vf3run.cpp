@@ -252,6 +252,7 @@ int main(int argc, char **argv)
 		sound.attach(&board.sound_rom, &board.samples);
 		// the music/effects split reads Virtua Fighter 3's sound driver (soundboard.h)
 		sound.driver_known = board.set == "vf3";
+		sound.madrs_mirror = board.set == "vf3";   // (soundboard.h: right for VF3, wrong for Fighting Vipers 2)
 		sound.reset();
 		if (const char *v = getenv("VF3_VOLUMES")) {
 			int m = 100, e = 100;

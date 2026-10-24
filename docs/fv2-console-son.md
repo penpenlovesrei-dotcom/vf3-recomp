@@ -419,7 +419,7 @@ où la liste s'ouvrirait sur un écran où une musique tourne. Sur la boucle d'a
 ne se déclenche jamais.
 
 
-## L'écran de victoire : un son qui naît et qui enfle — NON RÉSOLU au 2026-10-24
+## L'écran de victoire : un son qui naît et qui enfle — RÉSOLU le 2026-10-24
 
 Frédéric : « ce son qui débute à l'écran WIN et qui augmente pour être très fort, **n'est pas normal** ».
 Il a raison, et ce n'est ni un jingle fort ni un volume mal réglé. Voici tout ce qui est mesuré, tout ce qui
@@ -582,3 +582,60 @@ issues du fork étaient désactivées et ont été activées pour elle.
 Sources : le `LegacySoundDSP` des configurations publiées de Supermodel, la documentation du cœur
 Libretro-Supermodel (moteurs « MAME-derived » et « ElSemi »), l'en-tête de `Src/Sound/SCSP.cpp` de
 `trzy/Supermodel`, et la demande d'intégration MAME ci-dessus.
+
+### RÉSOLU : le miroir de `MADRS` écrasait les lignes à retard du DSP sur une seule adresse
+
+La cause est le miroir de la table `MADRS` du DSP sur `0x7C0-0x7FF`, et **le commentaire qui l'accompagnait
+dans `scsp.h` la contenait déjà sans que personne l'ait rapprochée de ce défaut** :
+
+> « VF3's sound program sets its reverb's addresses, then clears that range, which **with the mirror leaves
+> them all at one place: the reverb short** […] kept apart, VF2's way, they **rang on for several** »
+
+Avec le miroir, **toutes les entrées de `MADRS` tombent au même endroit**, donc chacune des lignes à retard du
+DSP lit et écrit le même tampon. Sur l'écran de victoire, cette boucle se nourrit d'elle-même : le son naît,
+grossit de 24 dB et sature. Les deux voix nommées par la sonde d'énergie, `c0/s18` et `c0/s19`, sont les deux
+prises qui se retrouvaient à la même adresse.
+
+**La mesure, à contexte égal** — même code, même volume, deux parties de Frédéric, avec le miroir et sans :
+
+| état | pic AVEC | pic SANS | moyenne AVEC | moyenne SANS |
+|---|---|---|---|---|
+| **`VIC_DSP`** | **29196** | **16506** | **22831** | **6532** |
+| `FIGHT_DSP` | 16980 | 16290 | 6714 | **6979** |
+| `JUDGE_DSP` | 16913 | 18386 | 8109 | 7654 |
+| `REPLAY_DSP` | 14023 | 14749 | 6575 | **6923** |
+| `SELECT` | 11101 | 10708 | 5800 | 5858 |
+
+L'écran de victoire passe de 22831 de moyenne à 6532 et quitte le plafond du limiteur ; **tous les autres
+états restent où ils étaient**, la moyenne du combat montant même légèrement. Frédéric, qui a joué les deux :
+« le bug a été corrigé, même si je trouve que les sound effects sont plus bas ». Ce n'est pas une perte de
+niveau — la mesure dit le contraire — mais la réverbération, qui n'est plus écrasée en un point et retrouve
+ses vraies lignes à retard : les frappes ont une queue au lieu d'un claquement concentré.
+
+### La correction est PAR JEU, parce que les deux mesures sont bonnes
+
+L'amont a mesuré que le miroir est **juste pour Virtua Fighter 3** : les échos du crédit et de Start y meurent
+en une seconde, comme la référence, alors que sans lui ils sonnent plusieurs secondes. Nous venons de mesurer
+qu'il est **faux pour Fighting Vipers 2**. Aucune des deux mesures n'annule l'autre, donc le réglage suit le
+jeu, comme `driver_known` le fait déjà :
+
+- `SoundBoard::madrs_mirror`, posé depuis le set par l'hôte et par `vf3run` (`board.set == "vf3"`), appliqué
+  au chip à sa création via `scsp_device::set_madrs_mirror`.
+- `VF3_SCSP_MADRS_SEPARATE=1` et `VF3_SCSP_MADRS_MIRROR=1` forcent l'un ou l'autre, pour comparer.
+- `verifier-vf3.cmd 2000` : quatre `IDENTIQUE` et 2231 images identiques — Virtua Fighter 3 ne bouge pas.
+
+**Un piège de mesure rencontré en route, à ne pas refaire** : la première construction a échoué
+(`m_madrs_mirror` était privé) et le vérificateur a tourné ensuite sur les **anciens** binaires, rendant
+quatre `IDENTIQUE` qui ne portaient sur rien. Même défaut que la bissection du matin : un harnais qui mesure
+un binaire périmé répond toujours « tout va bien ». Depuis, le script s'arrête sur une erreur de compilation
+avant de vérifier quoi que ce soit.
+
+### Ce qui reste ouvert
+
+- **Personne n'a jamais mesuré la bonne longueur de réverbération de Fighting Vipers 2** contre une
+  référence. L'amont a comparé VF3 à Supermodel ; nous avons comparé FV2 à lui-même. Supermodel dit avoir mis
+  les accès mémoire de son DSP en conformité avec le manuel, et c'est cette référence qu'il faudrait écouter.
+- Les trois écarts de modulation avec Supermodel (table 4.17) restent, et le **bornage du décalage d'adresse
+  à 11 bits** reste une correction tirée du manuel que ce portage n'a pas.
+- `LEVEL = 4.0`, les 12 dB choisis pour Virtua Fighter 3, s'appliquent toujours aussi à ce jeu. Ils ne
+  saturent plus, mais ils n'ont jamais été mesurés pour lui.
