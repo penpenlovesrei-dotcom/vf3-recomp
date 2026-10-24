@@ -1,34 +1,34 @@
-roms/
-*.zip
+
+# Les images du menu console : elles viennent en partie du jeu, donc hors depot.
+# What this port keeps beside itself when it is launched from here: the four
+# and never belong in the repository either.
+# jouer-*.cmd pin VF3_DATA to the project folder, so its settings, NVRAM, log,
+# not be committed. The dumps and the packs are made from the player's own ROM
+# the player's own portraits and their replacement textures land here and must
+# the site's Pages Function and the referrer collector's address (tools/site/build.py)
 *.7z
 *.bin
 *.nv
-NVRAM/
-build/
+*.zip
 .DS_Store
-# the site's Pages Function and the referrer collector's address (tools/site/build.py)
-/functions/
 .refhit-url
-/tools/site/strip/node_modules/
-/tools/site/strip/package-lock.json
-__pycache__/
-
-# What this port keeps beside itself when it is launched from here: the four
-# jouer-*.cmd pin VF3_DATA to the project folder, so its settings, NVRAM, log,
-# the player's own portraits and their replacement textures land here and must
-# not be committed. The dumps and the packs are made from the player's own ROM
-# and never belong in the repository either.
-/settings.ini
-/settings.ini.tmp
-/log.txt
+/assets/menu-console/
 /backup
 /backup-*
+/captures-honey/
 /eeprom
 /eeprom-*
+/functions/
+/log.txt
 /portraits-*/
+/settings.ini
+/settings.ini.tmp
 /texture_remplacement*/
+/tools/site/strip/node_modules/
+/tools/site/strip/package-lock.json
+NVRAM/
+__pycache__/
 assets-hd/
-/captures-honey/
-
-# Les images du menu console : elles viennent en partie du jeu, donc hors depot.
-/assets/menu-console/
+build/
+releves/
+roms/

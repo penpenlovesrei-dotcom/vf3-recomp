@@ -6,6 +6,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#ifdef _WIN32
+#include <direct.h>     // _mkdir, pour le dossier des releves de la sonde de camera
+#else
+#include <sys/stat.h>
+#endif
 
 namespace m3 {
 
@@ -2097,6 +2102,16 @@ void Model3::camera_note()
 		// le dira ; on ne le devinera pas.
 		uint8_t pos, cadrage;
 		uint16_t angle;
+		// LE NUMERO DE MANCHE ET LES DEUX COMPTEURS DE MANCHES GAGNEES.
+		//
+		// Pourquoi c'est ici. Le sens du cylindre de TEST doit s'inverser aux manches paires, et
+		// r3d_scene.cpp lit pour ca `ram[0x00581456 ^ 3]`. A l'ecran, rien ne change. Or le code
+		// de la borne est net : ROUND_INT pose 1 en 0x0000BF90 (et remet a zero les compteurs
+		// 0x00581454 et 0x00581455), et 0x0000DD38 incremente a chaque manche -- donc 1, 2, 3...
+		// Soit l'octet ne bouge pas la ou le port le lit, soit il bouge et c'est l'animation qui
+		// est en cause. Un releve le dit ; une relecture du code ne le dira pas, puisque le code
+		// est deja d'accord avec moi.
+		uint8_t manche, gagnees1, gagnees2;
 	} e{};
 	e.mode      = octet(cam + 0xE2);
 	e.srep      = octet(cam + 0x38D);
@@ -2117,23 +2132,72 @@ void Model3::camera_note()
 	e.pos       = octet(cam + 0x338);
 	e.cadrage   = octet(cam + 0x339);
 	e.angle     = uint16_t((octet(cam + 0x33A) << 8) | octet(cam + 0x33B));
+	e.manche    = octet(0x00581456);
+	e.gagnees1  = octet(0x00581454);
+	e.gagnees2  = octet(0x00581455);
 
 	static Etat vu{};
 	static bool premiere = true;
 	if (!premiere && memcmp(&e, &vu, sizeof e) == 0) return;
+
+	// UN FICHIER PAR PARTIE, QUE RIEN N'EFFACE.
+	//
+	// Pourquoi ca existe. La sonde ecrivait sur stderr, donc dans log.txt -- et chaque lancement
+	// commence par effacer log.txt. Le releve de la manche sur TOWER, celui qui portait le mur casse
+	// et la decouverte de PROTO2, a ete perdu comme ca : par mon propre relancement. Un releve qui
+	// sert a COMPARER deux decors ne peut pas vivre dans un fichier que le lancement suivant ecrase.
+	//
+	// Le nom porte le decor et l'heure, donc deux parties ne se marchent jamais dessus et la paire
+	// a comparer se lit dans la liste du dossier.
+	static FILE *archive = nullptr;
+	if (premiere) {
+		const char *st = getenv("VF3_STAGE");
+		char nom[256];
+		const long t = long(time(nullptr));
+		snprintf(nom, sizeof nom, "releves/cam-decor%s-%ld.txt", st && *st ? st : "-live", t);
+		// Le dossier d'abord ; s'il existe deja, tant mieux.
+		#ifdef _WIN32
+		_mkdir("releves");
+		#else
+		mkdir("releves", 0777);
+		#endif
+		archive = fopen(nom, "w");
+		if (archive) {
+			fprintf(archive, "# sonde de camera, decor %s\n", st && *st ? st : "(celui du jeu)");
+			fprintf(archive, "# une ligne par CHANGEMENT d'etat ; le mode est l'index de"
+			                 " repartition de 0x00019078, sous son nom de Sega\n");
+			fprintf(stderr, "VF3_CAM_LOG : releve archive dans %s\n", nom);
+		}
+	}
 	premiere = false;
 	vu = e;
+	if (archive) {
+		fprintf(archive,
+		        "CAM : image %llu  mode %u %-16s  srep %u  suivi %08x  etat %u/%u  cause %u"
+		        "  porte %08x%s  reg %u/%u  fanions %u/%u/%u  masque %x  morceaux %u  armure %x/%x"
+		        "  PROTO2 pos %u angle %04x (%.2f deg) cadrage %u  manche %u (%u-%u)\n",
+		        (unsigned long long)cam_image,
+		        e.mode, e.mode < 41 ? NOM[e.mode] : "(hors table)",
+		        e.srep, e.suivi, e.mode_jeu, e.sous_etat, e.cause,
+		        e.porte, (e.porte & 0x04000000u) ? " REPLAY COUPE" : "",
+		        e.reg4C, e.reg50, e.f1724, e.f188F, e.fFDB0,
+		        e.masque, e.morceaux, e.arm1, e.arm2,
+		        e.pos, e.angle, double(e.angle) * 360.0 / 65536.0, e.cadrage,
+		        e.manche, e.gagnees1, e.gagnees2);
+		fflush(archive);   // une partie peut finir par une fermeture brutale : rien ne doit rester en tampon
+	}
 	fprintf(stderr,
 	        "CAM : image %llu  mode %u %-16s  srep %u  suivi %08x  etat %u/%u  cause %u"
 	        "  porte %08x%s  reg %u/%u  fanions %u/%u/%u  masque %x  morceaux %u  armure %x/%x"
-	        "  PROTO2 pos %u angle %04x (%.2f deg) cadrage %u\n",
+	        "  PROTO2 pos %u angle %04x (%.2f deg) cadrage %u  manche %u (%u-%u)\n",
 	        (unsigned long long)cam_image,
 	        e.mode, e.mode < 41 ? NOM[e.mode] : "(hors table)",
 	        e.srep, e.suivi, e.mode_jeu, e.sous_etat, e.cause,
 	        e.porte, (e.porte & 0x04000000u) ? " REPLAY COUPE" : "",
 	        e.reg4C, e.reg50, e.f1724, e.f188F, e.fFDB0,
 	        e.masque, e.morceaux, e.arm1, e.arm2,
-	        e.pos, e.angle, double(e.angle) * 360.0 / 65536.0, e.cadrage);
+	        e.pos, e.angle, double(e.angle) * 360.0 / 65536.0, e.cadrage,
+		        e.manche, e.gagnees1, e.gagnees2);
 }
 
 // VF3_SKO_LOG=1 : dire, quand ca change, l'etat de la chaine de la cinematique.
