@@ -444,8 +444,30 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						// des la premiere manche. Frederic avait raison sur les trois points depuis
 						// le debut, et c'est le code qui le dit maintenant, pas une correlation.
 						//
-						// L'ORDRE. Les deux rotations post-multiplient xmtrx avant la translation,
-						// donc le produit applique au modele est Rz(80) . Ry(angle) . T(0,h,0).
+						// L'ORDRE, decode dans les TROIS fonctions et pas suppose. Chacune finit par
+						// des fmov en mode paire (fschg) qui reecrivent des registres XD, donc
+						// XMTRX lui-meme, avec le resultat de ftrv xmtrx, fvN :
+						//
+						//   0x8C0BAED0  fv0=(cos, sin,0) fv4=(-sin, cos,0) -> XD0/2/4/6   colonnes 0,1
+						//   0x8C0BAE10  fv0=(cos,0,-sin)  fv4=(sin,0, cos)  -> XD0/2/8/10  colonnes 0,2
+						//   0x8C0BB1F0  fv4=(tx,ty,tz,1)                    -> XD12/14     colonne 3
+						//
+						// Les trois POST-multiplient. Le produit complet est donc
+						//
+						//     M . Rz(80) . Ry(angle) . T(0, +-h, 0)
+						//
+						// et le M en tete n'est pas un detail : il met la rotation dans l'espace du
+						// MODELE. J'ecrivais Rz . Ry . T . M, qui tourne autour de l'origine de la
+						// scene au lieu de l'axe propre du cylindre. Comme l'axe modele du cylindre
+						// est Y (boite mesuree : x,z +-1000, y +-500) et que le haut du monde est Y
+						// aussi, l'erreur est INVISIBLE a la manche impaire, ou il n'y a qu'une
+						// translation -- et c'est pour ca qu'elle a survecu si longtemps. Elle ne se
+						// voit qu'a la manche paire : Frederic voyait le cylindre droit la ou la
+						// Dreamcast le montre de biais.
+						//
+						// Consequence a ne pas perdre de vue : T post-multiplie, donc la montee se
+						// fait le long de l'axe PROPRE du cylindre, deja incline -- pas a la
+						// verticale du monde.
 						Mat4 rotation = Mat4::identity();
 						if (manche && !(manche & 1)) {
 							const double A = double(tic) * 46.0 * 2.0 * 3.14159265358979 / 65536.0;
@@ -484,7 +506,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 							t.m[12] = sien->d[0] * h;
 							t.m[13] = sien->d[1] * h + sien->pas * float(k);
 							t.m[14] = sien->d[2] * h;
-							c.matrix = jeu.root * (rotation * (t * c.matrix));
+							c.matrix = jeu.root * (c.matrix * (rotation * t));
 							if (c.meshes)
 								for (Mesh &me : *c.meshes) me.injected = true;
 							a_nous.models.push_back(std::move(c));
@@ -493,7 +515,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						t.m[12] = sien->d[0] * h;
 						t.m[13] = sien->d[1] * h;
 						t.m[14] = sien->d[2] * h;
-						m.matrix = rotation * (t * m.matrix);
+						m.matrix = m.matrix * (rotation * t);
 					}
 					m.matrix = jeu.root * m.matrix;
 					// VF3_ECHELLE=1 : la taille de chaque modele injecte, TELLE QUE LE MOTEUR LA
