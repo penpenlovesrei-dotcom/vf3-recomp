@@ -411,6 +411,56 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						                      ? board.ram[0x00581456 ^ 3] : 0u;
 						float signe = (manche & 1) ? 1.0f : -1.0f;
 						const float h = float(tic % uint64_t(sien->periode + 1)) * signe;
+
+						// AUX MANCHES PAIRES, DEUX ROTATIONS EN PLUS -- LUES DANS LE CODE.
+						//
+						// decor_TEST_maj (0x8C048878) ne fait pas que translater. Son corps est une
+						// BRANCHE sur le drapeau de manche [0x8C110FD0], et j'avais lu la branche
+						// sans resoudre ses pointeurs :
+						//
+						//   si [0x8C110FD0] == 0 :            <- manche PAIRE
+						//       0x8C0BAED0( 14564 )            une rotation fixe
+						//       0x8C0BAE10( [0x8C288528] )     une rotation animee
+						//       translate(0, +hauteur, 0)
+						//   sinon :                            <- manche IMPAIRE
+						//       translate(0, -hauteur, 0)      et rien d'autre
+						//
+						// LES AXES, lus dans les deux fonctions. Toutes deux prennent un angle
+						// BINAIRE (fsca FPUL, dr4 -- donc 65536 = 360 degres) et transforment deux
+						// vecteurs par xmtrx :
+						//
+						//   0x8C0BAE10   fv0 = (cos, 0, -sin)   fv4 = (sin, 0, cos)   -> autour de Y
+						//   0x8C0BAED0   fv0 = (cos, sin, 0)    fv4 = (-sin, cos, 0)  -> autour de Z
+						//
+						// LES VALEURS. 14564 unites = 80,00 degres exactement, constante du bassin
+						// en 0x8C04890E. Et 0x8C288528 est le compteur que la courbe de hauteur
+						// (0x8C048B26) incremente de 46 a chaque image : 46 unites = 0,2527 degre,
+						// soit un tour en 1425 images = 23,75 s. Ce n'est donc pas un « second
+						// compteur » comme mes notes le disaient faute de mieux : c'est l'ANGLE.
+						//
+						// CE QUE CA CORRIGE. Je surveillais 0x8C1C03A0, qui n'est pas l'angle du
+						// cylindre -- d'ou les sauvegardes fraiches a zero, d'ou ma conclusion
+						// fausse qu'il n'y avait pas de condition de manche, d'ou l'effet applique
+						// des la premiere manche. Frederic avait raison sur les trois points depuis
+						// le debut, et c'est le code qui le dit maintenant, pas une correlation.
+						//
+						// L'ORDRE. Les deux rotations post-multiplient xmtrx avant la translation,
+						// donc le produit applique au modele est Rz(80) . Ry(angle) . T(0,h,0).
+						Mat4 rotation = Mat4::identity();
+						if (manche && !(manche & 1)) {
+							const double A = double(tic) * 46.0 * 2.0 * 3.14159265358979 / 65536.0;
+							const double Z = 14564.0 * 2.0 * 3.14159265358979 / 65536.0;
+							const double ca = cos(A), sa = sin(A), cz = cos(Z), sz = sin(Z);
+							// Rz(Z) . Ry(A), en colonnes (Mat4 range m[col*4 + ligne]).
+							const double R[3][3] = {
+								{  ca * cz,  ca * sz,  -sa },   // colonne 0
+								{ -sz,       cz,        0.0 },  // colonne 1
+								{  sa * cz,  sa * sz,   ca  },  // colonne 2
+							};
+							for (int col = 0; col < 3; col++)
+								for (int lig = 0; lig < 3; lig++)
+									rotation.m[col * 4 + lig] = float(R[col][lig]);
+						}
 						// VF3_CYL_LOG=1 : une ligne a chaque changement de manche, pour savoir si le
 						// signe est bien applique ici -- et non si l'octet bouge, ce que la sonde de
 						// camera a deja etabli (manche 1 a l'image 1744, 2 a l'image 3432).
@@ -434,7 +484,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 							t.m[12] = sien->d[0] * h;
 							t.m[13] = sien->d[1] * h + sien->pas * float(k);
 							t.m[14] = sien->d[2] * h;
-							c.matrix = jeu.root * (t * c.matrix);
+							c.matrix = jeu.root * (rotation * (t * c.matrix));
 							if (c.meshes)
 								for (Mesh &me : *c.meshes) me.injected = true;
 							a_nous.models.push_back(std::move(c));
@@ -443,7 +493,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						t.m[12] = sien->d[0] * h;
 						t.m[13] = sien->d[1] * h;
 						t.m[14] = sien->d[2] * h;
-						m.matrix = t * m.matrix;
+						m.matrix = rotation * (t * m.matrix);
 					}
 					m.matrix = jeu.root * m.matrix;
 					// VF3_ECHELLE=1 : la taille de chaque modele injecte, TELLE QUE LE MOTEUR LA
