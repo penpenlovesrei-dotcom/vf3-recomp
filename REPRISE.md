@@ -580,6 +580,22 @@ Frederic a essaye la version nue et elle tourne a pleine vitesse, la branche de 
 | `fv2` | le travail en cours, tout ce qu'on ajoute | la branche de tous les jours |
 | `fv2-<sujet>` | un arbre de travail par sujet (`git worktree list`) | une recherche a la fois, fusionnee dans `fv2` quand elle aboutit |
 
+**Un pacte entre branches, posé le 2026-10-24.** `src/gpu/r3d_shaders.h` est un fichier **généré**, et aucune
+machine ici n'a de DXC capable de SPIR-V. L'en-tête que portent `fv2` et `decor-test-dreamcast` est donc une
+**greffe** — nos six nuanceurs recompilés avec l'écrêtage de lumière `665b40c`, plus les trois tableaux
+`fs_colour` de l'amont — et non la sortie franche du générateur. Il se vérifie sans rien croire : le
+générateur inscrit dans l'en-tête le sha1 du `r3d.hlsl` qui l'a produit, donc
+
+```
+python -c "import hashlib;print(hashlib.sha1(open('src/gpu/r3d.hlsl','rb').read()).hexdigest())"
+grep -o 'source_sha1\[\] = "[0-9a-f]*"' src/gpu/r3d_shaders.h
+```
+
+doivent concorder, et `grep -c 'alignas(4) static const uint8_t r3d_'` doit rendre **21**. Conséquence :
+**le jour où une branche modifie `r3d.hlsl`, les autres n'ont plus de blobs valides.** Celle qui y touche
+prévient les autres. (C'est ainsi que la branche du décor Dreamcast a récupéré l'écrêtage de lumière qu'une
+fusion d'amont lui avait pris : elle a repris notre en-tête, `2e8a285`.)
+
 La copie de reference est a **`C:\Users\frede\fv2-stable`**, plus dans `C:\Temp` : un dossier temporaire
 n'est pas un endroit pour ce qu'on ne doit pas perdre. Elle a ses propres `settings.ini`, `backup-fvipers2`
 et `eeprom-fvipers2` (free play), et un raccourci sur le bureau, **Fighting Vipers 2 - version stable**,
