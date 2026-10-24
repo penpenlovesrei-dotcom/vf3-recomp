@@ -1,6 +1,7 @@
 # Reprise — Fighting Vipers 2, menu console
 
-État au **2026-10-21**, branche `fv2`, rien de poussé depuis le tag `fv2-v0.2.0-alpha`.
+État au **2026-10-24**, branche `fv2`, poussée sur `mine` jusqu'à `7f732ee` ; **`origin` (l'amont
+`mr-finster`) n'a pas de branche `fv2`** — rien de tout ça n'y est allé.
 
 Le journal du jour est en bas. Ce qui suit est l'état, pas le récit.
 
@@ -48,6 +49,9 @@ Tout est derrière un lanceur `.cmd` à la racine, et tous épinglent `VF3_DATA`
 | construire la fenêtre aussi | `construire-hote.cmd` | |
 | construire | `construire.cmd` | |
 | vérifier | `verifier-vf3.cmd` | |
+| où va le temps de la carte son | `VF3_SND_PROF=1` avec `VF3_PROF=1` | `docs/scsp_audit.md` |
+| le son n'a pas bougé d'un octet | `tools\son\comparer-son.cmd` | `docs/scsp_validation.md` |
+| les deux corps du DSP, testés | `make test` | `docs/scsp_validation.md` |
 
 Et le jeu tourne en **free play** : un seul octet de la NVRAM, `backup[0x17] = 27`.
 
@@ -674,3 +678,183 @@ plutot que dans l'histoire. La bissection lancee ce jour-la a rendu un verdict f
 « rapide » le commit de fusion, qui mesurait 6,68 ms -- la ou un diff des fichiers du chemin chaud entre
 `fv2-stable` et `fv2`, puis `git diff -U0 | grep '^@@'` pour voir **dans quelles fonctions** les lignes
 ajoutees tombaient, a donne `read32` en deux commandes.
+
+
+## Journal du 2026-10-24, l'après-midi — le son : où va son temps, et un quart de moins
+
+Deux commits, `1757e83` et `7f732ee`. Six documents dans `docs/scsp_*.md` ; ce qui suit est ce qu'il faut
+savoir sans les ouvrir.
+
+### Ce que la mesure a dit, et que personne n'avait demandé
+
+Le profileur de `vf3run` donnait déjà le coût de la carte son **en bloc**. Il manquait la répartition dedans,
+et c'était tout le sujet : `src/sound/sound_prof.h` (`VF3_SND_PROF=1`) la donne, en retirant le temps imbriqué,
+ce qui n'est pas trivial — **les échantillons ne sont pas fabriqués dans une phase à eux**, le 68000 les
+déclenche depuis l'intérieur de ses propres tranches chaque fois qu'il touche un registre de chip.
+
+Sur `fv2-fight.txt`, 4200 images, `fvipers2` :
+
+| | part propre de la carte son |
+|---|---|
+| **le DSP d'effets** | **62-69 %** |
+| le 68000 | 22-24 % |
+| les voix | 6-13 % |
+| la boucle et les timers | ~1,2 % |
+| le mélange | ~1 % |
+
+**Les deux tiers sont le DSP d'effets.** Les voix, qu'on soupçonnerait d'abord, font un dixième. Et le
+programme DSP lui-même, lu par la sonde `dspprog` : sur ses 112 pas, `FRCL`, `ADRL`, `YRL` et `NEGB` sont
+posés **zéro fois**, et les 33 accès mémoire tombent **tous** sur un pas impair — donc porter le test
+`step & 1` de MAME sur le bloc entier, qui ressemble au gain évident, n'aurait rien donné. Mesuré avant d'y
+toucher, et c'est exactement pour ça qu'on mesure.
+
+### Trois lots, et un défait
+
+| | ms par image | cumul |
+|---|---|---|
+| base `335c050` | 1,85 | — |
+| le corps du DSP spécialisé sur les contrôles utilisés (`Run<U>`) | 1,64 | −11,4 % |
+| copies locales + `__restrict`, contre l'aliasing RAM son / objet DSP | 1,59 | −14,1 % |
+| les huit contrôles d'un bit groupés dans un mot (`Inst::f`) | **1,40** | **−24,3 %** |
+
+Le pas de DSP passe de 16,3 à 10,0 cycles, la part de l'image de 10,6 % à 8,0 %.
+
+**Le quatrième lot a été défait.** La boucle des deux adresses de `UpdateSlot` déroulée : identique au bit,
+code plus clair, **1,399 ms contre 1,400** — zéro. Une modification dans un fichier de fidélité qui n'achète
+rien ne se garde pas. Le résultat négatif, lui, est consigné : les voix ne se gagnent pas là.
+
+**Et aucun gain d'image n'est revendiqué.** Dans l'hôte la carte son est sur un fil à elle, une image en
+retard : ces 0,45 ms sont du temps processeur en moins — chaleur, batterie, cœurs laissés au rendu — pas une
+image qui arrive plus tôt. C'est dans `vf3run`, tout sur un fil, que le gain se lit.
+
+Les 1,6 ms de l'entrée du `getenv` plus haut ne contredisent pas les 1,85 d'ici : ce n'était pas la même
+scène. Celle-ci contient un combat, et la part des voix y monte.
+
+### Le son n'a pas bougé d'un échantillon
+
+C'est la condition pour garder un lot, pas un bonus. `tools\son\comparer-son.cmd` construit un arbre de
+travail d'un commit de référence dans `C:\Temp\fv2-son-ref`, fait jouer la même scène aux deux `vf3run` et
+compare les WAV **octet par octet** :
+
+| jeu | scène | images | verdict |
+|---|---|---|---|
+| `fvipers2` | `fv2-fight.txt` | 4200 (12 879 504 octets) | **identique à l'octet** |
+| `vf3` | `vf3-match.txt` | 2400 (6 841 492 octets) | **identique à l'octet** |
+
+### Le trou que le premier lot a creusé, et qui est bouché
+
+Spécialiser le corps du DSP l'a coupé en deux chemins. Les deux jeux prennent le maigre, vérifié à l'octet ;
+**l'autre n'était vérifié par rien**. `make test` (`tools/son/test_scspdsp.cpp`) l'exerce : une référence qui
+décode le MPRO **dans** la boucle, comme MAME et Supermodel le font encore, et seize cas qui comparent
+`EFREG`, `TEMP`, `MEMS`, `DEC` et les 524 288 mots de la ligne de retard après **chacun** de 64 échantillons.
+Onze cas atteignent `Run<USES_ALL>`, dont celui qui compte : le programme même des jeux avec `uses` forcé,
+donc **les deux corps doivent s'accorder dessus**.
+
+**Et le test a montré qu'il sait échouer** — quatre fautes injectées puis défaites : `NEGB` qui ne nie plus
+(5 cas tombent), la boucle qui lit `TWT` là où elle veut `XSEL` (12), `SHIFT` lu un bit trop loin (13),
+`Start` qui ne remet pas `uses` à zéro (1, le cas écrit pour ça). Une cinquième, l'échange de deux valeurs
+d'énumération, n'a rien fait tomber — et à raison : c'est un renommage, pas une faute. Noté pour que personne
+ne le lise comme un aveuglement.
+
+### Ce qui a été lu à la source, et l'avertissement qui en sort
+
+- **MAME `master` et Supermodel décodent tous deux le MPRO dans la boucle**, à chaque pas de chaque
+  échantillon. La forme décodée de ce dépôt était déjà en avance sur les deux **avant** ces lots.
+- **Le SCSP de MAME et celui de Supermodel viennent du même ElSemi.** Ce ne sont pas deux témoins, c'est un
+  témoin lu deux fois : leur accord n'établit rien sur un YMF292-F réel. Toute question de fidélité tranchée
+  par « MAME et Supermodel font pareil » est une question **non tranchée**.
+- **MAME a cessé de mirrorer MADRS** (`#16527`, fusionnée le 2026-10-19) et rejoint le mode « séparé » d'ici
+  côté écriture, par sa propre route et sur `doa`. Mais ses **lectures** de 0x7C0-0x7FF renvoient MADRS là où
+  le mode séparé renvoie ce qui a été écrit, **et personne n'a regardé si l'un des deux jeux relit cette
+  plage.** C'est décidable ici, et ça ne l'est pas encore.
+- Côté licences, rien ne manquait : MAME est BSD-3-Clause, compatible avec le MIT du dépôt, et chaque fichier
+  porte son avis. Supermodel, Mednafen, Yabause et Kronos sont GPL — **observation seulement**, jamais de
+  copie ni de traduction.
+
+### Ce qui reste ouvert
+
+- **La part du son sous `--rec`** : tout a été mesuré sur l'interpréteur. Avec le recompilateur la carte
+  descend, donc la part du son monte, et ces pourcentages n'y transposent pas. C'est la mesure qui dit si la
+  suite vaut quelque chose.
+- **Le temps de VF3** : jamais relevé proprement (le harnais en a craché au passage, sur des fenêtres où la
+  machine bougeait — non retenu).
+- **Les scènes qui manquent** : silence, musique seule, effets seuls, sound test. Les deux du milieu sont un
+  mot (`VF3_VOLUMES`), avec la réserve qu'ils allument le niveleur d'effets.
+- **Un test par bloc sur huit.** Les sept autres sont listés dans `docs/scsp_validation.md` §3b, et ce sont
+  eux, avec le rejoueur à deux cœurs, le préalable à tout remplacement du SCSP de MAME. Sans eux, écrire un
+  cœur autonome est un pari — et rien ne presse : MAME est BSD, et **son code est aujourd'hui la référence de
+  fidélité de ce portage**.
+- **Le miroir de MADRS gardé pour VF3**, qui diverge maintenant de MAME : indécidable ici, il n'y a pas de
+  Model 3 sur ce bureau. Consigné comme hypothèse.
+- Et le rappel d'échelle : dans `vf3run` sur l'interpréteur, la carte Model 3 fait 13,8 ms contre 1,40 pour le
+  son. **Si l'objectif est des images, le son n'est pas là qu'il faut regarder.**
+
+## Journal du 2026-10-24, le soir — Start, le choix de décor, et une lenteur sans propriétaire
+
+### Ce qui s'ajoute au jeu
+
+- **Start n'ouvre plus le menu qu'en combat.** La règle est de Frédéric, posée en deux temps, et le second
+  corrige le premier : `FIGHT_INT` et `FIGHT_DSP` ouvrent le menu de pause, **et eux seuls**. La présentation
+  (`ROUND_MASK_*`, `ROUND_*`, `SET_*`, `READY_*`) voit l'état **coupé**, par la demande de sous-état que les
+  gestionnaires du jeu se passent entre eux. Partout ailleurs — `JUDGE`, le replay, `VIC`, `NEXT_PROG_SEL`,
+  l'écran de choix — la touche va au jeu, intacte. `7e4f6a3`.
+- **Le versus a un choix de décor**, `src/host/fv2_stage_list.h`, la quatrième surface du portage. `V.S.`
+  ouvre une page de treize entrées au lieu de lancer, et c'est le décor choisi qui lance le match. `ef4c2c7`.
+
+### Ce qui a été lu dans le code de Sega
+
+- **`STAGE_SEL` est une souche vide sur la borne.** Les deux états que Sega nomme `STAGE_SEL_INT` et
+  `STAGE_SEL_DSP` partagent une adresse, `0x0000BBB4`, qui tient une seule instruction : `b 0x0000bad8`, la
+  sortie du répartiteur. Le jeu d'arcade n'a jamais eu de choix de décor. `83f443b`.
+- **Le répartiteur recopie `SUBMODE_REQUEST` dans `MODE_SUB` à chaque tour**, ce qui est la preuve directe de
+  ce sur quoi la coupure d'état repose.
+- **Le sélecteur d'août commande bien un versus**, contrairement à ce que ce portage avait écrit. La phrase
+  « atteint seulement par un rematch passant par l'écran de choix » était vraie du premier combat d'une route
+  solo et fausse d'un versus. Corrigé dans `console_play.h` avec les trois mesures.
+
+### LA LENTEUR DU SOIR N'EST PAS DE NOUS, et elle n'est pas corrigée
+
+Frédéric : « il fait ralentir le jeu à 45fps ». Ce n'était **pas** la page de choix du décor, et c'est mesuré :
+
+| | une image, en combat |
+|---|---|
+| `fv2` le matin, après la correction du `getenv` (`62a856c`) | **2,96 ms** — 57,5 images/s |
+| `fv2` le soir | **15,0 à 19,6 ms** — 42 à 45 images/s |
+| `fv2` **moins deux commits de son** | **60 images/s** |
+
+Les deux commits sont **`1757e83`** et **`7f732ee`**, un audit du DSP du SCSP : 149 lignes dans
+`src/sound/scspdsp.cpp`, qui tourne 128 pas par échantillon à 44,1 kHz, soit 5,6 millions de pas par seconde.
+Le reflog de ce dépôt les date du 2026-10-24 à **17:13:58** et **17:23:07**, faits **dans ce dossier**, sur
+`fv2`, entre deux de mes commits.
+
+Vérifications faites au passage, parce que la page de décor était accusée à tort : la tenue du sélecteur ne
+coûte rien (**zéro repatch sur 1500 images**), et le coût est le même avec un décor tenu et avec celui du jeu
+(15,0 contre 15,7 ms).
+
+**Ce qui est proposé et pas fait** : annuler le **code** de ces deux commits — `scspdsp.cpp`, `scspdsp.h`,
+`scsp.cpp`, `sound_prof.h` — et **garder tout leur savoir**, les six documents `docs/scsp_*.md` et le banc
+d'essai `tools/son/test_scspdsp.cpp`, qui ne coûtent rien à l'exécution. Frédéric a demandé une pause avant
+de décider.
+
+**Et une erreur à moi, consignée parce qu'elle a accusé quelqu'un.** J'ai désigné la session « gestion des
+Ombres » comme autrice de ces deux commits, sur la seule foi d'un dossier de lancement et d'un horaire
+voisin. Elle a vérifié et démontré le contraire : elle travaille dans `C:\Temp\fv2-ombres`, sur la branche
+`fv2-ombres`, qui ne contient pas ces commits, et elle n'a jamais touché à `src/sound/`. **L'auteur reste
+inconnu**, et Frédéric dit que personne ne travaille sur le son en ce moment. Une coïncidence prise pour une
+mesure, le jour même où il me l'avait reproché deux fois.
+
+### L'état de la machine à la pause
+
+- **Le binaire qui tourne n'est pas la branche.** `build/bin/vf3.exe` du 20:06 est l'essai construit **sans**
+  les deux commits de son, donc rapide. Toute reconstruction ramènera les 45 images par seconde tant que la
+  question n'est pas tranchée.
+- **L'arbre est propre** et le travail non commis d'une autre session dans `src/sound/soundboard.cpp` — une
+  sonde `VF3_SCSP_DSPLOG` — a été copié avant d'être touché puis remis intact.
+- Le projet Ghidra `FV2-claude` est ouvert sur `foo.bin`.
+
+### Ce qui reste ouvert
+
+- La lenteur ci-dessus, non corrigée, sans propriétaire.
+- La réverbération de Fighting Vipers 2, jamais comparée à une référence (`docs/fv2-console-son.md`).
+- Sortir d'un combat proprement, qui bloque trois des quatre lignes du menu de pause.
+- `BGM SET`, et les combattants noirs du 2026-10-23.
