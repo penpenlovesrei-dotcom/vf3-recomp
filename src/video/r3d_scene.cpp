@@ -407,11 +407,24 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						// debut du match et 0x0000DD38 l'incremente a chaque round.
 						//
 						// anime.txt donne le sens du round 1 ; on l'inverse quand le round est pair.
-						float signe = 1.0f;
-						if (board.ram.size() > (0x00581456 ^ 3)
-						    && !(board.ram[0x00581456 ^ 3] & 1))
-							signe = -1.0f;
+						const unsigned manche = board.ram.size() > (0x00581456 ^ 3)
+						                      ? board.ram[0x00581456 ^ 3] : 0u;
+						float signe = (manche & 1) ? 1.0f : -1.0f;
 						const float h = float(tic % uint64_t(sien->periode + 1)) * signe;
+						// VF3_CYL_LOG=1 : une ligne a chaque changement de manche, pour savoir si le
+						// signe est bien applique ici -- et non si l'octet bouge, ce que la sonde de
+						// camera a deja etabli (manche 1 a l'image 1744, 2 a l'image 3432).
+						if (getenv("VF3_CYL_LOG")) {
+							static unsigned vue = 0xFFFFFFFF;
+							if (manche != vue) {
+								vue = manche;
+								fprintf(stderr, "CYL : manche %u  signe %+.0f  periode %d  pas %g"
+								        "  copies %d  d (%g, %g, %g)\n",
+								        manche, double(signe), sien->periode, double(sien->pas),
+								        sien->copies, double(sien->d[0]), double(sien->d[1]),
+								        double(sien->d[2]));
+							}
+						}
 						// Les copies d'abord : le meme modele, decale d'un multiple du pas. Celle du
 						// decalage nul est la derniere, et c'est elle qui suit le chemin commun.
 						for (int k = -sien->copies; k <= sien->copies; k++) {
