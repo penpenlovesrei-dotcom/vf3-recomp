@@ -520,6 +520,7 @@ void Model3::run_frame_start()
 	morceaux_neutraliser();
 	ko_spectaculaire();
 	short_replay();
+	camera_note();
 	ko_spectaculaire_note();
 	pmg_note();
 	hang_watch();
@@ -1697,7 +1698,13 @@ void Model3::hang_report()
 // nomme la region ou il tourne.
 void Model3::hang_sample()
 {
-	if (set != "fvipers2" || hang_said >= 3 || hang_over) return;
+	if (set != "fvipers2") return;
+	// La sonde de camera d'abord, et HORS des gardes du detecteur de gel : celles-ci se referment
+	// des que le jeu bouge normalement (hang_over), et c'est justement quand il bouge qu'on veut
+	// voir la camera.
+	if (cam_on < 0) cam_on = getenv("VF3_CAM_LOG") ? 1 : 0;
+	if (cam_on) camera_sample(cpu.pc());
+	if (hang_said >= 3 || hang_over) return;
 	const uint32_t pc = cpu.pc();
 	// Le programme du jeu tourne en RAM a la base 0 ; l'amorce, elle, tourne dans le CROM. Et elle y passe plus
 	// d'une seconde dans une boucle de cinq adresses : elle efface 5,5 Mio de RAM (0xFFF018D8, r5 = 0x15293A).
@@ -1709,6 +1716,30 @@ void Model3::hang_sample()
 		hang_pcs[hang_n++] = pc;
 	else
 		hang_over = true;   // plus de 32 adresses : le jeu bouge, inutile d'en retenir plus
+}
+
+// VF3_CAM_LOG : le second collecteur, greffe sur le meme echantillonnage.
+//
+// CE QU'IL EST, DIT HONNETEMENT : un ECHANTILLONNEUR, pas un traceur. Il prend le PC apres chaque
+// tranche de ligne -- quelques centaines de fois par image -- donc il ne voit que ce qui tourne a
+// cet instant-la. Une routine qui passe en vingt instructions une fois par image a peu de chances
+// d'etre prise. Donc : une adresse RELEVEE est une preuve qu'on y est passe ; une adresse ABSENTE
+// ne prouve rien du tout. C'est pour ca que la sonde d'etat (camera_note) existe a cote : elle,
+// elle est exacte.
+//
+// La fenetre : 0x0001A000-0x0001F400, le fichier qui porte les 41 routines de camera (table en
+// 0x0001AD2C, code de 0x0001ADD0 a ~0x0001E200) et la tache du replay (0x0001E628 son init,
+// 0x0001E708 son update, ses etapes jusqu'a 0x0001F3A0). Plus 0x0006AFE4-0x0006B180, les quatre
+// modes 32 a 35 qui vivent ailleurs.
+void Model3::camera_sample(uint32_t pc)
+{
+	if ((pc < 0x0001A000 || pc >= 0x0001F400) && (pc < 0x0006AFE4 || pc >= 0x0006B180)) return;
+	for (unsigned i = 0; i < cam_pc_n; i++)
+		if (cam_pcs[i] == pc) return;
+	if (cam_pc_n >= sizeof(cam_pcs) / sizeof(cam_pcs[0])) return;
+	cam_pc_vu[cam_pc_n] = cam_image;
+	cam_pcs[cam_pc_n++] = pc;
+	fprintf(stderr, "CAM PC : image %llu  %#010x\n", (unsigned long long)cam_image, pc);
 }
 
 void Model3::hang_watch()
@@ -1993,6 +2024,92 @@ void Model3::short_replay()
 	cpu.ram_written(ECHAPPE);            // (le code natif du recompilateur vient de ce qui etait la)
 	fprintf(stderr, "VF3_SREP : [0x00114F50] = 1 et le test du bit 0x00800000 neutralise en"
 	                " 0x0001EBE8 -- tout coup arme le short replay (modes 7/8/9)\n");
+}
+
+// VF3_CAM_LOG=1 : LA SONDE DE LA CAMERA. Celle-ci est exacte, pas echantillonnee.
+//
+// Pourquoi l'etat suffit a nommer les routines. Le champ +0xE2 de la structure de camera n'est pas
+// un simple compte rendu : c'est L'INDEX DE REPARTITION. 0x00019078 lit cet octet et saute par
+// 0x0001AD2C + octet*4. Relever l'octet, c'est donc relever la routine qui tourne -- et Sega nous
+// donne les 41 noms en clair dans le binaire (vers 0x0008BD3C, mode 0 = FIX), recopies ci-dessous.
+//
+// Ce que la ligne contient, et d'ou ca vient :
+//
+//   mode        [[0x0007515C] + 0xE2]      l'index de repartition, donc la routine, par son nom
+//   srep        [[0x0007515C] + 0x38D]     le compteur de short replays (incremente par 0x0001EEF8)
+//   suivi       [[0x0007515C] + 0x3BC]     le combattant que la camera suit (pose par 0x0001ECC8)
+//   etat        0x0058FD98 / 0x0058FD99    le mode de jeu et le sous-etat
+//   cause       0x00581452                 la cause de fin de manche ; 3 = super KO
+//   porte       0x00591D14                 le mot de drapeaux maitre. Le bit 0x04000000 fait sortir
+//                                          la tache du replay des sa premiere instruction, init
+//                                          comprise (0x0001E644 et 0x0001E710) : s'il est pose,
+//                                          TOUT le systeme est inerte et aucun levier n'y change
+//                                          rien. C'est la question laissee ouverte hier soir.
+//   reglages    0x00114F4C / 0x00114F50    « un short replay tourne » / l'octet d'aiguillage
+//   fanions     0x00581724, 0x0058188F, 0x0058FDB0   ce que l'armement pose
+//   parois      [[0x00075124] + 0xC0]      le masque, et 0x005818D9 le compteur de morceaux
+//   armure      [J1 + 0xF44] & 0x30, idem J2   les deux bits de piece brisee, ceux qui arment
+//
+// Une ligne par CHANGEMENT : a soixante par seconde, tout imprimer noierait la seule qui compte.
+void Model3::camera_note()
+{
+	if (set != "fvipers2" || ram.size() < 0x800000) return;
+	if (cam_on < 0) cam_on = getenv("VF3_CAM_LOG") ? 1 : 0;
+	if (!cam_on) return;
+	cam_image++;
+	// Les 41 noms de Sega, mode 0 = FIX. Releves en clair dans le binaire, pas inventes.
+	static const char *const NOM[41] = {
+		"FIX", "TEST", "SET_INIT", "SET", "SET2GAME", "GAME_INIT", "GAME",
+		"S_REP_INIT", "S_REPLAY", "SR2GAME_INIT", "REP_INIT", "REPLAY",
+		"ADV_REP_INIT", "ADV_REPLAY", "VIC_INIT", "VICTORY", "LOSE_INIT", "LOSE",
+		"CONT_INIT", "CONTINUE", "END_INIT", "ENDING", "SEL_CAMERA_INIT", "SEL_CAMERA",
+		"SIC_INIT", "SIC", "SUPER_KO_INIT", "SUPER_KO", "DEMO_INIT", "DEMO",
+		"NAGE_CAM_INIT", "NAGE_CAMERA", "RESULT INIT", "RESULT",
+		"NAME ENTRY INIT", "NAME ENTRY", "PROTO1_INIT", "PROTO1", "PROTO2_INIT", "PROTO2",
+		"RESET" };
+	auto octet = [&](uint32_t a) { return a < ram.size() ? ram[a ^ 3] : uint8_t(0); };
+	auto mot = [&](uint32_t a) { return a + 4 <= ram.size() ? word(ram, a) : 0u; };
+
+	const uint32_t cam = mot(0x0007515C), p1 = mot(0x0007511C), p2 = mot(0x00075120);
+	const uint32_t combat = mot(0x00075124);
+	if (!cam || cam + 0x3C0 + 4 > ram.size()) return;
+	if (!p1 || !p2 || p1 + 0xF48 > ram.size() || p2 + 0xF48 > ram.size()) return;
+
+	struct Etat {
+		uint8_t mode, srep, mode_jeu, sous_etat, cause, reg4C, reg50, f1724, f188F, fFDB0, morceaux;
+		uint32_t suivi, porte, masque, arm1, arm2;
+	} e{};
+	e.mode      = octet(cam + 0xE2);
+	e.srep      = octet(cam + 0x38D);
+	e.suivi     = mot(cam + 0x3BC);
+	e.mode_jeu  = octet(0x0058FD98);
+	e.sous_etat = octet(0x0058FD99);
+	e.cause     = octet(0x00581452);
+	e.porte     = mot(0x00591D14);
+	e.reg4C     = octet(0x00114F4C + 3);   // le mot vaut 0 ou 1 : son octet de poids faible suffit
+	e.reg50     = octet(0x00114F50);
+	e.f1724     = octet(0x00581724);
+	e.f188F     = octet(0x0058188F);
+	e.fFDB0     = octet(0x0058FDB0);
+	e.morceaux  = octet(0x005818D9);
+	e.masque    = (combat && combat + 0xC4 <= ram.size()) ? mot(combat + 0xC0) : 0u;
+	e.arm1      = mot(p1 + 0xF44) & 0x30;
+	e.arm2      = mot(p2 + 0xF44) & 0x30;
+
+	static Etat vu{};
+	static bool premiere = true;
+	if (!premiere && memcmp(&e, &vu, sizeof e) == 0) return;
+	premiere = false;
+	vu = e;
+	fprintf(stderr,
+	        "CAM : image %llu  mode %u %-16s  srep %u  suivi %08x  etat %u/%u  cause %u"
+	        "  porte %08x%s  reg %u/%u  fanions %u/%u/%u  masque %x  morceaux %u  armure %x/%x\n",
+	        (unsigned long long)cam_image,
+	        e.mode, e.mode < 41 ? NOM[e.mode] : "(hors table)",
+	        e.srep, e.suivi, e.mode_jeu, e.sous_etat, e.cause,
+	        e.porte, (e.porte & 0x04000000u) ? " REPLAY COUPE" : "",
+	        e.reg4C, e.reg50, e.f1724, e.f188F, e.fFDB0,
+	        e.masque, e.morceaux, e.arm1, e.arm2);
 }
 
 // VF3_SKO_LOG=1 : dire, quand ca change, l'etat de la chaine de la cinematique.

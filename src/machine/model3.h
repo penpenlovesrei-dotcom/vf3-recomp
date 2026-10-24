@@ -214,6 +214,16 @@ public:
 	void short_replay();
 	// VF3_SKO_LOG : dit l'etat de la chaine de la cinematique quand il change (model3.cpp).
 	void ko_spectaculaire_note();
+	// VF3_CAM_LOG : la sonde de la camera. Releve, a chaque CHANGEMENT, le mode de camera sous son
+	// nom de Sega et tout l'etat de la chaine du replay ; et retient les PC echantillonnes qui
+	// tombent dans le fichier camera/replay (model3.cpp).
+	void camera_note();
+	void camera_sample(uint32_t pc);   // greffe sur hang_sample, une prise par tranche de ligne
+	int cam_on = -1;                   // -1 : VF3_CAM_LOG pas encore lu
+	uint32_t cam_pcs[96] = {};
+	uint64_t cam_pc_vu[96] = {};   // l'image ou chacun a ete vu la premiere fois
+	unsigned cam_pc_n = 0;
+	uint64_t cam_image = 0;
 	void pmg_note();      // dit l'assertion du gestionnaire de polygones quand elle saute (model3.cpp)
 	void hang_watch();        // dit ou le PowerPC tourne en rond quand le jeu gele (model3.cpp)
 	void hang_sample();       // appele apres chaque tranche d'execution
