@@ -1185,9 +1185,12 @@ qui distingue les arènes.
 | 5 | `FURNACE` | 99,99 | 12 | `MUSEUM` | **1,0** |
 | 6 | `STORE` | **1,0** | 13 à 18 | `FINISH00`..`05` | 99 |
 
-Les six en gras ont **un sol juste sous le ring**, à vingt centimètres ou à un mètre : un combattant éjecté y
-retombe sur quelque chose. Les cinq à 99,99 n'ont rien dessous. `BUILDING`, l'arène où le ring out a été vu,
-est de celles-là.
+**Ce que ce champ veut dire n'est pas établi, et j'ai eu tort de l'affirmer.** J'avais écrit que les six
+petites valeurs signifiaient « un sol à vingt centimètres ou à un mètre sous le ring ». C'était une
+interprétation, pas une mesure, et elle est fausse : à `STORE`, qui porte 1,0, un combattant posé à
+y = −0,95 **tombe hors du champ** au lieu de se poser sur quoi que ce soit. Les valeurs du champ sont
+mesurées ; ce qu'elles commandent reste à trouver. Pour savoir si une arène a un sol hors du ring, il faut
+la regarder — et pour ça il faut ses vraies textures (voir plus bas).
 
 ### Ce qu'un ring out est, mesuré
 
@@ -1209,3 +1212,17 @@ ombres. Ce qui refuse l'ombre à l'éjecté est donc de notre côté, et il y a 
 lisibles dans le code : seule une couche mesurée à l'échelle 1 reçoit (`light[3]`) ; rien à plus de 0,05
 sous le plan du sol ne reçoit (`under`) ; et seule une vue portant des pièces aplaties projette
 (`vp_group = −1` ailleurs). **Laquelle des trois se déclenche n'est pas mesuré.**
+
+### Un instrument qui trompait, et les chiffres qu'il a fait écrire
+
+`VF3_SHADOW_DEBUG` peint dans le **nuanceur du GPU**. Les captures que prend un script d'entrée
+(`shot`, qui écrit `build/host_<nom>.png`) sortent du **rastériseur processeur**. La peinture n'y apparaît
+donc jamais, et une capture de script reste une image normale quoi qu'on demande.
+
+J'ai compté des pixels rouges, verts et bleus sur treize de ces captures et j'en ai tiré un tableau de
+« refus par arène ». **Ce tableau ne valait rien** : il comptait les couleurs d'images ordinaires. Il est
+retiré, rien n'en est conservé. Le seul instrument qui montre la peinture est **`VF3_GPU_SHOT=<image>`**,
+qui relit le rendu du GPU dans `build/gpu_shot.png`.
+
+La leçon tient en une ligne : *une peinture de mise au point qui ne s'est pas appliquée ressemble exactement
+à une image normale*. Avant de compter quoi que ce soit dessus, vérifier qu'elle s'est appliquée.
