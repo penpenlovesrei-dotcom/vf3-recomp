@@ -39,3 +39,7 @@ assets-hd/
 # Le dump complet des textures : images du jeu, hors depot.
 /Textures3D-dump*/
 /Textures3D-aplats/
+
+# De l amont : le cache de Wrangler et les portages voisins sortis a cote.
+.wrangler/
+/*-recomp/
