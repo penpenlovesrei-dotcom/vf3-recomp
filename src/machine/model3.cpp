@@ -477,7 +477,8 @@ void Model3::set_crom_bank(uint8_t v)
 {
 	// VF3_BANK_LOG=1: each change of the banked CROM's window, for a game that reads from one this port put
 	// nothing in (debugging)
-	if (getenv("VF3_BANK_LOG") && v != crom_bank_reg)
+	// (asked once: the game changes the window often enough that this is on a warm path too)
+	if (static const bool say = getenv("VF3_BANK_LOG") != nullptr; say && v != crom_bank_reg)
 		fprintf(stderr, "crom bank: register %02X -> window %u (frame %llu)\n", v, unsigned((~v) & 0xF),
 		        (unsigned long long)frame);
 	crom_bank_reg = v;
@@ -1132,9 +1133,17 @@ uint32_t Model3::read32(uint32_t a)
 	switch (a >> 24) {
 	case 0xFF: {
 		const uint32_t v = *reinterpret_cast<const uint32_t *>(&(a < 0xFF800000 ? crom_bank : crom.data())[a & 0x7FFFFF]);
-		// VF3_CROM_WATCH=<hex address>: every read of that word in the CROM, with the window it came from
-		if (const char *w = getenv("VF3_CROM_WATCH"))
-			if (a == uint32_t(strtoul(w, nullptr, 16)))
+		// VF3_CROM_WATCH=<hex address>: every read of that word in the CROM, with the window it came from.
+		// THE ADDRESS IS READ ONCE, and that is not a tidiness: this is the CROM's read path, taken millions
+		// of times a frame, and asking the environment on each of them cost 3.9 ms a frame on Fighting Vipers
+		// 2 -- the whole of the slowness Frederic reported on 2026-10-24, measured at 6.68 ms against the bare
+		// version's 2.78. A probe in a hot path is cached, as this file's VF3_DMA_LOG already is.
+		static const uint32_t watch = [] {
+			const char *w = getenv("VF3_CROM_WATCH");
+			return w ? uint32_t(strtoul(w, nullptr, 16)) : 0u;
+		}();
+		if (watch)
+			if (a == watch)
 				fprintf(stderr, "crom read %08X = %08X (window %u, frame %llu)\n", a, bswap32(v),
 				        unsigned((~crom_bank_reg) & 0xF), (unsigned long long)frame);
 		return v;
