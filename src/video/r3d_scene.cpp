@@ -332,183 +332,6 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				static bool echelle_dite = false;   // VF3_ECHELLE : la mesure ne se fait qu'une fois
 				std::vector<Model> modeles_morceaux;   // mis de cote, poses seulement a la casse
 				tic++;
-
-				// AUX MANCHES PAIRES, LE DECOR TOURNE SUR UN AXE INCLINE DE 25 DEGRES.
-				//
-				// C'est ce que Frederic decrivait depuis deux jours : « oblique, plongeant vers la
-				// droite, il tourne sur lui-meme ». Ce n'est pas le cylindre, c'est TOUT le decor, et
-				// ce n'est pas la routine d'animation : c'est la matrice de base.
-				//
-				// MESURE, dans ses propres sauvegardes Dreamcast. Les 64 octets en 0x8C1C03AC, juste
-				// avant la table d'objets, sont une matrice 4x4 -- FUN_8C0B9BC0 y ecrit les seize
-				// registres fr0..fr15, donc XMTRX, et FUN_8C0291AA l'appelle avec cette adresse.
-				//
-				//   manche 1 (deux sauvegardes)   matrice FIXE, identique
-				//   manche 2 (trois sauvegardes)  la meme, composee d'une rotation de
-				//                                 32,22  54,16  61,26 degres
-				//
-				// autour de l'axe (0 ; -0,9063 ; -0,4226), soit EXACTEMENT 25,00 degres de la
-				// verticale -- et (0 ; 0,9063 ; 0,4226) est la colonne 0 de la matrice de la manche 1.
-				// Le decor tourne donc autour de son propre premier axe.
-				//
-				// CONFIRME PAR UNE SECONDE VOIE, independante de la matrice : l'angle est range en
-				// 0x8C1C03A0, douze octets avant elle, en demi-mot signe d'unites binaires
-				// (65536 = 360 degres). Il vaut 0 aux deux sauvegardes de la manche 1, et -5866,
-				// -9860, -11152 a celles de la manche 2 -- soit -32,22, -54,16 et -61,26 degres, les
-				// memes valeurs au centieme. Deux mesures qui ne partagent rien et qui concordent.
-				//
-				// LA VITESSE, MESUREE : -3,8000 unites binaires par image.
-				//
-				// Deux sauvegardes de la MEME session (les combattants y sont identiques au bit
-				// pres), prises a douze secondes d'intervalle :
-				//
-				//   compteur 0x8C288528   178848 -> 194488   soit 15640, et 15640/46 = 340,0 images
-				//   hauteur  0x8C110FD4      381 ->    220   soit 381+340 = 721, moins 501 = 220
-				//   angle    0x8C1C03A0    -9860 -> -11152   soit -1292
-				//
-				// La hauteur confirme le decompte d'images toute seule, par son cycle de 501 : elle
-				// tombe sur 220 exactement. Deux grandeurs independantes, un seul nombre d'images.
-				//
-				//   -1292 / 340 = -3,8000 unites par image = -0,02087 degre, un tour en 287 s.
-				//
-				// Ce n'est donc pas une estimation. Mon precedent defaut de 12 en etait une, tiree
-				// de sauvegardes venant de parties differentes, et elle etait fausse d'un facteur
-				// trois.
-				//
-				// (Le texte ci-dessous reste : il dit pourquoi aucun increment n'est trouvable dans
-				// le code, ce qui explique qu'il ait fallu mesurer.)
-				//
-				// POURQUOI LE CODE NE DONNE PAS CE NOMBRE.
-				//
-				// Le defaut etait 12 unites par image, tire d'un croisement avec le compteur
-				// 0x8C288528. C'etait une estimation, et elle ne tient pas : les cinq sauvegardes
-				// viennent de parties differentes, donc l'ecart entre deux d'entre elles ne dit rien.
-				// Les deux paires donnaient d'ailleurs 12 et 4 unites par image -- un rapport de
-				// trois, ce qui suffit a condamner la methode.
-				//
-				// Cherche et pas trouve : la routine de TEST (0x8C048878) ne touche jamais cet
-				// angle ; FUN_8C0291AA ne fait que le LIRE, avec ses deux voisins, pour en faire
-				// trois rotations et ranger XMTRX en 0x8C1C03AC ; 0x8C0293A0 n'est qu'un affichage
-				// de debug des trois angles ; et le seul autre site qui ecrit 0x8C1C03A0
-				// (0x8C04ABD4, increment 0x4000) est une boucle de quatre quarts de tour d'un AUTRE
-				// decor, pas un increment par image.
-				//
-				// CE QUI TRANCHERAIT, et c'est une mesure, pas une estimation : deux sauvegardes
-				// Flycast prises dans la MEME manche 2, a un nombre d'images connu d'ecart. La
-				// difference des deux valeurs de 0x8C1C03A0 divisee par ce nombre donne la vitesse
-				// au centieme, comme l'angle lui-meme a ete obtenu.
-				//
-				// Donc : pas de rotation tant que VF3_SPIN n'est pas donne. Le mecanisme est en
-				// place et mesure ; seul son rythme attend sa mesure.
-				Mat4 rotation = Mat4::identity();
-				{
-					const unsigned manche = board.ram.size() > (0x00581456 ^ 3)
-					                      ? board.ram[0x00581456 ^ 3] : 0u;
-					static double pas = -1.0;
-					if (pas < 0) {
-						const char *s = getenv("VF3_SPIN");
-						pas = s ? atof(s) : 3.8;   // MESURE : voir juste au-dessus
-					}
-					// PAS DE CONDITION DE MANCHE -- ma premiere lecture etait fausse.
-					//
-					// Trois sauvegardes a la manche 2 portaient un angle non nul et deux a la manche
-					// 1 un angle nul : la correlation etait trop belle. Deux sauvegardes FRAICHES,
-					// prises toutes deux a la manche 2 et a 540 images d'ecart, donnent un angle
-					// rigoureusement nul dans les deux. La parite n'y est donc pour rien, et le
-					// cylindre tourne sur lui-meme comme Frederic le decrit depuis le debut.
-					(void)manche;
-					if (pas != 0.0) {
-						// UNE INCLINAISON DE 25 DEGRES, PUIS UNE ROTATION AUTOUR DE L'AXE INCLINE.
-						//
-						// Etabli par le calcul, pas par l'oeil. Question posee aux deux matrices
-						// mesurees (angle 0 et angle -9860) : quel axe du MODELE est inchange ?
-						//
-						//   colonnes  X ecart 0,911   Y ecart 0,385   Z ecart 0,825   -> aucun
-						//   rangees   X ecart 0,0000  <- INCHANGE     Y 0,911   Z 0,911
-						//
-						// La matrice est donc stockee en RANGEES, l'axe du cylindre est son X de
-						// modele, et il va sur (0 ; 0,90631 ; 0,42262) -- 25,00 degres de la
-						// verticale. Etant preserve, c'est l'axe de la rotation : le cylindre
-						// TOURNE SUR LUI-MEME autour d'un axe incline. Les deux moities de la
-						// description de Frederic, par une seule mesure.
-						//
-						// En colonnes aucun axe n'est preserve : le cylindre basculerait, ce que sa
-						// description exclut. C'est ce qui departage les deux conventions, et c'est
-						// la verification que je n'avais pas faite quand j'ai pose X, puis Y.
-						//
-						// Notre geometrie exportee est DROITE (boite x et z de -1000 a +1000, y de
-						// -500 a +500, donc axe Y). On l'incline donc de 25 degres autour de X --
-						// ce qui emmene +Y sur (0 ; cos 25 ; sin 25) -- puis on tourne autour de Y
-						// AVANT cette inclinaison, ce qui revient a tourner autour de l'axe incline.
-						//
-						//     rotation = Rx(25 degres) . Ry(angle)
-						//
-						// La matrice de base, identique dans les quatre sauvegardes d'angle nul,
-						// porte 0,90631 et 0,42262 -- cos et sin de 25,00 degres -- dans sa partie
-						// HORIZONTALE : elle redresse le cylindre (modele X -> monde Y) et le
-						// lace de 25 degres. Notre geometrie est deja redressee (boite x et z de
-						// -1000 a +1000, y de -500 a +500), donc il ne reste que le lacet.
-						//
-						// C'est « il a un angle different du ring » : sur un cylindre de
-						// revolution le lacet ne change rien a la silhouette, mais il decale les
-						// barres verticales -- donc il se voit, et il fait partie du rendu.
-						// LE SENS vient de la mesure : l'angle Dreamcast DESCEND (-9860 puis
-						// -11152), donc on tourne dans le sens negatif. La correspondance exacte
-						// entre son repere et le notre n'est pas etablie ; si le cylindre tourne a
-						// l'envers, c'est ce signe-la qu'il faut retourner, et rien d'autre.
-						const double TOUR = 2.0 * 3.14159265358979 / 65536.0;
-						const double th = -double(tic) * pas * TOUR;         // la rotation propre
-						const double ph = 25.0 * 3.14159265358979 / 180.0;   // l'inclinaison mesuree
-						const double ct = cos(th), st = sin(th), cp = cos(ph), sp = sin(ph);
-						// L'AXE EST Y : CELUI DU CYLINDRE, DANS LE REPERE DE NOTRE GEOMETRIE.
-						//
-						// J'ai d'abord pose X, en raisonnant sur la convention de XMTRX. A l'ecran
-						// Frederic a vu « la modification appliquee » -- une deformation -- et
-						// « il ne tourne toujours pas sur lui-meme ». C'est exactement ce que fait
-						// une rotation autour de X sur un cylindre dont l'axe est Y : elle le
-						// COUCHE au lieu de le faire tourner.
-						//
-						// Or la boite de export_decor/TEST/TEST.obj dit x et z de -1000 a +1000 et
-						// y de -500 a +500 : dans NOTRE geometrie, l'axe du cylindre est Y. C'est
-						// ce repere-la qui compte pour composer la matrice, pas celui de la
-						// Dreamcast. L'erreur etait de transporter un axe d'un repere a l'autre
-						// sans verifier lequel portait la donnee.
-						//
-						// Et une rotation autour de Y se VOIT malgre la symetrie de revolution,
-						// parce que le cylindre porte des barres verticales : c'est elles qui
-						// defilent.
-						//
-						// (Le calcul d'origine, conserve : les deux conventions donnaient
-						//  colonnes/monde X, colonnes/modele (0 ; 0,906 ; 0,423), rangees/monde
-						//  (0 ; -0,906 ; -0,423). Aucune ne vaut sans savoir dans quel repere la
-						//  geometrie convertie se trouve, et c'est la boite qui le dit.)
-						//
-						// Je l'avais d'abord lu a 25 degres de la verticale, et c'etait faux :
-						// j'avais traite les seize flottants comme des RANGEES. Or FUN_8C0B9BC0
-						// ecrit fr0..fr15, c'est-a-dire XMTRX, qui est en COLONNES. Le calcul refait
-						// dans les deux conventions tranche sans ambiguite :
-						//
-						//   colonnes, monde  R = M2.M1t   axe ( 1,000 -0,000  0,000)
-						//   colonnes, modele S = M1t.M2   axe (-0,000  0,906  0,423)
-						//   rangees,  monde              axe ( 0,000 -0,906 -0,423)   <- mon erreur
-						//
-						// Les 25 degres existent bien, mais c'est l'axe dans l'espace du MODELE. En
-						// coordonnees de monde -- celles que la conversion produit, cf. --cam
-						// identite -- la rotation est un basculement autour de X. C'est-a-dire
-						// « oblique, plongeant vers la droite », la description de Frederic.
-						// Ry(th) en colonnes : ( ct, 0, -st ) ( 0, 1, 0 ) ( st, 0, ct )
-						// Rx(ph) en colonnes : ( 1, 0, 0 ) ( 0, cp, sp ) ( 0, -sp, cp )
-						// Le produit Rx.Ry, en colonnes (Mat4 range m[col*4 + ligne]) :
-						const double R[3][3] = {
-							{  ct,    -st * sp,  -st * cp },   // colonne 0
-							{  0.0,    cp,        sp      },   // colonne 1
-							{  st,     ct * sp,   ct * cp },   // colonne 2
-						};
-						for (int col = 0; col < 3; col++)
-							for (int lig = 0; lig < 3; lig++)
-								rotation.m[col * 4 + lig] = float(R[col][lig]);
-					}
-				}
 				for (Model &m : mien.viewports[0].models) {
 					// UN MODELE DE MORCEAU NE SE DESSINE PAS DANS LA SCENE AU REPOS.
 					//
@@ -611,7 +434,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 							t.m[12] = sien->d[0] * h;
 							t.m[13] = sien->d[1] * h + sien->pas * float(k);
 							t.m[14] = sien->d[2] * h;
-							c.matrix = jeu.root * (rotation * (t * c.matrix));
+							c.matrix = jeu.root * (t * c.matrix);
 							if (c.meshes)
 								for (Mesh &me : *c.meshes) me.injected = true;
 							a_nous.models.push_back(std::move(c));
@@ -620,14 +443,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 						t.m[12] = sien->d[0] * h;
 						t.m[13] = sien->d[1] * h;
 						t.m[14] = sien->d[2] * h;
-						// LA ROTATION NE CONCERNE QUE LE CYLINDRE, PAS LE RING.
-						//
-						// Premier essai : elle etait appliquee a TOUS les modeles injectes, et le ring
-						// penchait avec -- les combattants se retrouvaient debout sur un sol incline.
-						// La liste de dessin Dreamcast le disait pourtant : elle dessine quinze fois
-						// LE MEME objet, [0x8C1C03EC + 0x14], et c'est le cylindre. La matrice de
-						// 0x8C1C03AC est la sienne, pas celle du decor entier.
-						m.matrix = rotation * (t * m.matrix);
+						m.matrix = t * m.matrix;
 					}
 					m.matrix = jeu.root * m.matrix;
 					// VF3_ECHELLE=1 : la taille de chaque modele injecte, TELLE QUE LE MOTEUR LA
