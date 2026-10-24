@@ -1101,6 +1101,74 @@ son corps la cache : au décor 11, 82 % des pixels assombris sont sur les corps 
 partie à `BUILDING`, ces deux lumières mesuraient **9,7°** et **16,3°** de médiane, jusqu'à **0,0°** et
 **0,6°**.
 
+## La lumière de l'arène, et non celle de la caméra
+
+Le tableau ci-dessus donne la direction telle qu'elle sort de `S = C·P·R`. Le `C` est la caméra : **ces
+vecteurs sont dans l'espace de la caméra**, et une table de valeurs fixes ne vaudrait que si cet espace ne
+bougeait pas. Il bouge. La vue porte sa matrice de caméra (`Viewport::root`), et la même direction ramenée
+avant elle — `Rᵀ·d` — est, elle, attachée à l'arène. Les deux suivies image après image, sur 720 images d'un
+combat au barrage :
+
+| | dérive par image | pire | au-delà de 5° |
+|---|---|---|---|
+| dans la caméra | 0,27° | **16,3°** | 11 images |
+| **avant la caméra** | **0,038°** | **4,4°** | **0** |
+
+Sept fois plus stable, et plus un seul saut : `root` est bien la caméra pour ces vues, et la lumière
+appartient à l'arène. C'est ce vecteur-là qu'une table peut contenir.
+
+**Les treize, dans l'espace de l'arène.** Une partie par arène, chargée par le chargeur du jeu (`VF3_STAGE`),
+le journal nommant l'arène venue. Les **deux** vues de combattant (vp5, seize pièces ; vp9, vingt pièces)
+s'accordent à quatre décimales dans chacune des treize.
+
+| décor | nom | la lumière, avant la caméra |
+|---|---|---|
+| 0 | `TEST` | `[−0,2002 0,8476 0,4915]` |
+| 1 | `WESTERN` | `[−0,0004 0,8318 0,5551]` — **x nul** |
+| 2 | `AC_CARRIER` | `[0,2560 0,8946 −0,3664]` |
+| 3 | `ROOM_00` | `[0,0000 1,0000 0,0000]` — **l'axe vertical exact** |
+| 4 | `GREAT_BM` | `[0,7071 0,7071 −0,0013]` — **45° exacts**, mais lue sur une arène qui ne charge pas |
+| 5 | `FURNACE` | `[0,0000 1,0000 0,0000]` — **l'axe vertical exact** |
+| 6 | `STORE` | `[0,4387 0,8407 −0,3177]` |
+| 7 | `HANGAR` | `[0,3819 0,9242 −0,0001]` — **z nul** |
+| 8 | `CAPSULE` | `[−0,2008 0,8470 0,4923]` |
+| **9** | **`DAM`** | `[0,2356 0,8601 0,4525]` |
+| 10 | `TOWER` | `[−0,2009 0,8472 0,4920]` |
+| 11 | `BUILDING` | `[−0,1526 0,6076 0,7795]` |
+| 12 | `MUSEUM` | `[−0,2012 0,8478 0,4907]` |
+
+**Quatre valeurs tombent sur des axes exacts** — l'axe vertical à `ROOM_00` et `FURNACE`, z nul à `HANGAR`,
+x nul à `WESTERN`, 45° à `GREAT_BM`. Une lecture bruitée ne fait pas ça. Et ça tranche une ambiguïté que
+l'ancien tableau portait : `ROOM_00` et `FURNACE` donnaient la normale du sol, ce qui pouvait être une vraie
+lumière à l'aplomb ou la valeur de repli du code. Dans l'espace de l'arène, c'est `[0 1 0]` au dix-millième,
+dans les deux vues : ce sont de vraies lumières verticales.
+
+**Quatre arènes partagent la même lumière** : `TEST`, `CAPSULE`, `TOWER` et `MUSEUM`, à `[−0,200 0,847
+0,492]` près. Ce n'est pas un artefact — leurs captures diffèrent, donc quatre arènes différentes ont bien
+été chargées.
+
+### La table branchée, et ce qu'elle remplace vraiment
+
+`VF3_SHADOW_TABLE=1` prend la lumière dans cette table au lieu de la lire dans les matrices du jeu à chaque
+image. L'arène est reconnue par son enregistrement : `STAGE_TEST__ROB_LIGHT` (`0x0058FD90`) porte la fiche
+courante, les fiches font 0x70 octets à partir de `0x0007516C`, l'indice est une soustraction. La direction
+de la table est retransformée par le `root` de chaque vue, pour revenir dans l'espace où le reste du calcul
+travaille.
+
+Mesuré au barrage, à l'image 3150 : la table donne `[0,1215 0,8422 0,5253]`, et la lecture des matrices à la
+même image donne **`[0,1215 0,8422 0,5253]`**. L'image rendue est **identique au bit près** (même somme
+MD5). Et le journal dit que le chemin s'est bien exécuté — `table : arene 9, vp5 prend [...]` — ce sans quoi
+« identique » ne prouverait rien.
+
+**Ce que ça ne fait pas encore, et qu'il ne faut pas me faire dire.** La table remplace la **lecture de la
+lumière**, pas la dépendance aux ombres du jeu : savoir *quelle vue porte les combattants* vient toujours de
+la présence de ses pièces aplaties (`caster_vp`), et le plan du sol toujours de ses quads d'ombre. Sans
+pièces aplaties, il n'y a toujours pas d'ombre. Et l'effet attendu aux arènes à lumière locale — une seule
+lumière franche au lieu de deux à `ROOM_00`, `TOWER` et `BUILDING` — **n'est pas démontré** : `VF3_STAGE`
+garde le numéro à 9, donc la branche locale n'est pas empruntée, et `VF3_FORCE_STAGE` laisse la fiche du
+barrage, donc la table y prendrait la lumière du barrage. Ça ne se verra qu'en jouant jusqu'à ces arènes.
+L'interrupteur reste donc éteint par défaut.
+
 ## Le ring de chaque arène, et ce qu'il y a dessous
 
 Lu dans les mêmes fiches : `+0x30` est le demi-côté du ring (`CONFIG__STAGE_X`) et `+0x34` la profondeur de

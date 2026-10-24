@@ -1893,6 +1893,17 @@ int main(int argc, char **argv)
 			}
 			// the first picture of a stage tells what the shadows do on it (VF3_SHADOW_WHY)
 			if (stage_changed) { gpu3d.debug_now = true; stage_changed = false; }
+			// Which arena is loaded, for the shadow code: STAGE_TEST__ROB_LIGHT (0x0058FD90) holds the
+			// record charger_fiche_decor landed on, and the records are 0x70 bytes from 0x0007516C, so the
+			// index is a subtraction. A pointer that does not land on a record exactly, or lands past the
+			// twenty-seven, leaves it at -1 and the shadow code reads the light as it always did.
+			gpu3d.arena = -1;
+			if (board.ram.size() > 0x58FD94) {
+				uint32_t fiche = 0;
+				for (int k = 0; k < 4; k++) fiche = (fiche << 8) | board.ram[(0x58FD90 + uint32_t(k)) ^ 3];
+				if (fiche >= 0x7516C && (fiche - 0x7516C) % 0x70 == 0 && (fiche - 0x7516C) / 0x70 < 27)
+					gpu3d.arena = int((fiche - 0x7516C) / 0x70);
+			}
 			// the game's own shadows stay in the list the GPU renderer reads -- they mark the floor, which is how
 			// it measures the units each layer is drawn in -- and it leaves them out of the picture itself
 			raster.drop_game_shadows = false;

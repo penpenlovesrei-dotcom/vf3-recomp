@@ -45,6 +45,11 @@ public:
 	// Say what the shadow is doing for THIS picture -- the frame VF3_SHADOW_MAP names -- and not for
 	// whichever one came first. Every number read off the wrong frame costs an hour.
 	bool debug_now = false;
+	// Which of Fighting Vipers 2's arenas is loaded (the index of the record STAGE_TEST__ROB_LIGHT
+	// points at), or -1 when it cannot be told. The host fills it; the shadow code uses it to take
+	// the arena's own light from a table instead of reading it out of the game's shadow matrices
+	// every picture. -1 everywhere else, including Virtua Fighter 3, which keeps the reading.
+	int arena = -1;
 	// The shadow map read back, to look at it (tests): side x side distances, 1 where nothing was drawn
 	bool read_shadow_map(std::vector<float> &px, int &side, int which = 0);
 

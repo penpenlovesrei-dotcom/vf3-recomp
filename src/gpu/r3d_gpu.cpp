@@ -1286,6 +1286,56 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 	// not the next, which is the blinking itself; and a game whose shadows are not planar projections
 	// has no light to read, not a light read from part of it.
 	if (light_refused) return;
+	// VF3_SHADOW_TABLE=1: take the light from the ARENA instead of reading it out of the game's
+	// shadow matrices every picture.
+	//
+	// The direction read above comes out of S = C.P.R, so it is in the CAMERA's space and it moves
+	// when the camera does: measured over 720 pictures of a fight at the dam, 0.27 degrees a picture
+	// and 16.3 at worst, eleven of them past 5 degrees -- the camera's own cuts. Carried back through
+	// the viewport's `root`, which is the camera's matrix, the same direction holds still: 0.038
+	// degrees a picture, 4.4 at worst, not one past 5. So `root` really is the camera here, and the
+	// light belongs to the arena. That is the vector this table holds, and it is turned back into the
+	// camera's space with each viewport's own root.
+	//
+	// The thirteen were taken one arena per game, each loaded by the game's own loader (VF3_STAGE),
+	// with the journal naming the arena that came up. Both fighter viewports agreed to four decimals
+	// in every one of them, and four of the values land on exact axes -- [0 1 0] at ROOM_00 and
+	// FURNACE, z = 0 at HANGAR, x = 0 at WESTERN -- which a noisy reading does not do.
+	static const bool table_on = getenv("VF3_SHADOW_TABLE") != nullptr;
+	if (table_on && arena >= 0 && arena < 13) {
+		static const float ARENE[13][3] = {
+			{ -0.2002f, 0.8476f,  0.4915f },   //  0 TEST
+			{ -0.0004f, 0.8318f,  0.5551f },   //  1 WESTERN
+			{  0.2560f, 0.8946f, -0.3664f },   //  2 AC_CARRIER
+			{  0.0000f, 1.0000f,  0.0000f },   //  3 ROOM_00, straight down
+			{  0.7071f, 0.7071f, -0.0013f },   //  4 GREAT_BM -- 45 degrees exactly, but read off an
+			                                   //    arena that does not load this way: six flattened
+			                                   //    pieces instead of 36. Kept, not trusted.
+			{  0.0000f, 1.0000f,  0.0000f },   //  5 FURNACE, straight down
+			{  0.4387f, 0.8407f, -0.3177f },   //  6 STORE
+			{  0.3819f, 0.9242f, -0.0001f },   //  7 HANGAR
+			{ -0.2008f, 0.8470f,  0.4923f },   //  8 CAPSULE
+			{  0.2356f, 0.8601f,  0.4525f },   //  9 DAM
+			{ -0.2009f, 0.8472f,  0.4920f },   // 10 TOWER
+			{ -0.1526f, 0.6076f,  0.7795f },   // 11 BUILDING
+			{ -0.2012f, 0.8478f,  0.4907f },   // 12 MUSEUM
+		};
+		const float *a = ARENE[arena];
+		for (size_t iv = 0; iv < scene.viewports.size() && iv < 64; iv++) {
+			if (!caster_vp[iv] || !pieces[iv]) continue;
+			// back into the camera's space: root carries a direction forward, its transpose carried it
+			// back when the table was taken
+			const float *R = scene.viewports[iv].root.m;
+			float d[3];
+			for (int r = 0; r < 3; r++)
+				d[r] = R[0 + r] * a[0] + R[4 + r] * a[1] + R[8 + r] * a[2];
+			const float dl = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+			if (dl > 1e-6f) for (int q = 0; q < 3; q++) dirs[iv][q] = d[q] / dl;
+			if (debug_now)
+				fprintf(stderr, "table : arene %d, vp%zu prend [%.4f %.4f %.4f]\n", arena, iv,
+					double(dirs[iv][0]), double(dirs[iv][1]), double(dirs[iv][2]));
+		}
+	}
 	// the groups: viewports whose directions agree to within a degree share a map, up to two maps
 	float gdir[2][3] = {};
 	for (size_t iv = 0; iv < 64; iv++) {
@@ -1335,6 +1385,37 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 			if ((saidN[0] || saidN[1] || saidN[2]) && dot < 0.999f) nmoves++;
 			for (int q = 0; q < 3; q++) saidN[q] = floor_p[q];
 		}
+		// Is the light we read fixed to the ARENA or to the CAMERA? It comes out of S = C.P.R, so it is
+		// in the camera's space, and a table of fixed directions would only work if that space held
+		// still. The viewport's `root` is the camera's own matrix where the game puts one there, so the
+		// same direction is also carried back through it -- R^T.d, the direction before the camera --
+		// and the two are followed picture to picture. The steadier of the two is the one a table can
+		// hold.
+		static float said_w[64][3] = {};
+		static double wsum = 0, wmax = 0;
+		static unsigned wn = 0, wover5 = 0;
+		for (size_t iv = 0; iv < scene.viewports.size() && iv < 64; iv++) {
+			if (!caster_vp[iv] || !pieces[iv]) continue;
+			const float *R = scene.viewports[iv].root.m;
+			float w[3];
+			for (int i = 0; i < 3; i++)
+				w[i] = R[4 * i + 0] * dirs[iv][0] + R[4 * i + 1] * dirs[iv][1] + R[4 * i + 2] * dirs[iv][2];
+			const float wl = std::sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+			if (!(wl > 1e-6f)) continue;
+			for (float &q : w) q /= wl;
+			if (said_w[iv][0] || said_w[iv][1] || said_w[iv][2]) {
+				const double dw = double(w[0]) * said_w[iv][0] + double(w[1]) * said_w[iv][1] + double(w[2]) * said_w[iv][2];
+				const double ang = std::acos(std::min(1.0, std::max(-1.0, std::fabs(dw)))) * 57.2957795;
+				wsum += ang;
+				wn++;
+				if (ang > wmax) wmax = ang;
+				if (ang > 5) wover5++;
+			}
+			for (int q = 0; q < 3; q++) said_w[iv][q] = w[q];
+		}
+		if ((seen % 120) == 0)
+			fprintf(stderr, "avant la camera : %u mesures, moyenne %.3f deg, pire %.1f deg, %u au dela de 5 deg" "\n",
+				wn, wn ? wsum / wn : 0.0, wmax, wover5);
 		// Could the light come from the game's OWN sun instead of its shadow matrices? Each viewport
 		// carries a sun direction, and if it agreed with the direction read out of the flattened pieces
 		// the port would not need those pieces at all. So the two are held against each other, picture
@@ -1444,9 +1525,20 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 	if (debug_now) {
 		fprintf(stderr, "%d shadow models, %d map%s\n", n, nmaps, nmaps > 1 ? "s" : "");
 		for (size_t iv = 0; iv < 64; iv++)
-			if (caster_vp[iv])
-				fprintf(stderr, "  vp%zu: %d pieces, direction [%.4f %.4f %.4f], map %d\n", iv, pieces[iv],
-				        double(dirs[iv][0]), double(dirs[iv][1]), double(dirs[iv][2]), vp_group[iv]);
+			if (caster_vp[iv]) {
+				// and the same direction carried back before the camera, which is where it holds still:
+				// measured on the dam, 0.038 deg a picture and never past 4.4, against 0.27 and 16.3 in
+				// the camera's own space. That is the vector a per-arena table can hold.
+				const float *R = scene.viewports[iv].root.m;
+				float w[3] = {};
+				for (int i = 0; i < 3; i++)
+					w[i] = R[4 * i + 0] * dirs[iv][0] + R[4 * i + 1] * dirs[iv][1] + R[4 * i + 2] * dirs[iv][2];
+				const float wl = std::sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+				if (wl > 1e-6f) for (float &q : w) q /= wl;
+				fprintf(stderr, "  vp%zu: %d pieces, direction [%.4f %.4f %.4f], avant camera [%.4f %.4f %.4f], map %d\n",
+					iv, pieces[iv], double(dirs[iv][0]), double(dirs[iv][1]), double(dirs[iv][2]),
+					double(w[0]), double(w[1]), double(w[2]), vp_group[iv]);
+			}
 	}
 }
 
