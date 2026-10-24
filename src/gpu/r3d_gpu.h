@@ -59,6 +59,13 @@ private:
 	// the buffer was made for, and whether they have been uploaded (they never change while the game runs)
 	int hd_pages = 0;
 	bool hd_up = false;
+	// LA PLANCHE DE LA SCENE INJECTEE (VF3_SCENE en mode ADDITIF) : deux pages de plus,
+	// posees apres celles du pack HD, exactement comme elles. Le shader n'atteint une page
+	// que par son numero, donc il n'y a rien a changer de son cote -- et c'est ce qui permet
+	// de porter l'injection sur le GPU sans toucher a r3d.hlsl.
+	int inj_pages = 0;
+	bool inj_up = false;
+	const uint16_t *inj_ptr = nullptr;
 	struct GV { float clip[4], view[3], normal[3], misc[4], lodbase; uint32_t draw; };
 	std::vector<GV> verts;
 	void free_targets();

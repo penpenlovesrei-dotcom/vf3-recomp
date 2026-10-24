@@ -10,12 +10,24 @@
 #include "r3d_shaders.h"
 #include "../machine/model3.h"
 #include "../video/tex3d_hd.h"
+#include "../video/r3d_inject.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
 
 namespace {
+
+// La planche de la scene injectee, et SEULEMENT en mode additif : hors de ce mode elle
+// REMPLACE la memoire de textures de la carte (r3d_raster.cpp le fait en posant tex_ram),
+// et il n'y a alors aucune page en plus a porter.
+const uint16_t *injected_sheet()
+{
+	static const bool ajout = getenv("VF3_SCENE_ADD") != nullptr;
+	if (!ajout) return nullptr;
+	const video::Injected *in = video::injected_scene();
+	return in && !in->tex.empty() ? in->tex.data() : nullptr;
+}
 
 struct GDraw
 {
@@ -319,6 +331,11 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 		// the CPU rasteriser reads the same way): the pack's pages come after the board's two in this buffer, so
 		// only these six numbers change. Level 0 only, a pack's images having no mipmaps, and no flipbook
 		// cross-fade, a mesh's two pictures sharing one page and one size here.
+		// Les maillages venus de VF3_SCENE lisent la planche injectee : ses deux pages sont
+		// rangees apres celles du pack HD, donc seul le numero de page change. Le decalage de
+		// texture du noeud et la page du modele s'appliquent comme pour la carte.
+		if (m.injected && inj_pages)
+			o.page = 2 + hd_pages + (m.page ^ d.model->page);
 		if (!prep.hd.empty() && prep.hd[i].hd) {
 			const video::TexPlace &p = prep.hd[i];
 			o.page = 2 + p.page;
@@ -390,25 +407,34 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 	// nothing writes to them while the game runs. A pack loaded after this renderer was made (not something the
 	// options allow today) would need the buffer again, so the size is checked rather than assumed.
 	const int want_hd = video::hd3d().page_count();
-	if (want_hd != hd_pages) {
+	// La planche injectee suit le meme chemin que le pack HD : deux pages de plus au bout du
+	// tampon, televersees une fois. On compare aussi le POINTEUR, parce qu'une scene rechargee
+	// garderait le meme compte de pages avec un contenu different.
+	const uint16_t *want_sheet = injected_sheet();
+	const int want_inj = want_sheet ? 2 : 0;
+	if (want_hd != hd_pages || want_inj != inj_pages || want_sheet != inj_ptr) {
 		SDL_WaitForGPUIdle(dev);
 		if (texram) SDL_ReleaseGPUBuffer(dev, texram);
 		SDL_GPUBufferCreateInfo bi = {};
 		bi.usage = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
-		bi.size = uint32_t(2048 * 2048 * 2) + uint32_t(want_hd) * 1024 * 2048 * 2;
+		bi.size = uint32_t(2048 * 2048 * 2) + uint32_t(want_hd + want_inj) * 1024 * 2048 * 2;
 		texram = SDL_CreateGPUBuffer(dev, &bi);
 		hd_pages = want_hd;
+		inj_pages = want_inj;
+		inj_ptr = want_sheet;
 		hd_up = false;
+		inj_up = false;
 		rows.assign(1, { 0, 2048 });
 		tbytes = 2048 * 4096;
 		if (!texram) { err = std::string("the texture buffer: ") + SDL_GetError(); return false; }
 	}
 	const uint32_t hdbytes = hd_up ? 0 : uint32_t(hd_pages) * 1024 * 4096;
+	const uint32_t injbytes = inj_up ? 0 : uint32_t(inj_pages) * 1024 * 4096;
 	if (!ensure_buffer(vbuf, vbuf_size, vbytes, SDL_GPU_BUFFERUSAGE_VERTEX) ||
 		!ensure_buffer(dbuf, dbuf_size, dbytes, SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ) ||
 		!ensure_buffer(pbuf, pbuf_size, pbytes, SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ))
 		return false;
-	const uint32_t total = vbytes + dbytes + pbytes + tbytes + hdbytes;
+	const uint32_t total = vbytes + dbytes + pbytes + tbytes + hdbytes + injbytes;
 	if (!tb || tb_size < total) {
 		if (tb) SDL_ReleaseGPUTransferBuffer(dev, tb);
 		SDL_GPUTransferBufferCreateInfo ti = {};
@@ -430,6 +456,8 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 			at += r.second * 4096;
 		}
 		if (hdbytes) memcpy(map + at, video::hd3d().pages(), hdbytes);
+		at += hdbytes;
+		if (injbytes) memcpy(map + at, inj_ptr, injbytes);
 	}
 	SDL_UnmapGPUTransferBuffer(dev, tb);
 	SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(dev);
@@ -448,6 +476,8 @@ bool R3dGpu::render(const video::Scene &scene, const video::Raster &prep, const 
 		uint32_t at = vbytes + dbytes + pbytes;
 		for (auto &r : rows) { up(at, texram, r.first * 4096, r.second * 4096); at += r.second * 4096; }
 		if (hdbytes) { up(at, texram, 2048 * 4096, hdbytes); hd_up = true; }
+		at += hdbytes;
+		if (injbytes) { up(at, texram, 2048 * 4096 + uint32_t(hd_pages) * 1024 * 4096, injbytes); inj_up = true; }
 		SDL_EndGPUCopyPass(cp);
 	}
 	// ---- the passes ----
