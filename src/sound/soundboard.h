@@ -30,7 +30,17 @@ public:
 	// The music's and the effects' own volumes (0 to 1; at 1 both, the board's mix untouched). VF3's sound driver
 	// keeps a record a voice, 32 bytes at 0x400 + slot * 0x20 in each SCSP's RAM: the slot's register address,
 	// then the channel the voice plays for. The music plays on channels 0x00 to 0x0E; the game's effects, voices
-	// and announcer ask for channels 0x0F to 0x12 (requests 0x11 to 0x14), on the second SCSP.
+	// and announcer ask for channels 0x0F to 0x13, on the second SCSP.
+	//
+	// All three of those were deductions until the sound program was read (docs/fv2-son-programme.md): the
+	// record's first long is written at reset by a loop over 32 slots, stride 0x20, from 0x00100000 for the
+	// first chip and 0x00300000 for the second, which is exactly what group_of() tests. And byte +5 is not a
+	// MIDI channel at all -- it is (A0 - 0xC40) / 0x20, the index of an entry in a table of 0x20-byte channel
+	// objects based at 0xC40, which is why it can exceed 15. That table is laid out RIGHT-ALIGNED to end at
+	// 0xEC0, with room for 20 entries, and this driver's ROM declares five: they land at indices 0x0F to 0x13,
+	// leaving 0x00 to 0x0E to the music. So the 0x0F threshold is a consequence of the layout, not a magic
+	// number -- and the range here said 0x0F to 0x12, one short of the five that are there. The test is a >=,
+	// so it caught them all and nothing was broken; the comment was wrong, not the code.
 	void set_volumes(float music, float effects);
 	// Whether this game's sound driver is the one group_of() reads. Virtua Fighter 3's is; for another game the
 	// records at 0x400 are something else, and reading them could put voices in the wrong group by coincidence,

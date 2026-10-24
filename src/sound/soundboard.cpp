@@ -55,12 +55,26 @@ struct SoundBoard::Bus : m68000_bus
 		// offset -- so whether anything ever lands in 0x7C0-0x7FF, the range this port and MAME
 		// disagree about (docs/scsp_references.md), depends on data and not on the instructions.
 		// This says what actually happens.
+		// It also logs two ranges outside the DSP, for the other open question of that document (its
+		// section 4): the driver accumulates per slot into +0x600, which this port routes to MAME's
+		// FM ring buffer and the audio path rewrites every sample -- unless STWINH protects the
+		// entry. STWINH is bit 9 of each slot's word 0x6, so slot words 0x6 are logged too, and the
+		// two in one ordered log say whether the driver protects what it just wrote.
 		if (static FILE *dl = getenv("VF3_SCSP_DSPLOG") ? fopen(getenv("VF3_SCSP_DSPLOG"), "w") : nullptr;
-		    dl && ((a >> 20) == 1 || (a >> 20) == 3) && (a & 0xFFF) >= 0x700) {
+		    dl && ((a >> 20) == 1 || (a >> 20) == 3)) {
 			const unsigned off = a & 0xFFF;
-			const char *zone = off < 0x780 ? "COEF" : off < 0x7c0 ? "MADRS"
-			                 : off < 0x800 ? "7C0-7FF" : off < 0xc00 ? "MPRO" : "autre";
-			fprintf(dl, "%d chip%d %03x %-7s %04x mask %04x\n", b.frames, int((a >> 20) == 3), off, zone, data, mem_mask);
+			const bool slot6 = off < 0x400 && (off & 0x1E) == 0x0C;   // word 0x6 of a slot
+			const char *zone = off >= 0x700
+			                 ? (off < 0x780 ? "COEF" : off < 0x7c0 ? "MADRS"
+			                    : off < 0x800 ? "7C0-7FF" : off < 0xc00 ? "MPRO" : "autre")
+			                 : (off >= 0x600 && off < 0x700) ? "RINGBUF" : slot6 ? "SLOT6" : nullptr;
+			if (zone) {
+				if (slot6)
+					fprintf(dl, "%d chip%d %03x %-7s %04x mask %04x fente %u stwinh %d\n", b.frames,
+					        int((a >> 20) == 3), off, zone, data, mem_mask, off / 0x20, (data >> 9) & 1);
+				else
+					fprintf(dl, "%d chip%d %03x %-7s %04x mask %04x\n", b.frames, int((a >> 20) == 3), off, zone, data, mem_mask);
+			}
 		}
 		switch (a >> 20) {
 		case 0x0: case 0x2: {
