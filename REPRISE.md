@@ -532,3 +532,38 @@ titre.
   plein round, et c'est probablement l'autre levier qu'il faut.
 - `BGM SET`, les packs de musique du fork.
 - Les combattants noirs du 2026-10-23.
+
+## Journal du 2026-10-24, matin — l'amont fusionné
+
+`mr-finster/vf3-recomp` avait six commits et le tag `v0.1.6-alpha` d'avance. Tout est entré dans `fv2`.
+
+### Ce que l'amont apporte
+
+- **Vulkan d'abord sous Windows**, pour toutes les cartes, le Direct3D 12 de NVIDIA étant lui aussi bien plus
+  lent ; et un réglage `Display > Graphics driver` pour revenir à l'autre.
+- **Les sauvegardes écrites hors du fil du jeu** (`bg_saver`) : chaque vidage sur un disque dur coûtait des
+  dizaines de millisecondes, donc un hoquet toutes les quelques secondes pendant que la comptabilité de la
+  borne remuait la RAM de sauvegarde. La NVRAM part maintenant une fois par minute, et tout au moment de quitter.
+- **Un septième nuanceur, `FS_COLOUR`** : l'image entière passée par les couleurs d'un moniteur d'arcade.
+- Trois corrections du menu (un clic qui ferme le menu ne plante plus, `<` descend d'un cran, les bornes
+  bouclent) et `docs/HANDOFF.md`.
+
+### Les trois fichiers qui ont demandé une main
+
+- **`.gitignore`** garde les deux listes : la nôtre, tout ce que ce portage laisse à côté de lui quand on le
+  lance d'ici, et la leur, le cache de Wrangler et les portages voisins.
+- **`README.md`** garde le nôtre : la section que l'amont ajoute pointe vers ce fork, elle n'a rien à dire ici.
+- **`src/gpu/r3d_shaders.h`** est un fichier **généré**, et DXC n'est pas sur cette machine. Les deux côtés ne
+  se marchaient pas dessus pour autant : le nôtre avait recompilé les six nuanceurs pour la lumière non bornée
+  (`FS_POLY`), l'amont en ajoute un septième dont notre modification ne touche pas le code. Donc notre
+  en-tête, les trois tableaux `fs_colour` de l'amont greffés devant la ligne d'empreinte, et le sha1 recalculé
+  sur le `r3d.hlsl` fusionné. **À régénérer d'un coup** par `tools/gpu/shaders.sh` sur une machine qui a DXC et
+  SPIRV-Cross, pour que l'en-tête redevienne la sortie franche du générateur.
+
+### Vérifié
+
+`verifier-vf3.cmd 2000` contre le nouveau `main` (`d30b722`), l'arbre de référence `C:\Temp\vf3up` avancé et
+ses binaires refaits : **quatre IDENTIQUE** — l'état du PowerPC image par image, les 8 Mo de RAM, les images
+rendues, l'image de l'hôte complet — et **2231 images identiques** entre l'interpréteur et le code recompilé.
+Virtua Fighter 3 n'a pas bougé. Et `vf3run` dit enfin ce que Start en plein combat veut dire
+(`start_for::pause`), que son `switch` laissait de côté depuis la construction du menu de pause.

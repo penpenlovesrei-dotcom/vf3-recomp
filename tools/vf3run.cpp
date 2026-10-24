@@ -300,6 +300,12 @@ int main(int argc, char **argv)
 				if (!quiet) printf("frame %llu: Start off the title screen (mode %d, sub-state %d) -> the game asked for its title screen\n",
 								   (unsigned long long)f, board.fv2_mode(), board.fv2_submode());
 				break;
+			// the pause menu is the host's surface; there is none to open here, and the layer has already
+			// swallowed the press
+			case console_play::start_for::pause:
+				if (!quiet) printf("frame %llu: Start during a fight (mode %d, sub-state %d) -> the host would open its pause menu\n",
+								   (unsigned long long)f, board.fv2_mode(), board.fv2_submode());
+				break;
 			case console_play::start_for::none: break;
 			}
 			if (cplay.swallow_start) board.controls.start[0] = board.controls.start[1] = false;
