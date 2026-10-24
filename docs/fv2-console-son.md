@@ -538,3 +538,47 @@ La question est maintenant étroite : **deux emplacements, 18 et 19 du premier c
   bien finir le round, mais le jeu reste ensuite dans `JUDGE_DSP` et `VIC_DSP` n'est jamais atteint. Et
   `vf3run` tourne à 14 images par seconde sur ce jeu : six minutes par essai. **Un banc hors-jeu pour cet
   état reste à trouver** ; en attendant, la seule route qui y mène est une partie jouée à la main.
+
+### Ce que MAME et Supermodel font de ce défaut (relevé le 2026-10-24)
+
+Frédéric a demandé si le défaut existait déjà dans les émulateurs et comment ils l'avaient résolu. **Oui, et
+sur ce jeu précisément.**
+
+- **Supermodel a porté le même problème, et l'a nommé.** Son option `LegacySoundDSP` est documentée comme
+  « legacy SCSP **DSP** implementation for games that do not play well with the newer one (**e.g. Fighting
+  Vipers 2**) », et elle se règle **par jeu** — Fighting Vipers 2 et Sega Rally 2 sont les exemples cités. Le
+  « nouveau » moteur est celui de MAME, porté chez eux en r814 ; l'ancien est celui d'ElSemi. Donc quand le
+  DSP de MAME est entré, ce jeu a eu besoin qu'on revienne à l'ancien.
+- **Puis ils l'ont corrigé pour de bon.** Le `Src/Sound/SCSP.cpp` actuel a supprimé le chemin d'ElSemi, et son
+  en-tête dit pourquoi : Fighting Vipers 2 « used to need ElSemi's older DSP register handling, which has been
+  removed now that **DSP memory access follows the manual** ».
+- **Trois écarts avec notre modulation**, chez eux tirés du manuel (table 4.17) et non de l'oreille :
+
+  | | Supermodel (manuel) | nous (MAME + amont) |
+  |---|---|---|
+  | quand la modulation s'applique | `MDL` **5 à F** seulement ; 0 à 4 = aucune | dès que `MDL`, `MDXSL` **ou** `MDYSL` est non nul |
+  | le décalage | `>> (0x19 - MDL)` | `>> (0x18 - (MDL & 0xE))` |
+  | le décalage d'adresse obtenu | **borné à 11 bits signés** | **non borné** |
+
+  Le troisième est le plus suspect pour ce qu'on mesure : un décalage non borné lit hors de l'échantillon
+  prévu, et c'est le genre de chose qui fait grossir une voix en bruit.
+- **Et MAME a corrigé un défaut d'adressage du DSP que nous gardons actif.**
+  [mamedev/mame#16527](https://github.com/mamedev/mame/pull/16527), « Don't mirror MADRS at 0x7c0-0x7ff,
+  fixes corrupted and then silent sound in doa ». Or `src/sound/scsp.h` garde ce miroir **par défaut** :
+
+  ```cpp
+  const bool m_madrs_mirror = [] { const char *e = getenv("VF3_SCSP_MADRS_SEPARATE"); return !(e && *e == '1'); }();
+  ```
+
+  Le comportement corrigé de MAME n'est donc accessible que par une variable d'environnement, et ce portage
+  fait tourner par défaut ce que MAME a réparé — dans la zone même que Supermodel dit avoir dû mettre en
+  conformité avec le manuel.
+
+**La première chose à essayer est donc `VF3_SCSP_MADRS_SEPARATE=1`** : une variable sur le binaire existant,
+et c'est la correction de MAME. Tout ceci est aussi dans l'issue ouverte à cette occasion,
+[penpenlovesrei-dotcom/vf3-recomp#1](https://github.com/penpenlovesrei-dotcom/vf3-recomp/issues/1) — les
+issues du fork étaient désactivées et ont été activées pour elle.
+
+Sources : le `LegacySoundDSP` des configurations publiées de Supermodel, la documentation du cœur
+Libretro-Supermodel (moteurs « MAME-derived » et « ElSemi »), l'en-tête de `Src/Sound/SCSP.cpp` de
+`trzy/Supermodel`, et la demande d'intégration MAME ci-dessus.
