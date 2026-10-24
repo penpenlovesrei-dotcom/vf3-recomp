@@ -479,3 +479,56 @@ titre.
 - `CONTROLLER`, vide, et `BGM SET`, les packs de musique du fork.
 - Les combattants noirs du 2026-10-23 : la soumission tronquée après un redémarrage de l'attraction, cause
   toujours ouverte.
+
+## Journal du 2026-10-24, la nuit — CONTROLLER, le menu de pause, et trois bugs à moi
+
+### Ce qui s'ajoute au jeu
+
+- **`CONTROLLER` n'est plus vide.** Un éditeur d'affectations : neuf lignes — les quatre directions, poing,
+  garde, pied, Start, `SELECT` — sur deux colonnes, `1P` et `2P`. `A` ouvre une ligne et la touche ou le
+  bouton suivant devient l'affectation, écrite dans `settings.ini`. Une dixième ligne, `TEST`, ouvre le
+  **miroir** : les huit directions et les trois boutons allumés tant qu'on les tient, une diagonale s'allumant
+  seule. Les icônes sont celles du jeu, `inputs.png`, qui ne servait nulle part.
+- **Le menu de pause**, `src/host/fv2_pause.h`. Start pendant un match, dans la forme du disque : panneau
+  violet sous sa barre `1P PAUSE`, à gauche pour le joueur 1 et à droite pour le 2, écran assombri. Une des
+  quatre lignes a un levier qui marche d'ici ; les trois autres sont en sourdine et disent ce qu'elles
+  attendent. Voir `docs/fv2-console.md`.
+- **Start en combat ne déchire plus l'écran.** L'avertissement était écrit depuis le 21 sans que personne
+  ait regardé : la demande d'écran titre déplaçait l'écran sans arrêter la partie, et le titre revenait
+  haché. Hors attraction, cette couche ne fait plus rien et laisse l'appui au jeu.
+
+### Trois bugs, tous de moi
+
+- **`ADVERTISE SOUND` écrivait dans le nombre de rounds d'un match.** `0x0058142C` n'est pas son cache mais le
+  **match point** ; mon relevé du matin avait pris une coïncidence pour une mesure (1 + 1 = 2 = `MATCH COUNT
+  1P`). Toucher le réglage raccourcissait tous les matchs suivants. Retiré, et rien ne le remplace : le jeu
+  recuit ce mot à chaque début de match.
+- **Le miroir de `CONTROLLER` avalait ce qu'il devait refléter** — gauche et droite changeaient de joueur, le
+  poing validait, le pied ressortait. Corrigé en supprimant ce qu'il fallait affecter, pas en le réaffectant.
+- **Une capture d'affectation enfermait la manette** : seul Retour arrière annulait, donc à la manette tout
+  bouton liait. Trouvé parce que le `p1_pad_kick` de Frédéric est revenu sur `start`.
+
+### Ce qui a été lu dans Ghidra
+
+- **Les quatre-vingts noms d'états de Sega**, avec leurs gestionnaires, dans `docs/fv2-etats.md` — c'est
+  Frédéric qui a dit d'aller les lire. Les sept de la fin disent ce qu'elle est : **des rediffusions**.
+- **La table des statistiques vivante** à `0x0011F7E0`, pas de `0xD4`, trouvée par l'écran `VS DIAGRAM` de la
+  borne ; et `FUN_000701C8`, la routine qui range un match, avec le genre de fin à `0x00581452` et le
+  vainqueur à `0x00581453`. Dans `docs/fv2-flux-de-match.md` §8.
+- **`SKO 1` contre `SKO 2`** : la lecture est consignée **et marquée comme non convaincante**, Frédéric
+  n'étant pas d'accord et son objection tenant. Un Super K.O. joué réglage éteint trancherait.
+
+### Outillage
+
+`VF3_OPTION_LOG`, `VF3_TIMER_LOG`, `VF3_LIVE`, une dizaine de routes dans `tools/scripts/`, et un **verrou sur
+`verifier-vf3.cmd`** : deux tours lancés ensemble partageaient leurs fichiers et ont fabriqué un faux
+`DIFFERENT` sur le contrat de fidélité.
+
+### Ce qui reste ouvert
+
+- **Sortir d'un combat proprement**, par la route du jeu. C'est ce qui bloque trois des quatre lignes du menu
+  de pause, et c'est le vrai travail suivant.
+- `CHANGE STAGE` est câblée sur le sélecteur que TRAINING utilise ; elle n'a pas été vue changer un décor en
+  plein round, et c'est probablement l'autre levier qu'il faut.
+- `BGM SET`, les packs de musique du fork.
+- Les combattants noirs du 2026-10-23.
