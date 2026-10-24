@@ -352,6 +352,34 @@ positions du curseur de selection donnent toutes le decor 9. Le decor suit l'adv
 adversaire est fixe. Et `VF3_FORCE_STAGE` change la fiche et la geometrie mais **pas les textures**, qui
 restent celles du decor deja charge.
 
+## La lumiere de chaque arene, le 2026-10-24
+
+Mesuree en forcant `STAGE_TEST__STAGE` sur les treize arenes, une partie par decor. Le detail et les reserves
+sont dans `docs/fv2-ombres.md` ; l'essentiel :
+
+| decor | nom | cartes | angle a la verticale |
+|---|---|---|---|
+| 1, 2, 4 a 8, 12 | inconnus | 1 | 30,7° (les deux combattants) |
+| **3** | inconnu | **2** | **55,4°** et **30,0°** |
+| **9** | **le barrage** | 1 | 30,7° |
+| **10** et **11** | 11 = **celui de Honey** | **2** | **41,0°** et **19,1°** |
+| 0 | inconnu | — | aucune ombre a cette image |
+
+**Les noms manquent parce que je n'ai pas de quoi les etablir** : forcer un decor ne recharge pas ses
+textures, donc une capture forcee ne le fait pas reconnaitre. Le 9 est nomme parce qu'il a ete mesure et
+capture de bout en bout, le 11 parce que Frederic l'a nomme en y jouant. **Le journal ecrit le numero a
+chaque changement de decor : chaque partie peut en nommer un de plus.** C'est la facon de completer ce
+tableau.
+
+**Reserve** : les decors forces gardent les positions des combattants du barrage. Aux decors 3, 10 et 11, ou
+l'angle vient de la position, les valeurs sont celles de CES positions. Dans une vraie partie au decor 11 les
+memes lumieres donnaient **9,7°** et **16,3°** de mediane, minimums **0,0°** et **0,6°**.
+
+**Ce qu'il etablit** : ces trois decors ont deux lumieres tres ecartees la ou les autres en ont une seule, et
+une lumiere a l'aplomb met l'ombre SOUS le combattant, ou son corps la cache. Au decor 11, 82 % des pixels
+assombris sont sur les corps et 18 % au sol -- ce que Frederic decrit par « elles sont collees aux
+combattants ».
+
 ## Ce qui reste ouvert, et qui bloque quoi
 
 - **Le jeu tient 43 images par seconde en combat, au lieu de 57,5, et on ne sait pas pourquoi.** Mesuré dans

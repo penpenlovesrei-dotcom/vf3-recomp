@@ -261,7 +261,7 @@ FsOut main(PolyV i)
 	// colour, so a pixel in shadow keeps the viewport's ambient and its texture stays visible -- which the game's
 	// own shadow does not do: being opaque, it paints the ground over (docs/fv2-ombres.md).
 	float shade = 1;
-	float3 shade_dbg = 0, look_dbg = 0;
+	float3 shade_dbg = 0, look_dbg = 0, under_dbg = 0;
 	if (shadow_on > 0 && vp.light.w > 0) {
 		// the map is in the casters' units; this viewport's may be others (measure_scales in r3d_gpu.cpp)
 		const float4 wv = float4(i.view / vp.light.w, 1);
@@ -290,6 +290,9 @@ FsOut main(PolyV i)
 		// red and green the place read in the map, blue what was found there, black outside it
 		// rouge : le pixel est juge a l ombre ; vert : ce que la carte rend ; bleu : la lecture est dans la boite
 		shade_dbg = float3(1.0 - shade, near_light, inside ? 1.0 : 0.0);
+		// shadow_on 8 (VF3_SHADOW_DEBUG=7): why a pixel takes no shadow -- rouge : juge sous le sol ;
+		// vert : la lecture est dans la boite ; bleu : il est a l ombre
+		under_dbg = float3(under ? 1.0 : 0.0, inside ? 1.0 : 0.0, 1.0 - shade);
 		// shadow_on 3 (VF3_SHADOW_DEBUG=2): where this pixel reads the map, and how far it is along the
 		// light -- rouge et vert : l endroit lu dans la carte ; bleu : la distance a la lumiere
 		look_dbg = float3(saturate(suv), saturate(lp.z));
@@ -332,9 +335,11 @@ FsOut main(PolyV i)
 		float3 target = vp.fog.rgb * vp.fog2.z + vp.spot_fog_colour.rgb * vp.fog2.y * vp.fog.rgb * lobe_fog;
 		c.rgb += (target - c.rgb) * fog;
 	}
+	// shadow_on 8 (VF3_SHADOW_DEBUG=7): why a pixel takes no shadow
+	if (shadow_on > 7.5) c.rgb = under_dbg;
 	// shadow_on 7 (VF3_SHADOW_DEBUG=6): the place AFTER the layer's units are taken out, so every layer
 	// reads on the same ruler: view / scale * 0.05 + 0.5
-	if (shadow_on > 6.5) c.rgb = i.view / max(vp.light.w, 1e-6) * 0.05 + 0.5;
+	else if (shadow_on > 6.5) c.rgb = i.view / max(vp.light.w, 1e-6) * 0.05 + 0.5;
 	// shadow_on 6 (VF3_SHADOW_DEBUG=5): the same, far coarser, for the viewports drawn at a big scale
 	else if (shadow_on > 5.5) c.rgb = i.view * 0.0005 + 0.5;
 	// shadow_on 5 (VF3_SHADOW_DEBUG=4): the pixel's place in its viewport's space, as view * 0.05 + 0.5

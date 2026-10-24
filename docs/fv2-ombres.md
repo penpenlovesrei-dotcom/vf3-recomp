@@ -1028,3 +1028,46 @@ n'est pas revenue : zéro sur les 3 360 images de la boucle.
 **Au passage**, la sonde qui a permis tout cela : `VF3_SHADOW_WHY=1` fait écrire, à chaque changement de
 décor, son numéro (`STAGE_TEST__STAGE`), le nombre de cartes, la direction de chaque lumière et l'échelle de
 chaque couche. C'est ce qui a transformé « ça ne marche pas sur ce décor » en un tableau de chiffres.
+
+## La lumière de chaque arène, décor par décor
+
+Mesurée en forçant `STAGE_TEST__STAGE` sur chacune des treize arènes, une partie par décor, et en lisant la
+direction **dans les matrices d'ombre du jeu** (`S·Sᵀ = I − N·Nᵀ + w·wᵀ`, donc `d = N + w`). L'angle est
+celui que fait cette direction avec la normale du sol mesurée à la même image.
+
+| décor | nom | cartes | la lumière, lue dans les matrices | angle à la verticale |
+|---|---|---|---|---|
+| 0 | *inconnu* | — | aucune ombre à l'image de combat | |
+| 1 | *inconnu* | 1 | `[0,2673 0,8443 0,4645]` pour les deux | 30,7° |
+| 2 | *inconnu* | 1 | idem | 30,7° |
+| **3** | *inconnu, à lumière locale* | **2** | `[0,8226 0,5666 0,0489]` / `[0,4974 0,8644 0,0734]` | **55,4°** et **30,0°** |
+| 4 | *inconnu* | 1 | idem | 30,7° |
+| 5 | *inconnu (voie ferrée sur la capture)* | 1 | idem | 30,7° |
+| 6 | *inconnu* | 1 | idem | 30,7° |
+| 7 | *inconnu* | 1 | idem | 30,7° |
+| 8 | *inconnu* | 1 | idem | 30,7° |
+| **9** | **le barrage** | 1 | idem | 30,7° |
+| **10** | *inconnu, à lumière locale* | **2** | `[0,6557 0,7534 0,0494]` / `[0,3255 0,9436 0,0611]` | **41,0°** et **19,1°** |
+| **11** | **celui de Honey** | **2** | idem au décor 10 | **41,0°** et **19,1°** |
+| 12 | *inconnu* | 1 | idem | 30,7° |
+
+**Les noms manquants ne sont pas une négligence : je n'ai pas de quoi les établir.** Le 9 est nommé parce que
+je l'ai mesuré et capturé de bout en bout, le 11 parce que Frédéric l'a nommé en y jouant. Forcer un décor ne
+recharge pas ses textures, donc une capture forcée ne permet pas de le reconnaître à l'œil. Le journal
+(`jouer-fv2-ombres.cmd journal`) écrit le numéro à chaque changement : chaque partie peut en nommer un de
+plus.
+
+**Deux réserves qui comptent autant que le tableau.**
+
+1. Les décors forcés gardent les **positions** des combattants du combat du barrage. Aux décors 3, 10 et 11,
+   où l'angle est calculé depuis la position, les deux valeurs sont donc celles de *ces* positions-là. Dans
+   une vraie partie au décor 11, les mêmes lumières mesuraient **9,7°** et **16,3°** de médiane, avec des
+   minimums à **0,0°** et **0,6°**.
+2. Pour les décors ordinaires, le forçage ne recharge probablement pas les angles stockés du décor : les
+   30,7° répétés sont ceux du barrage et ne disent rien de leur propre lumière. Ce qui est établi, c'est
+   qu'ils ont **une seule** lumière pour les deux combattants — ça, le forçage ne peut pas l'inventer.
+
+**Ce que le tableau établit.** Les décors 3, 10 et 11 ont deux lumières très écartées — 55° contre 30°, 41°
+contre 19° — là où les autres en ont une seule. Un combattant y est éclairé de biais, l'autre presque à
+l'aplomb. Et une lumière à l'aplomb met l'ombre **sous** le combattant, où son propre corps la cache : c'est
+ce qu'on voit au décor 11, où 82 % des pixels assombris sont sur les corps et 18 % au sol.
