@@ -1,3 +1,34 @@
+> ## Shadows for Fighting Vipers 2 — version 0.1, **not a finished version**
+>
+> This branch does one thing: it gives Fighting Vipers 2 shadows cast from the fighters' **real models**
+> (about 24 000 vertices, already in the scene) instead of the dozen simplified pieces the ROM projects, and
+> along the light **the game itself uses** — read out of the game's own shadow matrices, not invented.
+>
+> It is **off by default** and changes nothing unless it is asked for: `VF3_SHADOWS=1`, or the launcher
+> `jouer-fv2-ombres.cmd`. With it off, the picture is the game's own, byte for byte.
+>
+> **What it does today.** The shadow carries the real silhouette — two shoes told apart, a fighter's BMX —
+> it falls on the ground the fighters stand on, the fighters shade themselves on the side away from the
+> light, and the ground's texture stays readable inside the shadow, where the game's own opaque shadow
+> paints it over. Stages that light each fighter separately (3, 10 and 11) get one shadow map each.
+>
+> **What it does not do, and is measured.** Layers a stage draws in other units take no shadow, so on the
+> dam stage the shadow stops at the walkway and does not reach what is seen through the grating. Nothing
+> below the floor takes one. The shadow multiplies the sun and keeps the ambient, so it is lighter than the
+> game's unless `VF3_SHADOW_DARK` is raised. And Virtua Fighter 3 is **refused**: its shadow matrices are not
+> projections onto a plane -- measured, a fit residual of 0.0696 against 0.000000 here -- so there is no
+> light to read, and the port leaves that game's own shadows alone.
+>
+> **No game data is in this repository.** No ROM, no NVRAM, no dump, no artwork from the game: you need your
+> own ROM. The images under `assets/` are the port's own icon, OFL fonts, and 64x64 placeholders.
+>
+> Every number above was measured, and how is written down in **[docs/fv2-ombres.md](docs/fv2-ombres.md)**
+> (in French), with what each measurement does not cover. `REPRISE.md` says where the work stands.
+>
+> Being 0.1 means: it has been played, defects have been found by playing and fixed, and more will be. The
+> five checks of `verifier-vf3.cmd` pass on every commit of this branch -- Virtua Fighter 3's state, its 8 MB
+> of RAM, its rendered pictures, the host's picture, and 2231 frames step by step.
+
 <p align="center"><img src="assets/icon/icon.png" alt="Virtua Fighter 3 Recomp" width="160"></p>
 
 <h1 align="center">Virtua Fighter 3 Recomp</h1>
