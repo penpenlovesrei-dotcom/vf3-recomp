@@ -357,7 +357,28 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// -9860, -11152 a celles de la manche 2 -- soit -32,22, -54,16 et -61,26 degres, les
 				// memes valeurs au centieme. Deux mesures qui ne partagent rien et qui concordent.
 				//
-				// LA VITESSE N'EST PAS MESUREE, DONC ELLE N'EST PAS INVENTEE.
+				// LA VITESSE, MESUREE : -3,8000 unites binaires par image.
+				//
+				// Deux sauvegardes de la MEME session (les combattants y sont identiques au bit
+				// pres), prises a douze secondes d'intervalle :
+				//
+				//   compteur 0x8C288528   178848 -> 194488   soit 15640, et 15640/46 = 340,0 images
+				//   hauteur  0x8C110FD4      381 ->    220   soit 381+340 = 721, moins 501 = 220
+				//   angle    0x8C1C03A0    -9860 -> -11152   soit -1292
+				//
+				// La hauteur confirme le decompte d'images toute seule, par son cycle de 501 : elle
+				// tombe sur 220 exactement. Deux grandeurs independantes, un seul nombre d'images.
+				//
+				//   -1292 / 340 = -3,8000 unites par image = -0,02087 degre, un tour en 287 s.
+				//
+				// Ce n'est donc pas une estimation. Mon precedent defaut de 12 en etait une, tiree
+				// de sauvegardes venant de parties differentes, et elle etait fausse d'un facteur
+				// trois.
+				//
+				// (Le texte ci-dessous reste : il dit pourquoi aucun increment n'est trouvable dans
+				// le code, ce qui explique qu'il ait fallu mesurer.)
+				//
+				// POURQUOI LE CODE NE DONNE PAS CE NOMBRE.
 				//
 				// Le defaut etait 12 unites par image, tire d'un croisement avec le compteur
 				// 0x8C288528. C'etait une estimation, et elle ne tient pas : les cinq sauvegardes
@@ -386,10 +407,17 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					static double pas = -1.0;
 					if (pas < 0) {
 						const char *s = getenv("VF3_SPIN");
-						pas = s ? atof(s) : 0.0;   // pas de defaut invente
+						pas = s ? atof(s) : 3.8;   // MESURE : voir juste au-dessus
 					}
-					// Zero aux manches impaires, comme sur Dreamcast.
-					if (manche && !(manche & 1) && pas != 0.0) {
+					// PAS DE CONDITION DE MANCHE -- ma premiere lecture etait fausse.
+					//
+					// Trois sauvegardes a la manche 2 portaient un angle non nul et deux a la manche
+					// 1 un angle nul : la correlation etait trop belle. Deux sauvegardes FRAICHES,
+					// prises toutes deux a la manche 2 et a 540 images d'ecart, donnent un angle
+					// rigoureusement nul dans les deux. La parite n'y est donc pour rien, et le
+					// cylindre tourne sur lui-meme comme Frederic le decrit depuis le debut.
+					(void)manche;
+					if (pas != 0.0) {
 						const double a = -double(tic) * pas * 2.0 * 3.14159265358979 / 65536.0;
 						const double c = cos(a), s = sin(a), u = 1.0 - c;
 						// L'axe mesure : 25 degres de la verticale, dans le plan YZ.
