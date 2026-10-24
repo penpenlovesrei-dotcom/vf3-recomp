@@ -392,6 +392,21 @@ dans la fiche**. Ce que l'ancienne mesure garde : aux numeros 3, 10 et 11 le jeu
 ecartees, et une lumiere a l'aplomb met l'ombre SOUS le combattant. Au decor 11, 82 % des pixels assombris
 sont sur les corps ; en vraie partie, medianes **9,7°** et **16,3°**.
 
+**La lumiere appartient a l'arene, pas a la camera.** La direction sort de `S = C.P.R`, donc dans l'espace
+de la camera, et elle bouge avec elle : sur 720 images au barrage, **0,27° de derive par image et 16,3° au
+pire**, onze images au-dela de 5°. Ramenee avant la camera par le `root` de la vue (`R^T.d`) : **0,038° et
+4,4° au pire, zero au-dela de 5°**. Les treize relevees dans cet espace sont dans `docs/fv2-ombres.md` ; les
+deux vues de combattant s'y accordent a quatre decimales partout, et quatre valeurs tombent sur des axes
+exacts (`[0 1 0]` a `ROOM_00` et `FURNACE`, z nul a `HANGAR`, x nul a `WESTERN`).
+
+**`VF3_SHADOW_TABLE=1`** prend la lumiere dans cette table au lieu de la lire a chaque image. L'arene est
+reconnue par sa fiche (`0x0058FD90`, indice = soustraction sur `0x0007516C`), -1 ailleurs donc VF3 garde sa
+lecture et son refus. Mesure au barrage : la table donne `[0,1215 0,8422 0,5253]`, la lecture des matrices a
+la meme image donne la meme chose, et **l'image rendue est identique au bit**. Elle remplace la **lecture**,
+pas la dependance : quelle vue porte les combattants vient toujours des pieces aplaties, et le sol de leurs
+quads. L'effet attendu aux arenes a lumiere locale n'est pas demontre — il faudra y jouer. Interrupteur
+eteint par defaut.
+
 **Un ring out, mesure** : `ring_out` est le **bit 15** de `rob_flag` (`0x00700500` / `0x00707500`), lu dans la
 table de noms de Sega a `0x0007A1FC` et recoupe deux fois. C'est **la chute, pas la poussee de cote** : la
 place du combattant est aux flottants `+0x10 / +0x14 / +0x18` ; teleporte a x = 20 hors d'un ring de 5, le
