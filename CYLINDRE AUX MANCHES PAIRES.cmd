@@ -38,6 +38,33 @@ rem UNE DIFFERENCE CONNUE, pour ne pas la prendre pour un defaut : anime.txt
 rem porte "copies 5", donc onze exemplaires en tout. La liste d'affichage
 rem Dreamcast en dessine QUINZE. Le compte n'a pas encore ete remis.
 rem
+rem CE QUI A CHANGE DEPUIS LA PREMIERE VERSION DE CE LANCEUR. Trois corrections,
+rem a juger ensemble :
+rem
+rem   1. L'INCLINAISON. Les trois fonctions de rotation de la Dreamcast
+rem      POST-multiplient XMTRX, donc le produit est M . Rz(80) . Ry(angle) . T,
+rem      et le port calculait Rz . Ry . T . M -- l'ordre inverse. La rotation
+rem      tournait autour de l'origine de la scene au lieu de l'axe propre du
+rem      cylindre, ce qui est INVISIBLE aux manches impaires (il n'y a qu'une
+rem      translation, et l'axe du cylindre est deja Y) et faux aux paires.
+rem
+rem   2. LE FLOU. Les sept textures de TEST sont en VQ SANS mipmaps -- 6144
+rem      octets pour une 128x128, soit 2048 + 128*128/4 pile. La console
+rem      echantillonne donc toujours le niveau 0. On garde la chaine de mips
+rem      dans la planche (sans elle, du vide au loin) mais on ne la selectionne
+rem      plus : base de LOD a 0xFFFFFF sur les 3840 en-tetes.
+rem
+rem   3. LE BROUILLARD. La console en a un, le port n'en avait aucun. Couleur
+rem      FOG_COL_RAM = 0x00101010, lue dans le banc de registres du PowerVR2
+rem      d'une sauvegarde Flycast.
+rem
+rem      VF3_FOG=<start>,<densite> le regle, VF3_FOG=<densite> ne change que la
+rem      densite. Le defaut est 0 et 0,05 : sature au bord de l'arene. La FORME
+rem      de la courbe ne se transpose pas -- la Dreamcast lit une table indexee
+rem      par 1/W, lineaire en log2(distance), le port est lineaire en distance.
+rem      C'est l'oeil qui tranche, pas un calcul. Si c'est trop charge, essaie
+rem      0,02 ; si c'est trop faible, 0,10.
+rem
 rem --pc : mode PC -- pas d'ecran d'amorce, acces libre, pas de menu console.
 rem
 rem LE DECOR N'APPARAIT QU'EN COMBAT : la demonstration d'attract ecrit son

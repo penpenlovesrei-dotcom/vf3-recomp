@@ -309,8 +309,48 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				a_nous.models.clear();
 				a_nous.sun_intensity = 1.0f;
 				a_nous.ambient = 0.0f;
-				// Pas de brouillard en double : fog_layers choisit UN viewport par priorite.
-				a_nous.fog_density = a_nous.fog_start = a_nous.fog_attenuation = 0;
+				// LE BROUILLARD DE TEST, PORTE DE LA DREAMCAST.
+				//
+				// La vue du jeu n'en porte aucun -- tout le journal dit brou 0.00/0.000/0.000 --
+				// et c'est normal : la borne n'a pas la geometrie de ce decor, donc pas son
+				// brouillard non plus. La console, elle, en a un, lu dans le banc de registres du
+				// PowerVR2 d'une sauvegarde Flycast (ancre 0x17FD11DB + revision 0x11, banc
+				// valide sur FB_X_CLIP = 0x027F0000 et FB_Y_CLIP = 0x01DF0000) :
+				//
+				//     FOG_COL_RAM  (+0xB0) = 0x00101010    R=16 V=16 B=16
+				//     FOG_COL_VERT (+0xB4) = 0x007F7F7F
+				//     FOG_DENSITY  (+0xB8) = 0x0000FF09    mantisse 255/128, exposant 9 -> 1020
+				//
+				// ATTENTION aux offsets : le brouillard est a +0xB0, PAS a +0xBC, ou l'on lit
+				// FOG_CLAMP_MAX/MIN et ou l'on croit tenir les couleurs.
+				//
+				// CE QUI SE TRANSPOSE ET CE QUI NE SE TRANSPOSE PAS. La couleur, oui : elle est
+				// decodee, et fog_ambient reste a 1 pour que la cible du melange soit exactement
+				// 0x101010. La FORME de la courbe, non : la Dreamcast lit une table de 128
+				// entrees indexee par 1/W, dont les octets forment une rampe unique
+				// (255, 248, 242, 235, 229, 223 ...) qui descend de 6,4 par pas et atteint zero
+				// au 40e -- soit une rampe lineaire en log2(distance). Le port, lui, calcule
+				// `intensite * clamp(start + distance * density, 0, 1)`, lineaire en distance.
+				// Aucun nombre ne fait passer de l'une a l'autre ; seul l'oeil tranche, d'ou le
+				// reglage par VF3_FOG.
+				//
+				// Le defaut sature le brouillard au bord de l'arene : le cylindre fait 1000 en
+				// espace modele pour un ring de 5,27 dans la meme mesure, donc sa matrice le
+				// ramene a environ 5 unites de monde, et les profondeurs utiles sont de l'ordre
+				// de 5 a 20.
+				//
+				// Pas de brouillard en double a craindre : fog_layers ne choisit qu'UN viewport
+				// par priorite, et celui du jeu n'en a pas.
+				for (int k = 0; k < 3; k++) a_nous.fog_colour[k] = 16.0f / 255.0f;
+				a_nous.fog_ambient = 1.0f;
+				a_nous.fog_start = 0.0f;
+				a_nous.fog_density = 0.05f;
+				if (const char *s = getenv("VF3_FOG")) {
+					float d = 0, st = 0;
+					if (sscanf(s, "%f,%f", &st, &d) == 2) { a_nous.fog_start = st; a_nous.fog_density = d; }
+					else if (sscanf(s, "%f", &d) == 1) a_nous.fog_density = d;
+				}
+				a_nous.fog_attenuation = 0;
 				a_nous.scroll_fog = a_nous.scroll_att = 0;
 				// NI DE PROJECTEUR. Le rendu l'AJOUTE apres l'eclairage : `lr = li + spot_colour * lobe`.
 				// Nos polygones a ombrage fixe portent deja le gris peint dans la donnee ; un projecteur
