@@ -357,19 +357,35 @@ restent celles du decor deja charge.
 Mesuree en forcant `STAGE_TEST__STAGE` sur les treize arenes, une partie par decor. Le detail et les reserves
 sont dans `docs/fv2-ombres.md` ; l'essentiel :
 
-| decor | nom | cartes | angle a la verticale |
+| decor | nom (celui du jeu) | cartes | angle a la verticale |
 |---|---|---|---|
-| 1, 2, 4 a 8, 12 | inconnus | 1 | 30,7° (les deux combattants) |
-| **3** | inconnu | **2** | **55,4°** et **30,0°** |
-| **9** | **le barrage** | 1 | 30,7° |
-| **10** et **11** | 11 = **celui de Honey** | **2** | **41,0°** et **19,1°** |
-| 0 | inconnu | — | aucune ombre a cette image |
+| 0 | `TEST` | — | aucune ombre a cette image |
+| 1 | `WESTERN` | 1 | 30,7° (les deux combattants) |
+| 2 | `AC_CARRIER` | 1 | 30,7° |
+| **3** | `ROOM_00` | **2** | **55,4°** et **30,0°** |
+| 4 | `GREAT_BM` | 1 | 30,7° |
+| 5 | `FURNACE` | 1 | 30,7° |
+| 6 | `STORE` | 1 | 30,7° |
+| 7 | `HANGAR` | 1 | 30,7° |
+| 8 | `CAPSULE` | 1 | 30,7° |
+| **9** | `DAM` — **le barrage** | 1 | 30,7° |
+| **10** | `TOWER` | **2** | **41,0°** et **19,1°** |
+| **11** | `BUILDING` — **celui de Honey** | **2** | **41,0°** et **19,1°** |
+| 12 | `MUSEUM` | 1 | 30,7° |
 
-**Les noms manquent parce que je n'ai pas de quoi les etablir** : forcer un decor ne recharge pas ses
-textures, donc une capture forcee ne le fait pas reconnaitre. Le 9 est nomme parce qu'il a ete mesure et
-capture de bout en bout, le 11 parce que Frederic l'a nomme en y jouant. **Le journal ecrit le numero a
-chaque changement de decor : chaque partie peut en nommer un de plus.** C'est la facon de completer ce
-tableau.
+Les decors **13 a 18 sont `FINISH00` a `FINISH05`** : les decors ou j'avais mesure que le jeu coupe ses
+ombres sont les **scenes de fin**, pas des arenes.
+
+**Les noms viennent du code, pas d'une capture.** `charger_fiche_decor` fait
+`fiche = ((void **)0x0008D118)[STAGE_TEST__STAGE]` et garde la fiche dans `STAGE_TEST__ROB_LIGHT`
+(`0x0058FD90`). Les fiches font 0x70 octets a partir de `0x0007516C` et **leur deuxieme mot pointe sur le
+nom** (chaines a partir de `0x000887D9`). Verifie en jeu : la sonde `VF3_SHADOW_WHY` suit ce chemin et ecrit
+`decor 9, nom "DAM" (fiche 07555C)`. Chaque partie nomme son decor dans le journal.
+
+**Le forcage ne recharge pas la fiche** : en forcant le decor 11, la sonde lit quand meme `DAM`.
+`VF3_FORCE_STAGE` ecrit le numero apres le chargement de l'arene ; le numero atteint le code des lumieres,
+pas le chargeur. C'est pourquoi les 30,7° repetes sont ceux du barrage et ne disent rien de la lumiere propre
+des autres arenes.
 
 **Reserve** : les decors forces gardent les positions des combattants du barrage. Aux decors 3, 10 et 11, ou
 l'angle vient de la position, les valeurs sont celles de CES positions. Dans une vraie partie au decor 11 les

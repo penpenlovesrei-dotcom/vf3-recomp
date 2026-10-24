@@ -3090,10 +3090,33 @@ int main(int argc, char **argv)
 				// sees something wrong on a stage can then name it, instead of describing it.
 				if (getenv("VF3_SHADOW_WHY") && board.ram.size() > 0x58FD9F) {
 					static int said_stage = -1;
+					static uint32_t said_fiche = 0;
 					const int st = board.ram[0x58FD9F ^ 3];
-					if (st != said_stage) {
+					// The stage's own name, the one Sega wrote. charger_fiche_decor indexes the table of stage
+					// records at 0x0008D118 by STAGE_TEST__STAGE and keeps the record it lands on in
+					// STAGE_TEST__ROB_LIGHT (0x0058FD90); the record's second word points at the name --
+					// "DAM" at stage 9, "BUILDING" at 11, "FINISH00" at 13. Read, not guessed. The record is
+					// filled when the stage loads, well after the number is set, so the name is said when the
+					// record changes and not only when the number does.
+					const auto mot = [&](uint32_t a) {
+						uint32_t v = 0;
+						for (int k = 0; k < 4; k++) v = (v << 8) | board.ram[(a + uint32_t(k)) ^ 3];
+						return v;
+					};
+					const uint32_t fiche = mot(0x58FD90);
+					if (st != said_stage || fiche != said_fiche) {
 						said_stage = st;
-						fprintf(stderr, "decor %d (STAGE_TEST__STAGE)\n", st);
+						said_fiche = fiche;
+						char nom[32] = {};
+						if (size_t(fiche) + 8 < board.ram.size()) {
+							const uint32_t at = mot(fiche + 4);
+							for (int k = 0; k + 1 < int(sizeof(nom)) && size_t(at) + size_t(k) < board.ram.size(); k++) {
+								const uint8_t c = board.ram[(at + uint32_t(k)) ^ 3];
+								if (c < 32 || c >= 127) break;
+								nom[k] = char(c);
+							}
+						}
+						fprintf(stderr, "decor %d, nom \"%s\" (fiche %06X)\n", st, nom, fiche);
 						stage_changed = true;
 					}
 				}
