@@ -609,3 +609,52 @@ A refaire en s'assurant que chaque etape reconstruit vraiment et que le juge imp
 Dans la fenetre, un combat coute encore plus que ces 6,68 ms — 15,5 ms avec le son, 16,37 sans — donc il
 restera une seconde part a chercher dans l'hote une fois la premiere nommee. Le grésillement du son en
 decoule : la file de SDL tombe a 1300 octets, soit 7 ms d'avance.
+
+## Le jeu lent : un `getenv` par lecture de CROM
+
+Trouve le 2026-10-24, apres que Frederic a signale des combats sous 50 images/s et un son qui gresille.
+
+### La cause
+
+`Model3::read32`, le chemin de lecture memoire, portait ma sonde `VF3_CROM_WATCH` **sans mise en cache** :
+
+```cpp
+if (const char *w = getenv("VF3_CROM_WATCH"))      // a CHAQUE lecture de mot dans la CROM
+    if (a == uint32_t(strtoul(w, nullptr, 16)))
+```
+
+Des millions d'appels par image. Le reste du portage met partout `static const bool ... = getenv(...)` --
+`VF3_DMA_LOG` le fait dans le meme fichier -- et je ne l'ai pas suivi a l'endroit le plus chaud. L'adresse
+est maintenant lue une fois dans un `static`. Au passage, `VF3_BANK_LOG` dans `set_crom_bank` payait aussi
+son `getenv` avant de tester si le banc avait change.
+
+### La mesure, a decalage egal
+
+Meme route, aucune entree, `VF3_PROF`, memes numeros d'image. Moyenne des six fenetres de la demonstration :
+
+| | une image |
+|---|---|
+| `fv2-stable` (889a691) | **2,78 ms** |
+| `fv2` avant la correction | **6,68 ms** |
+| `fv2` apres | **2,81 ms** |
+
+La branche de travail est revenue sur la version nue a 0,03 ms pres. **Les 3,9 ms etaient ce seul `getenv`.**
+
+### Ce que cela corrige dans la lecture qu'on en faisait
+
+- La version nue n'etait pas plus rapide **parce qu'elle a moins de choses**. Les portraits, le HD, le costume
+  de Honey et le menu console ne coutent rien par image. Elle etait plus rapide parce qu'elle n'avait pas la
+  sonde. Remonter les additions une par une depuis `fv2-stable` aurait coute des semaines pour aboutir a une
+  ligne.
+- Le gresillement du son en decoulait : la file de SDL tombait a 1300 octets, soit 7 ms d'avance, parce que le
+  jeu ne tenait pas la cadence. Le banc de son ne coute que 1,6 ms par image, et le SCSP de l'amont n'y est
+  pour rien -- ses dumps WAV ne montrent ni ecretage ni saut d'echantillon.
+- La fusion de l'amont n'y etait pour rien non plus : 16,74 contre 16,24 ms sur l'attraction, a egalite.
+
+### La lecon pour la suite
+
+**Une sonde d'environnement dans un chemin chaud se lit une fois.** Et : chercher la cause dans le code
+plutot que dans l'histoire. La bissection lancee ce jour-la a rendu un verdict faux -- elle a juge
+« rapide » le commit de fusion, qui mesurait 6,68 ms -- la ou un diff des fichiers du chemin chaud entre
+`fv2-stable` et `fv2`, puis `git diff -U0 | grep '^@@'` pour voir **dans quelles fonctions** les lignes
+ajoutees tombaient, a donne `read32` en deux commandes.
