@@ -439,3 +439,53 @@ En partie cachée, sur `tools/scripts/fv2-console-vs-start.txt` : Start à l'ima
 (`GAME_DSP`, `FIGHT_DSP`) ouvre le panneau, les flèches enjambent bien les lignes sans levier, Start referme,
 et le combat reprend intact. Les photographies sont prises à l'horloge et non à l'image, le jeu étant gelé —
 une image qui n'avance pas ne déclenche jamais une capture calée dessus.
+
+### Start a un quatrième sort : couper l'état, dans la présentation et la rediffusion
+
+Frédéric, le 2026-10-24 : « la touche pause pendant l'état de présentation du combat et pendant le replay ne
+doit pas ouvrir le menu pause mais juste couper l'état en cours comme dans le jeu d'origine ».
+
+Les états concernés, par les noms que Sega a laissés (`docs/fv2-etats.md`, les vingt sous-états de GAME) :
+
+```
+ 0 ROUND_MASK_INT   1 ROUND_MASK_IN   2 ROUND_MASK_DSP   3 ROUND_MASK_OUT    l'ecran STAGE n / VS nom
+ 4 ROUND_INT        5 ROUND_DSP                                              l'annonce du round
+ 6 SET_INT          7 SET_INT_POSE    8 SET_DSP                              le decor et les combattants places
+ 9 READY_INT       10 READY_DSP                                              « ready »
+15 REPLAY_INT      16 REPLAY_DSP                                             la rediffusion
+```
+
+`FIGHT_DSP`, `JUDGE` et `VIC` n'y sont **pas** : le menu de pause leur appartient.
+
+**Ce qui ne marche pas, et c'est la première chose mesurée.** Laisser la pression passer au jeu ne fait
+**rien du tout**. Un vrai Start à l'image 2360 de `tools/scripts/fv2-vic-banc.txt`, pendant `ROUND_MASK_DSP`
+qui court de 2319 à 2450 : la trace des états est identique, image par image, avec et sans. Le jeu ne lit pas
+ce bouton là. L'hypothèse « il suffit d'arrêter d'intercepter » est donc fausse, et elle a été écartée par la
+mesure avant d'écrire une ligne de correction.
+
+**Ce qui marche, et c'est la route du jeu lui-même.** Les gestionnaires de sous-état se passent la main par
+une **demande de sous-état** — `docs/fv2-flux-de-match.md` le dit de `VIC_INT` : « simply asks for the next
+sub mode ». Une écriture d'une seule image de `SUBMODE_REQUEST` (`0x0058FD9B`) à 3 pendant `ROUND_MASK_DSP` :
+
+```
+  2319  GAME_DSP   2 ROUND_MASK_DSP
+  2361  GAME_DSP   3 ROUND_MASK_OUT      <- au lieu de 2450
+  2362  GAME_DSP   4 ROUND_INT
+  2364  GAME_DSP   6 SET_INT
+  2366  GAME_DSP   8 SET_DSP
+```
+
+89 images coupées, et la suite s'enchaîne normalement. C'est `Model3::fv2_cut_submode` : le sous-état courant
+plus un, écrit **une seule fois**, le mode laissé tranquille. Et c'est une correction à la note qui
+l'accompagne : la demande de mode « ne commande rien depuis l'intérieur d'un combat », mesuré dans
+`FIGHT_DSP` — mais pendant la présentation, elle est lue.
+
+Câblé dans `console_play::take_start`, qui a donc maintenant **quatre** sorts au lieu de trois :
+`list` sur l'écran titre, `cut` dans ces douze sous-états, `pause` partout ailleurs dans une partie, `title`
+dans l'attraction.
+
+**Mesuré** : `vf3run --console-start 2360`, trace ci-dessus, et la ligne de journal
+« Start in the presentation or the replay (mode 7, sub-state 2) -> the state is cut short ».
+**Pas encore mesuré** : la rediffusion elle-même (sous-état 16). Le levier est le même et la table est la
+même, mais aucune route hors-jeu n'atteint `REPLAY_DSP` pour l'instant — `fv2-vic-banc.txt` s'arrête dans
+`JUDGE_DSP`. C'est donc à vérifier en jouant, et c'est écrit ici pour que ça ne passe pas pour acquis.

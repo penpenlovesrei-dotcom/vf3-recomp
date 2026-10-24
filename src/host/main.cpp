@@ -3758,6 +3758,10 @@ int main(int argc, char **argv)
 						fprintf(stderr, "frame %llu: Start in a game (mode %d, sub-state %d): the console's pause menu is up\n",
 								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
 						break;
+					case console_play::start_for::cut:
+						fprintf(stderr, "frame %llu: Start in the presentation or the replay (mode %d, sub-state %d) -> the state is cut short\n",
+								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
+						break;
 					case console_play::start_for::none: break;
 					}
 					if (cplay.swallow_start) {

@@ -149,7 +149,30 @@ struct console_play
 	// playing state (0x2A from a fight, 0x2D from the select screen), so the title screen comes back over a
 	// game that is still running and fv2_in_attract stays false. Leaving a fight properly is the game's own
 	// road -- finish the match off screen -- which is written down in docs/fv2-etats.md and is not wired here.
-	enum class start_for { none, list, title, pause };
+	// cut: the sub-state the game is in was ended early instead of the menu opening, which is what the
+	// original does with this button during the fight's presentation and during the replay (take_start)
+	enum class start_for { none, list, title, pause, cut };
+
+	// THE STATES WHERE START CUTS INSTEAD OF OPENING THE MENU, by the names Sega left in the code
+	// (docs/fv2-etats.md, the twenty GAME sub-states at 0x000244F4):
+	//
+	//   0 ROUND_MASK_INT  1 ROUND_MASK_IN  2 ROUND_MASK_DSP  3 ROUND_MASK_OUT   the STAGE n / VS name screen
+	//   4 ROUND_INT       5 ROUND_DSP                                           the round's own announcement
+	//   6 SET_INT         7 SET_INT_POSE   8 SET_DSP                            the stage and the fighters placed
+	//   9 READY_INT      10 READY_DSP                                           "ready"
+	//  15 REPLAY_INT     16 REPLAY_DSP                                          the replay
+	//
+	// Everything from the STAGE screen to "ready" is the fight's presentation (docs/fv2-flux-de-match.md calls
+	// ROUND_MASK_* the STAGE n / VS name screen and SET_* where "the stage and the two fighters are placed"),
+	// and the replay is the replay. In the original, Start cuts them short; here it was opening the pause menu
+	// instead. FIGHT_DSP, JUDGE and VIC are NOT in the list: the menu belongs there.
+	static bool cut_states(const m3::Model3 &b)
+	{
+		if (b.fv2_mode() != 6 && b.fv2_mode() != 7) return false;   // GAME_INT, GAME_DSP
+		const int s = b.fv2_submode();
+		return (s >= 0 && s <= 10) || s == 15 || s == 16;
+	}
+
 	start_for take_start(m3::Model3 &b, bool pressed, bool list_open)
 	{
 		// While the list is up it is the list's button, not the game's: withheld whatever it does there.
@@ -169,7 +192,19 @@ struct console_play
 			// opens instead is this port's own pause menu, over the fight, with the game frozen behind it --
 			// which is what a console does with that button and what August's work had (fv2_pause.h). The
 			// press is withheld, as every press this layer acts on is.
-			if (!b.fv2_in_attract()) { swallow_start = true; start_was = pressed; return start_for::pause; }
+			//
+			// EXCEPT IN THE FIGHT'S PRESENTATION AND THE REPLAY, where Frederic asks for the original's
+			// behaviour: not the menu, but the state cut short (cut_states above).
+			if (!b.fv2_in_attract()) {
+				// In the fight's presentation and in the replay the press CUTS the state instead of opening the
+				// menu. Measured first: letting the press through to the game does nothing at all -- a real Start
+				// at image 2360 of the bench road left ROUND_MASK_DSP running to 2450 exactly as without it, so
+				// the game does not read this button there. What does work is the game's own road between its
+				// handlers, the sub-state request: fv2_cut_submode, and the state ends on the next frame.
+				swallow_start = true; start_was = pressed;
+				if (cut_states(b)) { b.fv2_cut_submode(); return start_for::cut; }
+				return start_for::pause;
+			}
 			what = b.fv2_on_title() ? start_for::list : start_for::title;
 			// Two roads to the title screen, and they are not interchangeable. From the attract loop, the
 			// game's own: the sequencer is pushed to the end of its list and walks off it, which installs the

@@ -308,6 +308,10 @@ int main(int argc, char **argv)
 				if (!quiet) printf("frame %llu: Start during a fight (mode %d, sub-state %d) -> the host would open its pause menu\n",
 								   (unsigned long long)f, board.fv2_mode(), board.fv2_submode());
 				break;
+			case console_play::start_for::cut:
+				if (!quiet) printf("frame %llu: Start in the presentation or the replay (mode %d, sub-state %d) -> the state is cut short\n",
+								   (unsigned long long)f, board.fv2_mode(), board.fv2_submode());
+				break;
 			case console_play::start_for::none: break;
 			}
 			if (cplay.swallow_start) board.controls.start[0] = board.controls.start[1] = false;

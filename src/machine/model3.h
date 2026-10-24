@@ -359,6 +359,13 @@ public:
 	// It commands nothing from inside a fight, and the measurement that established that is worth more than the
 	// failure: the bytes were still intact a second later, so nobody had read them.
 	void fv2_request_title();
+	// CUTS THE SUB-STATE THE GAME IS IN SHORT, by asking for the next one -- which is exactly what its own
+	// handlers do between themselves ("simply asks for the next sub mode", docs/fv2-flux-de-match.md).
+	// Measured on the fight's presentation: ROUND_MASK_DSP runs 2319-2450 of its own accord on the bench
+	// road, and a ONE-FRAME write of 3 at image 2360 brought ROUND_MASK_OUT to 2361, with ROUND_INT,
+	// SET_INT and SET_DSP following normally. So the request IS read there -- unlike inside a fight, where
+	// the note above records that nobody reads it. Written once and never held, like every request here.
+	void fv2_cut_submode();
 	// The game's own ending -- the staff roll -- asked for from the title screen, where the console's OPTIONS
 	// page is the only thing that asks. It runs about a hundred seconds and goes back to the attract loop by
 	// itself; model3.cpp says how that was measured before it was wired.

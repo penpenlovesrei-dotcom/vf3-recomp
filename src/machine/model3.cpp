@@ -1768,6 +1768,16 @@ void Model3::fv2_request_title()
 	ram[FV2_SUBMODE_REQUEST ^ 3] = FV2_ADV_TITLE_INT;
 }
 
+// The sub-state cut short: the next one asked for, and the mode left alone -- the measurement that
+// established this wrote the sub-state request and nothing else (model3.h).
+void Model3::fv2_cut_submode()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return;
+	const int sub = fv2_submode();
+	if (sub < 0 || sub >= 255) return;
+	ram[FV2_SUBMODE_REQUEST ^ 3] = uint8_t(sub + 1);
+}
+
 // THE GAME'S OWN ENDING, asked for the same way. ENDING is mode 12, and MODE_SUB means nothing to it -- the
 // state machine's own rule for every mode but GAME, SEL and ADV (docs/fv2-etats.md) -- so the mode alone is
 // the whole request, and the sub-state is left where the title screen had it.
