@@ -357,11 +357,28 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 				// -9860, -11152 a celles de la manche 2 -- soit -32,22, -54,16 et -61,26 degres, les
 				// memes valeurs au centieme. Deux mesures qui ne partagent rien et qui concordent.
 				//
-				// LA VITESSE N'EST PAS MESUREE, et je ne la devine pas. Les cinq sauvegardes viennent
-				// de parties differentes : l'ecart entre deux d'entre elles ne dit rien. En croisant
-				// avec le compteur 0x8C288528 (+46 par image) la premiere paire donne environ 12
-				// unites par image, soit 0,066 degre -- un tour en une minute et demie. C'est le
-				// defaut, et VF3_SPIN le change (en unites binaires par image, 0 pour couper).
+				// LA VITESSE N'EST PAS MESUREE, DONC ELLE N'EST PAS INVENTEE.
+				//
+				// Le defaut etait 12 unites par image, tire d'un croisement avec le compteur
+				// 0x8C288528. C'etait une estimation, et elle ne tient pas : les cinq sauvegardes
+				// viennent de parties differentes, donc l'ecart entre deux d'entre elles ne dit rien.
+				// Les deux paires donnaient d'ailleurs 12 et 4 unites par image -- un rapport de
+				// trois, ce qui suffit a condamner la methode.
+				//
+				// Cherche et pas trouve : la routine de TEST (0x8C048878) ne touche jamais cet
+				// angle ; FUN_8C0291AA ne fait que le LIRE, avec ses deux voisins, pour en faire
+				// trois rotations et ranger XMTRX en 0x8C1C03AC ; 0x8C0293A0 n'est qu'un affichage
+				// de debug des trois angles ; et le seul autre site qui ecrit 0x8C1C03A0
+				// (0x8C04ABD4, increment 0x4000) est une boucle de quatre quarts de tour d'un AUTRE
+				// decor, pas un increment par image.
+				//
+				// CE QUI TRANCHERAIT, et c'est une mesure, pas une estimation : deux sauvegardes
+				// Flycast prises dans la MEME manche 2, a un nombre d'images connu d'ecart. La
+				// difference des deux valeurs de 0x8C1C03A0 divisee par ce nombre donne la vitesse
+				// au centieme, comme l'angle lui-meme a ete obtenu.
+				//
+				// Donc : pas de rotation tant que VF3_SPIN n'est pas donne. Le mecanisme est en
+				// place et mesure ; seul son rythme attend sa mesure.
 				Mat4 rotation = Mat4::identity();
 				{
 					const unsigned manche = board.ram.size() > (0x00581456 ^ 3)
@@ -369,7 +386,7 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 					static double pas = -1.0;
 					if (pas < 0) {
 						const char *s = getenv("VF3_SPIN");
-						pas = s ? atof(s) : 12.0;
+						pas = s ? atof(s) : 0.0;   // pas de defaut invente
 					}
 					// Zero aux manches impaires, comme sur Dreamcast.
 					if (manche && !(manche & 1) && pas != 0.0) {
