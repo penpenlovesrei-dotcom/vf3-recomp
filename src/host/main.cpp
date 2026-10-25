@@ -1900,6 +1900,34 @@ int main(int argc, char **argv)
 	static video::Scene between;
 	SDL_Texture *tex3d = nullptr, *tex_below = nullptr, *tex_above = nullptr;
 	bool g3_shown = false;   // the picture on show is the GPU's
+	// ---- THE HUD PUSHED OUT TO THE SCREEN'S EDGES IN WIDESCREEN ----
+	//
+	// Frédéric asked for it the 2026-10-25, with a picture he had cut and pasted by hand: in widescreen the
+	// life bars, the names, the armour icons, the round marks and the texts along the foot should sit at the
+	// EDGES of the window, where they sit at the edges of a 4:3 screen -- and the timer should stay where it
+	// is, in the middle. Symmetrically.
+	//
+	// AND THE CUTS ARE MEASURED IN THE LAYER, not written down as rectangles. A rectangle is right for one
+	// game, one screen and one revision; what is true of all of them is that the HUD HANGS OFF THE EDGES --
+	// this port's own note says so, "Fighting Vipers 2 puts a player's icon hard against each edge above the
+	// health" -- and that something centred (the timer, ROUND 1, SUPER K.O.) does not. So each band is read:
+	// the block that reaches the left edge ends at the first gap after it, and that gap is where the picture
+	// is cut; the same on the right. Nothing reaching an edge means nothing moves, which is what happens on
+	// the select screen, a fade, or a replay whose only text is centred.
+	//
+	// Measured on a versus, frame 2000 (VF3_HUD_AUDIT): the top band reads 0..28, 35..216, 222..269,
+	// 275..456, 463..491 -- the two player icons hard against the edges, the two bars, and the timer at
+	// 222..269, whose middle is 245.5 against the picture's 248. The gaps at 217..221 and 270..274 are the
+	// two cuts, and they are 29 and 26 from the middle: symmetric to within a pixel and a half.
+	struct HudCut { int left = 0, right = 0; };   // in the layer's own columns; 0 and 0 means "do not move"
+	HudCut hud_top, hud_foot;
+	static constexpr int HUD_TOP_ROWS = 100;      // the band the bars and names live in
+	static constexpr int HUD_FOOT_ROWS = 60;      // the band the stage and the time live in
+	// How near an edge a block has to begin to count as hanging off it. Twenty-four columns, about a
+	// twentieth of the picture, and the number is measured: the player icons begin at column 0, but the
+	// foot's STAGE 1 begins at 16 and its time ends at 476, so at eight the foot never moved at all.
+	static constexpr int HUD_EDGE = 24;
+	static constexpr int HUD_GAP = 5;             // how wide a run of empty columns has to be to be a cut
 	uint32_t side_colour[2] = { 0xFF000000u, 0xFF000000u };   // widescreen's bars beside the 2D (left, right)
 	bool sky_wide = false;
 	float bg_shift_x = 0, bg_shift_y = 0;   // the layers below the 3D moved back towards the frame before (draw_below)
@@ -2168,6 +2196,84 @@ int main(int argc, char **argv)
 				edge_rows += (row[0] >> 24) != 0 || (row[video::W - 1] >> 24) != 0;
 			}
 			bool stage = game.view.full_3d && rows > 0 && edge_rows * game.stage_edge_divisor < video::H && covered * 100 < long(rows) * video::W * 50;
+			// The two cuts, read in the layer, band by band (see HudCut above for what they are for).
+			{
+				auto cuts = [&](int y0, int y1) {
+					HudCut c;
+					bool on[video::W];
+					for (int x = 0; x < video::W; x++) {
+						bool any = false;
+						for (int y = y0; y < y1 && !any; y++) any = (game.view.above[size_t(y) * video::W + x] >> 24) != 0;
+						on[x] = any;
+					}
+					// SEARCHED FROM THE MIDDLE OUTWARDS, and that is not a detail. Searched from the edge in,
+					// the first gap found is the one between a player's icon and his life bar -- six columns
+					// wide, just like the gap around the timer -- and the cut fell there: the icons went out
+					// to the edges and the bars stayed where they were. From the middle out, the first gap
+					// is the one that matters, and everything beyond it travels together.
+					bool at_edge = false, at_far = false;
+					for (int x = 0; x < HUD_EDGE; x++) at_edge = at_edge || on[x];
+					for (int x = video::W - HUD_EDGE; x < video::W; x++) at_far = at_far || on[x];
+					if (at_edge && at_far) {
+						int run = 0;
+						for (int x = video::W / 2; x >= 0; x--) {
+							if (on[x]) run = 0;
+							else if (++run >= HUD_GAP) { c.left = x; break; }
+						}
+						run = 0;
+						for (int x = video::W / 2; x < video::W; x++) {
+							if (on[x]) run = 0;
+							else if (++run >= HUD_GAP) { c.right = x + 1; break; }
+						}
+					}
+					// A cut on one side only would push one half of the HUD out and leave the other: both or
+					// neither. And they have to leave something in the middle to stand still.
+					if (c.left <= 0 || c.right <= 0 || c.left >= c.right) c = HudCut();
+					return c;
+				};
+				// FIGHTING VIPERS 2 ONLY, for now, and not because the rule is particular to it: nothing
+				// above names a game, and Virtua Fighter 3 hangs its HUD off the edges too. It is that VF3
+				// is this port's reference and its picture is not changed unasked. Frédéric asked for this
+				// one; the other has only to be asked for.
+				const bool mine = board.set == "fvipers2";
+				hud_top = mine ? cuts(0, HUD_TOP_ROWS) : HudCut();
+				hud_foot = mine ? cuts(video::H - HUD_FOOT_ROWS, video::H) : HudCut();
+			}
+			// VF3_HUD_AUDIT=1: WHERE THE 2D ACTUALLY IS, row band by row band and column run by column run.
+			// Written to spread Fighting Vipers 2's HUD in widescreen -- the life bars and what hangs off them
+			// out to the window's edges, the timer left where it is -- because the rectangles that move have
+			// to be measured on the picture and not guessed from a screenshot's pixels.
+			if (static const char *ha = getenv("VF3_HUD_AUDIT"); ha && game_frame % std::max<uint64_t>(1, strtoull(ha, nullptr, 10)) == 0) {
+				fprintf(stderr, "hud frame %llu (mode %d sub %d)\n", (unsigned long long)game_frame,
+						board.fv2_mode(), board.fv2_submode());
+				auto runs = [&](int y0, int y1, const char *what) {
+					std::string s;
+					int from = -1;
+					for (int x = 0; x <= video::W; x++) {
+						bool any = false;
+						for (int y = y0; y < y1 && !any; y++) any = (game.view.above[size_t(y) * video::W + x % video::W] >> 24) != 0;
+						if (x == video::W) any = false;
+						if (any && from < 0) from = x;
+						else if (!any && from >= 0) { s += " " + std::to_string(from) + ".." + std::to_string(x - 1); from = -1; }
+					}
+					fprintf(stderr, "hud %s rows %d..%d:%s\n", what, y0, y1 - 1, s.empty() ? " (nothing)" : s.c_str());
+				};
+				// the row bands that carry any 2D at all, so nothing is assumed about where the HUD sits
+				{
+					std::string b;
+					int from = -1;
+					for (int y = 0; y <= video::H; y++) {
+						int c = 0;
+						if (y < video::H)
+							for (int x = 0; x < video::W; x++) c += (game.view.above[size_t(y) * video::W + x] >> 24) != 0;
+						if (c && from < 0) from = y;
+						else if (!c && from >= 0) { b += " " + std::to_string(from) + ".." + std::to_string(y - 1); from = -1; }
+					}
+					fprintf(stderr, "hud bands:%s\n", b.empty() ? " (nothing)" : b.c_str());
+				}
+				runs(0, 100, "top");
+				runs(video::H - 60, video::H, "bottom");
+			}
 			// VF3_STAGE_AUDIT=1: what the test above saw, for fitting it to a game whose HUD sits elsewhere
 			if (getenv("VF3_STAGE_AUDIT"))
 				fprintf(stderr, "stage %d: full_3d %d rows %d edge_rows %d (limit %d) covered %.1f%% (limit 50%%)\n",
@@ -2397,7 +2503,33 @@ int main(int argc, char **argv)
 				                        : SDL_FRect{ all.x, y0, mid.x - all.x, y1 - y0 };
 				if (bar.w > 0) SDL_RenderFillRect(ren, &bar);
 			}
-		SDL_RenderTexture(ren, tex_above, nullptr, &mid);
+		// The 2D over the 3D. In widescreen the HUD's two bands are drawn in three slices each, the outer two
+		// pushed out to the window's edges and the middle left exactly where it was (HudCut above). Only
+		// when the picture IS wider than 4:3 and only when a cut was found: everything else is one blit, as
+		// it always was.
+		{
+			const float ks = mid.w / video::W, ts = float(tile_s);
+			const float dl = mid.x - all.x, dr = (all.x + all.w) - (mid.x + mid.w);
+			auto slice = [&](int x0, int x1, int y0, int y1, float dx) {
+				if (x1 <= x0 || y1 <= y0) return;
+				const SDL_FRect src = { x0 * ts, y0 * ts, (x1 - x0) * ts, (y1 - y0) * ts };
+				const SDL_FRect dst = { mid.x + x0 * ks + dx, mid.y + y0 * ks, (x1 - x0) * ks, (y1 - y0) * ks };
+				SDL_RenderTexture(ren, tex_above, &src, &dst);
+			};
+			auto band = [&](const HudCut &c, int y0, int y1) {
+				if (!c.left) { slice(0, video::W, y0, y1, 0); return; }
+				slice(0, c.left, y0, y1, -dl);
+				slice(c.left, c.right, y0, y1, 0);
+				slice(c.right, video::W, y0, y1, dr);
+			};
+			if (dl > 0.5f && (hud_top.left || hud_foot.left)) {
+				band(hud_top, 0, HUD_TOP_ROWS);
+				slice(0, video::W, HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS, 0);
+				band(hud_foot, video::H - HUD_FOOT_ROWS, video::H);
+			} else {
+				SDL_RenderTexture(ren, tex_above, nullptr, &mid);
+			}
+		}
 		if (crt) {
 			SDL_SetRenderTarget(ren, nullptr);
 			SDL_SetGPURenderState(ren, crt_state);

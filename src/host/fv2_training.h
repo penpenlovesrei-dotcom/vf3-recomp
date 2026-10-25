@@ -33,16 +33,27 @@
 struct fv2_training
 {
 	static constexpr int CELL = 96;           // the atlas's step, measured on the file
-	static constexpr int LINES = 12;          // how many inputs stay on screen
+	static constexpr int LINES = 8;           // how many inputs stay on screen
 	// In fractions of the WINDOW's height, so the column keeps its proportions whatever its shape. The left
 	// margin is a height too, which is what stops it drifting away from the edge as the window widens.
-	static constexpr float MARGIN = 0.030f;
-	static constexpr float TOP = 0.150f;
-	static constexpr float ROW_H = 0.056f;    // one line's height, arrow and buttons alike
-	static constexpr float GAP = 0.010f;      // between the arrow and the first button
-	static constexpr float DMG_CAP = 0.030f;  // the damage figure's capitals
+	//
+	// AND IT IS ANCHORED AT ITS FOOT, not at its head. August's grew downwards from a fixed top, so the line
+	// you had just played moved every time -- and the one thing this column is for is being read at a glance
+	// while you fight. Hung from the bottom, the newest line is always at the same place and the older ones
+	// slide up out of it.
+	static constexpr float MARGIN = 0.028f;
+	static constexpr float BOTTOM = 0.945f;   // where the newest line's foot sits
+	static constexpr float ROW_H = 0.047f;    // one line's height, arrow and buttons alike
+	static constexpr float GAP = 0.008f;      // between the arrow and the first button
+	static constexpr float DMG_CAP = 0.026f;  // the damage figure's capitals
+	// The ground it is read on. A fight is a bright, busy picture and white arrows on it are a guess; this is
+	// the carousel's own band, narrower. Translucent, so the arena still shows through it.
+	static constexpr uint8_t BAND_ALPHA = 165;
+	static constexpr float BAND_PAD = 0.010f;
+	// The older lines fade, so the eye falls on the newest without having to look for it. This is the port's
+	// own, not August's: his were all at full.
+	static constexpr uint8_t OLD_ALPHA = 115, NEW_ALPHA = 255;
 	static constexpr SDL_Color DMG_INK = { 236, 48, 48, 255 };
-	static constexpr SDL_Color DMG_WORD = { 232, 232, 232, 255 };
 
 	// One line of the column: what was held, and what it cost the other player.
 	struct line {
@@ -121,6 +132,11 @@ struct fv2_training
 		if (now.dir == held.dir && now.punch == held.punch && now.kick == held.kick && now.guard == held.guard)
 			return;
 		held = now;
+		// A LINE WITH NOTHING ON IT IS NOT A LINE. Once neutral became an empty place rather than a letter
+		// (Frederic, the 2026-10-25), going back to neutral pushed a row with nothing drawn on it, and the
+		// column came out half blank. The change is still remembered in `held`, so the input after it is
+		// still seen as a change; it simply leaves no row behind.
+		if (now.dir < 0 && !now.punch && !now.kick && !now.guard) return;
 		lines.push_back(now);
 		while (lines.size() > LINES) lines.erase(lines.begin());
 	}
@@ -144,29 +160,53 @@ struct fv2_training
 		(void)mid;
 		if (!ready || !atlas || lines.empty()) return;
 		SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-		const float h = ROW_H * all.h, gap = GAP * all.h;
+		const float h = ROW_H * all.h, gap = GAP * all.h, pad = BAND_PAD * all.h;
 		const float x0 = all.x + MARGIN * all.h;
-		float y = all.y + TOP * all.h;
-		auto cell = [&](int col, int row, float cx, float cy) {
+		const float cap = DMG_CAP * all.h;
+		// As wide as the widest line it will ever hold -- an arrow and the three button places -- so the
+		// band does not breathe in and out as the inputs change. The damage column is added only when some
+		// line actually carries one, because a band kept open for figures that never come is a band of
+		// empty ground, and this one sits on top of the fight.
+		const float dmg_x = x0 + h + gap + 3.0f * h + gap;
+		bool any_dmg = false;
+		for (const line &l : lines) any_dmg = any_dmg || l.dmg > 0;
+		const float wide = any_dmg
+			? dmg_x - x0 + (font && font->ready ? font->width("DMG 000", cap / fv2_texte::CAP) : 4.0f * cap)
+			: h + gap + 3.0f * h;
+		const float foot = all.y + BOTTOM * all.h;
+		const float head = foot - float(lines.size()) * h;
+		const SDL_FRect band = { x0 - pad, head - pad, wide + 2.0f * pad, float(lines.size()) * h + 2.0f * pad };
+		SDL_SetRenderDrawColor(ren, 0, 0, 0, BAND_ALPHA);
+		SDL_RenderFillRect(ren, &band);
+
+		auto cell = [&](int col, int row, float cx, float cy, uint8_t a) {
 			const SDL_FRect src = { float(col * CELL), float(row * CELL), float(CELL), float(CELL) };
 			const SDL_FRect dst = { cx, cy, h, h };
+			SDL_SetTextureAlphaMod(atlas, a);
 			SDL_RenderTexture(ren, atlas, &src, &dst);
+			SDL_SetTextureAlphaMod(atlas, 255);
 		};
-		for (const line &l : lines) {
+		// Oldest at the top, newest hard against the foot, which never moves.
+		float y = head;
+		for (size_t i = 0; i < lines.size(); i++, y += h) {
+			const line &l = lines[i];
+			// The newest at full, the ones before it fading back evenly to OLD_ALPHA
+			const float share = lines.size() > 1 ? float(i) / float(lines.size() - 1) : 1.0f;
+			const uint8_t a = uint8_t(OLD_ALPHA + share * float(NEW_ALPHA - OLD_ALPHA));
 			// The direction, then the three buttons each in its OWN place, taken or empty
-			if (l.dir >= 0) cell(l.dir % 4, 1 + l.dir / 4, x0, y);
-			else if (font && font->ready)
-				font->draw_mid(ren, "N", x0 + h * 0.5f, y + h * 0.25f, h * 0.5f / fv2_texte::CAP, DMG_WORD);
+			// NEUTRAL IS AN EMPTY PLACE, not a mark. August put the letter N there, with the free cell of
+			// the atlas's first row reserved for a drawing if one ever came; Frederic chose the empty place
+			// the 2026-10-25, so the column shows only what was actually held. The place is still kept --
+			// the buttons do not slide left into it -- which is the rule that stops the column dancing.
+			if (l.dir >= 0) cell(l.dir % 4, 1 + l.dir / 4, x0, y, a);
 			const bool on[3] = { l.punch, l.guard, l.kick };    // the atlas's own order: P, G, K
-			for (int i = 0; i < 3; i++)
-				if (on[i]) cell(i, 0, x0 + h + gap + float(i) * h, y);
+			for (int i3 = 0; i3 < 3; i3++)
+				if (on[i3]) cell(i3, 0, x0 + h + gap + float(i3) * h, y, a);
 			if (l.dmg > 0 && font && font->ready) {
 				char t[24];
 				snprintf(t, sizeof t, "DMG %d", l.dmg);
-				const float cap = DMG_CAP * all.h;
-				font->draw(ren, t, x0 + h + gap + 3.0f * h + gap, y + (h - cap) * 0.5f, cap / fv2_texte::CAP, DMG_INK);
+				font->draw(ren, t, dmg_x, y + (h - cap) * 0.5f, cap / fv2_texte::CAP, DMG_INK, a);
 			}
-			y += h;
 		}
 	}
 };
