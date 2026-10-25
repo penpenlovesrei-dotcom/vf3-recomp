@@ -70,8 +70,21 @@ struct fv2_mode_list
 	// invisible in a test run. 45 frames at 60 is 0.75 s, and that is what it is everywhere.
 	static constexpr double BLINK_SECONDS = 45.0 / 60.0;
 	static constexpr float BLINK_FLOOR = 0.5f;
-	// how far the picture is taken down behind the list: black at half, measured on the Dreamcast version
+	// how far the picture is taken down behind the list, WHEN THE PICTURE IS THE GAME'S: black at half,
+	// measured on the Dreamcast version. It is no longer the usual case -- see the ground below.
 	static constexpr uint8_t DIM_ALPHA = 128;
+
+	// THE LIST'S OWN GROUND, and this is Frederic's own instruction of the 2026-10-25: "donne au menu
+	// principal son propre fond au lieu de l'ecran titre du jeu". The list used to be drawn over the
+	// picture the game had made, which meant it could only be opened where that picture was the title
+	// screen -- so leaving a match for the menu had to walk the game all the way home first, past its
+	// GAME OVER, and a list opened an instant too early froze the game on a black frame. With a ground
+	// of its own the list is a surface like the others: it can go up anywhere, over anything.
+	//
+	// The picture is the Dreamcast version's own menu backdrop, assets/menu-console/menu_title.png, and
+	// it is authored like OPTIONS's: 16:9 with the 4:3 picture inset in it and flat purple outside, the
+	// purple running to x 447 and from x 3183 (fv2_options.h, where the same bounds were measured).
+	static constexpr int GROUND_W = 3630, GROUND_H = 2048, GROUND_L = 447, GROUND_R = 3183;
 
 	// what handle_event returns when the player backed out, as against a line chosen (0..LINES-1) or -1
 	static constexpr int CANCELLED = -2;
@@ -85,6 +98,7 @@ struct fv2_mode_list
 	int sel = ARCADE;
 	bool ready = false, tried = false;
 	SDL_Texture *tex = nullptr;
+	SDL_Texture *ground = nullptr;   // the list's own backdrop; without it the game's picture is dimmed instead
 	std::string path;        // where the file was looked for (the log says so once)
 	int stick_y = 0;
 	uint64_t blink_t0 = 0;   // when the list went up, in SDL's nanoseconds: the blink is read from the clock
@@ -119,6 +133,23 @@ struct fv2_mode_list
 		SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_LINEAR);
 		ready = true;
 		if (log) fprintf(log, "the console's list of modes: %s, %dx%d\n", path.c_str(), w, h);
+		// The ground is not required: without it the list falls back to the game's own picture at half,
+		// which is how it was drawn before, so a missing file costs the backdrop and nothing else.
+		{
+			const std::string gp = assets + "/menu-console/menu_title.png";
+			std::vector<uint32_t> gpx;
+			int gw = 0, gh = 0;
+			std::string gwhy;
+			if (!read_png(gp.c_str(), gpx, gw, gh, gwhy) || gw != GROUND_W || gh != GROUND_H) {
+				if (log) fprintf(log, "the console's list of modes: no ground (%s) -- the game's picture is dimmed instead\n",
+					gwhy.empty() ? "not the measured size" : gwhy.c_str());
+			} else if ((ground = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC, gw, gh))) {
+				SDL_UpdateTexture(ground, nullptr, gpx.data(), gw * 4);
+				SDL_SetTextureBlendMode(ground, SDL_BLENDMODE_BLEND);
+				SDL_SetTextureScaleMode(ground, SDL_SCALEMODE_LINEAR);
+				if (log) fprintf(log, "the console's list of modes: its own ground, %s\n", gp.c_str());
+			}
+		}
 		return true;
 	}
 
@@ -126,7 +157,9 @@ struct fv2_mode_list
 	void textures_lost(SDL_Renderer *ren, const std::string &assets)
 	{
 		if (tex) SDL_DestroyTexture(tex);
+		if (ground) SDL_DestroyTexture(ground);
 		tex = nullptr;
+		ground = nullptr;
 		ready = false;
 		tried = false;
 		load(ren, assets, nullptr);
@@ -217,8 +250,18 @@ struct fv2_mode_list
 		SDL_BlendMode was = SDL_BLENDMODE_NONE;
 		SDL_GetRenderDrawBlendMode(ren, &was);
 		SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-		SDL_SetRenderDrawColor(ren, 0, 0, 0, DIM_ALPHA);
-		SDL_RenderFillRect(ren, &all);
+		if (ground) {
+			// ITS OWN GROUND, over the whole window: what the game has on screen does not show through at
+			// all, which is the point of it. The sides of a wide window are black, as under every other
+			// surface of this port, and the backdrop's own 4:3 inset is drawn in the picture's place.
+			SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+			SDL_RenderFillRect(ren, &all);
+			const SDL_FRect src = { float(GROUND_L), 0, float(GROUND_R - GROUND_L), float(GROUND_H) };
+			SDL_RenderTexture(ren, ground, &src, &mid);
+		} else {
+			SDL_SetRenderDrawColor(ren, 0, 0, 0, DIM_ALPHA);
+			SDL_RenderFillRect(ren, &all);
+		}
 		SDL_SetRenderDrawBlendMode(ren, was);
 		const float block_h = DRAWN_HEIGHT * mid.h;
 		const float block_w = block_h * float(IMG_W) / float(IMG_H);

@@ -2744,6 +2744,8 @@ int main(int argc, char **argv)
 	// parked in Sega's empty STAGE_SEL; from the pause menu there is no such sub-state to park in -- it is
 	// a fight -- so the game is frozen under the page, and the arena changes by restarting the fight.
 	bool stage_from_pause = false;
+	// A line of the list chosen while a match was still ending, held until it is (see where it is set).
+	int mode_wanted = -1;
 	fv2_training train;      // TRAINING's column of inputs and its damage (fv2_training.h)
 	// The console's surfaces, over the picture the game made (and under this port's menu, if that is open as
 	// well): mid is the game's own 4:3 screen, which is what their placement was measured against. ONE place
@@ -3497,6 +3499,16 @@ int main(int argc, char **argv)
 				fprintf(stderr, "the console: leaving the match for the title, the game's own exit says %d\n",
 						board.fv2_end_match());
 				cplay.leave_match(console_play::L_TO_TITLE);
+				// AND THE LIST GOES UP ON THE SPOT, over its own ground (fv2_mode_list.h). It used to wait for
+				// the game to be home on its title screen, because the title screen WAS its backdrop -- so the
+				// player watched the end of the game go by, GAME OVER and all. Now the way home is walked
+				// BEHIND the menu: the game is not frozen while it runs (see where stopped is made), and a line
+				// chosen before it is home waits for it (see mode_wanted).
+				if (modes.ready && !modes.shown) {
+					modes.show();
+					music_mode_chosen = false;
+					sync_menu_sound();
+				}
 			}
 		} else if (line == fv2_pause::CHANGE_VIPER) {
 			if (board.fv2_in_attract()) cplay.choose_versus();
@@ -3737,7 +3749,14 @@ int main(int argc, char **argv)
 			// Escape is left alone so this port's menu can always be reached.
 			if (modes.shown && !ours(e)) {
 				const int chose = modes.handle_event(e, cfg.ctl);
-				if (chose >= 0) choose_mode(chose);
+				// A LINE CHOSEN BEFORE THE GAME IS HOME WAITS FOR IT. Every mode's entry hands the game a
+				// Start on the title screen or asks the attract loop for something, and neither means
+				// anything while the end of the last match is still running underneath the menu.
+				if (chose >= 0 && cplay.leaving != console_play::L_OFF) {
+					mode_wanted = chose;
+					fprintf(stderr, "the console's list: %s chosen while the match is still ending -- held\n",
+						fv2_mode_list::name(chose));
+				} else if (chose >= 0) choose_mode(chose);
 				else if (chose == fv2_mode_list::CANCELLED) {
 					// Backed out: the list goes and the game comes back exactly where it was, on its own title
 					// screen. Nothing else is touched -- the press stays ours, as when a line is chosen.
@@ -4024,7 +4043,11 @@ int main(int argc, char **argv)
 		// The carousel is the one surface that does not always freeze: on the select screen the game runs on
 		// under it, parked. Opened from the pause menu there is nothing to park in, so there it freezes like
 		// the other three.
-		const bool stopped = paused || menu.is_open() || modes.shown || options.shown || pause.shown
+		// AND THE LIST DOES NOT FREEZE THE GAME WHILE A WAY OUT OF A MATCH RUNS. The menu has a ground of
+		// its own now, so the game can walk home underneath it -- which is the whole point: nothing of the
+		// end of the game is seen. Frozen, it would never arrive.
+		const bool leaving_now = cplay.leaving != console_play::L_OFF;
+		const bool stopped = paused || menu.is_open() || (modes.shown && !leaving_now) || options.shown || pause.shown
 			|| (stages.shown && stage_from_pause);
 		const bool ff = !stopped && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB];
 		int due = 0;
@@ -4327,6 +4350,14 @@ int main(int argc, char **argv)
 				}();
 				// MAIN MENU has got the game back to its title screen: the console's list goes up over it, which
 				// is where that line said it was going.
+				// THE LINE HELD WHILE THE MATCH WAS ENDING, acted on the moment it is over.
+				if (mode_wanted >= 0 && cplay.leaving == console_play::L_OFF) {
+					const int line = mode_wanted;
+					mode_wanted = -1;
+					fprintf(stderr, "frame %llu: the console's list: %s, held while the match ended, starts now\n",
+						(unsigned long long)game_frame, fv2_mode_list::name(line));
+					choose_mode(line);
+				}
 				// AND IT WAITS FOR THE TITLE TO BE DRAWN, not merely asked for. The list freezes the PowerPC, so
 				// opened a moment too early it freezes the game on whatever was on screen -- the SEGA logo, or a
 				// black frame between two screens, both of which Frederic saw. fv2_on_title says the game is in
