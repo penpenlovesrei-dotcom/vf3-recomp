@@ -167,6 +167,21 @@ struct console_play
 	// sets GAME_TIMER to 1 and waits for FIGHT_DSP to count it down, and FIGHT_DSP does not count at all
 	// while that bit is set. The match could not end, so there was nothing to leave.
 	bool train_froze = false;
+	// THE ANNOUNCER IS NOT WANTED IN TRAINING. Cutting the seven states of the announcement took their
+	// PICTURES away, not their sounds: the handlers still run their own frame each, and what they say to
+	// the sound board is said. Measured on a hidden training run, round start at frame 2826:
+	//   2826 ROUND_DSP      A0 00 01   A1 0B 03
+	//   2828 SET_INT_POSE   A0 00 03   BC 50 00   BD 50 00   A0 2B 03
+	//   2829 SET_DSP        A0 28 13
+	//   2831 READY_DSP      A0 2B 0E
+	//   2833 FIGHT_DSP      A0 10 0C   A1 0B 03   A0 2B 0F
+	// A0 <bank> <index> is the shape the owner established by sending them and listening (main.cpp):
+	// bank 0x10 is the music -- 0x0C is this fight's, and it must go through -- and 0x30 is the voice the
+	// SEGA logo's skip already drops. The two lines heard before a fight are the two 0x2B indices that
+	// differ with the state, 0x0E at READY and 0x0F at FIGHT. This counts the frames in which such a
+	// command is dropped: from the announcement's first state to a little past the fight's first frame,
+	// and never during the fight itself, where the same bank carries what the blows say.
+	int train_hush = 0;
 	// THE PRESENTATION STAYS, AND NOW WE KNOW WHY: it is the arena loading, not a wait anybody put there.
 	// Frederic asked for the fight to start straight away, with no STAGE / VS screen and no ROUND 1.
 	// Asking GAME's sub-states 0 to 3 to move on -- which is all fv2_cut_submode does -- gave a BLACK
@@ -534,6 +549,7 @@ struct console_play
 	{
 		train_fighting = false;
 		if (!training_on) {
+			train_hush = 0;
 			train_p1_chose = false;
 			train_punch_held = false;
 			train_pick_arm = false;
@@ -556,6 +572,9 @@ struct console_play
 		// is loaded in them. Each is asked to move on the frame it begins, so every INT still runs its
 		// own frame and only the waiting goes. Training only: an ordinary fight keeps its announcement.
 		if ((m == 6 || m == 7) && su >= 4 && su <= 10) b.fv2_cut_submode();
+		// and the window the announcer is dropped in, opened by those same states (above)
+		if ((m == 6 || m == 7) && su >= 4 && su <= 10) train_hush = 12;
+		else if (train_hush > 0) train_hush--;
 		const bool fighting = (m == 6 || m == 7) && (su == 11 || su == 12);
 		train_fighting = fighting;
 		// The clock, held by the game's own switch. Held rather than written once because that CONFIG block
@@ -619,7 +638,21 @@ struct console_play
 			}
 			return;
 		}
-		// L_CLEARING. Firmly positive, because an already expired screen is negative and shortening it would
+		// L_CLEARING. AND THE TITLE ASKED FOR WHILE IT RUNS, when that is where this is going: the end of a
+		// game is CONTINUE and then GAME OVER, each a mode of its own, and expiring their screens only makes
+		// them short -- Frederic saw GAME OVER go by the 2026-10-25. fv2_request_title is the game's own
+		// lever and it works here, where the attract loop is running again; it is renewed every half second
+		// because those screens write the mode themselves as they come and go.
+		if (leave_for == L_TO_TITLE) {
+			if (b.fv2_on_title()) {
+				fprintf(stderr, "the console: the title screen reached in %d frames, the end screens skipped\n", leave_frames);
+				leaving = L_OFF;
+				arrive(b);
+				return;
+			}
+			if (leave_frames % 30 == 1) b.fv2_request_title();
+		}
+		// Firmly positive, because an already expired screen is negative and shortening it would
 		// lengthen it; four times our own edge, so our own writing is never written over again.
 		if (b.fv2_screen_timer() > 4 * 8) b.fv2_expire_screen();
 		if (b.fv2_scene_index() != leave_scene) {
@@ -638,7 +671,7 @@ struct console_play
 	void arrive(m3::Model3 &b)
 	{
 		if (leave_for == L_TO_TITLE) {
-			b.fv2_attract_to_title();
+			if (!b.fv2_on_title()) b.fv2_attract_to_title();
 			// AND THE CONSOLE'S LIST WITH IT: the line is MAIN MENU, not TITLE SCREEN (fv2_pause.h). The
 			// game's title is still the ground it is drawn on -- it is the one screen this port opens the
 			// list over -- but the player lands on the menu rather than on the attract loop.

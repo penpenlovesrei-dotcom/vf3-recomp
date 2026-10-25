@@ -1106,6 +1106,11 @@ struct Game
 	// Set by the host on the road where the SEGA logo is skipped: its voice is dropped before the board hears
 	// it, so the skip is whole rather than half (see where it is set).
 	bool mute_voices = false;
+	// TRAINING: the two lines the announcer says before a fight, dropped the same way. The states that
+	// say them are cut to one frame each (console_play.h), which takes their pictures and not their
+	// sound; bank 0x2B is the one whose index changes with the state, 0x0E at READY and 0x0F at FIGHT.
+	// Held only across those frames, never during the fight.
+	bool mute_fight_voice = false;
 	void note_music()
 	{
 		if (mute_voices)
@@ -1113,6 +1118,15 @@ struct Game
 				if (board.midi[i] == 0xA0 && board.midi[i + 1] == 0x30)
 					board.midi.erase(board.midi.begin() + long(i), board.midi.begin() + long(i) + 3);
 				else
+					i++;
+		if (mute_fight_voice)
+			for (size_t i = 0; i + 2 < board.midi.size();)
+				if (board.midi[i] == 0xA0 && board.midi[i + 1] == 0x2B) {
+					// IT SAYS WHAT IT DROPPED. A sound that was never going to be heard looks exactly like a
+					// sound that was dropped, so the probe has to speak for itself.
+					fprintf(stderr, "training: the announcer dropped -- A0 2B %02X\n", board.midi[i + 2]);
+					board.midi.erase(board.midi.begin() + long(i), board.midi.begin() + long(i) + 3);
+				} else
 					i++;
 		for (size_t i = 0; i + 2 < board.midi.size(); i++) {
 			if (board.midi[i] != 0xA0) continue;
@@ -1935,7 +1949,13 @@ int main(int argc, char **argv)
 	};
 	HudCut hud_top, hud_foot;
 	bool hud_hide_mid = false;   // training: the stopped clock is left undrawn (see where it is set)
-	static constexpr int HUD_TOP_ROWS = 100;      // the band the bars and names live in
+	// HOW DEEP THE TOP BAND GOES, and it is measured, not rounded. At 100 it cut a drawing in half:
+	// under the right-hand bar there is a mark that comes and goes during a fight -- Frederic calls it
+	// the joystick's animation -- and the audit of a training fight has it at rows 93..108, columns
+	// 423..452. Its top half was spread out to the window's edge with the band and its bottom half stayed
+	// where 4:3 had it. 120 takes the whole of it and still stops well short of the ROUND X announcement,
+	// which the same audit puts at rows 125..254.
+	static constexpr int HUD_TOP_ROWS = 120;      // the band the bars, the names and that mark live in
 	static constexpr int HUD_FOOT_ROWS = 60;      // the band the stage and the time live in
 	// How near an edge a block has to begin to count as hanging off it. Twenty-four columns, about a
 	// twentieth of the picture, and the number is measured: the player icons begin at column 0, but the
@@ -4290,6 +4310,7 @@ int main(int argc, char **argv)
 				// its voice is half a skip; `skip_logo` is exactly the road where the picture is skipped, so
 				// the voice is dropped on the same road and nowhere else.
 				game.mute_voices = cplay.skip_logo > 0;
+				game.mute_fight_voice = cplay.training_on && cplay.train_hush > 0;
 				cplay.step(board, console_ctl);
 				// THE CHARACTERS HAVE BEEN CHOSEN: the stage page opens here, between SELECT and DECIDE_INT,
 				// where the summer's ROM put it and where Sega's own STAGE_SEL states sit empty. The game is
@@ -4306,7 +4327,10 @@ int main(int argc, char **argv)
 				}();
 				// MAIN MENU has got the game back to its title screen: the console's list goes up over it, which
 				// is where that line said it was going.
-				if (cplay.want_list) {
+				// AND IT WAITS FOR THE TITLE TO BE THERE. The list freezes the PowerPC, so opened a moment too
+				// early it froze the game on the SEGA logo with the menu in front of it -- what Frederic saw the
+				// 2026-10-25. fv2_on_title is the game saying it itself.
+				if (cplay.want_list && board.fv2_on_title()) {
 					cplay.want_list = false;
 					if (modes.ready && !modes.shown && !options.shown) {
 						modes.show();
