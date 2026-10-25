@@ -149,6 +149,22 @@ struct console_play
 	// controls are routed to player 2's cursor, so the same hands pick the opponent. The latch is the host's
 	// own: it SEES the press, so it needs no byte of the game's to tell it.
 	bool train_p1_chose = false;
+	// THE PRESENTATION IS STILL THERE, and it is not for want of trying. Frederic asked for the fight to
+	// start straight away, with no STAGE / VS screen and no ROUND 1. GAME's sub-states 0 to 3 are
+	// ROUND_MASK_INT, _IN, _DSP and _OUT, and asking any of them to move on -- which is all
+	// fv2_cut_submode does, and exactly what Sega's own handlers do between themselves -- gives a
+	// BLACK SCREEN with nothing on it but the HUD. Measured three ways the 2026-10-25, each on a build
+	// whose timestamp was checked:
+	//
+	//   all four cut             black. ROUND_MASK_INT alone stops three tasks, clears the match-over
+	//                            bit and sets both fighters' health, so that one at least must run;
+	//   ROUND_MASK_DSP alone     black as well, though it is the only one of the four that waits;
+	//   ROUND_MASK_DSP at its    black again. This port's own note had cut it at image 2360 of a
+	//     forty-first frame      2319-2450 run, so the handler was given its opening frames first.
+	//
+	// So the arena's loading is somewhere in those four and not where that note implied. What would
+	// settle it is READING fv2_game_ROUND_MASK_DSP at 0x0000BD2C and the three beside it, the way the
+	// stage draw was read with tools/fv2/desas_ppc.py -- not another guess at which one is safe.
 
 	enum { SEL_NOTHING, SEL_RANDOM, SEL_VERSUS } at_select = SEL_NOTHING;
 	int sel_frames = -1;          // frames since the select screen appeared; -1 until it does
