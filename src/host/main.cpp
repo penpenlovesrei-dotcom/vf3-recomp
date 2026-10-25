@@ -3320,7 +3320,8 @@ int main(int argc, char **argv)
 				  bgm_testing = false;
 				  bgm_playing = -1;
 				  return true;
-			  } },
+			  },
+			  true },   // silent: a track starting and a track stopping are heard; the menu need not say so
 			// The music packs -- the first Fighting Vipers' tracks in place of these -- are the fork's, and
 			// its own notes say the replacement was wired there and never once heard. Nothing of it here.
 			{ "BGM SET", fixed("-"), {}, {}, {}, 0, false, 0 },
@@ -3334,6 +3335,9 @@ int main(int argc, char **argv)
 			  }, {}, 0, true, 1.2f },
 		};
 		options.ctl = cfg.ctl;   // CONTROLLER reads the bindings and writes them
+		// And which pad is whose, so a capture on one player's column takes that player's pad and no other
+		// (fv2_options.h). Filled again whenever the pads are opened again, below.
+		for (int p = 0; p < 2; p++) options.pad_id[p] = pads[p] ? SDL_GetGamepadID(pads[p]) : 0;
 		options.build_pages();
 	}
 	auto close_options = [&] {
@@ -4458,6 +4462,8 @@ int main(int argc, char **argv)
 		// every pass, and there is no reason to do it behind a page that does not show it.
 		if (options.shown && options.at == fv2_options::SCR_CONTROLLER) {
 			for (int p = 0; p < 2; p++) options.live[p] = live_controls(p, pads[p], cfg.ctl);
+			// read again every pass rather than once at the start: a pad can be plugged in while the page is up
+			for (int p = 0; p < 2; p++) options.pad_id[p] = pads[p] ? SDL_GetGamepadID(pads[p]) : 0;
 			// (tests: VF3_LIVE=n lights that set of bits on the player shown. A pushed key event does not
 			// change the keyboard state SDL reports, so the test hooks cannot reach this page any other way.)
 			// (tests: VF3_LIVE=n[,m] lights those bits on 1P and 2P.)

@@ -174,6 +174,10 @@ struct fv2_options
 		bool as_button = false;              // drawn as INITIALIZE's painted label rather than as text
 		float gap = 0;
 		std::function<bool()> cancel;        // B goes to the line first, which keeps it by returning true
+		// A LINE THAT SPEAKS FOR ITSELF WANTS NO MENU EFFECT. Starting a track and stopping it are heard;
+		// the menu's own "decided" and "backed out" played over the first note and over the silence, which
+		// Frederic asked to go the 2026-10-25. It is the line that knows, not the page.
+		bool silent = false;
 	};
 	std::vector<own_line> own[SCR_COUNT];
 
@@ -210,6 +214,12 @@ struct fv2_options
 	uint8_t live[2] = { 0, 0 };
 	player_controls *ctl = nullptr;   // the host's bindings: CONTROLLER reads them AND writes them
 	int ctl_row = 0, ctl_col = 0;     // which line and which player the cursor is on
+	// WHICH PAD BELONGS TO WHICH PLAYER, filled by the host (it is the host that opens them). A capture on
+	// 1P's column takes 1P's pad and nothing else, which is what Frederic asked for the 2026-10-25: before
+	// it, a button pressed on the second pad while the cursor stood on the first player's column was bound
+	// to the FIRST player. 0 means that player has no pad, and then any is taken -- otherwise his column
+	// could never be bound at all.
+	SDL_JoystickID pad_id[2] = { 0, 0 };
 	bool ctl_capturing = false;       // waiting for the key or button that will be the new binding
 	bool ctl_changed = false;         // something was really rebound: the host saves and clears this
 	int ctl_testing = -1;             // -1: the grid; 0 or 1: that player's mirror, opened by its TEST line
@@ -361,8 +371,9 @@ struct fv2_options
 			const line &l = page(at)[size_t(sel())];
 			if (l.what == line::BUTTON) { initialize(board); want_sound = SND_VALIDATE; }
 			else if (l.what == line::OWN && own[at][size_t(l.which)].act) {
-				own[at][size_t(l.which)].act();
-				want_sound = SND_VALIDATE;
+				const own_line &o = own[at][size_t(l.which)];
+				o.act();
+				if (!o.silent) want_sound = SND_VALIDATE;
 			} else if (l.what == line::DOOR) {
 				at = l.which;
 				sel() = 0;
@@ -711,14 +722,15 @@ private:
 
 	int go_back()
 	{
-		want_sound = SND_CANCEL;
 		if (sel() >= 0 && sel() < lines()) {
 			const line &l = page(at)[size_t(sel())];
 			if (l.what == line::OWN) {
 				const own_line &o = own[at][size_t(l.which)];
-				if (o.cancel && o.cancel()) return -1;
+				// Asked BEFORE the sound is decided, so a line that speaks for itself is not spoken over
+				if (o.cancel && o.cancel()) { if (!o.silent) want_sound = SND_CANCEL; return -1; }
 			}
 		}
+		want_sound = SND_CANCEL;
 		if (at == SCR_OPTIONS) return CANCELLED;
 		at = SCR_OPTIONS;
 		return -1;
@@ -756,6 +768,9 @@ private:
 				ctl_changed = true;
 				want_sound = SND_VALIDATE;
 			} else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+				// Only this player's own pad (see pad_id). Another player's press is not his to bind, and
+				// it does not call the capture off either: it simply is not for him.
+				if (pad_id[size_t(ctl_col)] && e.gbutton.which != pad_id[size_t(ctl_col)]) return -1;
 				ctl_capturing = false;
 				// START CALLS IT OFF, it does not bind. A capture that swallows everything leaves a pad with
 				// no way out, and the first hand to try this page proved it: Start pressed to leave became
@@ -777,8 +792,10 @@ private:
 			case SDL_SCANCODE_BACKSPACE: return go_back();
 			default: break;
 			}
-			// The key set as Start goes back, so a player who has rebound everything else still has a way out.
-			for (int p = 0; p < 2; p++) if (ctl && ctl[p].key[C_START] == e.key.scancode) return go_back();
+			// THE WAY OUT IS THE CANCEL BUTTON AND NOT START, which Frederic asked for the 2026-10-25:
+			// Start is the game's own button and a page you leave with it is a page you leave by accident.
+			// The key a player has set as his KICK is this port's cancel everywhere else in these surfaces.
+			for (int p = 0; p < 2; p++) if (ctl && ctl[p].key[C_KICK] == e.key.scancode) return go_back();
 			return -1;
 		}
 		if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
@@ -787,7 +804,7 @@ private:
 			case SDL_GAMEPAD_BUTTON_DPAD_DOWN: ctl_row = (ctl_row + 1) % CTL_ROWS; want_sound = SND_MOVE; break;
 			case SDL_GAMEPAD_BUTTON_DPAD_LEFT: case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: ctl_col ^= 1; want_sound = SND_MOVE; break;
 			case SDL_GAMEPAD_BUTTON_SOUTH: ctl_act(); break;
-			case SDL_GAMEPAD_BUTTON_START: return go_back();
+			case SDL_GAMEPAD_BUTTON_EAST: return go_back();   // the cancel button, not Start (see above)
 			default: break;
 			}
 			return -1;
