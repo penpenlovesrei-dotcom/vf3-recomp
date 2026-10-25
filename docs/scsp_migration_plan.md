@@ -37,7 +37,10 @@ le premier venu.
 | tester | `tools/son/test_scspdsp.cpp` (`make test`) : les deux corps du DSP contre une référence qui décode dans la boucle, seize cas, et quatre fautes injectées pour montrer qu'il sait échouer |
 
 Ce que l'étape 0 **n'a pas** fait, et il faut le lire avant la suite : il n'y a qu'un test par bloc sur huit,
-qu'une seule scène de mesure, et rien n'est mesuré sous `--rec` ni dans l'hôte.
+qu'une seule scène de mesure, et rien n'est mesuré dans l'hôte. **La mesure sous `--rec` a été faite le
+2026-10-25** (`docs/scsp_audit.md` §4 bis) : la part du son y est de **30,5 %** au lieu de 9,6 %, parce que
+la carte Model 3 y est 4,3 fois plus rapide et que le son, lui, ne change pas. C'est donc sous `--rec` que la
+marge du son compte, et le DSP en fait la moitié.
 
 
 ## Étape 1 — le reste du gain processeur, s'il en faut

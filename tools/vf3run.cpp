@@ -12,7 +12,12 @@
 // place (src/video/tex3d_hd.h). Both are off unless asked for.
 // --wav FILE runs the sound board and writes what it plays. --shots DIR writes the script's screenshots there as PNG. --rec runs the recompiled code (src/rec) with the interpreter for the rest. --ram-at writes RAM after that frame to ram_<frame>.bin in the current folder; --watch ADDR (hex) reports
 // the CPU's stores to that word (--trace-pc ADDR: r3-r8 and LR each time that instruction runs; both on the interpreter). VF3_VOLUMES=music,effects (percent) sets the sound board's two volumes for --wav. VF3_POKE=addr=value
-// (hex address into --ram-at's dump, a byte; "b" first: the backup RAM's) writes RAM before every frame
+// (hex address into --ram-at's dump, a byte; "b" first: the backup RAM's) writes RAM before every frame.
+// VF3_STAGE=n holds Fighting Vipers 2's arena to scene n (1-12), for measuring what an arena changes from a
+// headless run -- it holds BOTH of the game's levers, the versus draw and the first match's route byte, and
+// says on frame 600 how often each had to write. Measured the 2026-10-25 with it: the DSP's program,
+// coefficients and delay addresses are identical write for write between two arenas, and what differs is the
+// software modulation of the FM ring buffer (docs/fv2-son-programme.md §4 quinquies)
 // (VF3_POKE_FRAMES=from-to: only those). VF3_FREE_PLAY=1: the coin setting FREE PLAY before the boot, as the PC way.
 // HD 2D (docs/fv2-hd-2d.md): --tile-dump DIR writes every tile and every layer layout the game draws, once each,
 // with the hash in the name; --tile-scale N draws the tile plane N times its size (1, the default, is the
@@ -348,6 +353,31 @@ int main(int argc, char **argv)
 					std::vector<uint8_t> &mem = bk ? board.backup : board.ram;
 					if (pa < mem.size()) mem[pa] = uint8_t(pv);
 				}
+		}
+		// VF3_STAGE=n holds Fighting Vipers 2's arena to scene n, for measuring what changes with the arena
+		// from a headless run. HELD every frame, not written once, because the draw marks its own choice used
+		// as it takes it (model3.cpp, fv2_hold_stage) -- the same reason the console holds it.
+		//
+		// It is here rather than in src/host/console_play.h because that file is another session's, and
+		// because a measurement wants a lever it can read from the command line. With --console-mode versus
+		// and no stage asked for, the console holds nothing, so the two do not fight.
+		{
+			// LES DEUX LEVIERS, parce qu'ils ne commandent pas la meme chose (model3.cpp) : l'octet de
+			// route commande l'arene du PREMIER match d'une partie, et le tirage commande celle d'un
+			// versus. Tenir les deux fait marcher VF3_STAGE dans les deux cas, et chacun dit s'il a ecrit.
+			static const char *stage = getenv("VF3_STAGE");
+			static int n_tirage = 0, n_route = 0, refus = 0;
+			if (stage) {
+				const int n = atoi(stage);
+				const int a = board.fv2_hold_stage(n);
+				const int b = board.fv2_hold_training_stage(n);
+				if (a > 0) ++n_tirage;
+				if (b > 0) ++n_route;
+				if (a < 0 && b < 0) ++refus;
+				if (f == 600)
+					fprintf(stderr, "VF3_STAGE=%s sur 600 images : tirage %d ecritures, route %d, refus %d\n",
+					        stage, n_tirage, n_route, refus);
+			}
 		}
 		auto tp0 = std::chrono::steady_clock::now();
 		board.run_frame();

@@ -161,8 +161,11 @@ proprement.**
    image en retard (`src/host/main.cpp`). Ses 0,45 ms économisées sont du temps processeur en moins — chaleur,
    batterie, cœurs laissés au rendu — **pas** une image qui arrive plus tôt. Dans `vf3run`, tout est sur un
    fil, et là le gain se lit directement.
-2. **Rien sur la version recompilée.** Tout a été mesuré sur l'interpréteur PowerPC. Avec `--rec` la carte
-   Model 3 descend, donc la part du son monte, et ces pourcentages ne s'y transposent pas.
+2. ~~**Rien sur la version recompilée.**~~ **Mesuré le 2026-10-25** (`docs/scsp_audit.md` §4 bis), et la
+   prévision de cette ligne était juste : avec `--rec` la carte passe de 13,77 à **3,23 ms** et le son reste
+   à **1,42**, donc sa part va de 9,6 % à **30,5 %**. Les pourcentages de ce document ne s'y transposent
+   effectivement pas. Le partage interne au son, lui, est identique dans les deux modes, et les deux WAV
+   sont identiques à l'octet.
 3. **Rien sur une autre machine.** Un seul poste, un seul compilateur, un seul niveau d'optimisation.
 4. **Rien sur les scènes qui manquent** (silence, musique seule, effets seuls, sound test) — voir plus haut.
 5. **Rien sur la fidélité au matériel.** Le WAV identique à l'octet dit que *ce portage n'a pas changé*, ce qui

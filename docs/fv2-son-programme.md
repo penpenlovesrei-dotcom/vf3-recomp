@@ -391,6 +391,43 @@ Les autres zéros de ce document portent leur propre témoin **dans la même lig
 `frcl 0 adrl 0 yrl 0 negb 0` à côté de `iwt 23 twt 39 mrd 23 mwt 10 ewt 5`, comptés par le même code au même
 moment — des compteurs qui parlent pour quatre voisins qui se taisent.
 
+### Et le zéro n'était pas général : il dépend de l'arène
+
+Le même 2026-10-25, en forçant l'arène (`VF3_STAGE`, voir §4 quinquies) au lieu de laisser le jeu choisir la
+sienne, la même sonde sur la même scène de 4 200 images donne :
+
+| arène | écritures dans `0x600-0x6FF` |
+|---|---|
+| celle que le jeu choisit seul | **0** — la mesure ci-dessus |
+| **arène 2** | **993**, à partir de l'image 3783 |
+| **arène 7** | **0** |
+
+Donc le zéro était vrai, et il ne voulait pas dire ce que j'en avais tiré. **Ce n'est pas un garde qui ne
+s'ouvre jamais : c'est un garde que certaines arènes ouvrent.** Les offsets touchés le confirment —
+`0x600` à `0x63E` et `0x640` à `0x67E`, c'est-à-dire exactement `0x600 + fente × 2` et `0x640 + fente × 2`,
+les deux plages que `0x60153A` écrit (§5 bis quaterdecies). Le code que j'ai lu est bien celui qui s'exécute.
+
+**Et la question de `STWINH` se tranche du même coup.** C'était l'inquiétude du portage : il route `+0x600`
+vers le tampon FM de MAME, que le chemin audio réécrit à chaque échantillon **sauf si `STWINH` protège
+l'entrée**. En suivant l'état de `STWINH` fente par fente dans le journal ordonné, et en le lisant au moment
+de chaque écriture :
+
+```
+993 ecritures dans le tampon FM :
+  STWINH pose  (l'entree est protegee) : 993  100,0 %
+  STWINH clair (le son la reecrit)     :   0    0,0 %
+  etat inconnu (jamais vu de SLOT6)    :   0
+```
+
+**Le pilote protège l'entrée chaque fois, sans une exception sur 993.** La modulation logicielle atteint donc
+le matériel intacte, et le routage du portage est correct sur ce point. C'était l'autre question ouverte de
+cette section, et elle est fermée.
+
+La leçon, qui est celle de ce document depuis le début : un zéro mesuré avec témoin positif est un vrai zéro,
+mais il ne porte que sur **ce qu'on a fait tourner**. Il m'avait fallu une heure, le même jour, pour écrire
+« la fonctionnalité existe, ces scènes ne l'emploient pas » — c'était juste, et il suffisait de changer
+d'arène pour trouver une scène qui l'emploie.
+
 **Conséquence : l'inquiétude que j'avais soulevée est sans objet.** Le portage route bien `0x600-0x6FF` vers
 le tampon circulaire FM de MAME, et le chemin audio l'écrase bien à chaque échantillon — mais **il n'y a rien
 à y écraser**, sur ces scènes. Le chemin de code existe et n'est pas emprunté.
@@ -408,6 +445,68 @@ aussi, et surtout, pour ce qu'on croit avoir compris en lisant.
 **Ce qui reste ouvert**, réduit à sa vraie taille : une autre scène pourrait ouvrir ce garde. La question
 n'est plus « le portage perd-il des écritures » mais « ce chemin sert-il jamais », et elle se referme d'un
 seul lancement avec la sonde élargie dès qu'on soupçonne une scène de l'emprunter.
+
+
+## 4 quinquies. Le programme du DSP ne change pas par arène — mesuré, deux arènes
+
+Point 5 de la liste de lecture, **resté sans réponse faute de levier** depuis le début. Le levier existe
+depuis que l'autre session a écrit la sélection de décor : `Model3::fv2_hold_stage` commande l'arène d'un
+versus et `fv2_hold_training_stage` l'octet de route, qui commande celle du **premier match d'une partie**.
+
+`tools/vf3run.cpp` reçoit donc `VF3_STAGE=n`, qui **tient les deux** à chaque image — tenus et non écrits une
+fois, parce que le tirage marque son propre choix comme utilisé en le prenant. Le levier est dans mon outil
+et non dans `src/host/console_play.h`, qui est le fichier d'une autre session.
+
+### Le témoin d'abord : les deux passages diffèrent-ils vraiment ?
+
+Une écriture ne prouve pas que le jeu l'a lue. Deux passages de 4 200 images sur `fv2-fight.txt`, arènes 2
+et 7 :
+
+| | |
+|---|---|
+| empreinte de la RAM finale | `BC628470…` contre `DF3A2A6F…` — **différentes** |
+| les deux WAV | **différents**, et ils divergent à l'octet 7 352 753, soit l'échantillon 1 838 188, soit **41,7 s, l'image 2398** |
+| le levier | 4 écritures du tirage et 3 de la route sur les 600 premières images, 0 refus |
+
+La divergence commence là où l'arène se charge. **Le levier a pris**, et la comparaison porte sur deux
+choses différentes — ce qui est la condition pour que son résultat veuille dire quelque chose.
+
+### Le résultat : identique, écriture pour écriture
+
+Les séquences d'écritures, numéro d'image retiré pour que le décalage de chargement ne compte pas :
+
+| zone | arène 2 | arène 7 | |
+|---|---|---|---|
+| **MPRO** (le microcode) | 23 986 | 23 986 | **identiques** |
+| **COEF** | 4 838 | 4 838 | **identiques** |
+| **MADRS** | 1 768 | 1 768 | **identiques** |
+| `0x7C0-0x7FF` | 1 280 | 1 280 | **identiques** |
+| `0x600-0x6FF` (tampon FM) | **993** | **0** | différentes |
+
+**Le programme du DSP, ses coefficients et ses adresses de ligne de retard ne dépendent pas de l'arène.**
+Pas « se ressemblent » : les mêmes écritures, dans le même ordre, aux mêmes offsets, avec les mêmes valeurs,
+sur 31 872 écritures de configuration du DSP. Les 13 rafales MPRO tombent aux mêmes images des deux côtés, à
+sept images près sur la dernière — le chargement de l'arène ne prend pas exactement le même temps.
+
+**Ce qui change, en revanche, c'est le tampon FM** : 993 écritures dans l'arène 2 et aucune dans l'arène 7.
+Voir la fin du §4 : c'est la modulation logicielle, et c'est elle qui est propre à l'arène, pas le DSP.
+
+### Ce que ça établit, et ce que ça ne fait pas
+
+Ça ferme la question telle qu'elle était posée : **le pilote ne charge pas un effet par arène.** Les deux
+programmes distincts qu'on voit dans les deux passages (`149e507a` et `f977884a`) sont les mêmes deux, aux
+mêmes moments.
+
+Ce que ça ne fait pas :
+
+- **Deux arènes sur douze.** Identique écriture pour écriture est une preuve forte sur ces deux-là ; ce n'est
+  pas douze. Refaire le passage pour les dix autres coûte dix minutes et vaudrait d'être fait.
+- Une mesure précédente de ce document annonçait « 43 rafales MPRO et 9 programmes distincts » ; ce
+  comptage-ci en voit 13 et 2. Les deux ne comptent pas la même chose — regroupement des rafales et
+  empreinte de l'image complète contre empreinte de la séquence d'écritures. **La comparaison, elle, emploie
+  une seule méthode appliquée deux fois**, ce qui est la seule forme qui réponde à la question posée ; mais
+  l'écart entre les deux comptages n'est pas expliqué et je ne le présente pas comme résolu.
+- Rien sur *Virtua Fighter 3*, dont le pilote est le même mais les données non.
 
 
 ## 4 bis. Les trois autres choses, et ce que la table `0xF00` est vraiment
@@ -1668,7 +1767,8 @@ Mais les deux chemins vers `TL` **ne sont pas la même formule**, et c'est à no
 
 À l'allumage, le niveau traverse **une table en ROM** (`[0x608028]` plus son propre mot `+2`) avant la
 multiplication, et il y a un `addq.w #$1` que CC 7 n'a pas. CC 7, lui, multiplie directement. Deux formules
-pour le même registre, selon qu'on allume une note ou qu'on bouge le volume.
+pour le même registre, selon qu'on allume une note ou qu'on bouge le volume. **Le portage actuel n'a rien à
+en faire** — il exécute ce code sur un 68000 émulé ; c'est un cœur autonome qui devrait les deux (§5 ter).
 
 ### Second usage : la hauteur
 
@@ -2572,7 +2672,12 @@ Quatre résultats qui touchent le code, et non seulement la documentation :
 2. **Le `+6` d'une fiche est le canal MIDI**, que le portage ne connaissait pas — noté dans
    `src/sound/soundboard.h`.
 3. **`TL` et la hauteur ont chacun deux formules**, selon qu'on allume une note ou qu'on bouge un contrôleur.
-   Un portage qui n'en implémente qu'une s'entendra.
+   > **Et ce point ne touche PAS le portage d'aujourd'hui.** Je l'avais écrit « un portage qui n'en
+   > implémente qu'une s'entendra » : c'est faux. `src/sound/soundboard.cpp` instancie un `m68000_device`
+   > sur la ROM du pilote et l'exécute — **les deux formules tournent donc telles que Sega les a écrites**,
+   > rien n'est réimplémenté et rien ne peut diverger. Ce que ce résultat contraint, c'est **un cœur
+   > autonome futur** : le jour où le SCSP ou le pilote seraient réécrits, il faudra les deux chemins.
+   > Corrigé le 2026-10-25, après avoir vérifié ce que le portage exécute au lieu de le supposer.
 4. **Deux voies de sortie MIDI sont jetées** par `h.midi_out = [](int) {}` : l'octet `0xF0` périodique de
    `snd_irq2` et la recopie par octet de `0x603718`/`0x60361E`. Si la carte principale les lit, ça compte.
 
@@ -2624,10 +2729,11 @@ fiches à `0x400`, l'écriture en `+0x600` — sont venues de la recherche.
 
 ## 7. Ce que la suite doit lire, par ordre d'intérêt
 
-> **Cette liste est close pour la lecture du code** : les 168 fonctions sont ouvertes (§5 ter), et les quatre
-> premières entrées ci-dessous sont faites. Ce qui reste n'est plus « quelle fonction lire » mais **quel sens
-> établir** — le tableau du §5 ter en donne la liste — et la seule question qui demande encore une **mesure
-> sur le jeu** est la cinquième.
+> **Cette liste est close pour la lecture du code** : les 168 fonctions sont ouvertes (§5 ter), et les **cinq
+> premières entrées ci-dessous sont faites**, la dernière d'entre elles par une mesure le 2026-10-25. Ce qui
+> reste n'est plus « quelle fonction lire » mais **quel sens établir** — le tableau du §5 ter en donne la
+> liste. La seule chose qui demande encore à tourner est de **refaire la mesure des arènes pour les dix
+> autres**, ce qui prend dix minutes et ne demande aucune fenêtre.
 
 1. ~~**La fonction qui contient `0x602BA2`**~~ — **faite le 2026-10-25**. C'est un interprète piloté par
    descripteurs, et ses 59 adresses sont énumérées : `0x714` à `0x794`, **aucune** dans `0x7C0-0x7FF`.
@@ -2642,15 +2748,12 @@ fiches à `0x400`, l'écriture en `+0x600` — sont venues de la recherche.
    expliqué » alors que le §3 ter le lisait : corrigé le 2026-10-25. Et le consommateur le confirme de
    l'autre bord — son créneau `0xFn` est un `rts`, parce que rien ne met jamais un message système dans
    l'anneau.
-5. **Si le programme DSP change par arène** — et ce point est **resté sans réponse faute de levier**.
-   Mesuré : sur `fv2-fight.txt`, **43 rafales MPRO et 9 programmes distincts**, dont un écrit à l'image 2724,
-   entre le chargement du décor (2500) et l'intro (2650). Et **trois de ces programmes sont les mêmes octets
-   que sur Virtua Fighter 3** (empreintes `35be7110`, `8457aa56`, `c7f97684`), ce qui confirme le pilote
-   commun. Mais la scène ne traverse qu'**une** arène, et `vf3run --console-mode versus` appelle
-   `choose_versus()` sans argument de décor : **on ne peut pas comparer deux arènes depuis l'outil sans
-   fenêtre aujourd'hui**. Le levier existe — la sélection de décor que l'autre session est en train d'écrire
-   dans `src/host/console_play.h` — et il faudra deux passages avec deux décors pour trancher.
-   Une arène ne prouve rien sur la variation : c'est noté comme non résolu, pas comme probable.
+5. ~~**Si le programme DSP change par arène**~~ — **mesuré le 2026-10-25, et la réponse est non.** Le
+   levier manquait ; il existe depuis que l'autre session a écrit la sélection de décor, et `VF3_STAGE=n`
+   dans `tools/vf3run.cpp` tient les deux leviers du jeu. Deux passages de 4 200 images, arènes 2 et 7, qui
+   **diffèrent bien** (RAM et WAV différents, divergence à l'image 2398) : MPRO, COEF, MADRS et
+   `0x7C0-0x7FF` sont **identiques écriture pour écriture**, 31 872 écritures. Ce qui change est le tampon
+   FM — 993 écritures contre 0. Voir §4 quinquies. Reste à refaire pour les dix autres arènes.
 6. **Ce que les deux dispositifs de Duff copient** (`0x601F3C`, `0x6023E2`) : 512 octets au plus, `A1` vers
    `A2`, et les deux sont dans `snd_reset`. Deux copies déroulées à la main au même endroit du démarrage,
    c'est l'installation de quelque chose de volumineux — une table ou un programme DSP. La taille `D5` et

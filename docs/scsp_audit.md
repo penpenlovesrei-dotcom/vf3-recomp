@@ -157,6 +157,41 @@ stable. La boucle et le mélange ne valent pas qu'on les regarde.
 ~170 000 pas de DSP par image : 766 échantillons × 2 chips × **112 pas**. Les deux SCSP font donc tourner un
 programme de 112 pas chacun, 44 100 fois par seconde.
 
+## 4 bis. La part du son sous `--rec` : mesurée, et elle triple
+
+La section ci-dessus disait « rien sur la version recompilée (`--rec`), où la part du son monte d'autant que
+la carte descend ». **Mesuré le 2026-10-25**, même scène `fv2-fight.txt`, mêmes 4 200 images, `VF3_PROF=1` et
+`VF3_SND_PROF=1`, et les fenêtres 1500-4000 des deux côtés pour comparer les mêmes images — `--rec` n'étant
+chaud qu'après le second passage du recompilateur, vers l'image 1000.
+
+| | carte Model 3 | carte son | total | **part du son** | du budget de 17,4 ms |
+|---|---|---|---|---|---|
+| interpréteur | 13,77 ms | 1,46 ms | 15,23 ms | **9,6 %** | 87,5 % |
+| **`--rec`** | **3,23 ms** | **1,42 ms** | **4,64 ms** | **30,5 %** | **26,7 %** |
+
+**La carte est 4,3 fois plus rapide ; le son ne bouge pas (×0,97, dans le bruit) ; sa part triple — ×3,18.**
+
+Trois témoins, et c'est ce qui rend ces chiffres utilisables :
+
+1. **Le son ne devait pas bouger, et il ne bouge pas.** Le recompilateur ne touche que le PowerPC ; la carte
+   son reste un 68000 interprété. 1,46 contre 1,42 ms : la mesure le confirme au lieu de le supposer.
+2. **Le partage interne est identique dans les deux modes** — DSP 52 %, 68000 29 %, voix 16 % — comme il
+   doit l'être pour le même code.
+3. **Les deux WAV sont identiques octet pour octet** (`md5` `9a2310f8…`, 12 879 504 octets chacun). Donc
+   `--rec` ne change pas une image du son, et la comparaison porte bien sur le même travail.
+
+Et le témoin qui vaut pour le travail d'optimisation : le son est à **1,46 ms** là où la baseline de ce
+document mesurait **1,85 ms** — soit **−21 %**, reproduit à deux semaines d'écart sur la même scène. Le gain
+de −24,3 % annoncé ailleurs tient. De même, la part propre du DSP est passée de 62-68 % à ~52 %, ce qui est
+exactement ce qu'on attend d'une optimisation qui a porté sur lui.
+
+**Ce que ça change pour la suite.** Sous `--rec`, le son n'est plus un détail à 10 % : c'est **le deuxième
+poste et près d'un tiers du travail d'une image**. Il reste loin d'être un goulot en absolu — 4,64 ms sur un
+budget de 17,4 — mais c'est désormais là que se trouve la marge la plus facile, et le DSP en est la moitié.
+
+**Ce que ça n'établit pas** : rien sur l'hôte réel, où la carte son tourne sur son propre fil et une image en
+retard, de sorte que son coût est du temps CPU et non du temps d'image. Et rien sur une autre scène.
+
 
 ## 5. Ce que le programme DSP contient vraiment
 
@@ -282,5 +317,7 @@ fidélité qui n'achète rien ne se garde pas. Le résultat négatif, lui, est c
 - **Le remplacement du SCSP de MAME** par une implémentation autonome : rien n'a été entamé. Le contrat
   d'interface et le harnais différentiel sont les préalables ; le harnais existe maintenant
   (`tools/son/comparer-son.cmd`), l'interface non.
-- **Les mesures sous `--rec`** et dans l'hôte : non faites. La part du son y est différente et ce document ne
-  prétend pas la connaître.
+- ~~**Les mesures sous `--rec`**~~ : **faites le 2026-10-25**, voir §4 bis. La part du son passe de 9,6 % à
+  **30,5 %**, la carte étant 4,3 fois plus rapide et le son inchangé. **Dans l'hôte** : toujours non mesuré,
+  et le cas y est différent — le son est sur son propre fil, donc son coût est du temps CPU et non du temps
+  d'image.
