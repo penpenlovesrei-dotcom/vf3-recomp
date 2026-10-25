@@ -343,6 +343,11 @@ public:
 	// being fought; it says so if it is called anywhere else. It is TITLE SCREEN's and CHANGE YOUR VIPER's
 	// road both, and the host drives it (console_play.h).
 	int fv2_end_match();
+	// THE ENDING'S TWO BYTES: where the staff roll is in its list of segments, and which half of the
+	// current one is on screen -- a page of credits or a replay. August measured both; model3.cpp says
+	// what they are. The console's Dreamcast ending hangs its illustrations off them.
+	int fv2_ending_seq() const;
+	int fv2_ending_replay() const;
 	int fv2_game_timer() const;        // Sega's *GAME TIMER: what FIGHT_DSP counts down, and 0 ends the round
 	int fv2_screen_timer() const;      // signed: an expired screen is negative
 	void fv2_expire_screen();          // CONTINUE and GAME OVER are modes of their own: this is the only lever there

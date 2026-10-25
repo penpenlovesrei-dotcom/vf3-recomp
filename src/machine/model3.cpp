@@ -1719,6 +1719,13 @@ constexpr uint16_t FV2_LIFE_PLAUSIBLE = 2000;          // a starting life above 
 // tools/fv2/desas_ppc.py. Holding the timer's value instead would raise the question August had to leave
 // open (does the game read this word or write it?); this one is a condition, so there is no question.
 constexpr uint32_t FV2_CB_DISP = 0x0011F04C;
+// THE ENDING'S OWN TWO BYTES, both August's, measured in August 2026 (MenuConsole.md section 6 septies).
+// The staff roll is a LIST OF SEGMENTS and each segment is two halves: a page of credits, then a replay
+// of a match the player won, about 225 frames each. ENDING_SEQ_PTR is where the game is in that list --
+// it moves only at a segment boundary, except during the twelve frames of ENDING_INT where it runs down
+// its list a value a frame -- and ENDING_REPLAY_ON says which half is on screen.
+constexpr uint32_t FV2_ENDING_SEQ_PTR = 0x00580E8D;
+constexpr uint32_t FV2_ENDING_REPLAY_ON = 0x0070E603;
 constexpr uint32_t FV2_TASK_ENTRY2 = 0x00700100;       // player 2's, and NOT 0x00707000, which August measured wrong first
 constexpr uint8_t FV2_MODE_GAME_INT = 6;
 // LEAVING A MATCH by the game's own road (fv2_end_match below). GAME_TIMER is the word fv2_game_FIGHT_DSP
@@ -1996,6 +2003,18 @@ int Model3::fv2_end_match()
 }
 
 // What the two words read, so a run that did nothing can say so rather than look like a normal frame.
+int Model3::fv2_ending_seq() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ENDING_SEQ_PTR) return -1;
+	return ram[FV2_ENDING_SEQ_PTR ^ 3];
+}
+
+int Model3::fv2_ending_replay() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ENDING_REPLAY_ON) return -1;
+	return ram[FV2_ENDING_REPLAY_ON ^ 3] ? 1 : 0;
+}
+
 int Model3::fv2_game_timer() const
 {
 	if (set != "fvipers2" || ram.size() <= FV2_GAME_TIMER + 4) return -1;

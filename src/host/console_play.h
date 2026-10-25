@@ -476,6 +476,40 @@ struct console_play
 	// replays. Armed here, laid in step() at the first frame the game says the match is over -- which is the
 	// moment measured in model3.cpp, and the reason this is not simply written on the spot.
 	bool want_real_ending = false;
+	// ---- THE DREAMCAST'S ENDING: which of its pictures belongs on screen right now ----
+	//
+	// The roll is a list of segments, each one a page of credits then a replay (model3.cpp). The picture
+	// stands in for the replay. fin_art is what the host should show, -1 for nothing, and it is set here
+	// because this is where the game's state is already being read every frame.
+	//
+	// August's two rules, both of which he paid for:
+	//   * only ENDING_DSP is listened to. Through ENDING_INT the sequence pointer runs down its list a
+	//     value a frame, so a boundary read there is twelve boundaries, and no threshold is needed to tell
+	//     the installing apart from the roll.
+	//   * the picture goes up on the replay byte's RISE and comes down at the SEGMENT'S BOUNDARY, never on
+	//     the byte's fall: the byte drops two frames before the segment ends and the game is still showing
+	//     its replay in those two, so taking the picture away on the fall let a flash of replay through.
+	int fin_art = -1;
+	int fin_seg = 0;          // which segment: 1 is the first
+	int fin_ptr = -1;         // the sequence pointer as it last read
+	int fin_replay = 0;       // the replay byte as it last read
+	void step_ending(m3::Model3 &b)
+	{
+		const int mode = b.fv2_mode();
+		const bool dsp = mode == 13;      // ENDING_DSP; ENDING_INT is 12 and is followed without counting
+		if (mode != 12 && !dsp) { fin_art = -1; fin_seg = 0; fin_ptr = -1; fin_replay = 0; return; }
+		const int ptr = b.fv2_ending_seq(), rep = b.fv2_ending_replay();
+		if (!dsp) { fin_ptr = ptr; fin_replay = rep; return; }
+		if (ptr != fin_ptr) {          // a boundary: the picture comes down here and the segment advances
+			fin_ptr = ptr;
+			fin_seg++;
+			fin_art = -1;
+		}
+		if (rep != fin_replay) {
+			fin_replay = rep;
+			if (rep && fin_seg > 0) fin_art = fin_seg - 1;   // the replay has begun: its picture stands in
+		}
+	}
 	void arm_real_ending() { want_real_ending = true; }
 
 	// Once a frame, before the game runs. Returns what to hand the game on top of the player's own controls.
@@ -586,6 +620,7 @@ struct console_play
 		else if (versus_ran) { is_versus = false; versus_ran = false; }   // the game is over, and it ran
 		step_leaving(b);
 		step_training(b);
+		step_ending(b);
 		// The two task registers, read ONLY while the round is actually being fought (GAME's FIGHT_INT and
 		// FIGHT_DSP, sub-states 11 and 12): see task_live above for why no other moment will do.
 		{

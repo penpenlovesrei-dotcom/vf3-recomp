@@ -133,6 +133,7 @@
 #include "fv2_pause.h"
 #include "fv2_stage_list.h"
 #include "fv2_training.h"
+#include "fv2_fin.h"
 #include "fv2_texte.h"
 #include "menu.h"
 #include "controls.h"
@@ -548,6 +549,10 @@ struct settings
 	bool timings = false;    // F9: the timings in the title bar
 	bool full_roster = false;   // Fighting Vipers 2's hidden fighters, selectable (Model3::unlock_roster)
 	bool honey_costume = false; // Honey's other costume, without the thirty wins (Model3::honey_costume)
+	// Which ending the staff roll shows: the arcade's replays of the matches just won, or the Dreamcast's
+	// illustrations in their place (src/host/fv2_fin.h). The arcade's is what the board does, so it is what
+	// this starts at.
+	bool ending_dc = false;
 	// The console way: the PC way's boot and free play, plus a console's own menu over the game (Start in the
 	// attract loop). A third play style rather than a fourth flag on the other two, because that is how the
 	// player thinks of it; `arcade` keeps meaning exactly what it did, so nothing that reads it changes.
@@ -603,6 +608,7 @@ struct settings
 		flag("smooth_motion", smooth);
 		flag("full_roster", full_roster);
 		flag("honey_costume", honey_costume);
+		flag("ending_dreamcast", ending_dc);
 		if (auto it = kv.find("portraits_folder"); it != kv.end()) portraits = it->second;
 		flag("portraits_off", portraits_off);
 		flag("hd_3d", hd_3d);
@@ -666,6 +672,7 @@ struct settings
 		fprintf(f, "screen_filter = %d\nantialiasing = %d\nmusic_volume = %d\neffects_volume = %d\narcade_coins = %d\nframe_timings = %d\n", filter, aa, music, effects, arcade_coin, int(timings));
 		if (full_roster) fprintf(f, "full_roster = %d\n", int(full_roster));   // (one game's: written only once asked for)
 		if (honey_costume) fprintf(f, "honey_costume = %d\n", int(honey_costume));   // (likewise)
+		if (ending_dc) fprintf(f, "ending_dreamcast = %d\n", int(ending_dc));   // (one game's, likewise)
 		if (console) fprintf(f, "console_mode = %d\n", int(console));         // (likewise: an older build reads the file as the PC way)
 		if (!portraits.empty()) fprintf(f, "portraits_folder = %s\n", portraits.c_str());   // (one game's, likewise)
 		if (portraits_off) fprintf(f, "portraits_off = %d\n", int(portraits_off));
@@ -1945,6 +1952,9 @@ int main(int argc, char **argv)
 	// down once -- the two gaps 217..221 and 270..274 are the cuts -- and what the timer draws inside it is
 	// no longer anyone's business.
 	static constexpr int HUD_MID_L = 217, HUD_MID_R = 275;
+	// The Dreamcast's ending, its pictures standing in for the roll's replays (fv2_fin.h). Declared here
+	// with the renderer's own state because the picture is composed where the 3D and the 2D are.
+	fv2_fin fin;
 	uint32_t side_colour[2] = { 0xFF000000u, 0xFF000000u };   // widescreen's bars beside the 2D (left, right)
 	bool sky_wide = false;
 	float bg_shift_x = 0, bg_shift_y = 0;   // the layers below the 3D moved back towards the frame before (draw_below)
@@ -2530,10 +2540,20 @@ int main(int argc, char **argv)
 				                        : SDL_FRect{ all.x, y0, mid.x - all.x, y1 - y0 };
 				if (bar.w > 0) SDL_RenderFillRect(ren, &bar);
 			}
+		// THE DREAMCAST'S ENDING stands in for the replay: its picture covers the whole window, and the 2D
+		// of that moment -- the replay's own banners -- goes with it (fv2_fin.h). Not an early return: the
+		// CRT filter below owns the render target and has to be let finish.
+		bool fin_on = false;
+		if (fin.want && cplay.fin_art >= 0 && fin.have()) {
+			fin.show(ren, cplay.fin_art, stderr);
+			if (fin.tex) { fin.render(ren, all); fin_on = true; }
+		} else if (fin.at >= 0) {
+			fin.drop();
+		}
 		// TRAINING leaves the banner out: nothing of the 2D is drawn over the four ROUND_MASK sub-states,
 		// so the arena comes up without its name, its round number and the two fighters' names over it
 		// (console_play.h). The game draws them as it always did; the host just does not show them.
-		if (cplay.train_hide_banner) { /* nothing of the 2D this frame */ } else
+		if (cplay.train_hide_banner || fin_on) { /* nothing of the 2D this frame */ } else
 		// The 2D over the 3D. In widescreen the HUD's two bands are drawn in three slices each, the outer two
 		// pushed out to the window's edges and the middle left exactly where it was (HudCut above). Only
 		// when the picture IS wider than 4:3 and only when a cut was found: everything else is one blit, as
@@ -2729,6 +2749,8 @@ int main(int argc, char **argv)
 		pause.load(ren, find_assets(), &console_font, stderr);
 		stages.load(ren, find_assets(), &console_font, stderr);
 		train.load(ren, find_assets(), &console_font, stderr);
+		fin.find(find_assets(), stderr);
+		fin.want = cfg.ending_dc;
 	}
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
@@ -3272,14 +3294,21 @@ int main(int argc, char **argv)
 			//
 			// Armed, the line says so and the page stays up: there is a game to go and play. The arming
 			// keeps until a match ends, and nothing holds the bit (console_play.h, model3.cpp).
-			{ "ENDING", [&] {
-				  if (cplay.want_real_ending) return std::string("AFTER A MATCH  >");
-				  return std::string(ending_real ? "AFTER A MATCH" : "ROLL NOW");
-			  }, [&](int) { ending_real = !ending_real; },
-			  [&] {
-				  if (ending_real) cplay.arm_real_ending();
-				  else { cplay.ask_ending(board); ending_asked = true; }
-			  }, {}, 0, false, 0 },
+			// AND THE LINE IS A CHOICE BETWEEN THE TWO ENDINGS, which is what Frederic asked for the
+			// 2026-10-25: "le but n'est pas de lancer la fin du jeu mais de choisir entre la fin version
+			// arcade ou version console quand on fini le mode arcade". It is August's own line again --
+			// his fork's said DREAMCAST or ARCADE -- and the difference is what stands in for the roll's
+			// REPLAYS: the arcade shows the matches just won, the Dreamcast its illustrations. Eight of
+			// them, chosen and ordered by Frederic out of a rip of the disc (fv2_fin.h).
+			//
+			// Watching the roll from here has gone with it. It was a way to see a thing nobody had seen
+			// running, and it has been seen; a settings line that STARTS something is not a setting.
+			{ "ENDING", [&] { return std::string(cfg.ending_dc ? "DREAMCAST" : "ARCADE"); },
+			  fin.have() ? std::function<void(int)>([&](int) {
+				  cfg.ending_dc = !cfg.ending_dc;
+				  fin.want = cfg.ending_dc;
+				  cfg_dirty = true;
+			  }) : std::function<void(int)>(), {}, {}, 0, false, 0 },
 		};
 		// The twenty tracks, and the numbering, are August's measured tables (GameFV2.h): on bank 0x10 the
 		// sound test's number is the index plus ten, and on bank 0x2E the index plus 353. Confirmed here
@@ -3844,6 +3873,20 @@ int main(int argc, char **argv)
 				const int line = stage_wanted;
 				stage_wanted = -1;
 				chose_stage(line);
+			}
+		}
+		// VF3_CONSOLE_ENDING=frame: the game's staff roll asked for at that frame, and VF3_ENDING_DC=1 to
+		// watch it the Dreamcast's way. Written to see the thing at all: reaching the ending for real means
+		// finishing the ladder, and this port's own notes have it among the states never reached.
+		if (static const char *ce = getenv("VF3_CONSOLE_ENDING"); ce && cplay.on) {
+			static const uint64_t at = strtoull(ce, nullptr, 10);
+			static bool done = false;
+			if (!done && game_frame >= at) {
+				done = true;
+				if (getenv("VF3_ENDING_DC")) fin.want = true;
+				cplay.ask_ending(board);
+				fprintf(stderr, "frame %llu: VF3_CONSOLE_ENDING -- the staff roll asked for (%s)\n",
+						(unsigned long long)game_frame, fin.want ? "DREAMCAST" : "ARCADE");
 			}
 		}
 		// VF3_CONSOLE_PAUSE=n: the pause menu answered without a hand -- 0 TITLE SCREEN, 1 CHANGE YOUR VIPER,
