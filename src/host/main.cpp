@@ -1919,7 +1919,13 @@ int main(int argc, char **argv)
 	// 275..456, 463..491 -- the two player icons hard against the edges, the two bars, and the timer at
 	// 222..269, whose middle is 245.5 against the picture's 248. The gaps at 217..221 and 270..274 are the
 	// two cuts, and they are 29 and 26 from the middle: symmetric to within a pixel and a half.
-	struct HudCut { int left = 0, right = 0; };   // in the layer's own columns; 0 and 0 means "do not move"
+	// The two cuts, in the layer's own columns (0 and 0 means "do not move"), and what each of the three
+	// pieces ACTUALLY covers -- its first and last column with something on it. The cut is a gap and the ink
+	// is not in the middle of it, so a block placed by its slice would not be placed by what is seen.
+	struct HudCut {
+		int left = 0, right = 0;
+		int l0 = -1, l1 = -1, c0 = -1, c1 = -1, r0 = -1, r1 = -1;
+	};
 	HudCut hud_top, hud_foot;
 	static constexpr int HUD_TOP_ROWS = 100;      // the band the bars and names live in
 	static constexpr int HUD_FOOT_ROWS = 60;      // the band the stage and the time live in
@@ -2228,7 +2234,15 @@ int main(int argc, char **argv)
 					}
 					// A cut on one side only would push one half of the HUD out and leave the other: both or
 					// neither. And they have to leave something in the middle to stand still.
-					if (c.left <= 0 || c.right <= 0 || c.left >= c.right) c = HudCut();
+					if (c.left <= 0 || c.right <= 0 || c.left >= c.right) return HudCut();
+					// What each piece covers, which is what gets placed
+					auto ink = [&](int x0, int x1, int &a, int &b) {
+						a = b = -1;
+						for (int x = x0; x < x1; x++) if (on[x]) { if (a < 0) a = x; b = x; }
+					};
+					ink(0, c.left, c.l0, c.l1);
+					ink(c.left, c.right, c.c0, c.c1);
+					ink(c.right, video::W, c.r0, c.r1);
 					return c;
 				};
 				// FIGHTING VIPERS 2 ONLY, for now, and not because the rule is particular to it: nothing
@@ -2516,16 +2530,28 @@ int main(int argc, char **argv)
 				const SDL_FRect dst = { mid.x + x0 * ks + dx, mid.y + y0 * ks, (x1 - x0) * ks, (y1 - y0) * ks };
 				SDL_RenderTexture(ren, tex_above, &src, &dst);
 			};
-			auto band = [&](const HudCut &c, int y0, int y1) {
+			// EVEN SPACE EITHER SIDE, for the band that has something standing still in the middle.
+			// Frederic, the 2026-10-25: the two blocks of the top HUD go "a egale distance entre le bord de
+			// l'ecran et le timer". Hard against the window's edge they left the whole of the widening on
+			// one side of each block, which reads as two things that fell off. The foot has nothing in its
+			// middle to measure against, and he passed it as it was, so it still goes hard against the edges.
+			auto band = [&](const HudCut &c, int y0, int y1, bool even) {
 				if (!c.left) { slice(0, video::W, y0, y1, 0); return; }
-				slice(0, c.left, y0, y1, -dl);
+				float dxl = -dl, dxr = dr;
+				if (even && c.c0 >= 0 && c.l0 >= 0 && c.r0 >= 0) {
+					const float stand_l = mid.x + c.c0 * ks, stand_r = mid.x + (c.c1 + 1) * ks;
+					const float wl = (c.l1 + 1 - c.l0) * ks, wr = (c.r1 + 1 - c.r0) * ks;
+					dxl = all.x + (stand_l - all.x - wl) * 0.5f - (mid.x + c.l0 * ks);
+					dxr = stand_r + ((all.x + all.w) - stand_r - wr) * 0.5f - (mid.x + c.r0 * ks);
+				}
+				slice(0, c.left, y0, y1, dxl);
 				slice(c.left, c.right, y0, y1, 0);
-				slice(c.right, video::W, y0, y1, dr);
+				slice(c.right, video::W, y0, y1, dxr);
 			};
 			if (dl > 0.5f && (hud_top.left || hud_foot.left)) {
-				band(hud_top, 0, HUD_TOP_ROWS);
+				band(hud_top, 0, HUD_TOP_ROWS, true);
 				slice(0, video::W, HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS, 0);
-				band(hud_foot, video::H - HUD_FOOT_ROWS, video::H);
+				band(hud_foot, video::H - HUD_FOOT_ROWS, video::H, false);
 			} else {
 				SDL_RenderTexture(ren, tex_above, nullptr, &mid);
 			}
