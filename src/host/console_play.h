@@ -136,6 +136,25 @@ struct console_play
 	enum { S_OFF, S_ARMED, S_HELD } vs_stage = S_OFF;
 	int vs_scene = 0;
 	int vs_stage_armed = 0;
+	int vs_frames = 0, vs_repatch = 0;
+
+	// THE MOMENT THE CHARACTERS ARE CHOSEN, which is where the summer's ROM put its stage select and
+	// where Sega left room for one. The six SEL sub-states are SEL_START, SELECT, STAGE_SEL_INT,
+	// STAGE_SEL_DSP, DECIDE_INT, DECIDE_DSP, and the board steps SELECT (1) straight to DECIDE_INT (4) --
+	// its two STAGE_SEL states are an empty stub. So the page opens on DECIDE_INT, the game frozen under
+	// it, and the stage is held before the match reads it ten frames later at ROUND_MASK_INT.
+	bool want_stage_page = false;
+	int stage_page_done = 0;      // once per trip through the select screen
+	bool seen_select = false;     // SEL_START or SELECT seen: the sub-state byte means something now
+
+	// The page answered: held at once, because by now the game has left its attract loop.
+	void stage_chosen(m3::Model3 &b, int scene)
+	{
+		vs_scene = scene >= 1 ? scene : 0;
+		if (!vs_scene) { vs_stage = S_OFF; return; }
+		b.fv2_hold_stage(vs_scene);
+		vs_stage = S_HELD;
+	}
 
 	void choose_versus(int scene = 0)
 	{
@@ -318,6 +337,23 @@ struct console_play
 	{
 		out = m3::Controls();
 		if (!on) return;
+		// The characters chosen: SELECT (1) gives way to DECIDE_INT (4), and the stage page belongs in
+		// between -- where Sega's own STAGE_SEL_INT and STAGE_SEL_DSP sit empty. Raised once per trip
+		// through the select screen, and only for a versus, which is the mode Frederic asked for.
+		{
+			// THE SUB-STATE BYTE IS STALE WHEN A MODE BEGINS, and that cost a measurement: entering SEL it
+			// still held what ADV had left there -- 5 -- so a test on "sub >= 4" fired at frame 1202, right
+			// after V.S. was chosen and three hundred frames before anyone picked a fighter. So the select
+			// screen has to have been SEEN first: sub 0 or 1, SEL_START or SELECT, in SEL's own mode.
+			const int m = b.fv2_mode(), su = b.fv2_submode();
+			if (m != 4 && m != 5) seen_select = false;
+			else if (su == 0 || su == 1) { seen_select = true; stage_page_done = 0; }
+			else if (su >= 4 && seen_select && !stage_page_done && at_select == SEL_VERSUS) {
+				stage_page_done = 1;
+				seen_select = false;
+				want_stage_page = true;
+			}
+		}
 		if (skip_logo > 0) {
 			const int mode = b.fv2_mode(), sub = b.fv2_submode();
 			// The SEGA logo, and not a sub-state before it: the tasks that draw are cleared BETWEEN sub-state
@@ -418,7 +454,12 @@ struct console_play
 			break;
 		case S_HELD:
 			if (b.fv2_in_attract()) { b.fv2_release_stage(); vs_stage = S_OFF; }
-			else b.fv2_hold_stage(vs_scene);
+			else {
+				// (mesure : combien de fois la rustine doit vraiment etre reposee)
+				if (b.fv2_hold_stage(vs_scene) > 0) ++vs_repatch;
+				if (++vs_frames % 300 == 0)
+					fprintf(stderr, "the console's stage: %d frames held, %d of them re-patched\n", vs_frames, vs_repatch);
+			}
 			break;
 		case S_OFF: break;
 		}

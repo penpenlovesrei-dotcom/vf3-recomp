@@ -1461,7 +1461,10 @@ void Model3::show_free_play_text()
 // neither Sega's nor ours), -1 for a game this isn't known for. False is a fact worth having, not a silence.
 int Model3::fv2_hold_stage(int scene)
 {
-	if (set != "fvipers2" || scene < 1 || scene > 12) return -1;
+	// Twelve were named on screen by the owner; the summer ROM's pictures go to FOURTEEN, one of them a
+	// "???" nobody has named (fv2_stage_list.h). Whether picture N is scene N is NOT proven, so the range
+	// is widened to what the pictures offer and the proof is left to measurement, arena by arena.
+	if (set != "fvipers2" || scene < 1 || scene > 14) return -1;
 	constexpr uint32_t PICKER = 0x0007111C;
 	constexpr uint32_t AS_SEGA_WROTE_IT_0 = 0x9421FFE0;   // stwu r1,-0x20(r1)
 	constexpr uint32_t AS_SEGA_WROTE_IT_1 = 0x7C0802A6;   // mflr r0

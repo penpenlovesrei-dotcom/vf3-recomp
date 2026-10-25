@@ -3170,18 +3170,9 @@ int main(int argc, char **argv)
 		// that was recorded in August -- that one, Start held across the fighter's validation, was measured
 		// here to do nothing at all (console_play.h, model3.cpp).
 		else if (line == fv2_mode_list::RANDOM) cplay.choose_random();
-		// VERSUS opens the stage select first and starts nothing, the way OPTIONS gives way to its page: the
-		// game stays frozen behind it, and it is the stage chosen there that starts the versus. If the page
-		// could not be built -- no glyph sheet, no cursor -- the versus starts as it always did, with the
-		// game's own arena.
-		else if (line == fv2_mode_list::VERSUS && stages.ready) {
-			modes.hide();
-			stages.show();
-			cplay.swallow_start = true;
-			cplay.start_was = true;
-			sync_menu_sound();
-			return;
-		}
+		// VERSUS starts as it always did. The stage is NOT asked for here: the summer's ROM put that choice
+		// AFTER the fighters are picked, and so does this port -- console_play raises want_stage_page when
+		// the game leaves SELECT for DECIDE_INT, and the page opens there (fv2_stage_list.h).
 		else if (line == fv2_mode_list::VERSUS) cplay.choose_versus();
 		// TRAINING is not a mode this board has -- Sega's twenty-four hold none -- so it is one this port
 		// builds, and what exists of it today is its arena: MARBLE ARENA, by one byte of the game's own route
@@ -3216,12 +3207,10 @@ int main(int argc, char **argv)
 	// game has left its attract loop and gives it back when the game ends (console_play.h). Entry 0 holds
 	// nothing and the game chooses as it does on the board.
 	auto chose_stage = [&](int line) {
-		const int scene = fv2_stage_list::scene_of(line);
-		fprintf(stderr, "the console's stage select: %s chosen%s\n", fv2_stage_list::name(line),
-				scene ? "" : " -- the game picks its own");
+		const int scene = line + 1;   // the page counts from 0; the picker takes the scene
+		fprintf(stderr, "the console's stage select: stage %d chosen\n", scene);
 		stages.hide();
-		cplay.choose_versus(scene);
-		music_mode_chosen = true;   // the select screen lays its own music: nothing to put back
+		cplay.stage_chosen(board, scene);
 		cplay.swallow_start = true;
 		cplay.start_was = true;
 		sync_menu_sound();
@@ -3472,13 +3461,13 @@ int main(int argc, char **argv)
 				if (game.emu_thread.joinable()) game.job_wait();
 				const int chose = stages.handle_event(e, cfg.ctl);
 				if (chose == fv2_stage_list::CANCELLED) {
-					// backed out: the list of modes comes back where it was, nothing started
+					// backed out: nothing is held, and the game picks its own arena as it does on the board
 					stages.hide();
-					modes.show();
+					cplay.stage_chosen(board, 0);
 					cplay.swallow_start = true;
 					cplay.start_was = true;
 					sync_menu_sound();
-					fprintf(stderr, "the console's stage select: backed out, the list is back\n");
+					fprintf(stderr, "the console's stage select: backed out -- the game picks its own\n");
 				} else if (chose >= 0) {
 					chose_stage(chose);
 				}
@@ -3831,6 +3820,21 @@ int main(int argc, char **argv)
 				// the voice is dropped on the same road and nowhere else.
 				game.mute_voices = cplay.skip_logo > 0;
 				cplay.step(board, console_ctl);
+				// THE CHARACTERS HAVE BEEN CHOSEN: the stage page opens here, between SELECT and DECIDE_INT,
+				// where the summer's ROM put it and where Sega's own STAGE_SEL states sit empty. The game is
+				// frozen under it like under any other surface, and the arena it holds is read ten frames
+				// later, at ROUND_MASK_INT (console_play.h).
+				if (cplay.want_stage_page) {
+					cplay.want_stage_page = false;
+					if (stages.ready && !stages.shown) {
+						stages.show();
+						cplay.swallow_start = true;
+						cplay.start_was = true;
+						sync_menu_sound();
+						fprintf(stderr, "frame %llu: the fighters are chosen -- the console's stage select is up\n",
+								(unsigned long long)game_frame);
+					}
+				}
 				m3::Controls &c = board.controls;
 				auto mix = [](bool *a, const bool *b, const bool *d) { a[0] = b[0] || d[0]; a[1] = b[1] || d[1]; };
 				mix(c.coin, script_ctl.coin, live.coin); mix(c.start, script_ctl.start, live.start);
