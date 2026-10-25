@@ -987,8 +987,57 @@ after:  90 functions, 11668 bytes covered (77 % of the 15136 of code)
 atteignait : **l'écart est fermé, et la cause était bien les deux tables.** C'est, pour une fois dans cette
 journée, une affirmation que j'ai annoncée avant de la mesurer et que la mesure a confirmée.
 
-**Ce qui reste, et je n'en invente pas la raison :** 23 %, soit 3 468 octets, restent hors de tout corps de
-fonction. Non expliqué.
+### Les 23 % restants : deux tables de plus, et un dénominateur à moi qui comptait des données
+
+Repris le même jour. Et d'abord une faute de méthode corrigée : mon calcul de trous supposait qu'un corps de
+fonction Ghidra est **contigu**. Il ne l'est pas — 90 fonctions portaient 101 plages, donc onze corps
+fragmentés. Les plages réelles demandées, voici ce que les trous étaient.
+
+**Les sauts calculés du programme, énumérés au lieu d'être devinés** — onze, là où j'en avais traité deux :
+
+| | |
+|---|---|
+| `0x60088C` | `jmp (A1)` — table 1, le répartiteur de statut MIDI |
+| `0x60272C` | `jmp (d8,PC,D2.w)` — table 2, les commandes de contrôle |
+| **`0x601418`** | `jmp (d8,PC,D2.w)` — **table 3** à `0x60141C`, le sous-répartiteur du `Bn` |
+| **`0x602EDC`** | `jmp (d8,PC,D0.w)` — **table 4** à `0x602EE0`, sous la banque `0x00` |
+| sept autres | `jmp (An)` — rien de statique ne les résout, et ils ne sont pas touchés |
+
+Et les deux gros trous étaient **exactement** les cibles des tables 3 et 4 : 1 496 octets à `0x6014C0` pour la
+première, 956 à `0x602F16` pour la seconde — où l'on trouve des routines d'une ligne terminées par `rts`, la
+signature d'une table.
+
+**Comment les dimensionner, puisque leur longueur n'est écrite nulle part :** chaque table **finit où commence
+sa cible la plus basse**, donc le compte vaut `(cible la plus basse − base) / 2`. La règle a été **vérifiée
+d'abord sur la table 2**, dont les 16 entrées avaient été comptées à la main : elle redonne 16, et le script
+s'arrête s'il cesse de le faire plutôt que de dimensionner les autres à l'aveugle. Table 3 : **81 entrées, 36
+cibles**. Table 4 : **26 entrées, 23 cibles**.
+
+```
+avant :  90 fonctions, 11668 octets couverts (77 % des 15136 de code)
+   79 cibles distinctes en tout : 59 fonctions creees, 20 deja la
+apres : 168 fonctions, 14484 octets couverts (96 % des 15136 de code)
+```
+
+**41 → 90 → 168 fonctions. 45 % → 77 % → 96 %.**
+
+Et ce qui reste, identifié plutôt que laissé en « non expliqué » — 654 octets en 9 trous :
+
+| | octets | |
+|---|---|---|
+| `0x600000-0x60011F` | 288 | la table des vecteurs |
+| `0x60141C-0x6014BD` | 162 | **la table de saut 3 elle-même** |
+| `0x602EE0-0x602F13` | 52 | **la table de saut 4 elle-même** |
+| `0x602730-0x60274F` | 32 | **la table de saut 2 elle-même** |
+| `0x6002D4-0x6002E7` | 20 | les dix mots que `0x600292` recopie dans les registres d'interruption |
+| `0x600396`, `0x60103C`, et deux mots | 100 | **non identifié** |
+
+**554 des 654 sont des données** — et mon dénominateur de « 15 136 octets de code » les comptait comme du
+code. Reste **100 octets, 0,7 %**, dont deux mots qui suivent immédiatement un `jmp (An)` : l'instruction
+d'après, qu'aucun flux n'atteint puisque la destination du saut est inconnue.
+
+Donc les 23 % étaient **deux tables de plus, plus un dénominateur à moi qui comptait des tables de données
+comme du code**. Et le vrai plafond de cette méthode est les sept `jmp (An)`.
 
 
 ## 6. L'outillage, et comment refaire tout ça

@@ -1,32 +1,35 @@
-// FV2SonTablesDeSaut: open the sound driver's two PC-relative jump tables to Ghidra.
+// FV2SonTablesDeSaut: open the sound driver's PC-relative jump tables to Ghidra.
 //
-// WHY. Measured the 2026-10-25 (dc541b6): Ghidra covers 6806 of the 15136 code bytes, 45 %, and the
-// largest hole is 7278 bytes from 0x600BC6 to 0x602833 -- nearly half the code in one block. All six
-// dispatch targets are ignored. Ghidra follows calls and fall-through, but it does not recover these
-// two tables, so everything reachable only through them is invisible to it.
+// WHY. Ghidra follows calls and fall-through but does not recover these tables, so everything
+// reachable only through them is invisible to it. Measured 2026-10-25: 41 functions and 45 % of the
+// code covered before the first two were opened, 90 and 77 % after, and the holes that remained
+// turned out to be the targets of two more.
 //
-// THE TWO TABLES, both read and checked before this script was written:
+// EVERY COMPUTED JUMP IN THE PROGRAM, enumerated rather than guessed (11 of them):
 //
-//   0x60088E, the MIDI status dispatch. snd_repartir_commande_midi does
-//       lsr.b #2 ; andi.w #$1C          on the status byte -> 0, 4, 8 ... 0x1C
-//       lea (0x60088E,PC,D0.w), A1
-//       jmp (A1)                        at 0x60088C
-//   so the table is EIGHT SLOTS OF FOUR BYTES, each holding a bra.w (the 0xFn slot holds the rts
-//   those branches share). Seven distinct targets, all inside the code.
+//     0x60088C  jmp (A1)            table 1, via lea (0x60088E,PC,D0.w) -- the MIDI status dispatch
+//     0x60272C  jmp (d8,PC,D2.w)    table 2 at 0x602730 -- control commands, banks 0x00-0x0F
+//     0x601418  jmp (d8,PC,D2.w)    table 3 at 0x60141C -- the Bn control-change sub-dispatch
+//     0x602EDC  jmp (d8,PC,D0.w)    table 4 at 0x602EE0 -- under control bank 0x00
+//     0x600308, 0x601F3A, 0x602042, 0x6023E0, 0x6024E8, 0x603494, 0x60376A   jmp (An)
 //
-//   0x602730, the control-command dispatch for banks 0x00-0x0F. 0x602722 does
-//       lsl.w #$1, d2
-//       move.w $602730(pc,d2.w), d2     a WORD OFFSET relative to the table's own base
-//       jmp $602730(pc,d2.w)            at 0x60272C
-//   so it is SIXTEEN WORDS, and each target is 0x602730 + that word. Twelve distinct targets, all
-//   inside the code (0x602750 appears four times, the unused-bank handler).
+// The seven `jmp (An)` need the register's value and are NOT handled here: nothing static resolves
+// them, and guessing would be worse than leaving them.
 //
-// WHAT THIS DOES. Disassembles each slot, adds a COMPUTED_JUMP reference from each jmp to each of
-// its destinations so Ghidra's flow can follow them, creates a function at each distinct target,
-// then re-runs analysis. It prints the function count AND the covered-bytes total before and after,
-// because the count alone can rise while coverage does not.
+// THE TWO FORMS, read before a line of this was written:
 //
-// Ghidra's undo covers all of it. Nothing here asserts a fact: the before/after lines are the claim.
+//   Table 1 is EIGHT SLOTS OF FOUR BYTES, each holding a bra.w (the 0xFn slot holds the rts they
+//   share). The slots are the jmp's destinations.
+//
+//   Tables 2, 3 and 4 are WORDS, each an offset relative to the table's own base. Their length is
+//   not written anywhere -- but each table ENDS where its lowest target begins, so the count is
+//   (lowest target - base) / 2, found by reading words while the read position stays below the
+//   lowest target seen. That rule is checked against table 2, whose 16 entries were counted by hand
+//   first: if it ever stops giving 16, this script fails loudly instead of quietly sizing the others
+//   wrong.
+//
+// It prints functions AND covered bytes on both sides, because the count can rise while coverage
+// does not. Ghidra's undo covers the whole change.
 //
 //@category FV2
 import ghidra.app.script.GhidraScript;
@@ -40,10 +43,21 @@ import java.util.LinkedHashSet;
 
 public class FV2SonTablesDeSaut extends GhidraScript {
 
-	private static final long TABLE1 = 0x60088EL, JMP1 = 0x60088CL;   // 8 slots of 4 bytes, each a bra.w
-	private static final long TABLE2 = 0x602730L, JMP2 = 0x60272CL;   // 16 words, offsets from TABLE2
+	private static final long CODE_FIN = 0x603B20L;
+	private static final double CODE_OCTETS = 15136.0;
 
-	private long covered()
+	// the bra.w table: the jmp, the base, the slot count
+	private static final long T1_JMP = 0x60088CL, T1_BASE = 0x60088EL;
+	private static final int T1_SLOTS = 8;
+
+	// the word-offset tables: the jmp, the base, and the count expected when it is already known
+	private static final long[][] WORD_TABLES = {
+		{ 0x60272CL, 0x602730L, 16 },   // known by hand: 16. The check.
+		{ 0x601418L, 0x60141CL, -1 },
+		{ 0x602EDCL, 0x602EE0L, -1 },
+	};
+
+	private long couvert()
 	{
 		long n = 0;
 		final FunctionIterator it = currentProgram.getFunctionManager().getFunctions(true);
@@ -51,52 +65,82 @@ public class FV2SonTablesDeSaut extends GhidraScript {
 		return n;
 	}
 
-	private void report(String when)
+	private void etat(String quand)
 	{
-		println(String.format("%-7s %d functions, %d bytes covered (%.0f %% of the 15136 of code)",
-		                      when, currentProgram.getFunctionManager().getFunctionCount(), covered(),
-		                      100.0 * covered() / 15136.0));
+		println(String.format("%-8s %d fonctions, %d octets couverts (%.0f %% des %.0f de code)",
+		                      quand, currentProgram.getFunctionManager().getFunctionCount(),
+		                      couvert(), 100.0 * couvert() / CODE_OCTETS, CODE_OCTETS));
 	}
 
 	@Override
 	public void run() throws Exception
 	{
-		report("before:");
+		etat("avant :");
+		final LinkedHashSet<Long> cibles = new LinkedHashSet<>();
 
-		final LinkedHashSet<Long> targets = new LinkedHashSet<>();
-
-		// --- table 1: eight slots of four bytes, each a bra.w. The slots themselves are the jmp's
-		// destinations; disassembling them lets Ghidra see the branch and follow it.
-		for (int k = 0; k < 8; k++) {
-			final Address slot = toAddr(TABLE1 + 4L * k);
+		// --- table 1: the slots themselves are the destinations; disassembling them lets Ghidra see
+		// each bra.w and follow it.
+		for (int k = 0; k < T1_SLOTS; k++) {
+			final Address slot = toAddr(T1_BASE + 4L * k);
 			disassemble(slot);
 			currentProgram.getReferenceManager().addMemoryReference(
-				toAddr(JMP1), slot, RefType.COMPUTED_JUMP, SourceType.USER_DEFINED, 0);
-			targets.add(slot.getOffset());
+				toAddr(T1_JMP), slot, RefType.COMPUTED_JUMP, SourceType.USER_DEFINED, 0);
+			cibles.add(slot.getOffset());
 		}
-		println("table 1 at " + toAddr(TABLE1) + ": 8 slots referenced from the jmp at " + toAddr(JMP1));
+		println(String.format("table 1 %08X : %d creneaux de bra.w, references depuis le jmp de %08X",
+		                      T1_BASE, T1_SLOTS, T1_JMP));
 
-		// --- table 2: sixteen words, each an offset from the table's own base.
-		for (int k = 0; k < 16; k++) {
-			final int off = getShort(toAddr(TABLE2 + 2L * k)) & 0xFFFF;
-			final Address dest = toAddr(TABLE2 + off);
-			disassemble(dest);
-			currentProgram.getReferenceManager().addMemoryReference(
-				toAddr(JMP2), dest, RefType.COMPUTED_JUMP, SourceType.USER_DEFINED, 0);
-			targets.add(dest.getOffset());
+		// --- the word-offset tables, each sized by its own lowest target
+		for (long[] t : WORD_TABLES) {
+			final long jmp = t[0], base = t[1];
+			final long attendu = t[2];
+			long plusBasse = Long.MAX_VALUE;
+			int n = 0;
+			while (n <= 256) {
+				final long pos = base + 2L * n;
+				if (pos >= plusBasse)
+					break;
+				final long dest = base + (getShort(toAddr(pos)) & 0xFFFFL);
+				if (dest < 0x600000L || dest >= CODE_FIN)
+					break;
+				plusBasse = Math.min(plusBasse, dest);
+				n++;
+			}
+			if (attendu > 0 && n != attendu) {
+				println(String.format("*** table %08X : la regle donne %d entrees, %d comptees a la main."
+				                      + " Le script s'arrete plutot que de dimensionner les autres a l'aveugle.",
+				                      base, n, attendu));
+				return;
+			}
+			final LinkedHashSet<Long> miennes = new LinkedHashSet<>();
+			for (int k = 0; k < n; k++) {
+				final long dest = base + (getShort(toAddr(base + 2L * k)) & 0xFFFFL);
+				miennes.add(dest);
+			}
+			for (long dest : miennes) {
+				final Address at = toAddr(dest);
+				disassemble(at);
+				currentProgram.getReferenceManager().addMemoryReference(
+					toAddr(jmp), at, RefType.COMPUTED_JUMP, SourceType.USER_DEFINED, 0);
+			}
+			cibles.addAll(miennes);
+			println(String.format("table   %08X : %3d entrees%s, %d cibles distinctes, depuis le jmp de %08X",
+			                      base, n, attendu > 0 ? " (regle confirmee sur un compte fait a la main)" : "",
+			                      miennes.size(), jmp));
 		}
-		println("table 2 at " + toAddr(TABLE2) + ": 16 words referenced from the jmp at " + toAddr(JMP2));
 
-		int made = 0, already = 0;
-		for (long t : targets) {
+		int faites = 0, deja = 0;
+		for (long t : cibles) {
 			final Address at = toAddr(t);
-			if (getFunctionAt(at) != null) { already++; continue; }
-			if (createFunction(at, null) != null) made++;
+			if (getFunctionAt(at) != null) { deja++; continue; }
+			if (createFunction(at, null) != null) faites++;
 		}
-		println(targets.size() + " distinct targets: " + made + " functions created, " + already + " already there");
+		println(cibles.size() + " cibles distinctes en tout : " + faites + " fonctions creees, " + deja + " deja la");
 
-		println("re-running analysis...");
+		println("analyse relancee...");
 		analyzeAll(currentProgram);
-		report("after: ");
+		etat("apres :");
+		println("Restent les sept jmp (An) : 0x600308, 0x601F3A, 0x602042, 0x6023E0, 0x6024E8,");
+		println("0x603494, 0x60376A -- rien de statique ne les resout, et ils ne sont pas touches.");
 	}
 }
