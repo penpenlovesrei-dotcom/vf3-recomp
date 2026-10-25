@@ -149,13 +149,24 @@ struct console_play
 	// controls are routed to player 2's cursor, so the same hands pick the opponent. The latch is the host's
 	// own: it SEES the press, so it needs no byte of the game's to tell it.
 	bool train_p1_chose = false;
-	// THE BANNER OVER THE LOAD, HIDDEN. The four ROUND_MASK sub-states are the arena arriving (below),
-	// and over them the game draws the stage's name, ROUND n and the two fighters' names. Frederic asked
-	// for a training to begin without that announcement, the 2026-10-25. The load cannot be shortened, so
-	// what is dropped is the DRAWING: the host leaves the 2D layer out for those four sub-states and the
-	// arena comes up bare. Nothing of the game is touched -- it draws exactly what it always drew, and
-	// the host simply does not put it on the screen.
-	bool train_hide_banner = false;
+	// AND THE PRESS THAT CHOSE HIM HAS TO BE LET GO FIRST. It is held for several frames; the frame after
+	// the latch it was routed to player 2, who chose whoever his cursor stood on -- so one press chose
+	// both, and what Frederic saw was his pad picking 2P first. The directions travel at once; the punch
+	// waits until it has been released.
+	bool train_punch_held = false;
+	// AND THE PUNCH THAT OPENED THE SELECT SCREEN IS NOT A CHOICE. The press that chose TRAINING in the
+	// console's own list is still down when the game arrives on SELECT several frames later, so the latch
+	// above closed on it at once, with nobody's fighter chosen -- and from that frame on player 1's pad
+	// was driving player 2's cursor. That is exactly what Frederic reported the 2026-10-25: "la manette en
+	// P1 choisit en premier le P2". So the button has to be SEEN RELEASED on the select screen before any
+	// press of it counts, which is what this says.
+	bool train_pick_arm = false;
+	// WHETHER THE CLOCK IS STILL STOPPED BY US. The freeze is a bit of the game's CONFIG block, held while
+	// training runs; when the mode goes out -- and leaving a match turns it out -- nobody put it back, so
+	// the clock stayed stopped for ever. That is why TITLE SCREEN did nothing in training: fv2_end_match
+	// sets GAME_TIMER to 1 and waits for FIGHT_DSP to count it down, and FIGHT_DSP does not count at all
+	// while that bit is set. The match could not end, so there was nothing to leave.
+	bool train_froze = false;
 	// THE PRESENTATION STAYS, AND NOW WE KNOW WHY: it is the arena loading, not a wait anybody put there.
 	// Frederic asked for the fight to start straight away, with no STAGE / VS screen and no ROUND 1.
 	// Asking GAME's sub-states 0 to 3 to move on -- which is all fv2_cut_submode does -- gave a BLACK
@@ -519,15 +530,27 @@ struct console_play
 	void step_training(m3::Model3 &b)
 	{
 		train_fighting = false;
-		if (!training_on) { train_p1_chose = false; return; }
+		if (!training_on) {
+			train_p1_chose = false;
+			train_punch_held = false;
+			train_pick_arm = false;
+			if (train_froze) { b.fv2_freeze_timer(false); train_froze = false; }
+			return;
+		}
 		const int m = b.fv2_mode(), su = b.fv2_submode();
-		if (m != 4 && m != 5) train_p1_chose = false;   // off the select screen the latch means nothing
-		train_hide_banner = (m == 6 || m == 7) && su <= 3;   // GAME's four ROUND_MASK sub-states
+		if (m != 4 && m != 5) {
+			// off the select screen none of the three latches means anything, and the next trip through it
+			// starts again with the button to be released first
+			train_p1_chose = false;
+			train_punch_held = false;
+			train_pick_arm = false;
+		}
 		const bool fighting = (m == 6 || m == 7) && (su == 11 || su == 12);
 		train_fighting = fighting;
 		// The clock, held by the game's own switch. Held rather than written once because that CONFIG block
 		// is a working copy the game loads from its backup.
 		b.fv2_freeze_timer(fighting);
+		train_froze = fighting;
 		if (!fighting) {
 			for (int i = 0; i < 2; i++) { train_was[i] = -1; train_quiet[i] = 0; }
 			return;

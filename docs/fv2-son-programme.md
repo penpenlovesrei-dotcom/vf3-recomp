@@ -107,6 +107,9 @@ cause sans mesure. La carte réelle, celle-là mesurée :
 | `0x200` + décalage puce | le **journal d'annulation** du chargeur d'échantillons : les anciennes valeurs, un long l'entrée (§5 bis sexies) |
 | `0xF80-0xF9F` + décalage puce | **un mot par canal MIDI** — 16 canaux, 32 octets — indexé `canal*2` par `0x603172` ; effacé à l'arrêt d'une voix (§5 bis septies). Contenu non établi. **Attention : l'index n'est pas celui de la table voisine de `0xF00`**, qui est par fente |
 | `0x3000` + décalage puce | les **fiches d'échantillon**, `0x0C` octets l'entrée : `+0` adresse et banque, `+4` longueur, `+8` cumul de relocation (§5 bis sexies) |
+| `0x0000-0x00FF` | la **table des vecteurs vivante**, copiée de la ROM par `0x6003D0` — et la **pile** part de `0x2000` et descend dessous (`lea $2000.w, a7` en `0x6006C4`) |
+| `0x2000-0x2FFF` + décalage puce | la **banque de seize formes d'onde** d'un cycle, treize distinctes, à une adresse réservée que rien n'écrase (§4 septies) |
+| `0x4EE8-0x706B` | la **table des instruments en RAM** (`[0x608038]`, longueur `[0x608030]`), et `0x706C` est la base d'allocation des échantillons : les deux se touchent **exactement** |
 
 **Le premier long de la fiche est l'adresse des registres de la fente**, confirmé par `0x6006DC` :
 
@@ -719,6 +722,70 @@ fente — `DISDL` aux bits 13-15 et `DIPAN` aux bits 8-12. C'est donc la **sorti
 Et les champs de la fiche se recoupent aussi : le `+0xD` (priorité, que l'allocateur lit pour choisir sa
 victime) vient du `+0xA` de la région, et le `+9` (groupe d'exclusivité, que la recherche de §4 ter compare)
 du `+0xB` de la région. Ce que l'allocateur lit, c'est ce que la programmation écrit.
+
+
+## 4 septies. Les 4 Ko de `0x2000` : seize formes d'onde, et la carte de la RAM qui se referme
+
+Point du §5 ter, pris le 2026-10-25. `0x600524` copie 4 096 octets de la ROM (`0x603FE2`) vers `0x2000` dans
+**chacune des deux RAM sonores**, par 512 tours de deux `move.l`. Le contenu était noté « non identifié ».
+
+### C'est une banque de seize formes d'onde
+
+Les 2 048 mots se lisent comme du PCM 16 bits signé, et se classent par fenêtres de 128 mots :
+
+| adresse | ce que c'est |
+|---|---|
+| `0x2000` | **une sinusoïde** — une période exacte de 128 mots, amplitude 32 767, **écart maximal 5** contre `−32767·sin(2πk/128)` |
+| `0x2200`, `0x2B00` | deux **carrés** à pleine échelle |
+| `0x2C00` | une **constante**, 32 704 sur les 128 mots |
+| `0x2300`, `0x2400`, `0x2500`, `0x2600`, `0x2800`, `0x2A00`, `0x2D00`, `0x2E00`, `0x2F00` | des formes **lisses** d'un cycle (saut moyen de 500 à 1 800 sur une plage de 65 000, donc continues) |
+| `0x2100`, `0x2700`, `0x2900` | **irrégulières à grands sauts** (18 000 à 21 000 de saut moyen) : du bruit |
+
+**Seize emplacements de 256 octets, treize formes distinctes** : `591bf29e` occupe `0x2300`, `0x2A00` et
+`0x2F00`, et `8dcc2bdc` occupe `0x2600` et `0x2D00`. Les formes lisses se raccordent bien d'un bout à
+l'autre — `|w[0] − w[127]|` vaut 0, 1 ou ~1 600, soit un pas de sinusoïde — et les carrés sautent de
+65 281 au raccord, ce qu'un carré doit faire.
+
+C'est donc **une banque d'oscillateurs d'un cycle**, ce dont un pilote a besoin pour les voix synthétiques,
+puisque le SCSP ne sait jouer que du PCM pris dans sa RAM.
+
+### Et la carte de la RAM se referme sur elle
+
+Les longs de la zone de constantes, lus au même endroit :
+
+| | |
+|---|---|
+| `[0x608038]` | `0x4EE8` — la table des instruments **en RAM** |
+| `[0x608030]` | `0x2184` — sa longueur |
+| `[0x608034]` | `0x706C` — la **base d'allocation** des échantillons chargés |
+
+Et `0x4EE8 + 0x2184 = 0x706C`, **exactement**. La table des instruments finit où commence l'allocation des
+échantillons, sans un octet de jeu. La RAM sonore se lit donc ainsi, de bas en haut :
+
+```
+0x0000-0x00FF  la table des vecteurs vivante, copiee de la ROM par 0x6003D0
+0x0100-0x1FFF  ... et la PILE, qui part de 0x2000 et descend (lea $2000.w, a7 en 0x6006C4)
+0x2000-0x2FFF  LA BANQUE DE SEIZE FORMES D'ONDE
+0x3000-...     les fiches d'echantillon, copiees de [0x608000] par 0x600556
+0x4EE8-0x706B  la table des instruments, copiee de [0x60802C] par 0x600592
+0x706C-...     les echantillons charges, empiles vers le haut par 0x60288A
+```
+
+La banque est donc à une adresse **réservée** : l'allocateur d'échantillons part de `0x706C` et monte, il ne
+la touche jamais. C'est une région permanente, et c'est cohérent avec des données que les fentes jouent.
+
+### Ce qui reste ouvert, et c'est net
+
+**Le consommateur n'est pas identifié.** Deux recherches le disent :
+
+- **aucune instruction du programme ne nomme une adresse de `0x2001` à `0x2FFF`** — les seules occurrences
+  de ces valeurs sont les `move.w #$2200, sr` et `#$2700, sr`, des masques d'interruption ;
+- **aucune des fiches d'échantillon de `[0x608000]` ne pointe dans la plage**, sur les 659 que son en-tête
+  annonce.
+
+La lecture naturelle est que des fentes y pointent par leurs registres `SA`, et que la valeur vient d'une
+table que je n'ai pas trouvée. **Je ne l'affirme pas** : ce qui est établi, c'est le contenu, la taille, les
+treize formes, le chargement et le fait que rien ne l'écrase.
 
 
 ## 4 sexies. Le programme du DSP change par arène — pour trois arènes sur douze
@@ -1573,13 +1640,29 @@ Deux autres éditent les octets de mixage du même objet :
 |---|---|---|---|
 | `0x0A` | `0x601A08` | `+6 & 0xE0`, 5 bits bas | **`DIPAN`** (§5 quater) |
 | `0x19` | `0x601702` | `+6 & 0x1F`, 3 bits hauts | **`DISDL`**, le niveau d'envoi direct |
-| `0x2A` | `0x601AB0` | `+0x0C & 0x78` | bits 7 et 2-0 de `+0x0C` |
-| `0x2B` | `0x601ADE` | `+0x0C & 0x07` | bits 7-3 de `+0x0C` |
+| `0x2A` | `0x601AB0` | `+0x0C & 0x78`, valeur bornée à 7 | **`IMXL`** (bits 2-0), le niveau d'envoi vers le DSP |
+| `0x2B` | `0x601ADE` | `+0x0C & 0x07`, valeur `<<3` puis `& 0x78` | **`ISEL`** (bits 6-3), **quelle entrée du DSP** la voix alimente |
 
-`+6` porte donc `DISDL` et `DIPAN` dans un octet, comme le registre `0x16` — et les deux contrôleurs se
-partagent proprement. `+0x0C` est le pendant plausible pour le registre `0x18` (`EFSDL`/`EFPAN`, l'envoi vers
-le DSP), mais **les deux masques se chevauchent sur le bit 7**, ce qui ne colle pas avec un découpage 3+5
-bits. Le partage exact de `+0x0C` n'est **pas établi**.
+`+6` porte donc `DISDL` et `DIPAN` dans un octet, comme le registre `0x16`.
+
+Et `+0x0C` est l'image de l'octet `0x15` d'une fente, soit l'octet bas du registre `0x14` — `0x600C36` le
+recopie tel quel à l'allumage d'une note : `move.b $c(a0), $15(a5)`.
+
+> **J'avais d'abord écrit que les deux masques « se chevauchent sur le bit 7 » et que le partage n'était pas
+> établi.** C'était une faute de lecture : j'avais regardé les masques d'écriture sans regarder **à quoi
+> chaque gestionnaire borne `D0` avant d'écrire**. CC `0x2A` fait `cmpi.b #$7, d0 / ble / moveq #$7, d0`,
+> donc `D0 ≤ 7` et le `or` ne peut pas atteindre le bit 7 ; CC `0x2B` fait `lsl.b #$3, d0 / andi.b #$78, d0`,
+> donc il ne contribue que les bits 6-3. **Il n'y a aucun chevauchement**, et le bit 7 est simplement effacé
+> par le `andi #$78` de CC `0x2A` et jamais reposé.
+
+Le découpage est donc **3 bits + 4 bits + un bit inutilisé**, et six faits s'alignent dessus : les deux
+largeurs, les deux positions, le bit de poids fort inutilisé, et la recopie de l'octet entier dans le
+registre `0x15`. La disposition vient de l'implémentation du portage plutôt que d'un souvenir de table
+(`src/sound/scsp.cpp` : `ISEL` vaut `(data[0xA] >> 3) & 0xF`, `IMXL` vaut `data[0xA] & 7`).
+
+**Ce que ça veut dire, et ce n'est pas un détail :** `CC 0x2B` choisit **quelle entrée du DSP d'effets** une
+voix alimente, et `CC 0x2A` **avec quel niveau**. C'est le routage par voix vers la réverbération, commandé
+au contrôleur MIDI — l'autre bout de tout ce que les §4 sexies et 5 bis bis racontent du DSP.
 
 ### Groupe 2 : l'enveloppe ADSR, dans un gabarit pointé par `+0x1E`
 
@@ -2692,9 +2775,9 @@ Elle compte **« citée »**, et c'est une borne haute, pour trois raisons qu'il
 
 | | |
 |---|---|
-| `0x2000-0x2FFF` | 4 096 octets chargés de la ROM dans chaque RAM sonore par `0x600524`. Contenu inconnu |
+| `0x2000-0x2FFF` | **identifié le 2026-10-25** : une **banque de seize formes d'onde** d'un cycle, 128 mots chacune, treize distinctes — une sinusoïde à 5 près, deux carrés, une constante, neuf formes lisses, trois bruits. Chargée de la ROM dans les deux RAM, à une adresse que l'allocateur d'échantillons ne touche jamais. **Son consommateur n'est pas identifié** : voir 4 septies |
 | octets `0x16` et `0x17` d'une fente | CC 10 écrit l'un, `0x602EB0` l'autre, tous deux avec un panoramique. La disposition que j'ai des registres n'explique pas les deux |
-| `+0x0C` d'un objet de canal | CC `0x2A` et `0x2B` s'y partagent des bits **qui se chevauchent sur le bit 7** |
+| ~~`+0x0C` d'un objet de canal~~ | **établi le 2026-10-25** : `IMXL` bits 2-0 (CC `0x2A`) et `ISEL` bits 6-3 (CC `0x2B`), bit 7 inutilisé — l'image de l'octet `0x15` d'une fente. Le « chevauchement sur le bit 7 » que j'avais noté venait d'avoir lu les masques d'écriture sans lire le bornage de `D0`. Voir 5 bis undecies |
 | `+0x0B`, `+0x10`, `+0x11` d'une fiche d'instrument | trois paires (drapeau, valeur), rôles inconnus |
 | `0x600396`, `0x60103C` | deux tables de données dont le sens manque (§« Les 4 % restants ») |
 | `0xED8`, `0xEFE`, `0xC3F`, `0xF80` | des globales dont l'écriture est lue et l'usage non |

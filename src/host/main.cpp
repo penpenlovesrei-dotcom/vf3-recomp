@@ -2303,6 +2303,9 @@ int main(int argc, char **argv)
 					fprintf(stderr, "hud bands:%s\n", b.empty() ? " (nothing)" : b.c_str());
 				}
 				runs(0, 100, "top");
+				// and what lies BETWEEN the two bands, which is where ROUND X is announced: rows 125..254, well
+				// clear of the HUD. Added the 2026-10-25 to answer where that text sits across the picture.
+				runs(100, video::H - 60, "middle");
 				runs(video::H - 60, video::H, "bottom");
 			}
 			// VF3_STAGE_AUDIT=1: what the test above saw, for fitting it to a game whose HUD sits elsewhere
@@ -2523,14 +2526,8 @@ int main(int argc, char **argv)
 			const SDL_FRect bar = s ? SDL_FRect{ mid.x + mid.w, all.y, all.x + all.w - (mid.x + mid.w), all.h } : SDL_FRect{ all.x, all.y, mid.x - all.x, all.h };
 			if (bar.w > 0) SDL_RenderFillRect(ren, &bar);
 		}
-		// TRAINING'S LOAD IS SHOWN BLACK, not as what is behind the banner. Hiding only the 2D left a plain
-		// grey rectangle for the two seconds the arena takes to arrive -- the 3D's cleared colour, because
-		// there is nothing to draw yet -- which reads as a fault rather than as a transition. So for those
-		// four sub-states the picture is left as the clear left it (console_play.h).
-		if (!cplay.train_hide_banner) {
-			draw_below(all, mid);
-			SDL_RenderTexture(ren, g3_shown && g3.tex ? g3.tex : tex3d, nullptr, &all);
-		}
+		draw_below(all, mid);
+		SDL_RenderTexture(ren, g3_shown && g3.tex ? g3.tex : tex3d, nullptr, &all);
 		const float ky = mid.h / video::H;
 		for (int s = 0; s < 2; s++)
 			for (const SideRun &r : side_cover[s]) {
@@ -2550,10 +2547,11 @@ int main(int argc, char **argv)
 		} else if (fin.at >= 0) {
 			fin.drop();
 		}
-		// TRAINING leaves the banner out: nothing of the 2D is drawn over the four ROUND_MASK sub-states,
-		// so the arena comes up without its name, its round number and the two fighters' names over it
-		// (console_play.h). The game draws them as it always did; the host just does not show them.
-		if (cplay.train_hide_banner || fin_on) { /* nothing of the 2D this frame */ } else
+		// THE PRESENTATION IS BACK, and it stays. Frederic asked for a training that starts without the
+		// STAGE / VS screen; the four ROUND_MASK sub-states are the ARENA LOADING (console_play.h), so there
+		// is nothing to skip, and hiding what is drawn over the load left a blank screen for two seconds,
+		// which he liked less than the banner. The banner at least says what is coming.
+		if (fin_on) { /* the Dreamcast ending's picture stands in for the whole frame */ } else
 		// The 2D over the 3D. In widescreen the HUD's two bands are drawn in three slices each, the outer two
 		// pushed out to the window's edges and the middle left exactly where it was (HudCut above). Only
 		// when the picture IS wider than 4:3 and only when a cut was found: everything else is one blit, as
@@ -2706,6 +2704,10 @@ int main(int argc, char **argv)
 	fv2_options options;
 	fv2_pause pause;   // Start during a match, over the fight
 	fv2_stage_list stages;   // VERSUS's arena, chosen before the match (fv2_stage_list.h)
+	// WHICH OF THE TWO DOORS THE CAROUSEL CAME IN BY. From the select screen the game is left RUNNING and
+	// parked in Sega's empty STAGE_SEL; from the pause menu there is no such sub-state to park in -- it is
+	// a fight -- so the game is frozen under the page, and the arena changes by restarting the fight.
+	bool stage_from_pause = false;
 	fv2_training train;      // TRAINING's column of inputs and its damage (fv2_training.h)
 	// The console's surfaces, over the picture the game made (and under this port's menu, if that is open as
 	// well): mid is the game's own 4:3 screen, which is what their placement was measured against. ONE place
@@ -3427,6 +3429,16 @@ int main(int argc, char **argv)
 		fprintf(stderr, "the console's stage select: stage %d chosen\n", scene);
 		stages.hide();
 		cplay.stage_chosen(board, scene);
+		// FROM THE PAUSE MENU THE FIGHT HAS TO BE RESTARTED, or nothing is seen to happen. Holding the
+		// draw's table decides the arena the game LOADS, and a fight already has its own loaded; the game
+		// loads one at round 1, so the stage changes by the road REMATCH takes (Model3::fv2_rematch):
+		// the same two fighters, round 1, and the arena just chosen.
+		if (stage_from_pause) {
+			const int said = board.fv2_rematch(cplay.task_live[0], cplay.task_live[1]);
+			fprintf(stderr, "the console stage select: from the pause menu -- the fight restarts in it, "
+				"the rematch the game does between rounds says %d\n", said);
+			stage_from_pause = false;
+		}
 		cplay.swallow_start = true;
 		cplay.start_was = true;
 		sync_menu_sound();
@@ -3468,12 +3480,17 @@ int main(int argc, char **argv)
 					said, cplay.task_live[0], cplay.task_live[1]);
 		} else if (line == fv2_pause::CHANGE_STAGE) {
 			// THE CAROUSEL, the very page the V.S. line opens, instead of a scene number stepped sideways
-			// with no picture to go by. It parks the game in Sega's empty STAGE_SEL exactly as it does
-			// there, and its answer holds the draw's table (chose_stage above).
+			// with no picture to go by. Its answer holds the draw's table (chose_stage above), and from
+			// here that means the fight is restarted in what was chosen, because a fight's arena is
+			// already loaded and the game only loads one at round 1.
 			if (stages.ready) {
 				pause.hide();
 				stages.show();
-				board.fv2_park_stage_select();
+				// NOT PARKED HERE, and that was the fault: in GAME the sub-state 2 the park writes is
+				// ROUND_MASK_DSP, not Sega's empty STAGE_SEL, so parking a fight broke it -- which is
+				// Frederic's "change stage ne fonctionne pas" (model3.cpp refuses it outside SEL now).
+				// The page freezes the game instead, exactly as the pause menu it was opened from did.
+				stage_from_pause = !board.fv2_in_attract();
 				cplay.swallow_start = true;
 				cplay.start_was = true;
 				sync_menu_sound();
@@ -3727,13 +3744,21 @@ int main(int argc, char **argv)
 				if (game.emu_thread.joinable()) game.job_wait();
 				const int chose = stages.handle_event(e, cfg.ctl);
 				if (chose == fv2_stage_list::CANCELLED) {
-					// backed out: nothing is held, and the game picks its own arena as it does on the board
+					// backed out: nothing is held, and the game picks its own arena as it does on the board.
+					// FROM THE PAUSE MENU, BACKING OUT CHANGES NOTHING AT ALL: the fight behind the page has its
+					// arena already, and letting go of the hold there would only decide the arena of some later
+					// fight nobody asked about. The page closes and the fight carries on where it was.
 					stages.hide();
-					cplay.stage_chosen(board, 0);
+					if (stage_from_pause) {
+						stage_from_pause = false;
+						fprintf(stderr, "the console stage select: backed out of the pause menu -- the fight is as it was\n");
+					} else {
+						cplay.stage_chosen(board, 0);
+						fprintf(stderr, "the console stage select: backed out -- the game picks its own\n");
+					}
 					cplay.swallow_start = true;
 					cplay.start_was = true;
 					sync_menu_sound();
-					fprintf(stderr, "the console's stage select: backed out -- the game picks its own\n");
 				} else if (chose >= 0) {
 					// NOT ANSWERED HERE. The page holds half a second first, so the sound that says "chosen"
 					// is heard over the carousel and not under the next screen (fv2_stage_list.h). The arena
@@ -3935,7 +3960,8 @@ int main(int argc, char **argv)
 				done = true;
 				if (want <= 0) {
 					stages.hide();
-					cplay.stage_chosen(board, 0);
+					if (stage_from_pause) stage_from_pause = false;
+					else cplay.stage_chosen(board, 0);
 					cplay.swallow_start = true;
 					cplay.start_was = true;
 					sync_menu_sound();
@@ -3959,7 +3985,11 @@ int main(int argc, char **argv)
 		// game goes on drawing that screen and the sound board goes on playing, because the game never
 		// stopped. Its controls are silenced below instead, so the player's directions turn the carousel
 		// and not the game's own cursor.
-		const bool stopped = paused || menu.is_open() || modes.shown || options.shown || pause.shown;
+		// The carousel is the one surface that does not always freeze: on the select screen the game runs on
+		// under it, parked. Opened from the pause menu there is nothing to park in, so there it freezes like
+		// the other three.
+		const bool stopped = paused || menu.is_open() || modes.shown || options.shown || pause.shown
+			|| (stages.shown && stage_from_pause);
 		const bool ff = !stopped && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB];
 		int due = 0;
 		// ---- the console's surfaces keep the sound board turning ----
@@ -4273,20 +4303,6 @@ int main(int argc, char **argv)
 						board.fv2_leave_stage_select();
 					}
 				}
-				// TRAINING: ONE PLAYER CHOOSES BOTH FIGHTERS. On the select screen player 1's controls go to
-				// his own cursor until he has pressed punch, and to PLAYER 2'S from then on, so the same hands
-				// pick the opponent. Nothing of the game is touched: the controls are composed here, which is
-				// the one place this port composes them.
-				if (cplay.training_on && (board.fv2_mode() == 4 || board.fv2_mode() == 5)) {
-					if (!cplay.train_p1_chose) {
-						// (this press is his own choice: it stays his, and the routing begins after it)
-						if (live.punch[0] || script_ctl.punch[0]) cplay.train_p1_chose = true;
-					} else {
-						auto move = [](bool *a) { a[1] = a[1] || a[0]; a[0] = false; };
-						move(live.up); move(live.down); move(live.left); move(live.right);
-						move(live.punch); move(live.kick); move(live.guard);
-					}
-				}
 				// TRAINING'S COLUMN, fed with the PLAYER'S own controls and not with the game's memory --
 				// which is the point of it: it has to show what was done, including what the game ignored.
 				// Player 1's, and the damage it reads is what player 2 has just had taken off him.
@@ -4301,6 +4317,39 @@ int main(int argc, char **argv)
 					cplay.train_took[0] = cplay.train_took[1] = 0;
 				} else if (!cplay.training_on && !train.lines.empty()) {
 					train.clear();
+				}
+				// TRAINING: ONE PLAYER CHOOSES BOTH FIGHTERS. On the select screen player 1's controls go to
+				// his own cursor until he has pressed punch, and to PLAYER 2'S from then on, so the same hands
+				// pick the opponent. Nothing of the game is touched: the controls are composed here, which is
+				// the one place this port composes them.
+				//
+				// AND IT COMES AFTER THE COLUMN, not before. Routed first, it had already emptied player 1's
+				// controls by the time the column read them, so the column showed nothing of what was being
+				// pressed -- Frederic saw the buttons stop matching. The column reads the hands; this moves
+				// what the hands did to the other player; the order between them is not free.
+				if (cplay.training_on && (board.fv2_mode() == 4 || board.fv2_mode() == 5)) {
+					const bool punch = live.punch[0] || script_ctl.punch[0];
+					auto move = [](bool *a) { a[1] = a[1] || a[0]; a[0] = false; };
+					if (!cplay.train_pick_arm) {
+						// THE BUTTON HAS TO BE LET GO FIRST: the press that chose TRAINING in the console's list is
+						// still down when the select screen arrives (console_play.h), and taken for a choice it made
+						// player 1's pad pick player 2's fighter first -- the fault Frederic reported.
+						if (!punch) cplay.train_pick_arm = true;
+						// and it reaches the game no more than it counts here, or it would validate player 1's
+						// fighter on the frame the screen appeared, wherever the cursor happened to stand
+						else { live.punch[0] = false; script_ctl.punch[0] = false; }
+					} else if (!cplay.train_p1_chose) {
+						// (this press is his own choice: it stays his, and the routing begins after it)
+						if (punch) { cplay.train_p1_chose = true; cplay.train_punch_held = true; }
+					} else {
+						move(live.up); move(live.down); move(live.left); move(live.right);
+						move(live.kick); move(live.guard);
+						move(script_ctl.up); move(script_ctl.down); move(script_ctl.left); move(script_ctl.right);
+						// the punch only once the one that chose him has been let go (console_play.h)
+						if (cplay.train_punch_held && !punch) cplay.train_punch_held = false;
+						if (cplay.train_punch_held) { live.punch[0] = false; script_ctl.punch[0] = false; }
+						else { move(live.punch); move(script_ctl.punch); }
+					}
 				}
 				// THE PAGE IS UP AND THE GAME IS STILL RUNNING: it is held in Sega's empty STAGE_SEL every
 				// frame, because a request is only read once and the point here is that it is never walked

@@ -415,8 +415,10 @@ public:
 	// frame while the page is up, and that holding is deliberate (model3.cpp says why it is not the mistake
 	// fv2_request_title warns about). fv2_submode_request is what the game is ASKING FOR, which is one tick
 	// ahead of where it is, and that tick is how the page opens before DECIDE_INT has ever run.
-	void fv2_park_stage_select();
-	void fv2_leave_stage_select();
+	// Both refuse outside SEL and say so: the sub-state numbers mean other things in other modes, and the
+	// carousel is opened from the pause menu too (model3.cpp).
+	bool fv2_park_stage_select();
+	bool fv2_leave_stage_select();
 	int fv2_submode_request() const;
 	// The game's own ending -- the staff roll -- asked for from the title screen, where the console's OPTIONS
 	// page is the only thing that asks. It runs about a hundred seconds and goes back to the attract loop by

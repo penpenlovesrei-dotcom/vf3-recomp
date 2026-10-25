@@ -227,6 +227,11 @@ struct fv2_options
 	// to the FIRST player. 0 means that player has no pad, and then any is taken -- otherwise his column
 	// could never be bound at all.
 	SDL_JoystickID pad_id[2] = { 0, 0 };
+	int player_of_pad(SDL_JoystickID id) const
+	{
+		for (int p = 0; p < 2; p++) if (pad_id[p] && pad_id[p] == id) return p;
+		return -1;
+	}
 	bool ctl_capturing = false;       // waiting for the key or button that will be the new binding
 	bool ctl_changed = false;         // something was really rebound: the host saves and clears this
 	int ctl_testing = -1;             // -1: the grid; 0 or 1: that player's mirror, opened by its TEST line
@@ -479,9 +484,12 @@ struct fv2_options
 		const bool mirror = at == SCR_CONTROLLER;
 		const char *f1 = "USE THE DIRECTION BUTTON TO SELECT", *f2 = "A : DECIDE        B : BACK";
 		if (mirror) {
-			if (ctl_testing >= 0) { f1 = "HOLD A DIRECTION OR A BUTTON"; f2 = "START : BACK"; }
+			// B IS THE WAY OUT AND THE FOOT SAYS SO. It said START, which is no longer true and was never
+			// what a console says: Start is the game's own button. Start keeps ONE job here and the foot
+			// names it where it applies -- calling off a capture, which is what stops a pad being trapped.
+			if (ctl_testing >= 0) { f1 = "HOLD A DIRECTION OR A BUTTON"; f2 = "B : BACK"; }
 			else if (ctl_capturing) { f1 = "PRESS THE KEY OR BUTTON TO SET"; f2 = "START OR BACKSPACE : CANCEL"; }
-			else { f1 = "A : SET        START : BACK"; f2 = "TEST : WATCH THEM LIGHT"; }
+			else { f1 = "A : SET        B : BACK"; f2 = "TEST : WATCH THEM LIGHT"; }
 		}
 		font->draw_mid(ren, f1, mid.x + mid.w * 0.5f, mid.y + FOOT1 * mid.h, fh, PLAIN);
 		font->draw_mid(ren, f2, mid.x + mid.w * 0.5f, mid.y + FOOT2 * mid.h, fh, PLAIN);
@@ -671,7 +679,11 @@ private:
 	//     names 7..327     five columns of 237, to 1511
 	//     header 1..91     fourteen rows of 92, to 1383, then TOTAL
 	static constexpr float VSC_L = 327.0f / 1523.0f, VSC_W = 237.0f / 1523.0f;
-	static constexpr float VSC_T = 91.0f / 1508.0f, VSC_H = 92.0f / 1508.0f;
+	// AND THE TOP IS 107.5, NOT 91. August's figure is where his own picture's header ENDS; the rule under
+	// it is 16 pixels thick, and reading the rules of this very file -- the rows that are mostly dark across
+	// the data columns -- puts the first cell's edge at 107.5 and the pitch at 92.08. Sixteen pixels is a
+	// sixth of a row, which is exactly what Frederic saw: the figures riding high in their cells.
+	static constexpr float VSC_T = 107.5f / 1508.0f, VSC_H = 92.08f / 1508.0f;
 	static constexpr int VSC_COLS = 5;   // FIGHT WIN LOSE DRAW RATIO
 
 	// A character's page: his fourteen lines against the others, raw out of the matrix. NOTHING IS SUMMED
@@ -752,7 +764,15 @@ private:
 			total.fight += v.fight; total.win += v.win; total.lose += v.lose;
 			total.draw += v.draw; total.ko += v.ko; total.judge += v.judge;
 			total.sko1 += v.sko1; total.sko2 += v.sko2;
-			// The row the cursor is on, marked as a chosen line is marked everywhere else here
+			// THE NAME IS MARKED, not only the figures. The names are part of the picture, so the mark is a
+			// wash of red laid over that one cell -- which is what Frederic asked for, and it says "this
+			// line" where a yellow figure only says "this figure is different".
+			if (r == vs_row_sel) {
+				SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+				SDL_SetRenderDrawColor(ren, 210, 30, 40, 125);
+				const SDL_FRect nm = { dst.x + 0.010f * tw, gt + r * rh, gl - (dst.x + 0.010f * tw), rh };
+				SDL_RenderFillRect(ren, &nm);
+			}
 			draw_vs_row(ren, v, gl, gt + r * rh, cw, rh, h, r == vs_row_sel ? CHOSEN : PLAIN);
 		}
 		// TOTAL IS NOT THE CURSOR. Both were yellow while the cursor was new, and two yellow rows say two
@@ -900,7 +920,9 @@ private:
 			const bool leave = (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat
 								&& (e.key.scancode == SDL_SCANCODE_BACKSPACE || e.key.scancode == SDL_SCANCODE_RETURN
 									|| e.key.scancode == SDL_SCANCODE_KP_ENTER))
-							   || (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && e.gbutton.button == SDL_GAMEPAD_BUTTON_START);
+							   || (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
+								   && (e.gbutton.button == SDL_GAMEPAD_BUTTON_EAST
+									   || e.gbutton.button == SDL_GAMEPAD_BUTTON_START));
 			if (leave) { ctl_testing = -1; want_sound = SND_CANCEL; }
 			return -1;
 		}
@@ -944,10 +966,18 @@ private:
 			return -1;
 		}
 		if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+			// A PAD STANDS ON ITS OWN PLAYER'S COLUMN AND CANNOT LEAVE IT. Frederic, the 2026-10-25: "1P ne
+			// doit pouvoir modifier que 1P, et 2P que 2P". So a press on a known pad moves the cursor to
+			// that player's column before anything else, and left and right do nothing from a pad -- there
+			// is nowhere for it to go. The KEYBOARD keeps them: it belongs to neither player, and without
+			// them a player with no pad could never reach the other column at all.
+			if (const int w = player_of_pad(e.gbutton.which); w >= 0) ctl_col = w;
 			switch (e.gbutton.button) {
 			case SDL_GAMEPAD_BUTTON_DPAD_UP: ctl_row = (ctl_row + CTL_ROWS - 1) % CTL_ROWS; want_sound = SND_MOVE; break;
 			case SDL_GAMEPAD_BUTTON_DPAD_DOWN: ctl_row = (ctl_row + 1) % CTL_ROWS; want_sound = SND_MOVE; break;
-			case SDL_GAMEPAD_BUTTON_DPAD_LEFT: case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: ctl_col ^= 1; want_sound = SND_MOVE; break;
+			case SDL_GAMEPAD_BUTTON_DPAD_LEFT: case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
+				if (player_of_pad(e.gbutton.which) < 0) { ctl_col ^= 1; want_sound = SND_MOVE; }
+				break;
 			case SDL_GAMEPAD_BUTTON_SOUTH: ctl_act(); break;
 			case SDL_GAMEPAD_BUTTON_EAST: return go_back();   // the cancel button, not Start (see above)
 			default: break;
@@ -956,11 +986,16 @@ private:
 		}
 		if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) {
 			const int dir = e.gaxis.value < -16000 ? -1 : e.gaxis.value > 16000 ? 1 : 0;
+			const int w = player_of_pad(e.gaxis.which);
 			if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY) {
-				if (dir && dir != stick_y) { ctl_row = (ctl_row + CTL_ROWS + dir) % CTL_ROWS; want_sound = SND_MOVE; }
+				if (dir && dir != stick_y) {
+					if (w >= 0) ctl_col = w;
+					ctl_row = (ctl_row + CTL_ROWS + dir) % CTL_ROWS;
+					want_sound = SND_MOVE;
+				}
 				stick_y = dir;
 			} else if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
-				if (dir && dir != stick_x) { ctl_col ^= 1; want_sound = SND_MOVE; }
+				if (dir && dir != stick_x && w < 0) { ctl_col ^= 1; want_sound = SND_MOVE; }
 				stick_x = dir;
 			}
 		}

@@ -1851,18 +1851,30 @@ void Model3::fv2_cut_submode()
 // had made drained away -- the two fighters vanished, the music stopped and nothing could be heard moving
 // through the carousel, all three reported by Frédéric the 2026-10-25. Parked, the game goes on drawing the
 // screen it was on and the sound board goes on playing, because the game never stopped.
-void Model3::fv2_park_stage_select()
+//
+// AND IT REFUSES ANYWHERE BUT THE SELECT SCREEN, which is the fault Frederic found the 2026-10-25 under
+// "change stage ne fonctionne pas". The sub-state is read against the MODE it belongs to: 2 means Sega's
+// empty STAGE_SEL_INT in SEL, and ROUND_MASK_DSP in GAME. The carousel opened from the pause menu parked
+// the game exactly as it does on the select screen -- and so wrote ROUND_MASK_DSP into a fight, every
+// frame. Mid-match the page freezes the game instead (main.cpp), as the pause menu it was opened from does.
+bool Model3::fv2_park_stage_select()
 {
-	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return;
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return false;
+	const int mode = fv2_mode();
+	if (mode != 4 && mode != 5) return false;   // SEL_INT, SEL_DSP: nowhere else does 2 mean STAGE_SEL
 	ram[FV2_SUBMODE_REQUEST ^ 3] = FV2_SEL_STAGE_SEL_INT;
+	return true;
 }
 
 // And let go: DECIDE_INT asked for, once, which is the sub-state SELECT would have gone to on its own. The
 // game carries on from exactly where it was held.
-void Model3::fv2_leave_stage_select()
+bool Model3::fv2_leave_stage_select()
 {
-	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return;
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return false;
+	const int mode = fv2_mode();
+	if (mode != 4 && mode != 5) return false;   // and 4 is DECIDE_INT only in SEL: see the park above
 	ram[FV2_SUBMODE_REQUEST ^ 3] = FV2_SEL_DECIDE_INT;
+	return true;
 }
 
 // What the game is ASKING FOR, as opposed to where it is (fv2_submode). The two differ for exactly one tick,
