@@ -1039,6 +1039,171 @@ d'après, qu'aucun flux n'atteint puisque la destination du saut est inconnue.
 Donc les 23 % étaient **deux tables de plus, plus un dénominateur à moi qui comptait des tables de données
 comme du code**. Et le vrai plafond de cette méthode est les sept `jmp (An)`.
 
+> Deux affirmations de ce paragraphe sont fausses, et les sections suivantes les corrigent avec les
+> mesures : les `96 %` tiennent encore le même dénominateur (15 136 octets « de code » dont 650 sont des
+> données, et la borne de fin elle-même était trop basse de deux octets), et **les sept `jmp (An)` se
+> résolvent tous les sept** — chacun a un `lea (d8,PC,Dn)` quatre octets au-dessus. Il n'y avait pas de
+> plafond.
+
+
+### Les 4 % restants : encore mon dénominateur, et le pilote qui signe son nom
+
+Repris le 2026-10-25. Les « 4 % non décompilés » n'existaient pas. Voici les neuf trous, un par un, et ce
+qu'ils sont vraiment.
+
+**D'abord la borne, parce qu'elle faussait l'arithmétique.** Ma constante disait que le code finit à
+`0x603B20`. Le `rts` de cette adresse occupe `0x603B20-0x603B21` : le code va donc à **`0x603B22`**, et il y
+a 15 138 octets, pas 15 136. Ce qui suit est une table d'octets croissants (`80 81 … 8b 90 … 9b a0 …`),
+nettement des données. La vérification est arithmétique : avec `0x603B22`, couvert + trous = 14 484 + 654 =
+15 138 et ça ferme ; avec `0x603B20` ça donnait 15 138 pour 15 136, et **ces deux octets d'écart étaient le
+signe que la borne était fausse** — je les avais vus et pas lus.
+
+**Ensuite `0x600100`, et c'est la plus belle des neuf.** Trente-deux octets qui ne sont ni du code ni une
+table :
+
+```
+Ver3.5.9|98  1/13|model3|by Hiro
+```
+
+Le pilote porte **sa version, sa date, sa cible et son auteur**, et ces trente-deux octets finissent
+*exactement* là où le vecteur de reset envoie le processeur, `0x600120`. Le nom est coupé par la fin du
+champ, pas par la lecture. Donc : le code sonore de *Fighting Vipers 2* est la version 3.5.9 du pilote
+« model3 », datée du 13 janvier 1998.
+
+**Les six tables de mots, et ce que chacune est — ou n'est pas.**
+
+| | octets | ce qui est établi |
+|---|---|---|
+| `0x600000` | 256 | la table des vecteurs du 68000 : 64 longs, des données par construction |
+| **`0x6002D4`** | 20 | **dix mots, dix registres** : `lea 0x100418,A0` / `lea 0x6002D4,A1` / `moveq #9,D7` / `move.w (A1)+,(A0)+` / `dbra`, en `0x600288`. Ce sont les registres communs `0x418` à `0x42A` du SCSP |
+| `0x600396` | 32 | seize mots lus par `move.w (A1,D0.w)` après `lea 0x600396,A1`, index doublé, écrits dans un tampon `(A0)+`. **Ce qu'ils valent n'est pas établi** |
+| `0x60103C` | 64 | **trente-deux mots décroissants** (`0x1A00` → `0x0001`), lus en `0x600CF6` et `0x6038DA`, toujours par `move.w (table,Dn.w), 0x0E(A4)`, l'index étant un compteur rangé en `0x0A(A5)`. **Une courbe de 32 pas ; sa nature n'est pas établie** |
+| `0x60141C` | 162 | la table de saut 3 elle-même : 81 mots |
+| `0x602730` | 32 | la table de saut 2 elle-même : 16 mots |
+| `0x602EE0` | 52 | la table de saut 4 elle-même : 26 mots |
+
+**`0x6002D4` se lit entièrement**, et c'est la configuration des interruptions de la carte :
+
+| registre | valeur | |
+|---|---|---|
+| `0x418` TIMA/TACTL | `0x00CE` | compte `0xCE`, prédiviseur 0 |
+| `0x41A` TIMB/TBCTL | `0x03C6` | compte `0xC6`, prédiviseur 3 |
+| `0x41C` TIMC/TCCTL | `0x0100` | compte `0x00`, prédiviseur 1 |
+| `0x41E` **SCIEB** | `0x00C8` | bits 3, 6, 7 : **entrée MIDI, timer B, timer C**. Le timer A n'est **pas** armé |
+| `0x420` SCIPD | `0x0000` | |
+| `0x422` SCIRE | `0x00C8` | les trois mêmes, remis à zéro |
+| `0x424` SCILV0 | `0x0088` | |
+| `0x426` SCILV1 | `0x0048` | |
+| `0x428` SCILV2 | `0x0000` | |
+| `0x42A` MCIEB | `0x0020` | bit 5 : le timer A, armé vers l'autre côté |
+
+Les trois `SCILV` donnent le niveau par source, un bit chacun : **MIDI (bit 3) prend `0b011` = 3, timer B
+(bit 6) prend `0b010` = 2, timer C (bit 7) prend `0b001` = 1**. Trois sources, trois niveaux — ce qui
+recoupe les trois niveaux que la table des vecteurs sert. C'est une **lecture**, pas une mesure sur machine :
+elle vient de ces dix mots et de la disposition des registres du SCSP. Ce qu'elle prédit et qui reste à
+vérifier sur le portage : trois sources d'interruption et trois seulement, à ces trois niveaux.
+
+**Et les quatre derniers octets, les seuls que Ghidra manquait vraiment.** Deux mots, `24 d9` chacun, en
+`0x601F3C` et `0x6023E2`. Je les avais comptés parmi les **sept `jmp (An)` que « rien de statique ne
+résout »**. C'était faux : un `lea` les nomme quatre octets plus haut.
+
+```
+00601F2E  move.w  #$200, d0
+00601F32  sub.w   d5, d0
+00601F34  lsr.w   #$1, d0
+00601F36  lea.l   $601f3c(pc, d0.w), a0
+00601F3A  jmp     (a0)
+00601F3C  move.l  (a1)+, (a2)+        <- les deux octets
+00601F3E  move.l  (a1)+, (a2)+        ... et 126 fois encore
+```
+
+C'est un **dispositif de Duff** : 128 `move.l (A1)+,(A2)+` d'affilée, et l'entrée se calcule —
+`D0 = (0x200 − D5) >> 1` — pour que la copie commence d'autant plus loin dans le bloc qu'il reste moins à
+copier. 512 octets au plus, sans test de boucle. Les deux blocs appartiennent à `snd_reset`, qui passe de
+2 728 à 2 730 octets de corps. **Il reste donc cinq `jmp (An)` insolubles, pas sept** : `0x600308`,
+`0x602042`, `0x6024E8`, `0x603494`, `0x60376A`.
+
+**Le compte final, et son témoin.** `tools/ghidra/FV2SonDonnees.java` déclare les sept blocs de données,
+rattache les quatre octets de code, puis **recompte lui-même** ce qui reste hors de tout corps de fonction
+*et* hors de toute donnée déclarée :
+
+```
+168 fonctions, 14488 octets dans un corps, 650 octets de donnees declarees, sur 15138 de 600000-603B22
+code reel = 15138 - 650 = 14488 octets, dont 14488 dans un corps = 100.00 %
+RESTE HORS DE TOUT : 0 octets
+```
+
+Un script qui compte son propre travail n'est pas un témoin, donc le compte a été refait par **l'autre
+chemin** : `FV2SonListe.java`, que ce travail n'a pas touché, redonne les plages, et le calcul de trous
+extérieur en tire **14 488 octets couverts et 7 trous pour 650 octets** — exactement les sept blocs de
+données, les deux trous de deux octets ayant disparu. 14 488 + 650 = 15 138. Les deux chemins ne partagent
+rien et donnent le même nombre.
+
+**Et ce que « 100 % » veut dire, pour qu'on ne le lise pas plus grand qu'il n'est :** chaque octet de code
+est dans le corps d'une fonction, et chaque octet de données est déclaré et commenté. Ce n'est **pas** dire
+que le programme est compris. Cinquante-neuf des 168 fonctions portent encore le nom que Ghidra leur a
+donné, personne ne les a lues, et deux des tables de données ci-dessus n'ont pas de sens établi. La
+couverture mesure la surface atteinte, pas la lecture faite.
+
+**41 → 90 → 168 fonctions. Et la couverture du code, le dénominateur une fois honnête : 100 %.** Les 4 %
+n'étaient pas du code non décompilé ; c'étaient une table de vecteurs, une signature d'auteur, trois tables
+de saut, trois tables de valeurs — et une borne de fin fausse de deux octets. Ce qui reste ouvert n'est pas
+une surface non lue, c'est **le sens** de deux tables (`0x600396`, `0x60103C`) et cinq sauts indirects dont
+la destination ne se calcule pas sans exécuter le programme.
+
+### Et les cinq `jmp (An)` restants : zéro. La phrase était fausse sur les sept
+
+La leçon des deux premiers s'applique immédiatement aux cinq autres, et il suffisait de regarder
+**l'instruction d'avant**. Les cinq, mesurés le même jour :
+
+| le `jmp` | ce qui est quatre octets au-dessus | ce que c'est |
+|---|---|---|
+| `0x600308` | `lea 0x60030A(pc,D1.w),A1`, `D1 = <v> & 0x0E` | table de branchement, **8 créneaux de 2** (`bra.b`) |
+| `0x603494` | `lea 0x603496(pc,D0.w),A0`, `D0 = (D1>>2) & 0x1C` | table de branchement, **8 créneaux de 4** (`bra.w`) |
+| `0x60376A` | `lea 0x60376C(pc,D0.w),A4`, `D0 = (D0 & 7) << 2` | table de branchement, **8 créneaux de 4** (`bra.w`) |
+| `0x602042` | `lea 0x602044(pc,D5.w),A0` | bloc déroulé, **128 × `clr.l (A2)+`** |
+| `0x6024E8` | `lea 0x6024EA(pc,D5.w),A0` | bloc déroulé, **128 × `clr.l (A2)+`** |
+
+**Le masque de l'index donne le compte**, et c'est mieux que la règle d'auto-dimensionnement parce que c'est
+écrit dans le code : `& 0x0E` ne laisse passer que huit valeurs paires, `& 0x1C` et `(&7)<<2` huit multiples
+de quatre.
+
+Deux surprises dans les créneaux, et elles auraient fait mentir une règle qui n'aurait compté que les
+branchements :
+
+- à `0x60030A`, **sept `bra.b` seulement**. Le huitième créneau, `0x600318`, est déjà du code ordinaire
+  (`movea.l (0xC10).w,A2`) : le gestionnaire du dernier cas est posé là, au lieu d'être derrière un
+  branchement.
+- à `0x60376C`, **sept `bra.w` seulement**. Le huitième, `0x603788`, est `move.w #$2000,SR ; rts` en ligne —
+  et le créneau 6 branche dessus. **La table 1 fait exactement la même chose** avec le `rts` que ses
+  créneaux partagent.
+
+Huit destinations chacune donc, sept branchements et un gestionnaire en ligne. Le script vérifie l'opcode de
+chaque créneau et **nomme** ceux qui ne sont pas des `bra` au lieu de supposer ; il a redonné de lui-même les
+deux adresses que la lecture avait trouvées.
+
+**Et les deux blocs déroulés effacent, ils ne copient pas** — `clr.l (A2)+`, pas `move.l (A1)+,(A2)+`. Ils
+vont par paire avec les deux copies de `0x601F3C` et `0x6023E2`, et **l'arithmétique de la paire ferme** :
+
+| | index | instructions exécutées | effet |
+|---|---|---|---|
+| la copie, `0x601F36` | `D0 = (0x200 − D5) >> 1` | `128 − (0x200−D5)/4 = D5/4` | **`D5` octets copiés** |
+| l'effacement, `0x60203E` | `D5 >> 1` | `128 − D5/4` | **`512 − D5` octets effacés** |
+
+Une destination de 512 octets : `D5` octets depuis `(A1)`, des zéros pour le reste. Les quatre blocs font
+**128 instructions, `0x100` octets, 512 octets traités** — mesuré en comptant les motifs identiques, pas
+déduit. Le `0x200` de `move.w #$200,D0` est ce tampon, et il apparaît deux fois. **Ce que sont ces 512
+octets n'est pas établi.**
+
+`tools/ghidra/FV2SonSautsIndirects.java` pose les 26 références de saut calculé. Il **ne crée aucune
+fonction** : la couverture est déjà de 100 %, ces cibles sont dans des corps existants, et couper une
+fonction en deux sur une cible de branchement rendrait le listing pire. Le contrôle après coup — toujours
+`FV2SonListe` — redonne 168 fonctions, 14 488 octets, les sept blocs de données : rien n'a régressé.
+
+**Il ne reste aucun saut non résolu dans ce programme.** Et ce qui a tenu l'erreur si longtemps est simple :
+j'ai lu `jmp (An)` comme l'instruction entière, alors que la réponse était quatre octets plus haut, dans
+l'instruction que je n'avais pas regardée.
+
 
 ## 6. L'outillage, et comment refaire tout ça
 
@@ -1050,6 +1215,22 @@ comme du code**. Et le vrai plafond de cette méthode est les sept `jmp (An)`.
 | **chercher** dans tout le programme | `tools/son/desas_son.py <image> --cherche 100600 1006ff` |
 | lire une fonction depuis une frontière sûre | `tools/son/desas_son.py <image> --at 600780 26` |
 | la table des vecteurs | `tools/son/desas_son.py <image> --carte` |
+| ouvrir les quatre tables de saut à Ghidra | `tools/ghidra/FV2SonTablesDeSaut.java` |
+| résoudre les cinq derniers `jmp (An)` | `tools/ghidra/FV2SonSautsIndirects.java` |
+| déclarer les données, rattacher les blocs déroulés, recompter | `tools/ghidra/FV2SonDonnees.java` |
+| sortir les fonctions et leurs plages, sans rien changer | `tools/ghidra/FV2SonListe.java` |
+
+Lancer un de ces scripts sans interface, sur le projet déjà importé :
+
+```
+"...\ghidra_12.1.2_PUBLIC\support\analyzeHeadless.bat" C:\Temp\fv2-ghidra FV2SON ^
+  -process fv2-son-68000.bin -noanalysis -scriptPath <dépôt>\tools\ghidra -postScript <Script>.java
+```
+
+`-readOnly` en plus pour ceux qui ne doivent rien écrire (`FV2SonListe`). Et **filtrer la sortie avec
+prudence** : trois fois dans cette campagne un `Select-String` trop étroit a avalé la moitié du dump pendant
+que le total arrivait quand même, ce qui ressemble à un résultat. Les scripts impriment leurs comptes pour
+qu'on puisse les confronter au nombre de lignes reçues.
 
 Le projet Ghidra est `C:\Temp\fv2-ghidra\FV2SON.gpr`, **à part de `FV2.rep`** (le PowerPC) : ce n'est ni le
 même processeur ni le même programme, et un projet ouvert dans l'interface est verrouillé pour l'analyseur
@@ -1079,3 +1260,14 @@ fiches à `0x400`, l'écriture en `+0x600` — sont venues de la recherche.
    fenêtre aujourd'hui**. Le levier existe — la sélection de décor que l'autre session est en train d'écrire
    dans `src/host/console_play.h` — et il faudra deux passages avec deux décors pour trancher.
    Une arène ne prouve rien sur la variation : c'est noté comme non résolu, pas comme probable.
+6. **Ce que les deux dispositifs de Duff copient** (`0x601F3C`, `0x6023E2`) : 512 octets au plus, `A1` vers
+   `A2`, et les deux sont dans `snd_reset`. Deux copies déroulées à la main au même endroit du démarrage,
+   c'est l'installation de quelque chose de volumineux — une table ou un programme DSP. La taille `D5` et
+   les deux pointeurs le diraient.
+7. **Les deux tables dont le sens manque** : `0x600396` (seize mots émis dans un flux par le distributeur
+   de `0x6002EC`) et `0x60103C` (trente-deux mots décroissants, indexés par un compteur, écrits en
+   `0x0E(A4)`). La seconde ressemble à une durée par pas d'enveloppe ; **ce n'est pas établi**, et ce qui le
+   trancherait est l'identité du champ `+0x0E` de la fiche pointée par `A4`.
+8. **Ce que sont les 512 octets** que la paire copie-puis-efface installe deux fois dans `snd_reset`. C'est
+   la même question que le point 6, et elle est maintenant chiffrée : `D5` octets depuis `(A1)`, `512 − D5`
+   zéros, un tampon de `0x200`. Les deux pointeurs la trancheraient.

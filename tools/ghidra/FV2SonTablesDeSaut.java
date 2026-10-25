@@ -16,6 +16,13 @@
 // The seven `jmp (An)` need the register's value and are NOT handled here: nothing static resolves
 // them, and guessing would be worse than leaving them.
 //
+// CORRECTION, 2026-10-25: TWO OF THE SEVEN DO RESOLVE. 0x601F3A and 0x6023E0 are each preceded by
+// `lea 0x<entry>(pc,D0.w),A0` four bytes above, which names the destination block outright -- an
+// unrolled copy of 128 `move.l (A1)+,(A2)+` entered at a computed offset, a Duff's device. They are
+// handled by FV2SonDonnees.java. Five remain: 0x600308, 0x602042, 0x6024E8, 0x603494, 0x60376A.
+// The lesson: "jmp (An)" was read as the whole instruction, when the instruction BEFORE it was the
+// one carrying the answer.
+//
 // THE TWO FORMS, read before a line of this was written:
 //
 //   Table 1 is EIGHT SLOTS OF FOUR BYTES, each holding a bra.w (the 0xFn slot holds the rts they
@@ -140,7 +147,8 @@ public class FV2SonTablesDeSaut extends GhidraScript {
 		println("analyse relancee...");
 		analyzeAll(currentProgram);
 		etat("apres :");
-		println("Restent les sept jmp (An) : 0x600308, 0x601F3A, 0x602042, 0x6023E0, 0x6024E8,");
-		println("0x603494, 0x60376A -- rien de statique ne les resout, et ils ne sont pas touches.");
+		println("Restent cinq jmp (An) sans resolution statique : 0x600308, 0x602042, 0x6024E8,");
+		println("0x603494, 0x60376A. Les deux autres -- 0x601F3A et 0x6023E0 -- sont des entrees de");
+		println("bloc deroule qu'un lea nomme, et FV2SonDonnees.java les traite.");
 	}
 }
