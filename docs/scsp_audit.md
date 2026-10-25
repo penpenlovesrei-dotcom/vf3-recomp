@@ -314,9 +314,14 @@ fidélité qui n'achète rien ne se garde pas. Le résultat négatif, lui, est c
   poste après le DSP.
 - **SIMD** : la boucle du DSP est une chaîne de dépendances (`ACC` se nourrit de lui-même par `BSEL`), elle ne
   se vectorise pas.
-- **Le remplacement du SCSP de MAME** par une implémentation autonome : rien n'a été entamé. Le contrat
-  d'interface et le harnais différentiel sont les préalables ; le harnais existe maintenant
-  (`tools/son/comparer-son.cmd`), l'interface non.
+- **Le remplacement du SCSP de MAME** par une implémentation autonome : le code n'a pas été entamé, mais
+  **les deux préalables existent désormais**. Le harnais différentiel : `tools/son/comparer-son.cmd`. Et le
+  contrat, en deux morceaux qui ne disent pas la même chose :
+  - `docs/scsp_architecture.md` — **l'interface C++** entre `SoundBoard` et le chip, et ce qu'elle traîne
+    de MAME ;
+  - `src/sound/scsp_contract.h` — **le contrat matériel** : ce que le pilote attend de la puce, champ par
+    champ, avec la provenance de chaque nombre et les écarts assumés marqués comme tels. Écrit le
+    2026-10-25, et **vérifié** par `tools/son/test_scsp_contract.cpp` contre `scsp.cpp` et contre la ROM.
 - ~~**Les mesures sous `--rec`**~~ : **faites le 2026-10-25**, voir §4 bis. La part du son passe de 9,6 % à
   **30,5 %**, la carte étant 4,3 fois plus rapide et le son inchangé. **Dans l'hôte** : toujours non mesuré,
   et le cas y est différent — le son est sur son propre fil, donc son coût est du temps CPU et non du temps

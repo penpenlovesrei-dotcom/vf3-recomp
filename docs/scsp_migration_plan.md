@@ -68,9 +68,15 @@ qu'elle est là.
 
 Rien ne s'écrit avant ces trois-là, et c'est le gros du travail :
 
+0. **Le contrat matériel**, qui n'était pas dans cette liste et aurait dû l'être : ce que la puce doit faire,
+   par opposition à la façon dont on la branche. Écrit le 2026-10-25 — `src/sound/scsp_contract.h`, 48 champs
+   et les constantes du pilote, chaque nombre portant sa provenance et les écarts assumés marqués comme tels
+   — et **vérifié** par `tools/son/test_scsp_contract.cpp` : 55 contrôles contre `src/sound/scsp.cpp` et
+   contre la ROM du pilote, avec un compte qui doit fermer pour qu'aucun champ ne soit silencieusement sauté.
 1. **Les tests par bloc** de `docs/scsp_validation.md` §3b, écrits avant les blocs qu'ils testent. Le premier
    des huit existe depuis le 2026-10-24 (`make test` : le DSP, ses deux corps et les quatre contrôles que les
-   jeux ne posent jamais) ; les sept autres non.
+   jeux ne posent jamais) ; les sept autres non. **Le contrat ci-dessus est désormais testé lui aussi**, par
+   le même `make test`.
 2. **Le sélecteur et le rejoueur** : les deux cœurs dans le même binaire, la même séquence d'accès rejouée dans
    les deux (la trace de `VF3_SCSP_WLOG` existe, le rejoueur non), et la comparaison des PCM, des états
    observables, des interruptions et des timers — pas seulement du WAV.

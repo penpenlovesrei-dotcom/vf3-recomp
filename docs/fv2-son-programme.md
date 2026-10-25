@@ -108,7 +108,7 @@ cause sans mesure. La carte réelle, celle-là mesurée :
 | `0xF80-0xF9F` + décalage puce | **un mot par canal MIDI** — 16 canaux, 32 octets — indexé `canal*2` par `0x603172` ; effacé à l'arrêt d'une voix (§5 bis septies). Contenu non établi. **Attention : l'index n'est pas celui de la table voisine de `0xF00`**, qui est par fente |
 | `0x3000` + décalage puce | les **fiches d'échantillon**, `0x0C` octets l'entrée : `+0` adresse et banque, `+4` longueur, `+8` cumul de relocation (§5 bis sexies) |
 | `0x0000-0x00FF` | la **table des vecteurs vivante**, copiée de la ROM par `0x6003D0` — et la **pile** part de `0x2000` et descend dessous (`lea $2000.w, a7` en `0x6006C4`) |
-| `0x2000-0x2FFF` + décalage puce | la **banque de seize formes d'onde** d'un cycle, treize distinctes, à une adresse réservée que rien n'écrase (§4 septies) |
+| `0x2000-0x2FFF` + décalage puce | la **banque de seize formes d'onde** d'un cycle, treize distinctes, à une adresse réservée que rien n'écrase ; des fentes y pointent par leur `SA` pour une **voix FM** (§4 septies) |
 | `0x4EE8-0x706B` | la **table des instruments en RAM** (`[0x608038]`, longueur `[0x608030]`), et `0x706C` est la base d'allocation des échantillons : les deux se touchent **exactement** |
 
 **Le premier long de la fiche est l'adresse des registres de la fente**, confirmé par `0x6006DC` :
@@ -774,19 +774,64 @@ Et `0x4EE8 + 0x2184 = 0x706C`, **exactement**. La table des instruments finit o�
 La banque est donc à une adresse **réservée** : l'allocateur d'échantillons part de `0x706C` et monte, il ne
 la touche jamais. C'est une région permanente, et c'est cohérent avec des données que les fentes jouent.
 
-### Ce qui reste ouvert, et c'est net
+### Qui la fait jouer : mesuré, et c'est une voix FM
 
-**Le consommateur n'est pas identifié.** Deux recherches le disent :
+Deux recherches statiques n'avaient rien donné — aucune instruction ne nomme une adresse de `0x2001` à
+`0x2FFF`, aucune des 659 fiches d'échantillon n'y pointe. Restait une seule hypothèse testable : **ce sont
+les fentes qui la jouent**, par leur registre `SA`. Ça ne se lit pas, ça se mesure.
 
-- **aucune instruction du programme ne nomme une adresse de `0x2001` à `0x2FFF`** — les seules occurrences
-  de ces valeurs sont les `move.w #$2200, sr` et `#$2700, sr`, des masques d'interruption ;
-- **aucune des fiches d'échantillon de `[0x608000]` ne pointe dans la plage**, sur les 659 que son en-tête
-  annonce.
+La sonde `VF3_SCSP_DSPLOG` a donc été étendue aux mots `0x0` et `0x2` d'une fente — `SA` tient ses bits
+19-16 dans le quartet bas du premier et ses bits 15-0 dans le second. Deux passages de 4 200 images sur
+`fv2-fight.txt`, arènes 2 et 7 :
 
-La lecture naturelle est que des fentes y pointent par leurs registres `SA`, et que la valeur vient d'une
-table que je n'ai pas trouvée. **Je ne l'affirme pas** : ce qui est établi, c'est le contenu, la taille, les
-treize formes, le chargement et le fait que rien ne l'écrase.
+| | arène 2 | arène 7 |
+|---|---|---|
+| lignes `SLOTSA` | 6 641 | 6 151 |
+| adresses `SA` complètes | 1 013, **21 distinctes** | 940, 25 distinctes |
+| **tombant dans `0x2000-0x2FFF`** | **37** | **0** |
 
+Les 37 pointent toutes sur `SA = 0x02800`, soit **l'emplacement 8 de la banque** — une seule des seize
+formes, toutes sur la **puce 0**, et de l'image **3783** à 4191.
+
+**Et 3783 est exactement l'image où commencent les 993 écritures du tampon FM** (§4, fin). Même arène, même
+puce, même image. Les deux choses que je prenais pour deux questions n'en sont qu'une.
+
+### La chaîne complète, et ce que chaque maillon doit à quoi
+
+```
+0x60153A  move.b $a(a1), $e(a5)     ; le +0x0A de l'instrument -> registre 0x0E d'une fente
+          move.w $c(a1), (0x600 + fente x 2)
+          move.w $e(a1), (0x640 + fente x 2)
+```
+
+Le registre `0x0E` est, d'après l'implémentation du portage (`scsp.cpp` : `data[0x7]`), **`MDL` bits 15-12,
+`MDXSL` bits 11-6, `MDYSL` bits 5-0** — le niveau de modulation FM et les deux entrées du tampon circulaire
+qui l'alimentent. Donc `0x60153A` **arme la FM sur la fente et fournit lui-même la modulation**, dans les
+deux entrées que la fente lira.
+
+Ce qui fait tenir l'ensemble :
+
+| maillon | d'où il vient |
+|---|---|
+| la forme d'onde porteuse | la banque de `0x2000`, emplacement 8, par `SA` — **mesuré**, 37 fentes |
+| la FM armée sur la fente | le `+0x0A` de l'instrument dans le registre `0x0E` — **lu** en `0x60153A` |
+| les valeurs de modulation | `0x600 + fente × 2` et `0x640 + fente × 2` — **mesuré**, 993 écritures |
+| elles survivent au chemin audio | `STWINH` posé **993 fois sur 993** — mesuré (§4) |
+| et tout cela dans une arène sur douze | l'arène 2 — mesuré des deux côtés |
+
+**C'est donc une voix FM**, dont le pilote écrit la modulation plutôt que de laisser la fente se moduler sur
+l'audio en cours. Et le portage le savait déjà pour l'autre jeu : le commentaire de `scsp.cpp` autour de la
+ligne 1095 note « le thème du décor de Pai a une voix FM (le second SCSP, `MDL 0xF`, `MDXSL 0x20` : son propre
+dernier échantillon) à partir de 9,4 s », profondeur réglée **à l'oreille** contre Supermodel. Les deux cas
+diffèrent sur un point : à Pai la fente se module sur elle-même, ici le pilote fournit les valeurs.
+
+### Ce que ça laisse ouvert
+
+- **Quinze des seize formes ne servent pas** dans les deux arènes mesurées. Elles servent ailleurs, ou pas.
+- **Pourquoi l'emplacement 8** et pas un autre : ce qui choisit le `SA` n'est pas lu. Ce n'est pas une fiche
+  d'échantillon, puisque aucune n'y pointe ; c'est donc une table ou un calcul que je n'ai pas trouvé.
+- Et la profondeur de la FM dans le portage reste **réglée à l'oreille**, pas mesurée sur matériel : le
+  commentaire de `scsp.cpp` le dit, et ce travail-ci ne le change pas.
 
 ## 4 sexies. Le programme du DSP change par arène — pour trois arènes sur douze
 
@@ -2775,16 +2820,16 @@ Elle compte **« citée »**, et c'est une borne haute, pour trois raisons qu'il
 
 | | |
 |---|---|
-| `0x2000-0x2FFF` | **identifié le 2026-10-25** : une **banque de seize formes d'onde** d'un cycle, 128 mots chacune, treize distinctes — une sinusoïde à 5 près, deux carrés, une constante, neuf formes lisses, trois bruits. Chargée de la ROM dans les deux RAM, à une adresse que l'allocateur d'échantillons ne touche jamais. **Son consommateur n'est pas identifié** : voir 4 septies |
-| octets `0x16` et `0x17` d'une fente | CC 10 écrit l'un, `0x602EB0` l'autre, tous deux avec un panoramique. La disposition que j'ai des registres n'explique pas les deux |
+| `0x2000-0x2FFF` | **identifié le 2026-10-25** : une **banque de seize formes d'onde** d'un cycle, 128 mots chacune, treize distinctes — une sinusoïde à 5 près, deux carrés, une constante, neuf formes lisses, trois bruits. Chargée de la ROM dans les deux RAM, à une adresse que l'allocateur d'échantillons ne touche jamais. **Son consommateur est mesuré** : 37 fentes y pointent par leur `SA`, une seule forme sur seize, dans une seule arène — une voix FM dont le pilote écrit lui-même la modulation. Voir 4 septies |
+| ~~octets `0x16` et `0x17` d'une fente~~ | **établi** : `0x16` porte `DISDL`/`DIPAN` (sortie directe), `0x17` porte `EFSDL`/`EFPAN` (envoi vers le DSP) — les quatre dans le même mot. Ma disposition était fausse. Voir 5 quinquies |
 | ~~`+0x0C` d'un objet de canal~~ | **établi le 2026-10-25** : `IMXL` bits 2-0 (CC `0x2A`) et `ISEL` bits 6-3 (CC `0x2B`), bit 7 inutilisé — l'image de l'octet `0x15` d'une fente. Le « chevauchement sur le bit 7 » que j'avais noté venait d'avoir lu les masques d'écriture sans lire le bornage de `D0`. Voir 5 bis undecies |
-| `+0x0B`, `+0x10`, `+0x11` d'une fiche d'instrument | trois paires (drapeau, valeur), rôles inconnus |
-| `0x600396`, `0x60103C` | deux tables de données dont le sens manque (§« Les 4 % restants ») |
-| `0xED8`, `0xEFE`, `0xC3F`, `0xF80` | des globales dont l'écriture est lue et l'usage non |
-| les 512 octets des dispositifs de Duff | copiés puis complétés de zéros dans `snd_reset`, destination inconnue |
-| `0x6003B6` | efface l'octet `0x17` de **18** fentes, pas 32 |
-| laquelle des deux catégories de voix est la musique | trois angles concordants sur l'existence du partage, aucun sur l'orientation |
-| le comportement du matériel sur `0x7C0-0x7FF` | deux lignes de preuve sur ce que le **pilote** fait ; rien sur la puce |
+| `+0x0B` d'une fiche d'instrument | **`+0x10` et `+0x11` sont établis** : ils alimentent la table `0xF00` de la modulation logicielle (5 quinquies). `+0x0B` reste écrit par deux contrôleurs et **relu par rien** |
+| ~~`0x600396`, `0x60103C`~~ | **établies** : `0x600396` est le dictionnaire de seize mots d'un décompresseur, `0x60103C` une courbe de durée de relâchement que le note off lit dans le `+0x0E` d'une fiche. Voir 5 quinquies |
+| `0xEFE` | **trois des quatre sont établies** (5 quinquies) : `0xF80` est la molette de hauteur par canal, `0xC3F` un MIDI thru, `0xED8` un masque de blocs réservés nul sur cette ROM. `0xEFE` est **écrit une fois et lu nulle part** |
+| ~~les 512 octets des dispositifs de Duff~~ | **établi** : un morceau d'échantillon en **streaming**, source dans la ROM banquée, destination dans le `+8` d'un des 32 descripteurs de `0x1000`, avancée à chaque passe. Voir 5 quinquies |
+| `0x6003B6` | le **sens est établi** — il coupe `EFSDL`/`EFPAN`, appelé par la routine qui efface la zone DSP — mais **le compte de 18 reste inexpliqué**. Sans effet audible : le DSP vient d'être mis à zéro (5 quinquies) |
+| ~~laquelle des deux catégories de voix est la musique~~ | **mesuré** : la catégorie **B est la musique**, la **A les effets** — 1 756 contre 40, indices d'objet `0x00`-`0x09` contre `0x0F`-`0x13`, aucun contre-exemple. Et la musique est donc **volée avant** les effets. Voir 5 quinquies |
+| le comportement du matériel sur `0x7C0-0x7FF` | deux lignes de preuve sur ce que le **pilote** fait ; rien sur la puce. **Hors de portée de toute lecture** : il faudrait un Model 3 et une mesure |
 
 ### Ce que la lecture a rendu au portage
 
@@ -2811,6 +2856,131 @@ Les écritures en `+0x600` — le tampon FM — que ma sonde avait comptées à 
 ferait. Il n'est atteint que par onze contrôleurs précis. **Les deux faits tiennent ensemble** : la
 fonctionnalité existe, ces scènes ne l'emploient pas. C'était la seule mesure de ce document qui semblait
 contredire une lecture.
+
+
+## 5 quinquies. Les huit points en suspens, pris un par un
+
+Le §5 ter listait dix choses non établies ; deux ont été fermées dans la journée. Voici les huit autres,
+traitées le 2026-10-25. **Six se ferment, deux restent partielles, une est hors de portée de la lecture.**
+
+### Les octets `0x16` et `0x17` d'une fente : ma disposition était fausse
+
+Je notais que « CC 10 écrit l'un, `0x602EB0` l'autre, tous deux avec un panoramique, et la disposition que
+j'ai des registres n'explique pas les deux ». L'erreur était dans ma disposition. Les macros du portage
+(`src/sound/scsp.cpp`) mettent **les quatre champs dans le même mot** `data[0xB]`, soit l'offset `0x16` :
+
+| | |
+|---|---|
+| `DISDL` bits 15-13, `DIPAN` bits 12-8 | l'**octet `0x16`** — la sortie directe |
+| `EFSDL` bits 7-5, `EFPAN` bits 4-0 | l'**octet `0x17`** — l'**envoi vers le DSP** |
+
+Donc CC 10 règle le panoramique **direct** (`move.b d0, $16(a5)` avec `(niveau<<5) | (pan & 0x1F)`) et
+`0x602EB0` le panoramique de l'**effet** (`andi.b #$e0, $17(a5)` qui garde `EFSDL`, puis le même
+convertisseur `0x601A98` dans `EFPAN`). Deux panoramiques, deux destinations, aucune contradiction. J'avais
+placé `EFSDL`/`EFPAN` au registre `0x18` de mémoire ; ils sont dans l'octet bas de `0x16`.
+
+### `0x6003B6` et ses dix-huit fentes
+
+Le sens est désormais clair : il efface l'octet `0x17`, donc **`EFSDL` et `EFPAN`** — il coupe l'envoi vers
+le DSP. Et son appelant le dit : `0x602AD6`, la routine qui efface la zone DSP d'un trait (§5). Couper les
+envois en même temps que l'effet est cohérent.
+
+**Le compte de 18 reste inexpliqué** (`moveq #$11, d7`), et aucun des trois plafonds de polyphonie ne vaut
+18 — ils valent tous `0x20`. Ce qu'on peut dire : l'omission est **sans effet audible**, puisque la même
+routine vient de mettre tout le programme du DSP à zéro, et qu'un envoi vers un DSP nul ne va nulle part.
+C'est pourquoi ça n'aurait jamais été remarqué. Je ne l'appelle pas pour autant intentionnel.
+
+### Les 512 octets des dispositifs de Duff : un morceau d'échantillon en streaming
+
+```
+00601F1C  move.b d1, $400001.l        ; le registre de banque
+00601F22  movea.l $4(a6), a1          ; +4 du descripteur : la SOURCE dans la ROM d'echantillons
+00601F26  move.l #$80000001, $c(a6)   ; +0x0C : un marqueur d'etat
+00601F2E  move.w #$200, d0 ; sub.w d5, d0 ; lsr.w #$1, d0 ; lea ... ; jmp (a0)
+...                                    ; D5 octets copies, puis 512 - D5 effaces
+00602144  move.l a2, $8(a6)           ; +8 : la DESTINATION, avancee
+00602148  bra.w $601cc0               ; retour a la boucle principale
+```
+
+`A6` est le curseur sur les **32 descripteurs de copie d'échantillons de `0x1000`** (§2), parcourus en
+tourniquet par la boucle principale. Donc chaque passe copie **au plus 512 octets d'un échantillon** de la
+ROM banquée vers la RAM sonore, la destination étant gardée dans le `+8` du descripteur et avancée. C'est du
+**streaming**, et le remplissage de zéros traite le dernier morceau partiel.
+
+### Les deux tables de données
+
+**`0x600396` est le dictionnaire d'un décompresseur.** `0x6002EC` lit des octets d'un flux : bit 7 clair, il
+émet cet octet **et le suivant** dans un tampon `(a0)+` ; bit 7 posé, c'est un code, et le `jmp` de
+`0x600308` le distribue sur huit branches — dont celle qui émet un des **seize mots** de `0x600396`. Un
+dictionnaire des valeurs fréquentes, donc, dans un format compressé par octets.
+
+**`0x60103C` est une courbe de durée de relâchement.** Les 32 mots décroissants vont dans le `+0x0E` d'une
+fiche de voix, et le note off les lit : `0x6012B4` prend `+0x0E`, et `+0x10` garde le **minimum** des valeurs
+vues (`cmp.w $10(a4), d0` puis `move.w d0, $10(a4)`). Un compte à rebours de relâchement, indexé par un
+compteur qui avance d'un pas à la fois.
+
+### Les quatre globales
+
+| | |
+|---|---|
+| **`0xF80`** | la **molette de hauteur par canal MIDI**, un mot chacun : `0x60134A` l'écrit (`move.w d2, (a4, d1.w)` avec `d1 = canal × 2`), et **l'allumage d'une note la lit** (`0x600C9A` : `move.w (a1, d5.w), d5` puis `bsr 0x601390`, le convertisseur `OCT`/`FNS`). `0x601BD2` l'efface sur CC `0x50`, `0x603172` à l'arrêt d'une voix |
+| **`0xC3F`** | un **MIDI thru** : `0x6005C8`, dans `snd_irq3`, fait `tst.b $c3f.w` puis `move.b d0, $100407.l` — chaque octet reçu est renvoyé tel quel en `MOBUF`. Posé et effacé par deux commandes (`0x603274`, `0x60327C`). C'est la **troisième** voie de sortie MIDI du pilote |
+| **`0xED8`** | un **masque de 32 bits**, un par bloc de `0x2000` de RAM sonore : `0x600D86` le parcourt bit à bit et retire `0x2000` de l'adresse pour chaque bit posé — il **saute les blocs réservés**. Il vaut `0xFF >> [0x60807D]`, et comme le plafond vaut 32, **le masque est nul sur cette ROM** : rien n'est réservé |
+| **`0xEFE`** | **écrit une fois** (`0x602F9A : move.w #$8000, $efe.w`) et **lu nulle part** dans tout le code atteint. Reste non établi |
+
+### Les trois paires de la fiche d'instrument
+
+`+0x10` et `+0x11` **alimentent la table `0xF00`**, celle de la modulation logicielle (§4 bis) :
+
+```
+00600D38  move.b $10(a1), d5 ; move.b $11(a1), d6      ; l'instrument
+00600D40  move.w a5, d1 ; lsr.w #$3, d1                ; a5 = registres de la fente -> fente x 4
+00600D44  lea.l $f00.w, a1 ; adda.l $c10.w, a1
+00600D4C  move.b d0, (a1, d1.w)                        ; +0
+00600D50  move.b d5, $1(a1, d1.w)                      ; +1 <- l'instrument +0x10
+00600D54  move.b d6, $3(a1, d1.w)                      ; +3 <- l'instrument +0x11
+00600D62  move.b d0, $2(a1, d1.w)                      ; +2, mis a zero si +0x11 vaut 0x80
+```
+
+Les deux sont donc les **paramètres de modulation logicielle de l'instrument**, et les paires
+(drapeau bit 7, valeur bits 6-0) que les huit petits gestionnaires éditent (§5 bis quaterdecies) sont leurs
+réglages par contrôleur. **`+0x0B` reste non lu** : les contrôleurs l'écrivent, rien dans le code atteint ne
+le relit par `A1`.
+
+### Laquelle des deux catégories de voix est la musique : mesuré
+
+La question demandait une mesure, pas une lecture : le canal MIDI d'une voix est dans sa fiche, et sa
+catégorie dans deux bits de marquage. Mettre les deux sur une ligne répond par corrélation.
+`tools/vf3run.cpp` reçoit donc `VF3_FICHES=file`, qui imprime à chaque image les fiches dont le `+4` n'est
+pas nul. Scène `fv2-fight.txt`, arène 2, 3 000 images, **1 807 allocations distinctes** :
+
+| catégorie | indices d'objet (`+5`) | canaux MIDI (`+6`) | puce | compte |
+|---|---|---|---|---|
+| **A** (`+0xB` bit 7, `+4` bit 3) | **`0x0F`-`0x13`** | `0x0B`-`0x0F` | la **puce 1** (36 sur 40) | 40 |
+| **B** (sans marque) | **`0x00`-`0x09`** et `0xFF` | `0x00`-`0x09` | la **puce 0** (1 765 sur 1 767) | 1 767 |
+
+**La catégorie A est celle des effets, la catégorie B celle de la musique.** Les indices d'objet de A sont
+exactement les cinq que `group_of()` appelle effets — `0x0F` à `0x13` — et 36 des 40 sont sur le **second
+SCSP**, ce que `soundboard.h` dit déjà des effets, des voix et de l'annonceur. Les 11 cas de B classés
+« effets » par le test naïf sont les `+5 = 0xFF`, le marqueur d'une fiche dont l'indice n'est pas encore
+posé : **aucun contre-exemple réel**.
+
+**Et ça oriente enfin la conséquence du §5 bis decies.** Le `+0xB` de la catégorie A a son bit 7 forcé, donc
+toute valeur de A est `≥ 0x80` et toute valeur de B `< 0x80` : la recherche du minimum dans le voleur de voix
+**prend toujours une voix de B avant une de A**. Autrement dit **la musique est volée avant les effets**. Pour
+un jeu de combat c'est le bon choix — les coups, les voix et l'annonceur ne doivent pas tomber — et c'est
+maintenant mesuré et non deviné.
+
+Ça recoupe aussi le trio d'arrêts : l'entrée 2 de la table 4 efface la piste 0 et arrête B, donc **arrête la
+musique** ; l'entrée 3 efface les pistes 1-7 et arrête A, donc **arrête les effets**. Et `snd_irq2` traite la
+piste 0 à part, avec ses trois crochets de minutage : c'est le séquenceur de la musique.
+
+### Ce qui reste hors de portée
+
+**Le comportement du matériel sur `0x7C0-0x7FF`.** Ce document a deux lignes de preuve sur ce que le
+**pilote** fait — un seul balayage linéaire qui détruirait tout miroir, et un interprète de paramètres dont
+les 59 adresses n'y entrent jamais — et **rien sur la puce**. Aucune lecture de ce programme ne peut y
+répondre : il faudrait un Model 3 et une mesure. C'est noté comme tel et non comme ouvert.
 
 
 ## 6. L'outillage, et comment refaire tout ça

@@ -64,12 +64,23 @@ struct SoundBoard::Bus : m68000_bus
 		    dl && ((a >> 20) == 1 || (a >> 20) == 3)) {
 			const unsigned off = a & 0xFFF;
 			const bool slot6 = off < 0x400 && (off & 0x1E) == 0x0C;   // word 0x6 of a slot
+			// Words 0x0 and 0x2 of a slot carry SA, the sample's start address: bits 19-16 in the low
+			// nibble of word 0x0, bits 15-0 in word 0x2. Logged to answer one question the 68000's code
+			// cannot: 0x600524 loads a bank of sixteen one-cycle waveforms into 0x2000-0x2FFF of each
+			// sound RAM, and NOTHING in the program names an address in that range, nor does any of the
+			// 659 sample records point there (docs/fv2-son-programme.md §4 septies). If the chips play
+			// the bank, a slot's SA says so -- and that is a measurement, not a reading.
+			const bool slotsa = off < 0x400 && (off & 0x1E) <= 0x02;   // words 0x0 and 0x2 of a slot
 			const char *zone = off >= 0x700
 			                 ? (off < 0x780 ? "COEF" : off < 0x7c0 ? "MADRS"
 			                    : off < 0x800 ? "7C0-7FF" : off < 0xc00 ? "MPRO" : "autre")
-			                 : (off >= 0x600 && off < 0x700) ? "RINGBUF" : slot6 ? "SLOT6" : nullptr;
+			                 : (off >= 0x600 && off < 0x700) ? "RINGBUF"
+			                 : slot6 ? "SLOT6" : slotsa ? "SLOTSA" : nullptr;
 			if (zone) {
-				if (slot6)
+				if (slotsa)
+					fprintf(dl, "%d chip%d %03x %-7s %04x mask %04x fente %u mot %u\n", b.frames,
+					        int((a >> 20) == 3), off, zone, data, mem_mask, off / 0x20, (off & 0x1F) / 2);
+				else if (slot6)
 					fprintf(dl, "%d chip%d %03x %-7s %04x mask %04x fente %u stwinh %d\n", b.frames,
 					        int((a >> 20) == 3), off, zone, data, mem_mask, off / 0x20, (data >> 9) & 1);
 				else

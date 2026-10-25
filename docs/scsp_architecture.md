@@ -1,5 +1,11 @@
 # Le SCSP autonome — contrat d'interface et découpage
 
+> **Mise à jour du 2026-10-25.** Ce document décrit l'**interface C++**. Le second morceau du contrat —
+> ce que le pilote attend de la **puce**, champ par champ, avec la provenance de chaque nombre — existe
+> maintenant à part : `src/sound/scsp_contract.h`, vérifié par `tools/son/test_scsp_contract.cpp` contre
+> l'implémentation et contre la ROM. Les deux ensemble sont le préalable que `docs/scsp_migration_plan.md`
+> appelait « le contrat d'interface ».
+
 **Ceci est un plan, pas une description.** Rien de ce qui suit n'est écrit à ce jour (2026-10-24) : le cœur du
 son est toujours celui de MAME, modifié (`docs/scsp_audit.md` §2). Ce document existe pour que, le jour où on
 s'y mettra, le premier geste ne soit pas de deviner.

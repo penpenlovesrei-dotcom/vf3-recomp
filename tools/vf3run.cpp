@@ -19,7 +19,12 @@
 // three of them (6, 9, 11) load an extra DSP program on chip 0 around frame 2730, and the coefficients come
 // in five distinct sets -- so the effect DOES vary with the arena. Two arenas alone had said the opposite,
 // because 2 and 7 are both in the group of nine that loads nothing more: the lesson of
-// docs/fv2-son-programme.md §4 sexies, which keeps that mistake with the measurement that corrected it
+// docs/fv2-son-programme.md §4 sexies, which keeps that mistake with the measurement that corrected it.
+// VF3_FICHES=file prints, every frame, each live voice record with its flags, its channel object's index,
+// its MIDI channel and its serial. It settled by correlation which of the driver's two voice categories is
+// the music -- B is, A is the effects -- over 1807 allocations, with no counter-example (§5 quinquies). The
+// consequence: the voice stealer looks for the smallest serial and A's has bit 7 forced, so THE MUSIC IS
+// STOLEN BEFORE THE EFFECTS
 // (VF3_POKE_FRAMES=from-to: only those). VF3_FREE_PLAY=1: the coin setting FREE PLAY before the boot, as the PC way.
 // HD 2D (docs/fv2-hd-2d.md): --tile-dump DIR writes every tile and every layer layout the game draws, once each,
 // with the hash in the name; --tile-scale N draws the tile plane N times its size (1, the default, is the
@@ -380,6 +385,31 @@ int main(int argc, char **argv)
 					fprintf(stderr, "VF3_STAGE=%s sur 600 images : tirage %d ecritures, route %d, refus %d\n",
 					        stage, n_tirage, n_route, refus);
 			}
+		}
+		// VF3_FICHES=file: every frame, each of the 32 voice records of each sound RAM whose +4 is not
+		// zero, with the four bytes that matter. Written to settle ONE question the program's code cannot
+		// answer (docs/fv2-son-programme.md §5 ter): the driver sorts a voice into one of two categories
+		// at note-on -- counter 0xEE1 with +0xB bit 7 forced and +4 bit 3 set, or counter 0xEE0 with
+		// neither -- and three stop commands act on one category each, but NOTHING says which category is
+		// the music. The MIDI channel does: +6 carries it, and group_of() knows the music plays on 0x00 to
+		// 0x0E. Putting the category and the channel of the same record on one line answers it by
+		// correlation, which is a measurement and not a reading.
+		if (!wav_path.empty()) {
+			static FILE *fq = getenv("VF3_FICHES") ? fopen(getenv("VF3_FICHES"), "w") : nullptr;
+			if (fq)
+				for (int n = 0; n < 2; n++)
+					for (int sl = 0; sl < 32; sl++) {
+						const uint32_t r = (0x400 + uint32_t(sl) * 0x20) >> 1;
+						const uint16_t w2 = sound.ram_word(n, r + 2);   // octets +4 et +5
+						const uint16_t w3 = sound.ram_word(n, r + 3);   // octets +6 et +7
+						const uint16_t w5 = sound.ram_word(n, r + 5);   // octets +0x0A et +0x0B
+						const uint8_t f4 = uint8_t(w2 >> 8), f5 = uint8_t(w2 & 0xFF);
+						const uint8_t f6 = uint8_t(w3 >> 8), fb = uint8_t(w5 & 0xFF);
+						if (f4)
+							fprintf(fq, "%d chip%d fente %2d +4 %02x +5 %02x +6 %02x +B %02x cat %c\n",
+							        int(f), n, sl, f4, f5, f6, fb,
+							        (f4 & 0x08) ? 'A' : ((fb & 0x80) ? '?' : 'B'));
+					}
 		}
 		auto tp0 = std::chrono::steady_clock::now();
 		board.run_frame();

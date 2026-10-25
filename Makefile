@@ -77,8 +77,16 @@ $(BIN)/test_scspdsp: $(call objs,src/sound/scspdsp.cpp src/core/mame_shim.cpp to
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-test: $(BIN)/test_scspdsp
+# src/sound/scsp_contract.h against the two things it describes: the field positions in scsp.cpp and the
+# driver's constants in the sound ROM (tools/son/test_scsp_contract.cpp). Part 1 needs nothing but the
+# sources; part 2 says so and steps aside when build/fv2-son-68000.bin is not there.
+$(BIN)/test_scsp_contract: $(call objs,tools/son/test_scsp_contract.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract
 	$(BIN)/test_scspdsp
+	$(BIN)/test_scsp_contract
 
 clean:
 	rm -rf build
