@@ -5,8 +5,8 @@
 // STAGE_SEL_INT, STAGE_SEL_DSP, DECIDE_INT, DECIDE_DSP (docs/fv2-etats.md), and the arcade board jumps
 // straight from SELECT to DECIDE_INT -- its two STAGE_SEL states are an EMPTY STUB, one `b` to the
 // dispatcher's exit, read in Ghidra the 2026-10-24. The characters are chosen at exactly that step, so this
-// page opens there: the game is frozen at DECIDE_INT, the page is answered, and the fight starts in the
-// chosen arena. Sega's own slot, with our own screen in it.
+// page opens there: the game is PARKED in that empty sub-state, the page is answered, and the fight starts in
+// the chosen arena. Sega's own slot, with our own screen in it.
 //
 // THE FORM IS THE SUMMER ROM'S, because the pictures are: a carousel, not a list. One large thumbnail at a
 // time with its name underneath and an arrow each side -- select_stage.png, vignette_01..14.png,
@@ -14,14 +14,19 @@
 // the 2026-10-25. Fourteen of them, where this port had only ever named twelve arenas (model3.cpp), and one
 // of the fourteen is a "???" -- a stage nobody has named yet.
 //
-// THE NUMBERS ARE NOT YET PROVEN TO BE THE GAME'S. nom_14 reads "The Skies of Armstone", which this port's
-// own list calls arena 11, so the ROM's numbering and the owner's twelve-name list do not agree. What the
-// page holds is its index, and whether index N is scene N has to be MEASURED arena by arena -- photographed
-// and compared with the vignette -- before any name here is trusted. Until then the picture is the truth and
-// the number is a guess: see docs/fv2-console.md.
+// THE NAMES AGREE, read off the fourteen pictures the 2026-10-25: nom_01 to nom_12 are word for word this
+// port's own twelve arenas, measured on screen one by one (model3.cpp), in the same order. nom_13 is "???"
+// on a black picture and nom_14 carries nom_11's text, "The Skies of Armstone", over the training room's
+// blue grid -- a leftover, not a stage. So the first twelve indices ARE the game's scene numbers by name;
+// that the arena drawn matches is still being photographed index by index, which is the only proof that
+// counts: see docs/fv2-console.md.
 //
-// It is a surface like the other three: it freezes the game, takes the keys and the pad, draws over the
-// picture the game made, and tells the host only what it wants heard. Nothing here is RmlUi.
+// IT IS NOT A SURFACE LIKE THE OTHER THREE. The list of modes, the OPTIONS page and the pause menu freeze
+// the PowerPC; this one leaves the game RUNNING and parks it in Sega's empty STAGE_SEL (model3.cpp). Frozen,
+// the select screen the game had made drained away -- the two fighters vanished, the music stopped, and
+// nothing could be heard moving through the carousel, all three reported by Frederic. Parked, the game goes
+// on drawing that screen and the board goes on playing, because the game never stopped. It takes the keys
+// and the pad all the same, and tells the host only what it wants heard. Nothing here is RmlUi.
 #pragma once
 #include <SDL3/SDL.h>
 #include <string>
@@ -37,15 +42,67 @@ struct fv2_stage_list
 	enum { SND_NONE, SND_MOVE, SND_VALIDATE, SND_CANCEL };
 	int want_sound = SND_NONE;
 
-	// In fractions of the game's own 4:3 screen, as every other surface here is measured, so the page keeps
-	// its place whatever the window does. The pictures' own proportions are kept.
-	static constexpr uint8_t DIM_ALPHA = 150;
-	static constexpr float BANNER_W = 0.34f, BANNER_Y = 0.085f;
-	static constexpr float SHOT_W = 0.620f, SHOT_Y = 0.215f;
-	static constexpr float NAME_H = 0.085f, NAME_GAP = 0.030f;
-	static constexpr float ARROW_H = 0.115f, ARROW_GAP = 0.030f;
-	static constexpr float FOOT_Y = 0.906f, FOOT_L = 0.300f, FOOT_R = 0.715f;
-	static constexpr SDL_Color PLAIN = { 247, 246, 246, 255 };
+	// THE FORM IS AUGUST'S, COPIED, and the numbers with it: they are CMenuOverlay::DrawStages in
+	// Documents\SEGA Model 3\SupermodelSrc\Src\OSD\SDL\MenuOverlay.cpp, where each one carries the reason it
+	// is what it is. Frederic asked for the form to be copied and left the substance to this port, so the
+	// mechanism here is this port's own -- a surface that freezes the game, no address held in RAM -- and the
+	// layout below is his, down to the tenths.
+	//
+	//   * a BAND across the bottom, dark enough for a green name to read on and light enough that the select
+	//     screen behind still shows: it is what tells the player their fighters are still chosen;
+	//   * the pictures HANG FROM A COMMON TOP rather than being centred on a common line. The chosen one is
+	//     wider, so centring grew it upwards too and the row of tops came out ragged;
+	//   * the chosen one is a tenth wider than measured, the side ones have their OWN width rather than a
+	//     fraction of it, so growing the middle does not silently grow the strip;
+	//   * the words and the name hang off the chosen picture's edges, not off the screen, so they follow it;
+	//   * the arrows are centred on the ROW, not on the chosen one: they belong to the strip.
+	// AUGUST'S OWN PLACE, LOW, and it stays there. Frederic asked for the carousel "au-dessus des portraits
+	// des personnages" and I first read that as higher up and raised the whole band by 0.215, which was
+	// wrong: he meant IN FRONT OF them. The strip covers the game's row of portraits, as the Dreamcast's
+	// covers the bottom of its own select screen, and the band is translucent so they still show through.
+	static constexpr float BAND_TOP = 0.615f, BAND_BOTTOM = 0.975f, STRIP_TOP = 0.685f;
+	static constexpr float MAIN_W = 0.2585f;     // 0.235 as measured, plus a tenth
+	static constexpr float SIDE_W = 0.130f, GAP = 0.012f;
+	static constexpr float SIDE_DIM = 0.34f;     // the side pictures darkened
+	// TWO EACH SIDE, NOT THREE, and the arrows at the screen's own edges rather than on the row. August's
+	// three ran the strip past the picture's edge on purpose, to be cut there -- but his arrows sat on the
+	// row, so the third picture passed UNDER an arrow and the arrow read as a label stuck on a stage.
+	// Frederic asked for them "aux extremites de l'ecran" the 2026-10-25. So: the strip is pulled in until
+	// it clears them (two sides at 0.130 reach 0.413 of the half-width, the arrow begins at 0.430), and the
+	// arrows are hung off the WINDOW, not off the game's 4:3 picture, because the window is what has edges.
+	static constexpr int SIDE_COUNT = 2;
+	static constexpr float ARROW_H = 0.084f, ARROW_EDGE = 0.015f;
+	static constexpr float LABEL_H = 0.0315f, NAME_H = 0.0625f;
+	static constexpr float CLING = 0.012f;       // one value for both sides: they are one pair
+	// How much of a name picture sits BELOW its baseline. The names were padded to a common height so their
+	// letters come out the same size, and that padding is not symmetrical: the cap top is at 14 of 106 and
+	// the capitals are 67 tall, so 25 of the 106 are the room descenders need. SELECT STAGE has no such room
+	// -- it is cut to its own ink -- so bottom-aligning the two BOXES would hang the name higher than the
+	// label by exactly that. Lowering it by this aligns what is actually read, the baselines.
+	static constexpr float NAME_TAIL = 25.0f / 106.0f;
+	static constexpr float RAISE = 0.022f;       // how far above the picture's bottom edge the words sit
+	// NO LINE OF INSTRUCTIONS. August's page carried two ("USE THE DIRECTION BUTTON TO SELECT", "A TO DECIDE,
+	// START TO LET THE GAME CHOOSE") and Frederic had them taken out the 2026-10-25. The arrows say which way
+	// it turns and the game's own select screen never explained itself either.
+
+	// ANSWERED, AND HELD HALF A SECOND BEFORE THE FIGHT STARTS. Frederic asked for it the 2026-10-25: the
+	// page used to vanish on the very frame A was pressed, so the sound that says "chosen" began under the
+	// next screen and the choice was never seen to register. For that half second the carousel stays, the
+	// chosen picture blinks as a chosen line does everywhere else in these surfaces, and the keys are dead --
+	// a second press must not choose a second arena. The game is parked and still running underneath, so the
+	// music carries on and the sound is heard where it belongs.
+	// HOW LONG, AND IT IS MEASURED, not chosen. Frederic asked for half a second and then for the native
+	// code to be made again only once the sound had finished -- and the rebuild is a tenth of a second in
+	// which no frame runs and nothing is made, so a sound still ringing is cut in half. The validation
+	// effect is 0x23, and it is long: sent into silence on the 2026-10-25 (VF3_MIDI_SEND=A00001@1280,
+	// A02E23@1320 with the energy probe), it takes chip 1's slots 2 and 3, peaks 32 frames in and is still
+	// at a fifth of that peak 67 frames later, when the game's own music came back and hid its tail. So half
+	// a second would have cut it in its middle. 1.2 s is the body of it; what is left after that is a tail
+	// under a tenth of the peak.
+	static constexpr double HOLD_S = 1.2;
+	bool locked = false;
+	double lock_t = 0;             // seconds since the answer, kept by the host, which owns the clock
+	static constexpr double BLINK_S = 0.15;
 
 	bool shown = false;
 	int sel = 0;                   // 0-based; the scene asked for is sel + 1
@@ -55,7 +112,7 @@ struct fv2_stage_list
 	int shot_w[STAGES] = {}, shot_h[STAGES] = {}, name_w[STAGES] = {}, name_h[STAGES] = {};
 	int banner_w = 0, banner_h = 0, arrow_w = 0, arrow_h = 0;
 	int have = 0;                  // how many stages actually loaded, in order from 1
-	fv2_texte *font = nullptr;     // for the two hints along the bottom
+	fv2_texte *font = nullptr;     // (nothing on this page is written in letters any more: kept for textures_lost)
 	int stick_x = 0;
 
 	// One picture into a texture. Returns null and says why rather than failing silently: a page that draws
@@ -120,8 +177,17 @@ struct fv2_stage_list
 		if (!ready) return;
 		shown = true;
 		stick_x = 0;
+		locked = false;
+		lock_t = 0;
 	}
-	void hide() { shown = false; }
+	void hide() { shown = false; locked = false; lock_t = 0; }
+
+	// The answer taken: the page holds for HOLD_S and takes nothing more. The host starts the clock.
+	void lock()
+	{
+		locked = true;
+		lock_t = 0;
+	}
 
 	void move(int d)
 	{
@@ -134,7 +200,7 @@ struct fv2_stage_list
 	// player backs out -- which means the game picks its own arena, as it does on the board -- or -1.
 	int handle_event(const SDL_Event &e, const player_controls ctl[2])
 	{
-		if (!shown) return -1;
+		if (!shown || locked) return -1;      // (answered: the half-second below belongs to the sound)
 		auto bound = [&](int action, SDL_Scancode sc) {
 			for (int p = 0; p < 2; p++) if (ctl[p].key[action] == sc) return true;
 			return false;
@@ -187,48 +253,79 @@ struct fv2_stage_list
 	{
 		if (!shown || !ready || have <= 0) return;
 		SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-		SDL_SetRenderDrawColor(ren, 0, 0, 0, DIM_ALPHA);
-		SDL_RenderFillRect(ren, &all);
 
-		auto put = [&](SDL_Texture *t, float cx, float top, float w, float h) {
-			if (!t) return;
-			const SDL_FRect r = { cx - w * 0.5f, top, w, h };
-			SDL_RenderTexture(ren, t, nullptr, &r);
-		};
-		const float cx = mid.x + mid.w * 0.5f;
+		const int cur = sel >= 0 && sel < have ? sel : 0;
+		const float mx = mid.x + mid.w * 0.5f;
+		const float strip_top = mid.y + STRIP_TOP * mid.h;
 
-		if (banner && banner_h > 0) {
-			const float w = BANNER_W * mid.w, h = w * float(banner_h) / float(banner_w);
-			put(banner, cx, mid.y + BANNER_Y * mid.h, w, h);
-		}
+		// The ground, across the WHOLE window and not just the game's 4:3 picture: the strip and the arrows
+		// both reach past that picture's edges, and a band stopping short of them left them floating on the
+		// letterbox. The screen is not dimmed -- only this band is laid, and the select screen shows above it.
+		const SDL_FRect band = { all.x, mid.y + BAND_TOP * mid.h, all.w, (BAND_BOTTOM - BAND_TOP) * mid.h };
+		SDL_SetRenderDrawColor(ren, 0, 0, 0, 158);     // 0.62 of full
+		SDL_RenderFillRect(ren, &band);
 
-		const int i = sel >= 0 && sel < have ? sel : 0;
-		float shot_bottom = mid.y + SHOT_Y * mid.h;
-		if (shot[i] && shot_w[i] > 0) {
-			const float w = SHOT_W * mid.w, h = w * float(shot_h[i]) / float(shot_w[i]);
-			const float top = mid.y + SHOT_Y * mid.h;
-			put(shot[i], cx, top, w, h);
-			shot_bottom = top + h;
-			// the arrows, one each side of the picture, centred on it
-			if (left && right && arrow_h > 0) {
-				const float ah = ARROW_H * mid.h, aw = ah * float(arrow_w) / float(arrow_h);
-				const float ay = top + (h - ah) * 0.5f;
-				const SDL_FRect l = { cx - w * 0.5f - ARROW_GAP * mid.w - aw, ay, aw, ah };
-				const SDL_FRect r = { cx + w * 0.5f + ARROW_GAP * mid.w, ay, aw, ah };
-				SDL_RenderTexture(ren, left, nullptr, &l);
-				SDL_RenderTexture(ren, right, nullptr, &r);
+		// The sides first, then the middle over them: the chosen one may overlap its neighbours, and drawing
+		// it last is what lets it.
+		for (int pass = 0; pass < 2; pass++) {
+			for (int d = -SIDE_COUNT; d <= SIDE_COUNT; d++) {
+				const bool middle = d == 0;
+				if (middle != (pass == 1)) continue;
+				const int i = ((cur + d) % have + have) % have;
+				if (!shot[i] || shot_w[i] <= 0) continue;
+				const float w = (middle ? MAIN_W : SIDE_W) * mid.w;
+				const float h = w * float(shot_h[i]) / float(shot_w[i]);
+				// Each step out spans half of each of the two widths it crosses, so neighbours keep the same
+				// gap whatever their sizes.
+				float cx = mx;
+				for (int k = 1; k <= (d < 0 ? -d : d); k++) {
+					const float a = (k == 1 ? MAIN_W : SIDE_W) * mid.w;
+					cx += (d < 0 ? -1.0f : 1.0f) * ((a + SIDE_W * mid.w) * 0.5f + GAP * mid.w);
+				}
+				// The chosen one blinks once it has been answered, which is how a chosen line says so
+				// everywhere else in these surfaces.
+				const bool off = middle && locked && int(lock_t / BLINK_S) % 2 == 1;
+				const uint8_t dim = off ? uint8_t(SIDE_DIM * 255.0f) : middle ? 255 : uint8_t(SIDE_DIM * 255.0f);
+				SDL_SetTextureColorMod(shot[i], dim, dim, dim);
+				const SDL_FRect r = { cx - w * 0.5f, strip_top, w, h };
+				SDL_RenderTexture(ren, shot[i], nullptr, &r);
+				SDL_SetTextureColorMod(shot[i], 255, 255, 255);
 			}
 		}
 
-		if (name[i] && name_h[i] > 0) {
-			const float h = NAME_H * mid.h, w = h * float(name_w[i]) / float(name_h[i]);
-			put(name[i], cx, shot_bottom + NAME_GAP * mid.h, w, h);
+		// The chosen picture's own edges, which the words hang off
+		const float main_w = MAIN_W * mid.w;
+		const float main_h = shot_w[cur] > 0 ? main_w * float(shot_h[cur]) / float(shot_w[cur]) : 0.0f;
+		const float main_bottom = strip_top + main_h;
+		const float main_left = mx - main_w * 0.5f, main_right = mx + main_w * 0.5f;
+
+		// The name, hard against the right edge, sitting on the baseline the label shares
+		if (name[cur] && name_h[cur] > 0) {
+			const float h = NAME_H * mid.h, w = h * float(name_w[cur]) / float(name_h[cur]);
+			const float bottom = main_bottom - RAISE * mid.h + NAME_TAIL * h;
+			const SDL_FRect r = { main_right + CLING * mid.w, bottom - h, w, h };
+			SDL_RenderTexture(ren, name[cur], nullptr, &r);
 		}
 
-		if (font && font->ready) {
-			const float fh = 0.0290f * mid.h / fv2_texte::CAP * 0.58f;
-			font->draw_mid(ren, "LEFT AND RIGHT TO CHOOSE THE STAGE", mid.x + FOOT_L * mid.w, mid.y + FOOT_Y * mid.h, fh, PLAIN);
-			font->draw_mid(ren, "A TO DECIDE, START FOR THE GAME'S OWN", mid.x + FOOT_R * mid.w, mid.y + FOOT_Y * mid.h, fh, PLAIN);
+		// SELECT STAGE, hard against the left edge and on that same baseline
+		if (banner && banner_h > 0) {
+			const float h = LABEL_H * mid.h, w = h * float(banner_w) / float(banner_h);
+			const SDL_FRect r = { main_left - CLING * mid.w - w, main_bottom - RAISE * mid.h - h, w, h };
+			SDL_RenderTexture(ren, banner, nullptr, &r);
+		}
+
+		// The arrows, hung off the WINDOW'S two edges and centred on the row's height. Off the window and not
+		// off the game's 4:3 picture: on a wide screen the picture's edge is somewhere in the middle of what
+		// the player sees, and an arrow there is not at an edge of anything.
+		if (left && right && arrow_h > 0 && shot_w[cur] > 0) {
+			const float h = ARROW_H * mid.h, w = h * float(arrow_w) / float(arrow_h);
+			const float side_h = SIDE_W * mid.w * float(shot_h[cur]) / float(shot_w[cur]);
+			const float my = strip_top + side_h * 0.5f;
+			const float edge = ARROW_EDGE * all.w;
+			const SDL_FRect l = { all.x + edge, my - h * 0.5f, w, h };
+			const SDL_FRect r = { all.x + all.w - edge - w, my - h * 0.5f, w, h };
+			SDL_RenderTexture(ren, left, nullptr, &l);
+			SDL_RenderTexture(ren, right, nullptr, &r);
 		}
 	}
 };

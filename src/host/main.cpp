@@ -3224,10 +3224,36 @@ int main(int argc, char **argv)
 			// August's own lever, and this port already had it under another name: push the attract
 			// sequencer to the end of its list with its timer expired and the game walks off the end
 			// itself, which is the one road that installs the title screen the way the game does.
-			board.fv2_attract_to_title();
+			// FROM A FIGHT THAT LEVER DOES NOTHING, measured twice (fv2_pause.h): the attract sequencer is
+			// not running there, so there is no list to walk off. The road out of a fight is the match's own
+			// end -- finished off screen in about two seconds, then the end screens cut short -- and the
+			// title lever is pulled at the far side of it, where it works (console_play::arrive).
+			if (board.fv2_in_attract()) board.fv2_attract_to_title();
+			else {
+				fprintf(stderr, "the console: leaving the match for the title, the game's own exit says %d\n",
+						board.fv2_end_match());
+				cplay.leave_match(console_play::L_TO_TITLE);
+			}
+		} else if (line == fv2_pause::CHANGE_VIPER) {
+			if (board.fv2_in_attract()) cplay.choose_versus();
+			else {
+				fprintf(stderr, "the console: leaving the match for the select screen, the game's own exit says %d\n",
+						board.fv2_end_match());
+				cplay.leave_match(console_play::L_TO_SELECT);
+			}
+		} else if (line == fv2_pause::REMATCH) {
+			// August's own road, and the one his notes did not expect: the game already restarts a fight
+			// without the select screen, because it does it between every round (Model3::fv2_rematch). The
+			// two task values are the ones console_play saw while the round was being fought -- the loser's
+			// register has been stopped by now, so reading it here would hand back a dead one.
+			const int said = board.fv2_rematch(cplay.task_live[0], cplay.task_live[1]);
+			fprintf(stderr, "the console's pause menu: REMATCH says %d (1 written, 0 no life block to trust), "
+					"the tasks seen fighting were %08X and %08X\n",
+					said, cplay.task_live[0], cplay.task_live[1]);
 		} else if (line == fv2_pause::CHANGE_STAGE) {
-			// The stage picker TRAINING already uses: held, so the game draws the chosen scene and keeps
-			// choosing it until it is released.
+			// The draw's own table, held so the only arena left free is this one and the game draws it
+			// itself (Model3::fv2_hold_stage). Data, not code: a write to the game's code would turn this
+			// port's recompiler off, which is what the stage page cost until the 2026-10-25.
 			board.fv2_hold_stage(pause.stage);
 		}
 		pause.hide();
@@ -3270,6 +3296,9 @@ int main(int argc, char **argv)
 			for (size_t i = 0; i + 1 < at; i += 2) bytes.push_back(uint8_t(strtoul(t.substr(i, 2).c_str(), nullptr, 16)));
 			if (!bytes.empty()) midi_send.push_back({ strtoull(t.c_str() + at + 1, nullptr, 10), bytes });
 		}
+	// The stage page answered, and the half second it is held for before the fight starts (fv2_stage_list.h)
+	int stage_wanted = -1;
+	uint64_t stage_locked_ns = 0;
 	std::vector<uint64_t> shot_at;   // VF3_SHOT_AT: the window at these passes, to build/host_window_at_N.png
 	if (const char *k = getenv("VF3_SHOT_AT"))
 		for (const char *q = k; *q;) { shot_at.push_back(strtoull(q, nullptr, 10)); while (*q && *q != ',') q++; if (*q) q++; }
@@ -3469,7 +3498,12 @@ int main(int argc, char **argv)
 					sync_menu_sound();
 					fprintf(stderr, "the console's stage select: backed out -- the game picks its own\n");
 				} else if (chose >= 0) {
-					chose_stage(chose);
+					// NOT ANSWERED HERE. The page holds half a second first, so the sound that says "chosen"
+					// is heard over the carousel and not under the next screen (fv2_stage_list.h). The arena
+					// is handed over when that half second is up, below.
+					stage_wanted = chose;
+					stages.lock();
+					stage_locked_ns = SDL_GetTicksNS();
 				}
 				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
 					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
@@ -3554,7 +3588,97 @@ int main(int argc, char **argv)
 		// a list over a demonstration
 		if (modes.shown && menu.is_open()) modes.hide();   // (Escape opened this port's menu over it)
 		if (options.shown && menu.is_open()) close_options();
-		const bool stopped = paused || menu.is_open() || modes.shown || options.shown || pause.shown || stages.shown;
+		// VF3_CONSOLE_MODE=arcade|versus|survival|random|training, at game frame VF3_CONSOLE_AT
+		// (1210 by default, a few frames after the list is up): the console's mode chosen without a
+		// hand, the way vf3run's --console-mode does it. Written because the only other way in was
+		// VF3_KEYS_S, which goes by the CLOCK while the list goes by frames -- so a fast boot or a
+		// busy machine moved the keys off the list and a measurement silently became a run that
+		// chose nothing at all. Twice, on the 2026-10-25.
+		//
+		// AND IT WAITS FOR THE LIST, not for a frame number. The first version fired at a game frame
+		// and deadlocked: the road's Start opens the list at frame 1200, the list FREEZES the game, so
+		// frame 1210 never came and the run sat on the list for seventy-five seconds. The list being
+		// up is the condition a hand would use, and it is the one used here.
+		if (static const char *cm = getenv("VF3_CONSOLE_MODE"); cm && cplay.on) {
+			static const uint64_t at = getenv("VF3_CONSOLE_AT") ? strtoull(getenv("VF3_CONSOLE_AT"), nullptr, 10) : 0;
+			static bool done = false;
+			if (!done && modes.shown && game_frame >= at) {
+				done = true;
+				if (!strcmp(cm, "versus")) cplay.choose_versus();
+				else if (!strcmp(cm, "survival")) cplay.choose_survival(board);
+				else if (!strcmp(cm, "random")) cplay.choose_random();
+				else if (!strcmp(cm, "training")) cplay.choose_training();
+				else cplay.choose_arcade();
+				modes.hide();
+				music_mode_chosen = true;
+				cplay.swallow_start = true;
+				cplay.start_was = true;
+				sync_menu_sound();
+				fprintf(stderr, "frame %llu: VF3_CONSOLE_MODE=%s chosen without a hand\n",
+						(unsigned long long)game_frame, cm);
+			}
+		}
+		// The half second the answered page is held for: the carousel stays, its chosen picture blinks, the
+		// sound is heard over it, and only then is the arena handed to the game. The game is parked and
+		// running underneath all the while, so the music never breaks (fv2_stage_list.h).
+		if (stages.shown && stages.locked) {
+			stages.lock_t = double(SDL_GetTicksNS() - stage_locked_ns) / 1e9;
+			if (stages.lock_t >= fv2_stage_list::HOLD_S && stage_wanted >= 0) {
+				const int line = stage_wanted;
+				stage_wanted = -1;
+				chose_stage(line);
+			}
+		}
+		// VF3_CONSOLE_PAUSE=n: the pause menu answered without a hand -- 0 TITLE SCREEN, 1 CHANGE YOUR VIPER,
+		// 2 REMATCH, 3 CHANGE STAGE -- as soon as it is up, however it was opened. The third of this family,
+		// and for the same reason as the first two: the menu FREEZES the game, so VF3_KEYS_S goes by a clock
+		// the game no longer shares and a measurement silently becomes a run that chose nothing.
+		if (static const char *cp = getenv("VF3_CONSOLE_PAUSE"); cp) {
+			static const int want = atoi(cp);
+			static bool done = false;
+			if (!done && pause.shown) {
+				done = true;
+				fprintf(stderr, "frame %llu: VF3_CONSOLE_PAUSE=%d (%s) chosen without a hand\n",
+						(unsigned long long)game_frame, want, fv2_pause::name(want));
+				chose_pause(want);
+			}
+		}
+		// VF3_CONSOLE_STAGE=n (1-14, 0 to back out and let the game choose, "none" so the page never opens
+		// at all): the versus stage page answered without a hand, the companion of VF3_CONSOLE_MODE above
+		// and waiting on the same condition -- THE PAGE BEING UP, not a frame number. It takes the SAME road
+		// a hand takes, the half-second hold included, so what it measures is what a player gets.
+		if (static const char *cs = getenv("VF3_CONSOLE_STAGE"); cs) {
+			static const int want = atoi(cs);
+			static bool done = false;
+			if (!done && stages.shown && !stages.locked) {
+				done = true;
+				if (want <= 0) {
+					stages.hide();
+					cplay.stage_chosen(board, 0);
+					cplay.swallow_start = true;
+					cplay.start_was = true;
+					sync_menu_sound();
+					fprintf(stderr, "frame %llu: VF3_CONSOLE_STAGE=0 -- backed out without a hand\n",
+							(unsigned long long)game_frame);
+				} else {
+					stages.sel = (want - 1) % (stages.have > 0 ? stages.have : 1);
+					stages.want_sound = fv2_stage_list::SND_VALIDATE;
+					stage_wanted = stages.sel;
+					stages.lock();
+					stage_locked_ns = SDL_GetTicksNS();
+					fprintf(stderr, "frame %llu: VF3_CONSOLE_STAGE=%d chosen without a hand\n",
+							(unsigned long long)game_frame, want);
+				}
+			}
+		}
+		// AND THE STAGE PAGE IS NOT IN THIS LIST, alone of the four surfaces. The other three freeze the
+		// PowerPC; this one leaves the game running and parks it in Sega's own empty STAGE_SEL sub-state
+		// instead (model3.cpp). Frozen, the select screen it had made drained away -- the two fighters
+		// vanished, the music stopped, and nothing could be heard moving through the carousel. Parked, the
+		// game goes on drawing that screen and the sound board goes on playing, because the game never
+		// stopped. Its controls are silenced below instead, so the player's directions turn the carousel
+		// and not the game's own cursor.
+		const bool stopped = paused || menu.is_open() || modes.shown || options.shown || pause.shown;
 		const bool ff = !stopped && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB];
 		int due = 0;
 		// ---- the console's surfaces keep the sound board turning ----
@@ -3822,18 +3946,40 @@ int main(int argc, char **argv)
 				cplay.step(board, console_ctl);
 				// THE CHARACTERS HAVE BEEN CHOSEN: the stage page opens here, between SELECT and DECIDE_INT,
 				// where the summer's ROM put it and where Sega's own STAGE_SEL states sit empty. The game is
-				// frozen under it like under any other surface, and the arena it holds is read ten frames
-				// later, at ROUND_MASK_INT (console_play.h).
+				// NOT frozen under it -- console_play parks it in that empty sub-state and it goes on running
+				// (model3.cpp) -- and the arena it holds is read ten frames later, at ROUND_MASK_INT.
+				//
+				// VF3_CONSOLE_STAGE=none: the page never opens and the versus starts as it did before there
+				// was one. It is here for ONE measurement and it is worth its keep -- it is the only way to
+				// put a fight that went through the page beside a fight that did not, on the same build, the
+				// same script and the same machine.
+				static const bool no_stage_page = [] {
+					const char *s = getenv("VF3_CONSOLE_STAGE");
+					return s && !strcmp(s, "none");
+				}();
 				if (cplay.want_stage_page) {
 					cplay.want_stage_page = false;
-					if (stages.ready && !stages.shown) {
+					if (stages.ready && !stages.shown && !no_stage_page) {
 						stages.show();
 						cplay.swallow_start = true;
 						cplay.start_was = true;
 						sync_menu_sound();
 						fprintf(stderr, "frame %llu: the fighters are chosen -- the console's stage select is up\n",
 								(unsigned long long)game_frame);
+					} else {
+						// console_play parked the game on the tick it asked for the page; no page, so it is
+						// let go again at once and the game walks into DECIDE_INT as it always did.
+						board.fv2_leave_stage_select();
 					}
+				}
+				// THE PAGE IS UP AND THE GAME IS STILL RUNNING: it is held in Sega's empty STAGE_SEL every
+				// frame, because a request is only read once and the point here is that it is never walked
+				// out of. Nothing of the player reaches the game meanwhile -- the carousel has the keys and
+				// the pad, as it does under the three surfaces that freeze instead.
+				if (stages.shown) {
+					board.fv2_park_stage_select();
+					live = m3::Controls();
+					script_ctl = m3::Controls();
 				}
 				m3::Controls &c = board.controls;
 				auto mix = [](bool *a, const bool *b, const bool *d) { a[0] = b[0] || d[0]; a[1] = b[1] || d[1]; };

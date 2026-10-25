@@ -426,6 +426,27 @@ int main(int argc, char **argv)
 		}
 		auto ts0 = std::chrono::steady_clock::now();
 		struct SoundTime { std::chrono::steady_clock::time_point t; double &acc; ~SoundTime() { acc += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count(); } } sound_time{ ts0, t_sound };
+		// VF3_MIDI_SEND=BYTES@FRAME,...: bytes handed to the sound board as if the game had written them,
+		// the same switch the windowed host has. Here it is what lets a single effect be RECORDED on its
+		// own -- A00001 to silence the music, then A02E23 -- so its length can be listened to rather than
+		// inferred from an energy trace (the stage page's hold, fv2_stage_list.h).
+		if (static const char *ms = getenv("VF3_MIDI_SEND"); ms) {
+			static const std::vector<std::pair<uint64_t, std::vector<uint8_t>>> sends = [ms] {
+				std::vector<std::pair<uint64_t, std::vector<uint8_t>>> v;
+				for (std::string all = std::string(ms) + ","; !all.empty(); all.erase(0, all.find(',') + 1)) {
+					const std::string t = all.substr(0, all.find(','));
+					const size_t at = t.find('@');
+					if (t.empty() || at == std::string::npos || at % 2) continue;
+					std::vector<uint8_t> b;
+					for (size_t i = 0; i + 1 < at; i += 2) b.push_back(uint8_t(strtoul(t.substr(i, 2).c_str(), nullptr, 16)));
+					if (!b.empty()) v.push_back({ strtoull(t.c_str() + at + 1, nullptr, 10), b });
+				}
+				return v;
+			}();
+			for (const auto &s : sends)
+				if (s.first == board.frame)
+					for (uint8_t b : s.second) board.midi.push_back(b);
+		}
 		if (!wav_path.empty()) {
 			while (!board.midi.empty()) {
 				if (getenv("VF3_MIDI_LOG")) {

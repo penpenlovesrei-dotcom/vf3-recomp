@@ -581,3 +581,107 @@ routes (mesuree ici) ni les etats `STAGE_SEL` (lus ici) ne donnent un choix de d
 Pour memoire, pendant qu'on y etait : `DECIDE_INT` finit par `li r0,5 ; stb r0,0x0058FD9B` — il demande
 `DECIDE_DSP` —, et `DECIDE_DSP` lit `0x00581892` et, s'il est nul, ecrit `6` dans `MODE_REQUEST`
 (`0x0058FD9A`), ce qui est le passage a GAME.
+
+### La page de choix du décor : garer le jeu, pas le geler (2026-10-25)
+
+La page existe, elle s'ouvre après le choix des combattants, et sa première version **gelait** le jeu comme
+les trois autres surfaces de ce portage. Frédéric l'a essayée le 2026-10-25 et a relevé trois défauts qui
+n'en font qu'un :
+
+> « les personnages disparaissent, la musique s'arrête, aucun bruitage lors du déplacement ou de la
+> validation du décor »
+
+Un jeu gelé ne dessine plus rien de neuf : l'écran de sélection qu'il venait de faire s'est vidé de ses deux
+combattants, sa musique s'est arrêtée faute de carte son tournée, et les bruitages — qui passent par cette
+même carte — n'avaient personne pour les jouer.
+
+**La méthode d'août dit le contraire, et elle est dans son propre `.cmd`** (`FV2 - Choix du decor.cmd`,
+`C:\Users\frede\Documents\SEGA Model 3`) : tenir `S-MODE_REQUEST` (`0x0058FD9B`) à **2**, c'est-à-dire garer
+le jeu dans `STAGE_SEL_INT` — l'état dont Sega a gardé le nom et vidé le corps (lu plus haut : une seule
+instruction, `b 0x0000bad8`). Le jeu y tourne sa frame entière, ses tâches de dessin comprises, et n'avance
+rien. « L'écran figé n'est donc pas une pause : c'est le jeu lui-même au ralenti. »
+
+C'est ce que fait maintenant `Model3::fv2_park_stage_select` :
+
+| | gelé (première version) | garé (celle-ci) |
+|---|---|---|
+| le PowerPC | arrêté | tourne |
+| les combattants choisis | disparaissent | restent dessinés par `entry1` |
+| la musique | s'arrête | continue |
+| les bruitages du carrousel | muets | joués par la carte, comme en jeu |
+| les manettes | prises par la surface | prises par la surface (effacées avant d'atteindre le jeu) |
+
+**Et la demande est lue, pas l'état.** `SELECT` écrit `DECIDE_INT` dans `SUBMODE_REQUEST` et le répartiteur
+`0x0000BA74` ne l'applique qu'au tic suivant. La page s'ouvre donc sur `fv2_submode_request`, dans l'unique
+tic où `DECIDE_INT` est demandé sans avoir tourné, et écrase la demande par 2 : `DECIDE_INT` ne tourne alors
+**qu'une fois**, quand la page rend la main. Lire `MODE_SUB` le prenait un tic trop tard et le faisait tourner
+deux fois.
+
+**Tenir une demande est ici volontaire**, contrairement à l'avertissement de `fv2_request_title` : une demande
+écrite une fois est lue une fois et le jeu repart ; ici le but est justement qu'il ne reparte pas, donc elle
+est renouvelée à chaque image tant que la page est levée.
+
+#### La forme, après l'essai du 2026-10-25
+
+Reprise de `CMenuOverlay::DrawStages` (le Supermodel modifié d'août), avec trois changements demandés :
+
+* les **flèches aux deux bords de la fenêtre**, et non centrées sur la rangée : chez août la troisième
+  vignette de chaque côté passait sous une flèche, qui se lisait alors comme une étiquette collée sur un
+  décor. La bande est élargie à toute la fenêtre pour qu'elles aient un fond ;
+* **deux vignettes de côté au lieu de trois**, et un peu plus étroites, pour que la rangée dégage les flèches ;
+* **plus de ligne d'instructions** : les deux phrases d'août (« USE THE DIRECTION BUTTON TO SELECT », « A TO
+  DECIDE, START TO LET THE GAME CHOOSE ») sont retirées.
+
+### Le tirage du décor, lu dans le code — et la rustine remplacée (2026-10-25)
+
+La page de choix du décor tenait jusqu'ici le levier d'août : la fonction `0x0007111C` patchée en
+`li r3,<décor> ; blr`. **C'est le bon levier pour Supermodel et le mauvais pour ce portage** — ce portage est
+une recompilation, un mot de RAM en désaccord avec ce dont le code natif a été fait éteint le recompilateur
+en entier, et tout le PowerPC repasse à l'interpréteur. Mesuré : **48,8 images/s contre 57,5** pour le même
+versus sans rien de tenu, et Frédéric a relevé 60 contre moins de 50 dans sa fenêtre.
+
+Alors on a lu la fonction, avec `tools/fv2/desas_ppc.py` sur un vidage de RAM d'une partie en cours — vingt
+instructions :
+
+```
+0007111C  bl 0x000083BC            un nombre au hasard
+00071140  r3 = hasard % 27         par la multiplication haute sur 0x2F684BDB
+00071160  r29 = 0x004836FF         une table de 27 octets
+00071170  si table[r3] == 0 : table[r3] = 1 ; retourner r3      la premiere libre, et elle est prise
+          sinon r3 = (r3 + 1) mod 27, 27 essais au plus
+000711A0  puis 0x00071098 reconstruit la table
+```
+
+Et `0x00071098` dit **quelles arènes peuvent sortir** : indice 0 verrouillé, 1 à 3 libres, 4 libre seulement
+si un octet de réglage et un mot de `0x00580E28` s'accordent, 5 à 12 libres, 13 à 26 verrouillés. **Relu dans
+trois vidages**, la table dit exactement ça : `01 00 00 00 01 00 00 00 00 00 00 00 00` puis quatorze `01`.
+Les indices libres sont donc les douze arènes du propriétaire moins *The Great B.M.*, qui a sa condition.
+
+**Le levier est donc la table** : laisser un seul indice libre et le tirage le renvoie, quel que soit le
+hasard. Une écriture dans des **données**. Plus de désaccord avec le code natif, plus de reconstruction de
+100 ms, plus de trou dans le son. La table est tenue — le tirage marque son choix comme pris en le prenant —
+et **rendue telle qu'elle a été trouvée** plutôt que reconstruite depuis la règle : l'indice 4 porte une
+condition que ce portage n'évalue pas, et une table écrite d'après une règle à moitié connue est fausse le
+jour où cette moitié compte.
+
+### Quitter un match : par le point de branchement du jeu (2026-10-25)
+
+`TITLE SCREEN` et `CHANGE YOUR VIPER` attendaient une façon de **finir** un match. August la faisait de
+l'extérieur — dernière manche armée, chrono au bord, vie du joueur 1 tenue à zéro — parce que son fork
+n'avait pas la décompilation. Ce portage l'a (`docs/fv2-flux-de-match.md`), donc il demande au lieu de
+pousser. Deux mots, et les deux sont des conditions que le jeu teste lui-même à chaque image :
+
+| mot | ce que le jeu en fait |
+|---|---|
+| `GAME_TIMER` `0x00581404` ← 1 | `fv2_game_FIGHT_DSP` : `if (... \|\| --GAME_TIMER > 0) return;` — l'image suivante il pose lui-même son drapeau TIME OVER et demande `JUDGE` |
+| `ADV_INFO_STATUS` `0x005813F0` \|= `0x40000000` | `fv2_game_NEXT_PROG_SEL` : `if (!(STATUS & 0x40000000)) { ++ROUND_NO; S-MODE_REQUEST = 6; return; }` — le bit fait la différence entre « une manche de plus » et « ce match est décidé » |
+
+Puis le jugement, le replay et la pose du vainqueur sont écourtés **une fois chacun** avec `fv2_cut_submode`,
+qui ne fait que demander le sous-état suivant — ce que les gestionnaires du jeu font entre eux.
+`NEXT_PROG_SEL` est laissé tranquille : c'est la décision qu'on vient d'écrire. Il ne reste d'août que le
+compteur d'écran `0x0058FD56`, et pour une raison précise : `CONTINUE` et `GAME OVER` sont des **modes** et
+pas des sous-états, donc la demande de sous-état ne les atteint pas.
+
+**Mesuré le 2026-10-25**, choisi à l'image 2100 d'une manche en cours : le match est fini en **203 images
+(3,5 s)**, la fin de partie passe en **12 images (0,2 s)**, et le jeu arrive — écran titre pour l'un,
+écran de sélection à deux joueurs et un nouveau combat pour l'autre, photographié.

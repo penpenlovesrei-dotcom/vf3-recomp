@@ -287,12 +287,18 @@ public:
 	// now, 0 if there was nothing to do (already there, or the program isn't unpacked yet), -1 for a game this
 	// isn't known for.
 	int unlock_roster();
-	// TRAINING's arena: 0x0007111C is the function that draws the stage, and made to return `scene` the game
-	// genuinely chooses it -- forcing the scene index instead was measured twice and gives one arena's
-	// geometry under another's textures. Scene 3 is MARBLE ARENA. Read before written and the caller keeps
-	// calling, as the roster patch does. model3.cpp carries the numbering and the two instructions.
+	// WHICH ARENA THE GAME FIGHTS IN: the draw at 0x0007111C picks a random index and takes the first FREE
+	// entry of a table of twenty-seven bytes at 0x004836FF. So leaving one entry free is the whole lever,
+	// and it is a write to DATA -- which matters here and nowhere else, because a write to the game's CODE
+	// turns this port's recompiler off and drops the PowerPC to the interpreter. model3.cpp carries the
+	// twenty instructions it was read from and the measurement that replaced the old code patch. HELD,
+	// because the draw marks its own choice used as it takes it; given back exactly as it was found.
 	int fv2_hold_stage(int scene);
 	int fv2_release_stage();
+	static constexpr uint32_t FV2_STAGE_DRAW = 0x004836FF;
+	static constexpr int FV2_STAGE_DRAW_N = 27;
+	uint8_t fv2_draw_was[FV2_STAGE_DRAW_N] = {};
+	bool fv2_draw_held = false;
 	// And the half that actually commands a game's FIRST arena, which the picker above does not: one byte of
 	// the game's own route table, 0x000B4100 -- eight bytes a match, four (arena, opponent) pairs, the pair
 	// chosen by 0x0058145D. model3.cpp carries the instructions it was read from.
@@ -321,6 +327,26 @@ public:
 	// -1 for a game this isn't known for.
 	int fv2_task_state() const;
 	bool fv2_in_attract() const { return fv2_task_state() == 0; }
+	// Player 2's task register (0x00700100), the companion of fv2_task_state. The versus is player 2 stepping
+	// into player 1's game, and the loser's task is stopped at the end of a match, so the host watches both
+	// while a fight runs and hands back whichever has fallen to 0 (fv2_rematch).
+	int fv2_task2_state() const;
+	// THE SAME TWO FIGHTERS, THE SAME ARENA, ANOTHER MATCH, with no loading: August's REMATCH, which asks the
+	// game for the branch it already takes between two rounds. The two arguments are the task values the host
+	// saw while the fight was running, to hand back to whichever player was stopped; 0 means "never seen", and
+	// then that one is left alone. model3.cpp says what the five writes are and why the order matters.
+	int fv2_rematch(uint32_t entry1_live, uint32_t entry2_live);
+	// LEAVING A MATCH, and by the GAME'S OWN BRANCH POINT rather than from outside it: the round ends
+	// because fv2_game_FIGHT_DSP's own timer ran out, and the match ends because fv2_game_NEXT_PROG_SEL was
+	// told the match was decided. Two words, both of them conditions the game tests every frame, read out of
+	// docs/fv2-flux-de-match.md. Nobody's life is touched and nothing is held. Call it only while a round is
+	// being fought; it says so if it is called anywhere else. It is TITLE SCREEN's and CHANGE YOUR VIPER's
+	// road both, and the host drives it (console_play.h).
+	int fv2_end_match();
+	int fv2_game_timer() const;        // Sega's *GAME TIMER: what FIGHT_DSP counts down, and 0 ends the round
+	int fv2_screen_timer() const;      // signed: an expired screen is negative
+	void fv2_expire_screen();          // CONTINUE and GAME OVER are modes of their own: this is the only lever there
+	int fv2_scene_index() const;       // the arena now loaded; a change says the end-of-game screens are past
 	// Survival: a flag the game reads, and the operator setting that has to agree with it. Measured as 0 and 0
 	// on a stock board. The flag must NOT be set during the attract loop -- set there it stops the game
 	// starting at all, the injected Start is ignored and no credit is ever taken -- so the host arms it and
@@ -366,6 +392,14 @@ public:
 	// SET_INT and SET_DSP following normally. So the request IS read there -- unlike inside a fight, where
 	// the note above records that nobody reads it. Written once and never held, like every request here.
 	void fv2_cut_submode();
+	// THE CONSOLE'S STAGE PAGE DOES NOT FREEZE THE GAME: it parks it in Sega's own empty STAGE_SEL sub-state,
+	// where the game runs its whole frame -- drawing, music, sound board -- and advances nothing. Held every
+	// frame while the page is up, and that holding is deliberate (model3.cpp says why it is not the mistake
+	// fv2_request_title warns about). fv2_submode_request is what the game is ASKING FOR, which is one tick
+	// ahead of where it is, and that tick is how the page opens before DECIDE_INT has ever run.
+	void fv2_park_stage_select();
+	void fv2_leave_stage_select();
+	int fv2_submode_request() const;
 	// The game's own ending -- the staff roll -- asked for from the title screen, where the console's OPTIONS
 	// page is the only thing that asks. It runs about a hundred seconds and goes back to the attract loop by
 	// itself; model3.cpp says how that was measured before it was wired.

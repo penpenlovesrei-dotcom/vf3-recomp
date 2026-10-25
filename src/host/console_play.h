@@ -146,22 +146,76 @@ struct console_play
 	bool want_stage_page = false;
 	int stage_page_done = 0;      // once per trip through the select screen
 	bool seen_select = false;     // SEL_START or SELECT seen: the sub-state byte means something now
+	// AND A FLAG OF ITS OWN FOR "THIS IS A VERSUS", because at_select cannot be used here: it is cleared
+	// THIRTY FRAMES after the select screen appears, by the machinery that injects player 2's Start (below).
+	// The fighters are chosen three hundred frames later, so by then at_select says SEL_NOTHING and the page
+	// never opened -- measured, and that was the whole of the second failure.
+	bool versus_trip = false;
 
-	// The page answered: held at once, because by now the game has left its attract loop.
+	// THE TWO TASK REGISTERS AS THEY READ WHILE A FIGHT IS RUNNING, kept so the pause menu's REMATCH can
+	// hand back whichever of them the game has stopped. The versus is player 2 stepping into player 1's
+	// arcade game -- the game calls it INTRUDE -- and its rule is that the winner inherits the game, so at
+	// the end of a match the loser's task falls to 0 and that pad goes dead. Read here and nowhere else,
+	// because a value read after the match is over is the stopped one, which is exactly what must not be
+	// handed back. 0 means "never seen fighting", and then fv2_rematch leaves that one alone.
+	uint32_t task_live[2] = { 0, 0 };
+
+	// ---- LEAVING A MATCH, in two phases, and the game does the work in both ----
+	//
+	// ENDING    one write, Model3::fv2_end_match: the game's own round timer put at 1, so FIGHT_DSP ends
+	//           the round itself, and the bit NEXT_PROG_SEL branches on set, so that handler decides the
+	//           match is over instead of opening another round. Then the judgement, the replay and the
+	//           winner's pose are each cut short ONCE by asking for the next sub-state -- the game's own
+	//           way of moving between them. Over when the attract loop comes back.
+	// CLEARING  CONTINUE and GAME OVER are MODES of their own, so the sub-state request does not reach
+	//           them and their own counter is the only lever. It is WATCHED rather than written once: the
+	//           CONTINUE window is installed only after the defeat, so an early write lands before it
+	//           exists and the game lays its own over it. Each time the counter climbs above our edge, a
+	//           new screen has just given itself a duration. Over when the SCENE INDEX changes, which is
+	//           what says the end of the game has gone past -- entry1 has read zero since the K.O. and
+	//           does not tell the two apart.
+	// Then the destination: the title screen, or the select screen for CHANGE YOUR VIPER.
+	enum leave_phase { L_OFF, L_ENDING, L_CLEARING };
+	enum leave_dest { L_TO_TITLE, L_TO_SELECT };
+	leave_phase leaving = L_OFF;
+	leave_dest leave_for = L_TO_TITLE;
+	int leave_frames = 0, leave_cut = -1, leave_scene = -1;
+	static constexpr int LEAVE_GIVE_UP = 3600;   // a minute: a match that will not end is let go of
+
+	void leave_match(leave_dest what)
+	{
+		leaving = L_ENDING;
+		leave_for = what;
+		leave_frames = 0;
+		leave_cut = -1;
+		leave_scene = -1;
+	}
+
+	// The page answered: held at once, because by now the game has left its attract loop. And the game let
+	// go of STAGE_SEL in the same breath -- it has been running all along, parked in Sega's empty sub-state,
+	// so answering the page is only a matter of asking for DECIDE_INT, the one it would have gone to itself.
 	void stage_chosen(m3::Model3 &b, int scene)
 	{
+		b.fv2_leave_stage_select();
 		vs_scene = scene >= 1 ? scene : 0;
-		if (!vs_scene) { vs_stage = S_OFF; return; }
-		b.fv2_hold_stage(vs_scene);
+		if (!vs_scene) { vs_stage = S_OFF; fprintf(stderr, "the console's stage: nothing held, the game picks its own\n"); return; }
+		// IT SAYS WHAT IT DID. A patch that was not applied leaves a picture that looks perfectly normal --
+		// the game simply picks its own arena -- so a silent hold is indistinguishable from a working one.
+		const int said = b.fv2_hold_stage(vs_scene);
+		fprintf(stderr, "the console's stage: holding scene %d, the picker says %d (1 patched, 0 nothing to do, -1 refused)\n",
+				vs_scene, said);
 		vs_stage = S_HELD;
 	}
 
 	void choose_versus(int scene = 0)
 	{
 		at_select = SEL_VERSUS;
+		versus_trip = true;        // (lives until the fighters are chosen: at_select does not, see above)
+		stage_page_done = 0;
+		seen_select = false;
 		sel_frames = -1;
 		since_choice = -1;
-		vs_scene = scene >= 1 && scene <= 12 ? scene : 0;
+		vs_scene = scene >= 1 && scene <= 14 ? scene : 0;
 		vs_stage = vs_scene ? S_ARMED : S_OFF;
 		vs_stage_armed = 0;
 		choose_arcade();
@@ -333,10 +387,77 @@ struct console_play
 	void arm_real_ending() { want_real_ending = true; }
 
 	// Once a frame, before the game runs. Returns what to hand the game on top of the player's own controls.
+	// One frame of the way out of a match. Nothing here counts rounds: the attract loop is what says the
+	// match is over, and the scene index is what says the end-of-game screens are past.
+	void step_leaving(m3::Model3 &b)
+	{
+		if (leaving == L_OFF) return;
+		if (++leave_frames >= LEAVE_GIVE_UP) {
+			fprintf(stderr, "the console: the match would not end in a minute -- the writing stops\n");
+			leaving = L_OFF;
+			return;
+		}
+		if (leaving == L_ENDING) {
+			if (b.fv2_in_attract()) {
+				fprintf(stderr, "the console: the match is over in %d frames (%.1f s), the end screens next\n",
+						leave_frames, double(leave_frames) / 57.5);
+				leave_scene = b.fv2_scene_index();
+				leave_frames = 0;
+				leaving = L_CLEARING;
+				return;
+			}
+			// THE JUDGEMENT, THE REPLAY AND THE WINNER'S POSE, EACH CUT SHORT -- once each, by asking for the
+			// next sub-state, which is exactly what the game's own handlers do between themselves. Sub 13 is
+			// JUDGE and 18 is VIC_DSP; NEXT_PROG_SEL (19) is LEFT ALONE, because it is the branch point
+			// fv2_end_match wrote for, and cutting it would be cutting the decision itself.
+			const int su = b.fv2_submode();
+			if (su >= 13 && su <= 18 && su != leave_cut) {
+				leave_cut = su;
+				b.fv2_cut_submode();
+			}
+			return;
+		}
+		// L_CLEARING. Firmly positive, because an already expired screen is negative and shortening it would
+		// lengthen it; four times our own edge, so our own writing is never written over again.
+		if (b.fv2_screen_timer() > 4 * 8) b.fv2_expire_screen();
+		if (b.fv2_scene_index() != leave_scene) {
+			fprintf(stderr, "the console: the end of the game is past in %d frames (%.1f s)\n",
+					leave_frames, double(leave_frames) / 57.5);
+			leaving = L_OFF;
+			arrive(b);
+			return;
+		}
+	}
+
+	// Where the way out leads. The title screen is the game's own lever, and it WORKS here where it does
+	// nothing from a fight: by now the attract loop is running again, so there IS a list to walk off.
+	// CHANGE YOUR VIPER hands the game a Start instead, which from the attract loop is a new game -- and the
+	// select screen with it, two players on it, which is the whole point of the line.
+	void arrive(m3::Model3 &b)
+	{
+		if (leave_for == L_TO_TITLE) {
+			b.fv2_attract_to_title();
+			fprintf(stderr, "the console: back at the title screen\n");
+		} else {
+			choose_versus();
+			fprintf(stderr, "the console: back to the select screen, two players\n");
+		}
+	}
+
 	void step(m3::Model3 &b, m3::Controls &out)
 	{
 		out = m3::Controls();
 		if (!on) return;
+		step_leaving(b);
+		// The two task registers, read ONLY while the round is actually being fought (GAME's FIGHT_INT and
+		// FIGHT_DSP, sub-states 11 and 12): see task_live above for why no other moment will do.
+		{
+			const int m = b.fv2_mode(), su = b.fv2_submode();
+			if ((m == 6 || m == 7) && (su == 11 || su == 12)) {
+				if (const int t1 = b.fv2_task_state(); t1 > 0) task_live[0] = uint32_t(t1);
+				if (const int t2 = b.fv2_task2_state(); t2 > 0) task_live[1] = uint32_t(t2);
+			}
+		}
 		// The characters chosen: SELECT (1) gives way to DECIDE_INT (4), and the stage page belongs in
 		// between -- where Sega's own STAGE_SEL_INT and STAGE_SEL_DSP sit empty. Raised once per trip
 		// through the select screen, and only for a versus, which is the mode Frederic asked for.
@@ -345,13 +466,24 @@ struct console_play
 			// still held what ADV had left there -- 5 -- so a test on "sub >= 4" fired at frame 1202, right
 			// after V.S. was chosen and three hundred frames before anyone picked a fighter. So the select
 			// screen has to have been SEEN first: sub 0 or 1, SEL_START or SELECT, in SEL's own mode.
-			const int m = b.fv2_mode(), su = b.fv2_submode();
+			// AND IT IS THE REQUEST THAT IS WATCHED, not the sub-state. SELECT writes DECIDE_INT into
+			// SUBMODE_REQUEST and Sega's dispatcher acts on it the NEXT tick (model3.cpp), so reading the
+			// request catches the game in the one tick where DECIDE_INT has been asked for and has not run.
+			// The page is opened there and the game parked in STAGE_SEL on the spot, overwriting the request
+			// before the game ever reads it: DECIDE_INT then runs exactly once, when the page lets go.
+			// Reading MODE_SUB, as this did first, caught it a tick late and ran DECIDE_INT twice.
+			const int m = b.fv2_mode(), su = b.fv2_submode(), ask = b.fv2_submode_request();
 			if (m != 4 && m != 5) seen_select = false;
-			else if (su == 0 || su == 1) { seen_select = true; stage_page_done = 0; }
-			else if (su >= 4 && seen_select && !stage_page_done && at_select == SEL_VERSUS) {
-				stage_page_done = 1;
-				seen_select = false;
-				want_stage_page = true;
+			else {
+				if (su == 0 || su == 1) { seen_select = true; stage_page_done = 0; }
+				// su >= 4 is the net under it: if ever the tick above is missed, the page still opens.
+				if (seen_select && !stage_page_done && versus_trip && (ask >= 4 || su >= 4)) {
+					stage_page_done = 1;
+					seen_select = false;
+					versus_trip = false;   // (spent: a later game asks for it again by choosing V.S. again)
+					want_stage_page = true;
+					b.fv2_park_stage_select();
+				}
 			}
 		}
 		if (skip_logo > 0) {
@@ -448,12 +580,17 @@ struct console_play
 				const int said = b.fv2_hold_stage(vs_scene);
 				fprintf(stderr, "the console's stage: holding scene %d, the picker says %d (1 patched, 0 nothing to do)\n",
 				        vs_scene, said);
-				vs_stage = S_HELD;
+						vs_stage = S_HELD;
 			}
 			else if (++vs_stage_armed > 300) vs_stage = S_OFF;   // (the game never started: give up)
 			break;
 		case S_HELD:
-			if (b.fv2_in_attract()) { b.fv2_release_stage(); vs_stage = S_OFF; }
+			if (b.fv2_in_attract()) {
+				// Sega's own words back, and the native code made again: after the rebuild below the native
+				// code was made from OUR two words, so putting Sega's back is a mismatch in its turn.
+				b.fv2_release_stage();
+				vs_stage = S_OFF;
+			}
 			else {
 				// (mesure : combien de fois la rustine doit vraiment etre reposee)
 				if (b.fv2_hold_stage(vs_scene) > 0) ++vs_repatch;
