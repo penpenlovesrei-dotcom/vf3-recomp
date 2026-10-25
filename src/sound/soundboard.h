@@ -41,6 +41,14 @@ public:
 	// leaving 0x00 to 0x0E to the music. So the 0x0F threshold is a consequence of the layout, not a magic
 	// number -- and the range here said 0x0F to 0x12, one short of the five that are there. The test is a >=,
 	// so it caught them all and nothing was broken; the comment was wrong, not the code.
+	//
+	// And the WRITE was found the 2026-10-25, so none of this rests on reading the readers any more. The
+	// note-on tail at 0x6010EA does `move.w A0,D0 / subi.w #$C40,D0 / lsr.w #$5,D0 / move.b D0,$5(A4)` --
+	// the same (A0 - 0xC40) >> 5 the control-change handlers use as their key, so key and value are computed
+	// by identical code. The same read turned up a field this comment did not know: byte +6 is the voice's
+	// MIDI CHANNEL, written at 0x600C5A as `move.b $1(A0),$6(A4)` from the channel object's +1. A record
+	// therefore carries both identifiers, and they are different numberings -- 20 objects, 16 MIDI channels.
+	// The volume handler (CC 7) keys on +6; modulation (CC 1) and pan (CC 10) key on +5, like group_of().
 	void set_volumes(float music, float effects);
 	// Whether this game's sound driver is the one group_of() reads. Virtua Fighter 3's is; for another game the
 	// records at 0x400 are something else, and reading them could put voices in the wrong group by coincidence,

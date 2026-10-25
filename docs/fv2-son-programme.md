@@ -104,6 +104,9 @@ cause sans mesure. La carte réelle, celle-là mesurée :
 | `0x800-0xBFF` | **la file des commandes MIDI**, 4 octets l'entrée (§3 bis) |
 | `0xC00` et au-delà | les globales : `0xC01` occupé, `0xC10` décalage du chip, `0xC1B`-`0xC1D`, `0xC30`, `0xC3E`/`0xC3F`, `0xEC0`-`0xECD` l'état de l'analyseur MIDI |
 | `0x1000-0x13FF`, `0x201000` | **32 descripteurs de copie d'échantillons** de `0x20`, parcourus par A6 |
+| `0x200` + décalage puce | le **journal d'annulation** du chargeur d'échantillons : les anciennes valeurs, un long l'entrée (§5 bis sexies) |
+| `0xF80-0xF9F` + décalage puce | **un mot par canal MIDI** — 16 canaux, 32 octets — indexé `canal*2` par `0x603172` ; effacé à l'arrêt d'une voix (§5 bis septies). Contenu non établi. **Attention : l'index n'est pas celui de la table voisine de `0xF00`**, qui est par fente |
+| `0x3000` + décalage puce | les **fiches d'échantillon**, `0x0C` octets l'entrée : `+0` adresse et banque, `+4` longueur, `+8` cumul de relocation (§5 bis sexies) |
 
 **Le premier long de la fiche est l'adresse des registres de la fente**, confirmé par `0x6006DC` :
 
@@ -1089,7 +1092,7 @@ champ, pas par la lecture. Donc : le code sonore de *Fighting Vipers 2* est la v
 | `0x418` TIMA/TACTL | `0x00CE` | compte `0xCE`, prédiviseur 0 |
 | `0x41A` TIMB/TBCTL | `0x03C6` | compte `0xC6`, prédiviseur 3 |
 | `0x41C` TIMC/TCCTL | `0x0100` | compte `0x00`, prédiviseur 1 |
-| `0x41E` **SCIEB** | `0x00C8` | bits 3, 6, 7 : **entrée MIDI, timer B, timer C**. Le timer A n'est **pas** armé |
+| `0x41E` **SCIEB** | `0x00C8` | bits 3, 6, 7 : **entrée MIDI, timer A, timer B**. Le timer C n'est **pas** armé |
 | `0x420` SCIPD | `0x0000` | |
 | `0x422` SCIRE | `0x00C8` | les trois mêmes, remis à zéro |
 | `0x424` SCILV0 | `0x0088` | |
@@ -1097,11 +1100,17 @@ champ, pas par la lecture. Donc : le code sonore de *Fighting Vipers 2* est la v
 | `0x428` SCILV2 | `0x0000` | |
 | `0x42A` MCIEB | `0x0020` | bit 5 : le timer A, armé vers l'autre côté |
 
-Les trois `SCILV` donnent le niveau par source, un bit chacun : **MIDI (bit 3) prend `0b011` = 3, timer B
-(bit 6) prend `0b010` = 2, timer C (bit 7) prend `0b001` = 1**. Trois sources, trois niveaux — ce qui
+Les trois `SCILV` donnent le niveau par source, un bit chacun : **MIDI (bit 3) prend `0b011` = 3, timer A
+(bit 6) prend `0b010` = 2, timer B (bit 7) prend `0b001` = 1**. Trois sources, trois niveaux — ce qui
 recoupe les trois niveaux que la table des vecteurs sert. C'est une **lecture**, pas une mesure sur machine :
 elle vient de ces dix mots et de la disposition des registres du SCSP. Ce qu'elle prédit et qui reste à
 vérifier sur le portage : trois sources d'interruption et trois seulement, à ces trois niveaux.
+
+> **Les noms des timers dans ce tableau ont été corrigés le même jour.** La première version disait « timer B
+> et timer C armés, le timer A non », et l'inverse est vrai. Ce qui l'a révélé : `snd_irq2` recharge `0x418`
+> — TIMA — et acquitte le bit 6. Les bits viennent maintenant de l'implémentation du portage
+> (`timerA_cb()` pose `0x40`, `timerB_cb()` `0x80`, `timerC_cb()` `0x100`) et non d'un souvenir de table.
+> Les **niveaux** 3, 2, 1 étaient justes dès le départ ; seuls les noms étaient permutés. Voir 5 bis ter.
 
 **Et les quatre derniers octets, les seuls que Ghidra manquait vraiment.** Deux mots, `24 d9` chacun, en
 `0x601F3C` et `0x6023E2`. Je les avais comptés parmi les **sept `jmp (An)` que « rien de statique ne
@@ -1205,6 +1214,826 @@ j'ai lu `jmp (An)` comme l'instruction entière, alors que la réponse était qu
 l'instruction que je n'avais pas regardée.
 
 
+## 5 bis septies. `0x602FA0` : « réinitialise le son », et deux jeux de globales parallèles
+
+176 octets, **entrée 1 de la table 4** — les sous-commandes de la banque de contrôle `0x00`. Aucune
+instruction ne nomme son adresse : elle ne s'atteint que par cette table, ce qui est exactement la raison
+pour laquelle le marcheur ne la voyait pas avant qu'on lui apprenne les tables de saut.
+
+Ce qu'elle fait, dans l'ordre, à `sr = 0x2200` :
+
+```
+00602FA4  cmpi.b #$80, (a3) ; beq -> 602fba       ; variante : si 0x80, on EPARGNE les pistes
+00602FAA  bsr.w  $603198
+00602FAE  lea.l $300.w, a4 ; 32 longs effaces     ; sinon, les huit pistes sont rasees
+00602FBA  lea.l $400.w, a4 ; [0xC10] = 0 ; bsr $603050     ; les 32 voix de la puce 0
+00602FC8  lea.l $200400.l, a4 ; [0xC10] = 0x200000 ; bsr $603050   ; celles de la puce 1
+00602FDA  lea.l $c40.w, a4 ; 20 x andi.b #$bf, $0(a4)      ; bit 6 efface sur chaque objet de canal
+```
+
+et `0x603050`, par puce : pour chacune des 32 fiches dont le `+4` est non nul, `bsr 0x6006DC` — l'arrêt de
+voix — puis `clr.l $ee0(a4)` et **huit longs effacés à `0xF80`**.
+
+### Les globales existent en deux exemplaires, une par RAM
+
+La queue recharge le DSP sur les deux puces, et c'est là que ça se voit :
+
+```
+00602FF4  move.b $ef1.w, d0                 ; le prereglage de la puce 0
+00602FF8  move.b $ef0.w, $ef4.w
+00603002  lea.l $100700.l, a3 ; adda.l $c10.w, a3 ; bsr $602a9e    ; le chargeur de la zone DSP
+00603010  move.b $ef4.w, d0 ; bsr $602b32                           ; l'interprete de parametres
+0060301E  move.b $200ef1.l, d0              ; LE PREREGLAGE DE LA PUCE 1, dans SA RAM
+00603024  move.b $200ef0.l, $ef4.w
+0060302C  move.l #$200000, $c10.w
+00603034  lea.l $100700.l, a3 ; adda.l $c10.w, a3 ; bsr $602a9e
+00603046  move.b $ef4.w, d0 ; bsr $602b32
+```
+
+`0xEF1` pour la puce 0, **`0x200EF1` pour la puce 1** : le pilote tient **deux jeux de globales au même
+décalage, un dans chaque RAM de SCSP**, et `[0xC10]` — 0 ou `0x200000` — choisit lequel. C'est la raison de
+tous les `$ef0(a5)`, `$eea(a5)` et `lea $3000.w / adda.l a5` rencontrés ailleurs : ce ne sont pas des bases
+arbitraires, c'est **la même structure dans l'une ou l'autre RAM**. Et `0xEF4` sert de scratch *non*
+qualifié, donc toujours dans la RAM de la puce 0, pour passer la valeur à l'appelé.
+
+Cela recoupe directement la correction de `A5` du §5 ter : A5 n'est pas une base globale, il porte
+`[0xC10]`, et c'est pour cette raison.
+
+### Les trois arrêts, et deux catégories de voix
+
+`0x602FA0` n'est pas seule : les **entrées 1, 2 et 3** de la table 4 sont trois arrêts de granularité
+différente, toutes gardées par le même `cmpi.b #$80, (a3)`.
+
+| entrée | pistes effacées | prédicat d'arrêt des voix | en plus |
+|---|---|---|---|
+| **1** `0x602FA0` | les 8 (`0x300`, 32 longs) | `0x603050` : `+4 ≠ 0` | **DSP rechargé** sur les deux puces |
+| **2** `0x603080` | la **maîtresse seule** (`0x300`, 4 longs) | `0x603102` : `+4 ≠ 0` **et** `+0xB` bit 7 **clair** | `0xF80` effacé sur les deux puces, volume maître réappliqué (`0x6027B2`) |
+| **3** `0x60311E` | les **sept autres** (`0x310`, 28 longs) | `0x60315A` : `+4` **bit 3 posé** | — |
+
+Et les prédicats ne sont pas arbitraires : **l'allumage d'une note range la voix dans l'une de deux
+catégories**, et c'est écrit noir sur blanc par deux chemins parallèles qui ne diffèrent que par là.
+
+```
+00600BFE  move.b $ee1(a3), $b(a4)     ; categorie A : le compteur 0xEE1
+00600C04  ori.b  #$80, $b(a4)         ;   et le bit 7 du +0xB FORCE
+00600C0A  addq.b #$1, $ee1(a3)
+00600C0E  bset.b #$3, $4(a4)          ;   et le bit 3 du +4
+
+00600C3C  move.b $ee0(a3), $b(a4)     ; categorie B : le compteur 0xEE0
+00600C42  addq.b #$1, $ee0(a3)        ;   bit 7 non pose, bit 3 non pose
+```
+
+| | `+0xB` bit 7 | `+4` bit 3 | compteur | arrêtée par |
+|---|---|---|---|---|
+| catégorie **A** | **posé** | **posé** | `0xEE1` | entrées 1 et **3** |
+| catégorie **B** | clair | clair | `0xEE0` | entrées 1 et **2** |
+
+Le bit 7 du `+0xB` est donc un **marquage délibéré** (`ori.b #$80`), pas un débordement du compteur — ce
+qu'il fallait vérifier avant de s'appuyer dessus.
+
+**Et les deux catégories s'apparient avec le partage des pistes** : l'entrée 2 efface la piste maîtresse et
+arrête la catégorie B ; l'entrée 3 efface les sept autres et arrête la catégorie A. Donc piste 0 ↔ B, et
+pistes 1-7 ↔ A. C'est **le partage musique/effets vu d'un troisième angle**, après `group_of()` et les
+canaux `0x0F-0x13`. Laquelle est la musique n'est **pas établi par ceci seul** ; que `snd_irq2` traite la
+piste 0 à part, avec ses trois crochets de minutage, oriente vers « piste 0 = la musique » — mais c'est une
+indication, pas une mesure.
+
+`0x603172`, appelé par les entrées 2 et 3 avant chaque arrêt, nettoie deux choses :
+
+```
+00603174  move.b $6(a4), d5 ; bmi -> rts    ; le +6 : le canal MIDI, 0xFF = inutilise
+0060317E  lsl.w #$1, d5 ; clr.w (a2, d5.w)  ; a2 = 0xF80 : UN MOT PAR CANAL
+00603186  move.b $5(a4), d5 ; lsl.w #$5, d5 ; le +5 : l'indice d'objet, x 0x20
+00603190  andi.w #$7f18, $8(a0, d5.w)       ; et on masque le mot +8 de l'objet
+```
+
+Deux choses s'en déduisent. **`0xF80` est indexé par canal MIDI × 2, en mots** — 16 canaux, 32 octets — et
+non « un octet par fente » comme je l'avais d'abord supposé en voyant qu'il suit la table de `0xF00`. Les
+deux tables sont voisines et **n'ont pas le même index** : `0xF00` est par fente (§4 bis). Et le masque
+`0x7F18` sur l'image du registre LFO garde `LFOF` et les deux formes d'onde, mais efface `LFORE`, `ALFOS`
+et surtout **`PLFOS`** : arrêter une voix **remet la profondeur de modulation à zéro** pour son objet de
+canal, ce qui recoupe le §5 quater par l'autre bout.
+
+Enfin `0x603198`, appelé par les entrées 1 et 3 : si le long de configuration `[0x60803C]` n'est pas négatif,
+il efface le `+0` des huit entrées de `0x380` (pas de `0x10`) et `0xEFC`.
+
+### Et ça relie les deux moitiés du DSP déjà lues
+
+`0x602A9E` puis `0x602B32`, dans cet ordre, deux fois. Le second est l'interprète de paramètres du
+§5 bis bis ; le premier est le chargeur de la zone DSP, voisin du `0x602AD6` que le §5 avait lu comme
+l'effacement d'un trait de `0x700` à `0xBFF`. Donc la séquence complète d'un changement d'effet est :
+**charger la zone, puis appliquer les descripteurs** — et les 59 adresses énumérées au §5 bis bis sont la
+seconde étape, pas la totalité.
+
+
+## 5 bis sexies. `0x60288A` : le chargeur d'échantillons, et son journal d'annulation
+
+470 octets, **la plus grosse fonction du programme après `snd_reset`**, et jamais citée par ce document
+avant le 2026-10-25 — c'est la mesure d'avancement qui l'a désignée. Appelée de `0x602DBA` et `0x602DD6`,
+deux commandes de contrôle, plus un `bra` de `0x602880`. Elle tourne à `sr = 0x2200`.
+
+**Ce qu'elle fait : « charge le jeu d'échantillons `D0` ».** Et comme elle *remplace* le jeu précédent, elle
+commence par le défaire.
+
+### Les deux tables
+
+| | |
+|---|---|
+| `0x3000` + `[0xC10]` | un **en-tête de deux mots** — `+0` l'indice de base, `+2` l'indice maximum — puis les **fiches d'échantillon** à partir de `0x3004`, `0x0C` octets : `+0` l'adresse (24 bits) avec les bits de banque et un marqueur bit 7 dans l'octet haut, `+4` la longueur, `+8` un cumul |
+| `0x200` + `[0xC10]` | le **journal d'annulation**, un long par fiche remplacée |
+| `[0xEEA + décalage]` | le **nombre de fiches à défaire**, et il plafonne le `dbra` |
+| `[0xC18 + décalage]` | le jeu actuellement chargé — si `D0` l'égale déjà, la fonction sort tout de suite |
+
+### Défaire, puis faire
+
+Le premier balayage (`0x6028B6`) cherche les fiches marquées — `tst.b (a2) / bmi`, pas de `0x0C` — et pour
+chacune remet le long du journal à la place du courant, en corrigeant le cumul dans les deux sens :
+
+```
+006028C2  move.l (a1, d2.w), d1          ; l'ancienne valeur, du journal
+006028C6  move.l $0(a2), d3              ; la valeur en place
+006028CA  move.l d1, $0(a2)              ; on restaure
+006028CE  bclr.b #$1c, d1 ; add.l d1, $8(a2)
+006028D6  bclr.b #$1f, d3 ; sub.l d3, $8(a2)
+```
+
+Puis le chargement. `[0x608020]` est la racine d'une table en ROM, bornée par son propre mot `+0`
+(`cmp.w (a1), d0 / bgt -> sortie`, la même convention que les trois autres tables de ce pilote), et la fiche
+du jeu donne un compte masqué à `0x3F` — **64 échantillons au plus par jeu**. La destination part de
+`[0x608034] + [0xC10]` et avance de la longueur arrondie au pair : **un allocateur à pointeur qui monte**
+dans la RAM sonore.
+
+Pour chaque échantillon du jeu :
+
+```
+0060292E  move.l (a3, d1.w), d2 ; move.l d2, (a2)+   ; la source ROM, et on la JOURNALISE
+00602934  andi.l #$ffffff, d2                        ; 24 bits : l'adresse dans la fenetre
+0060293A  move.b $ef9.w, d6 ; andi.b #$f, d6
+00602942  or.b $608068.l, d6
+00602948  or.b (a3, d1.w), d6                        ; les bits de banque de la fiche
+0060294C  move.b d6, $400001.l                       ; LE REGISTRE DE BANQUE
+00602952  move.l d0, (a3, d1.w) ; bset.b #$7, ...    ; la fiche pointe desormais la RAM, et on la marque
+0060295C  addq.b #$1, $eea(a5)                       ; une de plus a defaire
+00602960  sub.l d2, $8(...) ; add.l d0, $8(...)      ; le cumul de relocation
+```
+
+**L'octet de banque est composé de trois sources** : `[0xEF9] & 0x0F`, une constante en ROM à `[0x608068]`,
+et les bits de poids fort de la fiche elle-même. Il est reposé **à chaque échantillon**, pas une fois par
+jeu — parce que deux échantillons d'un même jeu peuvent être dans deux moitiés différentes des 16 Mo.
+
+### La copie, et son arithmétique
+
+```
+00602980  move.l d6, d5 ; lsr.l #$8, d5               ; d6 = la longueur ; d5 = longueur >> 8
+00602984  [16 x : movem.l (a0)+,d1-d4 / movem.l d1-d4,(a4) / lea $10(a4),a4]
+00602A44  dbra d5, $602984                            ; un tour = 256 octets
+00602A48  andi.l #$ff, d6 ; lsr.l #$1, d6
+00602A50  move.w (a0)+, (a4)+ ; dbra d6               ; la queue, mot par mot
+```
+
+**Seize pas de `movem.l` à quatre registres, donc 16 octets par pas et 256 octets par tour de boucle**, sans
+test entre les pas — mesuré en comptant les motifs identiques : 16 exactement, 192 octets de bloc. Ce n'est
+**pas** un dispositif de Duff comme les quatre de `snd_reset` : ici le reste est traité à part, mot par mot,
+`(longueur & 0xFF) / 2` fois. Les 192 octets du bloc sont 41 % de la fonction.
+
+### Ce que ça établit, et ce que ça ne dit pas
+
+Les fiches de `0x3000` sont **réécrites sur place** : avant le chargement `+0` est l'adresse dans la ROM
+d'échantillons, après c'est l'adresse dans la RAM sonore. Le journal de `0x200` existe précisément pour que
+le jeu suivant puisse rendre les fiches à leur état ROM. C'est une substitution réversible, et `[0xEEA]`
+compte ce qu'il y a à rendre.
+
+À ne pas confondre avec les **32 descripteurs de `0x1000`** que `A6` parcourt par pas de `0x20` (§2) : ce
+sont deux tables distinctes, de pas et de taille différents. Le lien entre les deux n'est pas établi.
+
+**L'en-tête de deux mots a été trouvé par les consommateurs, pas ici.** `0x60288A` fait `tst.l (a2)+` et
+`tst.l (a3)+` avant ses boucles — quatre octets sautés, sans dire pourquoi. Ce sont `0x600B4C` et `0x6037FA`
+qui le nomment, en faisant la même chose dans l'autre sens :
+
+```
+00600B54  cmp.w $2(a1), d1 ; ble -> 600b6a     ; d1 au-dela du maximum : on refuse
+00600B6A  sub.w (a1), d1                       ; moins l'indice de base
+00600B6C  tst.l (a1)+                          ; on saute l'en-tete
+00600B6E  mulu.w #$c, d1 ; adda.l d1, a1       ; la fiche
+00600B74  move.l a1, $ed0.w                    ; 0xED0 : LA FICHE COURANTE
+00600B78  move.b $0(a1), $ed6.w ; bmi -> rts   ; son octet de drapeaux, bit 7 = deja en RAM
+```
+
+Donc un **numéro d'échantillon global** devient un indice local par soustraction de la base, et le bit 7 que
+`0x60288A` pose est ce que le consommateur teste pour savoir si l'échantillon est déjà en RAM. `0xED0` est
+la fiche sélectionnée et `0xED6` ses drapeaux — et `0xED0` est relu à l'allumage d'une note (`0x6038E6` :
+`movea.l $ed0.w, a2 / tst.b $4(a2) / bmi`). La chaîne va donc du chargeur à la note.
+
+Et le `+8`, le cumul : il reçoit `−ancienne +nouvelle` à chaque substitution, donc il suit **le déplacement**
+des adresses. À quoi il sert ensuite n'est **pas** lu : aucun des cinq emplois de `0x3000` ne le consomme.
+
+
+## 5 bis quinquies. `0x600852` : le consommateur, et la table 1 enfin nommée
+
+Lu le 2026-10-25. C'est l'autre bout de l'anneau de `0x800`, et il referme la chaîne entière.
+
+```
+00600852  move.b $ecc.w, d0
+00600856  cmp.b  $efa.w, d0 ; bcs -> 600860
+0060085C  move.b d0, $efa.w          ; 0xEFA : UN FILIGRANE, le maximum jamais atteint
+00600860  subq.b #$1, $ecc.w         ; un message de moins en attente
+00600864  lea.l $800.w, a3
+00600868  move.w $ec6.w, d0 ; andi.l #$3ff, d0   ; 0xEC6 : le curseur de LECTURE
+00600874  addq.w #$4, $ec6.w
+0060087A  move.b (a3)+, d0           ; l'octet de statut
+0060087C  move.l d0, d5 ; andi.b #$f, d5         ; D5 = LE CANAL MIDI, le quartet bas
+00600882  lsr.b #$2, d0 ; andi.w #$1c, d0
+00600888  lea.l $60088e(pc, d0.w), a1 ; jmp (a1)
+```
+
+**Trois choses d'un coup.**
+
+**La table 1 de `0x60088E` est le répartiteur du consommateur**, pas celui du MIDI entrant. Je l'avais
+ouverte à Ghidra en l'appelant « le répartiteur de statut MIDI » sans savoir qui l'atteignait. Elle
+distribue les messages **tirés de l'anneau**. Ses huit créneaux :
+
+| créneau | statut | cible |
+|---|---|---|
+| 0 | `0x8n` note off | `0x60120A` |
+| 1 | `0x9n` note on | `0x6008AC` |
+| 2 | `0xAn` commandes du pilote | `0x6025F2` |
+| 3 | `0xBn` changement de contrôle | `0x601402` |
+| 4 | `0xCn` changement de programme | `0x601C1A` |
+| 5 | `0xDn` | `0x6008AA`, c'est-à-dire **le `rts` : ignoré** |
+| 6 | `0xEn` molette de hauteur | `0x6012D6` |
+| 7 | `0xFn` | le `rts` lui-même, en ligne |
+
+Sept `bra.w` et un `rts` partagé — exactement la forme que `FV2SonTablesDeSaut.java` avait décrite pour
+cette table, et que les deux tables de `0x60030A` et `0x60376C` reprennent.
+
+**`D5` naît ici.** Le quartet bas du statut, c'est-à-dire le canal MIDI, est posé dans `D5` avant le saut —
+et c'est le `D5` que CC 1, CC 7 et CC 10 comparent au `+1` de chaque objet de canal. La provenance de cette
+convention est donc établie, et non plus supposée.
+
+**Et la taille de la table 3 est confirmée une quatrième fois.** `0x601402`, la branche `0xBn` :
+
+```
+00601404  move.b (a3)+, d0
+00601406  cmpi.b #$50, d0 ; bgt -> 6014be    ; au-dela de 0x50 : le gestionnaire << rien >>
+00601414  move.w $60141c(pc, d2.w), d2 ; jmp $60141c(pc, d2.w)
+```
+
+La borne `0x50` est **écrite dans le code**, et `0x50 + 1 = 81` — le compte que la règle
+d'auto-dimensionnement avait donné et que la taille du trou (162 octets) avait redonné. Trois mesures
+indépendantes, plus celle-ci.
+
+### Qui appelle, et à quel rythme
+
+Deux endroits seulement, `0x601CB8` et `0x602160`, avec la même forme :
+
+```
+00601CAC  move.b #$1, $c30.w
+00601CB2  tst.b  $ecc.w ; beq -> 601cc0     ; rien en attente : on passe
+00601CB8  bsr.w  $600852                    ; UN SEUL message
+00601CBC  clr.b  $c30.w
+00601CC0  move.l a6, d0 ; addi.w #$20, d0 ; cmpi.w #$1400, d0
+00602174  lea.l  $1000.w, a6                ; et on reboucle a 0x1000
+```
+
+**Un message par passe**, entrelacé avec un parcours de `a6` sur `0x1000` à `0x13FF` par pas de `0x20` —
+soit **32 structures de `0x20` octets à `0x1000`**, les bornes étant écrites dans le `cmpi.w #$1400` et le
+`lea $1000.w`. C'est la boucle principale, en tourniquet.
+
+**Donc la chaîne complète, des données au matériel :**
+
+```
+pistes de 0x300 -> le tic du timer A decode -> anneau de 0x800 (256 longs, 0xEC4 ecrit, 0xECC compte)
+   -> 0x600852 (0xEC6 lit) -> table 1 par statut -> 0x601402 -> table 3 par controleur
+   -> CC 1 / 7 / 10 -> objets de canal de 0xC40 -> fiches de voix de 0x400 -> registres de fente
+```
+
+Et la contre-pression s'explique : le consommateur ne tire **qu'un** message par tour de boucle principale,
+alors que le tic du timer A peut en empiler plusieurs par interruption. D'où le `cmpi.b #$fc, $ecc.w` qui
+arrête la production à 252 sur 256.
+
+### Deux détails
+
+`0xEFA` est un **filigrane** : le maximum que `0xECC` ait atteint. Il est écrit et lu **uniquement dans
+`0x600852`** — aucun autre emploi dans tout le code atteint. C'est une trace laissée par l'auteur, morte
+pour le programme.
+
+`0xC30` est posé autour du tirage et **effacé par `snd_irq2`** (`0x6033B0`). Les deux se parlent donc par cet
+octet ; ce qu'il protège exactement n'est pas établi.
+
+### Ce que ça laisse ouvert
+
+Les six gestionnaires de la table 1 que je n'ai pas lus : note off, note on, les commandes `0xAn`, le
+changement de programme, la molette de hauteur.
+
+Les 32 structures de `0x1000` que `A6` parcourt ne sont **pas** ouvertes : le §2 les a déjà nommées — les
+**descripteurs de copie d'échantillons**, `0x20` octets chacun, `0x1000-0x13FF` et `0x201000`. Les bornes que
+je viens de relever dans la boucle (`cmpi.w #$1400`, `lea $1000.w`) les redonnent depuis un autre endroit du
+code, ce qui est une confirmation de plus.
+
+### Et pourquoi la table 1 ignore `0xFn`
+
+Parce que les messages système ne passent **jamais** par l'anneau : ils sont interceptés à la réception. Le
+§3 ter l'avait lu dans `snd_irq3_reception_midi` — `cmpi.b #$ff, d0 / beq -> 0x6006C4`, et `0x6006C4` remet
+la pile à `0x2000` et écrit `"Erro"` en `0xC08`, c'est-à-dire **redémarre la carte**. Le `0xFn` que le
+consommateur jette n'est donc pas un oubli : rien ne l'y met. Les deux lectures, faites à deux jours
+d'écart et par deux chemins, se recoupent.
+
+
+## 5 bis quater. Les huit pistes de `0x300` : un lecteur de fichier MIDI standard
+
+Lu le 2026-10-25, à la suite de `snd_irq2`. Les huit structures que le tic parcourt sont **huit pistes de
+séquenceur**, et le pilote est un lecteur de format MIDI standard — delta-times à longueur variable, statut
+courant, et une liste d'enchaînement par piste.
+
+### La taille, confirmée trois fois
+
+`0x10` octets par piste, `0x300` à `0x37F`, et les trois mesures ne partagent rien :
+
+| | |
+|---|---|
+| `snd_irq2` | sept `lea $10(a2), a2` entre les appels, donc un pas de `0x10` |
+| `0x602712` | `moveq #$3, d7 / clr.l (a4)+ / dbra` — **quatre longs**, l'effacement d'une piste |
+| `0x6036EE` | `lea $300.w, a0 / moveq #$1f, d0 / clr.l (a0)+` — **32 longs = `0x80` octets**, soit les huit |
+
+### La disposition
+
+| | | |
+|---|---|---|
+| `+0` | drapeaux | bit **7** active (`bset` en `0x602706`, `bclr` en `0x603202` pour la piste 0) ; bits **6 et 5** fournis par la commande de démarrage (`andi.b #$60, d0 / or.b d0, $0(a4)`) ; bit **3** « la piste a une liste d'enchaînement » ; bit **0** « un autre événement suit tout de suite » |
+| `+1` | **statut courant** | le statut MIDI mémorisé, pour le statut implicite |
+| `+2` | mot | le **compte à rebours** jusqu'au prochain événement |
+| `+4` | long | le **pointeur de lecture** dans les données |
+| `+8` | long | le **curseur dans la liste d'enchaînement** |
+| `+0xC` | — | `+0xF` est **un quartet de groupe**, posé par `0x6026AE` qui balaie `0x310` sur sept pistes — le §2 l'avait déjà relevé. `+0xC` à `+0xE` restent non identifiés |
+
+### Le statut implicite et le delta-time, tels quels
+
+```
+0060347A  move.b (a3)+, d1 ; bmi -> 603484     ; bit 7 pose : un nouveau statut
+0060347E  move.b $1(a2), d1 ; subq.l #$1, a3   ; sinon : STATUT IMPLICITE, on rend l'octet
+00603484  move.b d1, $1(a2)                    ; et on le memorise
+00603488  lsr.b #$2, d0 ; andi.w #$1c, d0
+00603490  lea.l $603496(pc, d0.w), a0 ; jmp (a0)
+```
+
+C'est **le statut implicite de MIDI** (un octet de donnée réutilise le statut précédent), et le `jmp` est
+celui de `0x603494` — la table de huit créneaux que j'avais ouverte la veille sans savoir ce qu'elle
+distribuait. `(statut >> 2) & 0x1C` prend les bits 6-4 du statut et les multiplie par quatre, donc les huit
+familles `0x8n` à `0xFn`. Les créneaux 1 et 3 partagent `0x60352C` : ce sont `0x9n` et `0xBn`, les deux
+messages à **trois octets**, et une seule routine les assemble. `0xAn` a son propre gestionnaire
+(`0x6034B6`), qui examine ses globales à lui — **ce n'est donc pas de l'aftertouch mais le canal de commandes
+du pilote**, ce que la liste de lecture appelait « le protocole `A0 banque index` ».
+
+Et la queue commune lit le delta-time :
+
+```
+00603664  btst.b #$0, $0(a2) ; bne -> 603464   ; drapeau pose : evenement suivant immediatement
+00603670  move.b (a3)+, d1 ; beq -> 603464     ; delta nul : idem
+00603676  bclr.b #$7, d1 ; beq -> 603680       ; bit 7 pose : un second octet suit
+0060367C  lsl.w #$7, d1 ; or.b (a3)+, d1       ; sept bits de plus
+00603680  move.w d1, $2(a2) ; move.l a3, $4(a2)
+```
+
+**La quantité de longueur variable du format MIDI standard**, bornée à deux octets — donc 14 bits, 16 383
+tics au plus. Et les deux chemins de retour à `0x603464` sont ce qui permet les accords : plusieurs
+événements dans le même tic.
+
+### La liste d'enchaînement : un petit programme par piste
+
+Quand une séquence finit, si le bit 3 est posé, `+8` est un curseur dans **une liste de longs**, et chaque
+long est une instruction :
+
+| valeur | ce qu'elle fait |
+|---|---|
+| `0xFFFFFFFF` | **fin** : `clr.b $0(a2)`, la piste s'arrête |
+| `0xFFFFFFF1` | **indirection** : `movea.l (a0), a0` — on saute ailleurs dans la liste, et c'est ainsi qu'un morceau **boucle** |
+| `0xFFFFFFF2` | **tout arrêter** : les 32 longs de `0x300` effacés, les huit pistes avec |
+| `0x80xxxxxx` | une **commande en ligne** : `d1 = long << 8 \| 0x80`, poussée dans la file |
+| autre | la **séquence suivante** à jouer |
+
+Et sans le bit 3, la fin d'une séquence fait simplement `clr.b $0(a2)`.
+
+### Et la boucle se referme sur `snd_irq2`
+
+`0x6036FC`, appelé par les gestionnaires d'événement, **n'agit pas** : il pousse.
+
+```
+006036FC  lea.l $800.w, a1
+00603702  move.w $ec4.w, d0 ; andi.w #$3ff, d0  ; un anneau de 0x400 octets
+0060370A  adda.l d0, a1 ; move.l d1, (a1)       ; le message de quatre octets
+0060370E  addq.w #$4, $ec4.w                    ; le curseur d'ecriture
+00603712  addq.b #$1, $ecc.w                    ; LE NOMBRE EN ATTENTE
+```
+
+C'est **la file de commandes de `0x800`** — un anneau de `0x400` octets, soit **256 longs**, avec `0xEC4`
+en curseur d'écriture et **`0xECC` en compte d'attente**. Le consommateur est ailleurs : `0x600852` lit
+`0xECC`, `0x600860` le décrémente.
+
+**Et ça explique le `0xFC` de `snd_irq2`.** Le gestionnaire du timer A commence par
+`cmpi.b #$fc, $ecc.w / bcc -> rte` : il **cesse de produire quand la file est presque pleine**, 252 sur 256.
+Les trois nombres s'emboîtent — anneau de `0x400` octets, masque `0x3FF`, seuil `0xFC` — et aucun n'a été
+supposé.
+
+L'architecture du pilote tient donc en une phrase : **le tic du timer A décode les séquences et empile des
+messages dans l'anneau de `0x800` ; un consommateur hors interruption le vide.**
+
+### Ce que ça laisse ouvert
+
+Les quatre octets `+0xC` d'une piste, qu'aucun code atteint ne touche. Le rôle du bit 6 des drapeaux, fourni
+par la commande de démarrage à côté du bit 5 dont je sais qu'il recopie vers la sortie MIDI. Le consommateur
+de la file, lui, a été lu juste après : voir 5 bis quinquies.
+
+
+## 5 bis ter. `snd_irq2` (`0x6032D2`) : le tic de la musique, et une file de tics différés
+
+Point 3 de la liste de lecture. Lu le 2026-10-25.
+
+### D'abord une correction : j'avais inversé les timers
+
+La section précédente, écrite le même jour, disait de `SCIEB = 0x00C8` : « entrée MIDI, **timer B et timer C**
+armés ; le timer A ne l'est **pas** ». **C'est faux, et c'est l'inverse.** Ce qui l'a révélé : `snd_irq2`
+recharge le registre `0x418` — TIMA, le timer A — et acquitte `SCIRE = 0x40`, le bit 6. Un gestionnaire qui
+rechargerait le timer A sans que celui-ci soit armé n'aurait pas de sens.
+
+Les bits, pris dans l'implémentation du portage plutôt que dans mon souvenir d'une table
+(`src/sound/scsp.cpp`) : `timerA_cb()` pose `0x40` dans SCIPD, `timerB_cb()` pose `0x80`, `timerC_cb()`
+pose `0x100`, et le chemin d'entrée MIDI pose `8`. Donc :
+
+| bit | source | armé par `0x00C8` ? | niveau d'après SCILV `0x88`/`0x48`/`0x00` |
+|---|---|---|---|
+| 3 (`0x08`) | entrée MIDI | **oui** | `0b011` = **3** |
+| 6 (`0x40`) | **timer A** | **oui** | `0b010` = **2** |
+| 7 (`0x80`) | **timer B** | **oui** | `0b001` = **1** |
+| 8 (`0x100`) | timer C | **non** | — |
+
+Les niveaux que j'avais calculés — 3, 2, 1 — étaient bons ; seuls les **noms** des sources étaient
+permutés. Donc **`snd_irq2` est le gestionnaire du timer A**, et c'est le tic de la musique.
+
+Et la valeur le confirme de l'extérieur : le gestionnaire recharge TIMA depuis `[0x60806A]`, qui vaut
+**`0x00CE`** — exactement le premier des dix mots de `0x6002D4`, et exactement ce que le commentaire du
+portage (`scsp.cpp`, ligne 372) avait déjà noté : « timer A at 0xCE: 50 samples, 882 a second ». Trois
+sources indépendantes sur la même valeur.
+
+### Un tic qu'on peut étirer ou comprimer, une fois
+
+```
+006032D8  move.w $60806a.l, d0      ; 0x00CE, la valeur nominale
+006032DE  tst.b  $c3c.w             ; zero : rien
+006032E6  subi.w #$30, d0           ; si positif -> 0x009E
+006032F4  addi.w #$30, d0           ; si negatif -> 0x00FE
+006032F8  move.w d0, $100418.l      ; TIMA
+006032FE  move.w #$40, $100422.l    ; SCIRE : acquitte le timer A
+```
+
+`0xC3C` n'est écrit qu'en deux endroits, `0x602F24` (`#$1`) et `0x602F2C` (`#$ff`), tous deux dans la zone
+des commandes de contrôle — ce sont donc **deux commandes**, et le gestionnaire efface l'octet, donc l'effet
+ne dure **qu'un intervalle**. Les chiffres, puisque le compte monte jusqu'à `0xFF` :
+
+| `0xC3C` | TIMA | tours de prédiviseur | effet sur l'intervalle |
+|---|---|---|---|
+| 0 | `0xCE` | 50 | nominal |
+| 1 | `0x9E` | **98** | presque deux fois plus long |
+| `0xFF` | `0xFE` | **2** | vingt-cinq fois plus court |
+
+Une asymétrie de cette taille n'est pas un réglage de tempo. Ça ressemble à une synchronisation avec la
+carte principale — « saute un temps » d'un côté, « rappelle-moi tout de suite » de l'autre. **Je ne le nomme
+pas** : ce qui est mesuré, ce sont les deux valeurs et le fait que l'effet est à un coup.
+
+### Ce qui compte vraiment : les tics ne sont jamais perdus
+
+```
+00603306  tst.b $c01.w ; bne -> 6033BE     ; deja dedans ?
+0060330E  cmpi.b #$fc, $ecc.w ; bcc -> rte ; sature : on ne fait que recharger le timer
+00603318  move.b #$80, $c01.w              ; on prend le verrou
+...
+00603368  tst.b $c1e.w ; beq -> 603374
+0060336E  subq.b #$1, $c1e.w ; bra 603322  ; un tic differe : on refait le tour
+...
+006033BE  addq.b #$1, $c1e.w ; rte         ; LE CHEMIN REENTRANT
+```
+
+`0xC01` est un **verrou de réentrance**, et `0xC1E` un **compteur de tics différés** — ses trois seuls
+emplois dans tout le programme sont ces trois lignes. Quand l'interruption retombe pendant que le
+gestionnaire tourne encore, il **n'exécute rien : il incrémente `0xC1E` et sort**. Puis la boucle principale
+se refait un tour pour chaque tic en attente avant de rendre la main.
+
+**Le pilote ne perd donc jamais un tic ; il les met en file et rattrape dans une seule invocation.** C'est
+important pour le portage : si l'ordonnancement de l'hôte fait déborder le gestionnaire, le vrai pilote
+rattrape au lieu de laisser tomber des notes. Le seul cas où un tour est réellement sauté est `0xECC >= 0xFC`
+— qui est, mesuré depuis `0x6036FC`, **le nombre de commandes en attente dans l'anneau de `0x800`**. Celui-ci
+tient 256 longs (`0x400` octets, masque `0x3FF`), donc `0xFC` = 252 est un seuil de **contre-pression**, pas
+un nombre magique. Voir 5 bis quater.
+
+Le corps du tour, entre `sr = 0x2700` (tout masqué) et `sr = 0x2000` : `a2 = 0x300`, puis sept
+`lea $10(a2), a2` suivis d'un `bsr 0x60344A`. Donc **huit structures de `0x10` octets à `0x300-0x37F`**, la
+première traitée à part (`0x6033C8`, `0x603408`, `0x603460` selon trois drapeaux) et les sept autres par la
+même routine. Ce sont les **huit pistes du séquenceur**, lues juste après : voir 5 bis quater, qui donne aussi
+ce que `0xECC` compte et pourquoi le seuil vaut `0xFC`.
+
+### Et une voie de retour que le portage jette
+
+```
+00603322  tst.b $c3e.w ; beq -> 60333c
+00603328  subq.b #$1, $c3d.w ; bne -> 60333c
+0060332E  move.b #$a, $c3d.w
+00603334  move.b #$f0, $100407.l            ; MOBUF
+```
+
+`0x407` est l'octet bas du registre `0x406`, soit **MOBUF, le tampon de sortie MIDI**. Quand `0xC3E` est
+posé — encore une commande, `0x602F16` et `0x602F1E` — le pilote **envoie `0xF0` à la carte principale tous
+les dix tics**, soit environ 88 fois par seconde.
+
+Et dans le portage, `src/sound/soundboard.cpp` ligne 133 : `h.midi_out = [](int) {};`. **La sortie est
+jetée.** Si la carte principale attend cet octet, ça se verrait ; si elle ne le lit pas, ça ne coûte rien.
+**Lequel des deux n'est pas mesuré** — il faudrait voir si le code PowerPC lit le port de retour de la carte
+son.
+
+
+## 5 bis bis. `0x602B32` : l'interprète de paramètres du DSP, et les 59 adresses qu'il écrit
+
+Point 1 de la liste de lecture — la fonction qui contient `0x602BA2`, le chargement COEF/MADRS. Lue le
+2026-10-25, sans Ghidra. Ce n'est pas un chargeur de bloc : c'est un **interprète piloté par descripteurs**.
+
+### Comment on arrive au bloc
+
+`0x602CE4` fournit le bloc, et l'indexation est en trois sauts :
+
+```
+00602CE4  movea.l $608018.l, a1        ; la racine de la table des effets
+00602CEC  bmi -> abandon               ; pointeur negatif : on sort en depilant
+00602CF0  move.b  $ef1(a5), d1         ; 0xEF1 : LE PREREGLAGE COURANT
+00602CF4  bmi -> abandon
+00602CF6  lsl.w   #$1, d1
+00602CF8  move.w  $2(a1, d1.w), d1 ; adda.l d1, a1    ; la fiche du prereglage
+00602CFE  move.w  (a1), d1         ; adda.l d1, a1    ; le bloc de parametres
+```
+
+`[0x608018]` vaut `0x0060E954`, et son mot `+0` vaut **2**. Ce n'est pas un compte mais **l'indice
+maximum** — la routine sœur `0x602D08` le confirme en faisant `cmp.w (a0), d0 / bgt -> abandon` sur la même
+disposition. Donc **trois préréglages, 0 à 2**. Et c'est vérifié de l'autre côté : en suivant la chaîne pour
+les indices 0 à 15, **seuls 0, 1 et 2** donnent un bloc dont tous les types sont connus ; à partir de 3 on
+tombe sur `entrees=255`, `pas=255`, des types inexistants. Les deux mesures — le mot de la table et la
+validité des blocs — se rejoignent sur trois.
+
+### La disposition du bloc, et les sept types
+
+```
++0  nombre d'entrees        +4  sous-index maximum        +5  octets par jeu de valeurs
++8  les descripteurs, QUATRE octets chacun : +0 type et drapeaux, +2 decalage COEF, +3 decalage MADRS
+```
+
+Le flux de valeurs commence à `(nombre + 2) × 4` du début — soit après l'en-tête de 8 octets et les
+descripteurs — et le sous-index `d0` y choisit un **jeu** (`a1 += d0 × pas`). Le sous-index change donc les
+valeurs, **pas les adresses**.
+
+Les comptes de mots par type, relevés un par un entre `0x602B64` et `0x602C8C` :
+
+| type (`& 0x1F`) | mots COEF | mots MADRS |
+|---|---|---|
+| `0x01` | 1 | — |
+| `0x02` | 10 | 7 |
+| `0x04` | 3 | 2 |
+| `0x0D` | 2 | — |
+| `0x0E` | 5 | — |
+| `0x10` | 5 | — |
+| `0x16` | **38** | 1 |
+
+Et le **bit 5 du type** n'est pas un type : il ajoute `$2(a3)` à chaque valeur MADRS écrite
+(`btst.b #$5, $8(a2)` / `move.w $2(a3), d4` / `add.w d4, d0`). C'est une **relocation des lignes de retard** :
+les adresses de délai d'un préréglage sont décalées par une base. Le type `0x24` observé dans les données est
+le type `4` avec ce drapeau. Quand un type n'écrit aucun mot MADRS, l'octet `+3` du descripteur vaut `0xFF` —
+un marqueur, pas un décalage.
+
+### Les 59 adresses, énumérées depuis les données
+
+Chaque écriture est **bornée et adressée par un décalage du descripteur** : aucun balayage linéaire dans
+cette fonction. Donc l'ensemble des adresses touchées se calcule depuis la ROM, et c'est fait — les trois
+blocs, 32 descripteurs en tout :
+
+```
+59 adresses de registre ecrites, de 714 a 794
+dans 0x7C0-0x7FF : 0
+```
+
+**Aucune.** La plus haute est `0x794`, et MADRS va jusqu'à `0x7BF`. L'interprète qui règle l'effet ne nomme
+jamais `0x7C0-0x7FF`.
+
+**C'est une deuxième ligne de preuve sur la question de fidélité, indépendante de la première.** La section 5
+l'avait tranchée par le balayage : un seul passage linéaire de `0x700` à `0xBFF` depuis un bloc en ROM, donc
+un miroir matériel détruirait chaque préréglage pendant son propre chargement. Celle-ci dit autre chose : la
+seule autre voie par laquelle le pilote touche COEF et MADRS **n'adresse jamais la plage contestée**, et le
+fait de façon énumérable plutôt que déduite. Les deux ensemble : `0x7C0-0x7FF` n'est écrit par ce pilote que
+par le coup de balai qui met toute la zone à zéro.
+
+Ce que ça ne dit toujours pas : ce que le **matériel** fait de ces 64 octets. Ça reste hors de portée de la
+lecture du programme.
+
+### Et pour la question des arènes
+
+`0xEF1` choisit parmi **trois** jeux de paramètres COEF/MADRS. À ne pas confondre avec les **9 programmes
+MPRO distincts** mesurés sur `fv2-fight.txt` : MPRO est le microcode, ces trois-là sont les coefficients et
+les adresses de retard. Le point 5 de la liste de lecture porte sur MPRO et reste ouvert ; ce qui est acquis
+ici, c'est qu'un seul octet de RAM sélectionne le jeu de paramètres, et qu'il n'y en a que trois.
+
+
+## 5 quater. Les changements de contrôle MIDI : modulation, volume, panoramique
+
+Lu le 2026-10-25, **sans Ghidra** — au marcheur et à l'octet. Les trois gestionnaires que la table de saut 3
+(`0x60141C`) distribue par numéro de contrôleur : CC 1 (`0x601882`), CC 7 (`0x601974`), CC 10 (`0x601A08`).
+
+### Les deux étages, et les deux clés
+
+Les trois ont la même forme, et elle dit l'architecture du pilote :
+
+1. **balayer les 20 objets de canal** à `0xC40`, `0x20` octets chacun ; garder ceux dont `+0` est non nul
+   (actif) et dont **`+1` vaut le canal MIDI** du message ;
+2. **écrire le réglage dans l'objet** ;
+3. **balayer les 32 fiches de voix** de `0x400` (puis `0x200400` pour la puce 1), et pour celles qui
+   appartiennent à cet objet, **pousser la valeur dans les registres de la fente**, le `+0` de la fiche étant
+   un pointeur sur eux.
+
+Et à l'étape 3, **les trois n'utilisent pas la même clé**, ce qui est le fait neuf de cette lecture :
+
+| gestionnaire | la fiche est retenue si | ce que ça vaut |
+|---|---|---|
+| CC 1, `0x60193A` | `cmp.b $5(a4), d1` | **`+5` == l'indice de l'objet de canal** (`(A0 − 0xC40) >> 5`, donc 0..19) |
+| CC 10, `0x601A5A` | `cmp.b $5(a4), d3` | le même `+5`, même calcul d'indice |
+| CC 7, `0x6019D6` | `cmp.b $6(a4), d5` | **`+6` == le canal MIDI** (`D5`, celui que `+1` de l'objet porte) |
+
+Une fiche porte donc **deux** identifiants : `+5` l'indice de son objet de canal, `+6` son canal MIDI. Vingt
+objets pour seize canaux MIDI : les deux ne peuvent pas être la même numérotation. **C'est le tiers manquant
+de `group_of()`** — et ça reste à finir, parce que *qui pose* `+5` et `+6` n'est toujours pas lu. Ce qui est
+acquis : `+5` est un indice d'objet, pas un canal.
+
+Autre asymétrie mesurée : **CC 1 applique dans la boucle**, pour chaque objet concordant ; **CC 7 et CC 10
+appliquent une seule fois après la boucle**, sur le **dernier** objet concordant (`moveq #$ff,d3` en
+sentinelle, `move.l a0,d3` à chaque concordance, `tst.l d3 / bpl`). Si deux objets actifs partageaient un
+canal MIDI, le volume et le panoramique du premier ne seraient pas rafraîchis. Que ça puisse arriver n'est
+pas établi.
+
+### CC 1, molette de modulation : le LFO matériel, pas la table logicielle
+
+```
+00601882  lsl.b #1,d0 ; andi.b #$e0,d0        ; les 3 bits de poids fort de la valeur MIDI doublée
+...
+006018E2  move.b $9(a0),d3 ; andi.b #$e0,d3   ; la valeur en place
+006018EC  beq -> rts                          ; inchangée, on ne touche à rien
+006018EE  andi.b #$1f,$9(a0) ; or.b d0,$9(a0) ; sinon on remplace les 3 bits
+006018F8  bsr $60193A                         ; et on applique
+```
+
+et l'application écrit **`$12(a5)`**, masqué par `andi.w #$7fff`. `+0x12` d'une fente SCSP est le registre
+**LFO** : bit 15 `LFORE`, bits 14-10 `LFOF`, 9-8 `PLFOWS`, **7-5 `PLFOS`**, 4-3 `ALFOWS`, 2-0 `ALFOS`. Les
+trois bits que CC 1 pose sont donc **`PLFOS`, la profondeur du LFO de hauteur**, et le masque `0x7FFF`
+laisse `LFORE` à zéro : on règle le LFO **sans le réinitialiser**. Le mot `+8` de l'objet de canal est une
+image prête de ce registre, dont `+9` est l'octet bas.
+
+**Ce que ça renverse :** la molette de modulation ne passe **pas** par la table de modulation logicielle de
+`0xF00`. Elle va au LFO matériel. Le bit 7 du `+4` d'une fiche, que j'ai mesuré **jamais posé** et dont je
+soupçonnais CC 1, n'est donc pas armé par la molette. Les deux mesures tiennent ; ce qui arme la modulation
+logicielle reste inconnu.
+
+La profondeur de l'instrument s'y **ajoute**, en saturant :
+
+```
+006018C4  move.b $1(a1),d3 ; move.b d3,d1     ; l'octet de modulation de l'instrument
+006018CA  andi.b #$e0,d3
+006018CE  cmp.b  d3,d0
+006018D0  bcs.b  $6018d4                      <-- la cible est l'instruction SUIVANTE
+006018D4  andi.b #$7,d1 ; lsl.b #$5,d1        ; ses 3 bits de poids FAIBLE, remontés
+006018DA  add.b  d1,d0 ; bcc ; move.b #$e0,d0 ; somme, saturée à 0xE0
+```
+
+Le `bcs` de `0x6018D0` a pour cible `0x6018D4`, **l'instruction qui le suit** (`65 02`, déplacement 2) : les
+deux issues mènent au même endroit, la comparaison d'avant ne sert donc à rien. Deux lectures possibles — un
+reste d'une version antérieure, ou un branchement neutralisé en changeant son déplacement, ce qui est une
+façon connue de corriger du binaire. **Je ne sais pas laquelle**, et ça ne change pas le comportement : la
+profondeur de l'instrument est toujours sommée.
+
+L'instrument est trouvé par `movea.l $608038.l, a1` puis `move.w $2(a1,d3.w), d3` (un décalage ; négatif =
+pas d'instrument) puis `adda.l d3, a1`.
+
+### CC 7, volume principal : deux étages et une globale
+
+```
+00601974  lsl.b #1,d0 ; beq ; addq.b #1,d0    ; 7 bits -> 8 (0x7F->0xFF, 0->0)
+00601994  move.b d0,$3(a0)                    ; +3 = le volume tel qu'envoyé
+0060199E  btst.b #0,$0(a0) ; bne              ; bit 0 des drapeaux : exempté de la globale
+006019A6  move.b $ee9.w,d2                    ; sinon, l'échelle globale 0xEE9
+006019AA  mulu.w d2,d0 ; lsr.w #8,d0 ; addq   ; volume x échelle / 256, arrondi hors de zéro
+006019B2  move.b d0,$a(a0)                    ; +0x0A = le volume effectif
+```
+
+puis l'application, pour chaque fiche dont `+6` vaut le canal **et dont `+4` est non nul** :
+
+```
+006019E8  move.b $a(a4),d6                    ; +0x0A de la FICHE : le niveau propre à la voix
+006019EC  mulu.w d0,d6                        ; x le volume effectif du canal
+006019EE  beq -> moveq #$ff,d6                ; produit nul -> 0xFF
+006019F0  lsr.w #8,d6 ; not.b d6 ; lsr.b #1,d6
+006019FA  move.b d6,$d(a5)                    ; TL, l'atténuation de la fente
+```
+
+`+0x0D` d'une fente est l'octet bas du mot `0x0C`, soit **`TL`**. Donc
+**`TL = ¬((volume_canal × niveau_voix) / 256) / 2`**, ce qui le borne à **0..127** — la moitié de la plage —
+avec `0xFF` réservé au silence exact. C'est une formule entière vérifiable telle quelle contre le portage.
+
+### CC 10, panoramique : `DISDL` et `DIPAN` dans un octet
+
+Le convertisseur `0x601A98` transforme les 7 bits MIDI en 5 bits SCSP, et c'est exactement l'encodage
+`DIPAN` :
+
+```
+00601A98  lsr.b #2,d0                   ; 0..127 -> 0..31
+00601A9A  cmpi.b #$10,d0 ; bcc -> 601AAA
+00601AA0  neg.b d0 ; subq.b #1,d0 ; andi.b #$1f,d0   ; moitié gauche : 0x1F..0x10 (bit 4 posé)
+00601AAA  andi.b #$f,d0                              ; moitié droite : 0x00..0x0F
+```
+
+MIDI 64 (centre) donne 0 des deux côtés, MIDI 0 donne `0x1F`, MIDI 127 donne `0x0F`. Le résultat va dans les
+**5 bits de poids faible du `+6` de l'objet**, et l'application compose l'octet final :
+
+```
+00601A64  move.b $6(a0),d0 ; move.b d0,d1
+00601A6A  andi.b #$e0,d0 ; lsr.b #5,d0  ; les 3 bits de poids fort : un niveau 0..7
+00601A70  add.b $c04.w,d0               ; décalé par la globale 0xC04
+00601A74  bpl / clr.b d0                ; négatif -> 0
+00601A7A  cmpi.b #7 / ble / moveq #7    ; borné à 7
+00601A82  lsl.b #5,d0 ; andi.b #$1f,d1 ; or.b d1,d0
+00601A8A  move.b d0,$16(a5)
+```
+
+`+0x16` d'une fente est l'octet **haut** du mot `0x16`, soit `DISDL` (bits 7-5) et `DIPAN` (bits 4-0). Le
+`+6` de l'objet de canal **est** cet octet, à l'offset `0xC04` près. Et le gestionnaire entier est
+court-circuité si `0xEFB` est non nul (`tst.b $efb.w / bne -> rts`).
+
+### Les quatre globales, et où elles sont posées
+
+Trouvées par `--cherche` **après avoir semé les tables de saut dans le marcheur** — voir plus bas, car la
+même recherche rendait auparavant un compte faux sans le dire.
+
+| | ce qu'elle fait | posée par |
+|---|---|---|
+| `0xEE9` | l'échelle de volume maître, `0xFF` au départ (`0x600480`) | `0x6027B2`, `0x602D2A`, et copiée de `0xEEE` en `0x6033F8` |
+| `0xEEE` | une copie en attente du maître, prise à **la moitié** (`lsr.b #1`) en `0x60278A` | `0x60278C`, `0x60286A` |
+| `0xC04` | le décalage de `DISDL`, posé par une commande à `d0 − 0x40` | `0x60276C` ; sauvegardé/restauré en `0x6001AA`/`0x6001E6` |
+| `0xEFB` | non nul ⇒ **CC 10 ne fait rien** ; lu en cinq endroits, tous des `tst.b` | **deux entrées voisines de la table 4** : la 6 (`0x6031B6`) l'efface, la 7 (`0x6031BC`) la met à 1 |
+
+Deux sous-commandes de la banque de contrôle `0x00` qui ne font qu'activer ou désactiver le panoramique, et
+qui appellent ensuite `0x602C94` sur les deux puces : **ça ressemble à un commutateur mono/stéréo**. Ce n'est
+pas établi — ce qui l'est, c'est l'effet mesuré sur CC 10.
+
+`0xEE9` et `0xC04` sont les deux globales que le portage doit regarder pour `VF3_VOLUMES` : l'une multiplie
+le volume de chaque canal non exempté, l'autre décale le niveau d'envoi de chaque voix.
+
+### Qui pose `+5` et `+6` : trouvé, et par l'écriture
+
+Point 2 de la liste de lecture, ouvert depuis le début et **fermé** le 2026-10-25. Les deux écritures
+existent, et ce ne sont plus des déductions tirées des lecteurs.
+
+**`+6`, le canal MIDI**, posé à l'allumage d'une note, dans la routine qui remplit une fiche (`A4`) depuis un
+objet de canal (`A0`) :
+
+```
+00600C50  move.w $ede.w, $12(a4)
+00600C56  move.b d2, $7(a4)
+00600C5A  move.b $1(a0), $6(a4)     ; <- le +1 de l'objet, c'est-a-dire son canal MIDI
+00600C60  move.b $5(a0), $14(a4)    ; et le +5 de l'objet va en +0x14 de la fiche
+```
+
+**`+5`, l'indice de l'objet**, dans la queue de la même séquence :
+
+```
+006010EA  move.w a0, d0
+006010EC  subi.w #$c40, d0
+006010F0  lsr.w  #$5, d0            ; (A0 - 0xC40) / 0x20
+006010F2  move.b d0, $5(a4)         ; <- exactement le calcul que les gestionnaires utilisent comme cle
+006010F6  bset.b #$6, $4(a4)
+006010FC  ori.b  #$8, $0(a5)        ; bit 3 de l'octet haut du registre 0x00 : KYONEX
+```
+
+**Clé et valeur sont calculées par le même code**, à l'octet près. Ce que `group_of()` fait dans le portage
+est donc juste, et le seuil `0x0F` porte bien sur des indices d'objet.
+
+Trois choses se lisent au passage dans cette queue : `andi.b #$7f, $12(a5)` efface le bit 7 de l'octet haut
+du mot `0x12`, soit **`LFORE`** — le LFO est lâché au démarrage de la note, ce qui recoupe le masque
+`0x7FFF` de CC 1 ; `bset` pose les bits 0 et 6 du `+4` de la fiche, l'octet de drapeaux ; et `ori.b #$8` sur
+l'octet haut du registre `0x00` est **`KYONEX`**, donc la note partait là.
+
+### Et pourquoi le marcheur rendait un compte faux
+
+`--cherche ee9` donnait **4 emplois**. Il en donne **9**. La différence n'est pas un bug de la recherche :
+le parcours récursif s'arrête sur un `jmp (An)`, donc **tout ce qui ne s'atteint que par une table de saut
+était invisible** — y compris les trois gestionnaires de cette section. La recherche rendait un compte
+complet en apparence sur la moitié du programme.
+
+`tools/son/desas_son.py` sème maintenant les onze sauts calculés (les quatre tables de mots, les quatre
+tables de créneaux, les quatre entrées de bloc déroulé), ce qui porte le parcours de 95 à **184 fonctions et
+4 453 instructions**. Le témoin : `0x6019A6`, la lecture de `0xEE9` par CC 7, que j'avais lue à la main et
+que l'ancien parcours ne trouvait pas — elle apparaît. Et `--cherche` **imprime sa portée avant ses
+résultats**, parce qu'un compte rendu par un parcours incomplet ressemble à un compte complet.
+
+
 ## 6. L'outillage, et comment refaire tout ça
 
 | | |
@@ -1244,13 +2073,19 @@ fiches à `0x400`, l'écriture en `+0x600` — sont venues de la recherche.
 
 ## 7. Ce que la suite doit lire, par ordre d'intérêt
 
-1. **La fonction qui contient `0x602BA2`** : le chargement COEF/MADRS, et ce qu'elle fait de `0x7C0-0x7FF`.
-   C'est la question de fidélité ouverte.
-2. **Qui pose l'octet `+5` d'une fiche** : le dernier tiers non confirmé de `group_of()`, donc du partage
-   musique/effets. À chercher du côté du protocole MIDI `A0 <banque> <index>`.
-3. **`snd_irq2` (`0x6032D2`)** : jamais regardé. L'un des trois niveaux servis.
-4. **Le `FF` qui relance un son avant de le couper** (`docs/fv2-console-son.md`, mesuré en août, jamais
-   expliqué) : le gestionnaire du reset MIDI le dirait.
+1. ~~**La fonction qui contient `0x602BA2`**~~ — **faite le 2026-10-25**. C'est un interprète piloté par
+   descripteurs, et ses 59 adresses sont énumérées : `0x714` à `0x794`, **aucune** dans `0x7C0-0x7FF`.
+   Voir 5 bis bis. Ce que le matériel fait de ces 64 octets reste hors de portée de la lecture.
+2. ~~**Qui pose l'octet `+5` d'une fiche**~~ — **fait le 2026-10-25**, et par l'écriture : `0x6010F2` pour
+   `+5` (l'indice de l'objet, `(A0 − 0xC40) >> 5`), `0x600C5A` pour `+6` (le canal MIDI). Voir 5 quater.
+3. ~~**`snd_irq2` (`0x6032D2`)**~~ — **fait le 2026-10-25**. C'est le timer A, le tic de la musique à
+   `0xCE`. Il met les tics en file plutôt que de les perdre (`0xC01` verrou, `0xC1E` compteur de différés),
+   et il envoie `0xF0` en MOBUF tous les dix tics — que le portage jette. Voir 5 bis ter.
+4. ~~**Le `FF` qui relance un son avant de le couper**~~ — **expliqué au §3 ter** : il redémarre la carte,
+   intercepté dans `snd_irq3_reception_midi` avant tout. Cette entrée de liste disait encore « jamais
+   expliqué » alors que le §3 ter le lisait : corrigé le 2026-10-25. Et le consommateur le confirme de
+   l'autre bord — son créneau `0xFn` est un `rts`, parce que rien ne met jamais un message système dans
+   l'anneau.
 5. **Si le programme DSP change par arène** — et ce point est **resté sans réponse faute de levier**.
    Mesuré : sur `fv2-fight.txt`, **43 rafales MPRO et 9 programmes distincts**, dont un écrit à l'image 2724,
    entre le chargement du décor (2500) et l'intro (2650). Et **trois de ces programmes sont les mêmes octets

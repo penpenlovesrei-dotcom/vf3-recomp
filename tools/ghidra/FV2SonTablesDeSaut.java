@@ -8,6 +8,10 @@
 // EVERY COMPUTED JUMP IN THE PROGRAM, enumerated rather than guessed (11 of them):
 //
 //     0x60088C  jmp (A1)            table 1, via lea (0x60088E,PC,D0.w) -- the MIDI status dispatch
+//                                   (read 2026-10-25: more precisely, the dispatch of 0x600852, the
+//                                   consumer that pulls messages from the 0x800 ring -- not of MIDI
+//                                   arriving from the main board. Its slot 5 (0xDn) and slot 7 (0xFn)
+//                                   both land on one shared rts, so those two are ignored.)
 //     0x60272C  jmp (d8,PC,D2.w)    table 2 at 0x602730 -- control commands, banks 0x00-0x0F
 //     0x601418  jmp (d8,PC,D2.w)    table 3 at 0x60141C -- the Bn control-change sub-dispatch
 //     0x602EDC  jmp (d8,PC,D0.w)    table 4 at 0x602EE0 -- under control bank 0x00

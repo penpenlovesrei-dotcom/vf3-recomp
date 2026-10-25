@@ -102,6 +102,42 @@ def vecteurs(d):
     return out
 
 
+def tables(d):
+    """Les points d'entree que les sauts calcules du programme cachent au parcours recursif.
+
+    POURQUOI. Le parcours suit bsr/jsr/bra et les branchements, mais il s'arrete sur un
+    `jmp (An)` : rien dans l'instruction ne dit ou elle va. Onze sauts calcules existent dans ce
+    programme, et tout ce qu'on n'atteint que par eux etait invisible -- 95 fonctions trouvees contre
+    168 que Ghidra tient. Une recherche lancee sur cette moitie-la REND UN COMPTE SANS LE DIRE : le
+    2026-10-25, `--cherche ee9` a rendu 4 emplois en en manquant au moins trois, parce que les
+    gestionnaires de changement de controle ne s'atteignent que par la table de 0x60141C.
+
+    Les onze sont mesures, et chacun a sa verification dans docs/fv2-son-programme.md :
+
+      - quatre tables de MOTS, chaque entree etant un decalage relatif a la base de la table. Leur
+        longueur n'est ecrite nulle part : elle vient de la regle << la table finit ou commence sa
+        cible la plus basse >>, verifiee d'abord sur celle de 0x602730 dont les 16 entrees avaient
+        ete comptees a la main, puis recoupee par la taille du trou que Ghidra laisse sur chacune.
+      - quatre tables de CRENEAUX de branchement, dont le compte vient du masque de l'index, qui est
+        ecrit dans le code (& 0x0E, & 0x1C, (&7)<<2, et huit pour celle de 0x60088E). Deux d'entre
+        elles n'ont que sept `bra` : le huitieme cas est un gestionnaire pose en ligne.
+      - quatre blocs deroules de 128 instructions (des dispositifs de Duff) : deux copient, deux
+        effacent. On seme leur entree.
+    """
+    out = []
+    # base, nombre d'entrees -- des mots, chacun un decalage depuis la base
+    for base, n in ((0x60141C, 81), (0x602730, 16), (0x602EE0, 26)):
+        for k in range(n):
+            o = base - BASE + 2 * k
+            out.append(base + int.from_bytes(d[o:o + 2], "big"))
+    # base, nombre de creneaux, pas -- les creneaux eux-memes sont les destinations
+    for base, n, pas in ((0x60088E, 8, 4), (0x60030A, 8, 2), (0x603496, 8, 4), (0x60376C, 8, 4)):
+        out.extend(base + pas * k for k in range(n))
+    # les entrees de bloc deroule
+    out.extend((0x601F3C, 0x6023E2, 0x602044, 0x6024EA))
+    return [a for a in out if BASE <= a < BASE + SIZE and not a % 2]
+
+
 def parcourir(d, depart):
     """Descente recursive. Rend (instructions par adresse, cibles d'appel)."""
     md = Cs(CS_ARCH_M68K, CS_MODE_BIG_ENDIAN | CS_MODE_M68K_000)
@@ -164,12 +200,14 @@ def main(argv):
             print("  %08X  %s" % (a, ", ".join(vec[a])))
         return 0
 
-    vues, appels = parcourir(d, list(vec))
-    fonctions = sorted(set(vec) | appels)
+    tab = tables(d)
+    vues, appels = parcourir(d, list(vec) + tab)
+    fonctions = sorted(set(vec) | appels | set(tab))
 
     if mode == "--fonctions":
-        print("%d instructions atteintes, %d fonctions (%d depuis les vecteurs, %d appelees)"
-              % (len(vues), len(fonctions), len(vec), len(appels)))
+        print("%d instructions atteintes, %d fonctions (%d depuis les vecteurs, %d appelees,"
+              " %d semees par les tables de saut)"
+              % (len(vues), len(fonctions), len(vec), len(appels), len(set(tab))))
         print("couverture : %.1f %% des octets de la ROM" % (100.0 * sum(i.size for i in vues.values()) / SIZE))
         for a in fonctions:
             n = ", ".join(vec[a]) if a in vec else ""
@@ -188,6 +226,11 @@ def main(argv):
     if mode == "--cherche":
         lo = int(argv[3], 16)
         hi = int(argv[4], 16) if len(argv) > 4 else lo
+        # La portee est imprimee AVANT les resultats, parce qu'un compte rendu par un parcours
+        # incomplet ressemble a un compte complet. Celle-ci inclut les onze sauts calcules.
+        print("portee : %d instructions atteintes depuis %d points d'entree (%d vecteurs,"
+              " %d semes par les tables de saut)"
+              % (len(vues), len(set(list(vec) + tab)), len(vec), len(set(tab))))
         print("instructions atteintes dont une operande nomme %06X..%06X :" % (lo, hi))
         n = 0
         for a in sorted(vues):
