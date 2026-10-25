@@ -37,6 +37,10 @@ struct fv2_fin
 	SDL_Texture *tex = nullptr;              // only the one being shown is held: they are 2048 square
 	int tex_w = 0, tex_h = 0;
 	int at = -1;                             // which picture is up, -1 for none
+	// The page's own ground, read from its first pixel. What is beside the picture is filled with it rather
+	// than with black: the page is 3:2 and a window is not, and black bars down the sides of a white page
+	// read as a picture that failed to load.
+	uint8_t edge[3] = { 0, 0, 0 };
 
 	// The folder is read once and only its NAMES are kept. Eight pictures of 2048 square would be a hundred
 	// and twenty megabytes of texture held for the one that is on screen, so they are read as they come.
@@ -80,6 +84,8 @@ struct fv2_fin
 			if (log) fprintf(log, "the console's ending: no texture for %s (%s)\n", paths[size_t(index)].c_str(), SDL_GetError());
 			return;
 		}
+		const uint32_t c0 = px.empty() ? 0u : px[0];
+		edge[0] = uint8_t(c0); edge[1] = uint8_t(c0 >> 8); edge[2] = uint8_t(c0 >> 16);
 		SDL_UpdateTexture(tex, nullptr, px.data(), tex_w * 4);
 		SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
 		SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_LINEAR);
@@ -94,7 +100,7 @@ struct fv2_fin
 	{
 		if (!tex || tex_w <= 0 || tex_h <= 0) return;
 		SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-		SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+		SDL_SetRenderDrawColor(ren, edge[0], edge[1], edge[2], 255);
 		SDL_RenderFillRect(ren, &all);
 		const float k = std::min(all.w / float(tex_w), all.h / float(tex_h));
 		const float w = float(tex_w) * k, h = float(tex_h) * k;
