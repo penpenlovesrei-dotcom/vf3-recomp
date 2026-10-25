@@ -158,7 +158,11 @@ struct fv2_training
 	void render(SDL_Renderer *ren, const SDL_FRect &all, const SDL_FRect &mid)
 	{
 		(void)mid;
-		if (!ready || !atlas || lines.empty()) return;
+		// AND IT IS DRAWN WITH NOTHING IN IT TOO. The band is a fixed place on the screen, not a thing that
+		// grows: Frederic, the 2026-10-25, "la colonne noire varie de taille selon son contenu (elle devrait
+		// etre fixe)". So it is always LINES tall and always as wide as its widest line with its damage
+		// column, whatever is in it at the moment.
+		if (!ready || !atlas) return;
 		SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
 		const float h = ROW_H * all.h, gap = GAP * all.h, pad = BAND_PAD * all.h;
 		const float x0 = all.x + MARGIN * all.h;
@@ -168,14 +172,12 @@ struct fv2_training
 		// line actually carries one, because a band kept open for figures that never come is a band of
 		// empty ground, and this one sits on top of the fight.
 		const float dmg_x = x0 + h + gap + 3.0f * h + gap;
-		bool any_dmg = false;
-		for (const line &l : lines) any_dmg = any_dmg || l.dmg > 0;
-		const float wide = any_dmg
-			? dmg_x - x0 + (font && font->ready ? font->width("DMG 000", cap / fv2_texte::CAP) : 4.0f * cap)
-			: h + gap + 3.0f * h;
+		const float wide = dmg_x - x0 + (font && font->ready ? font->width("DMG 000", cap / fv2_texte::CAP) : 4.0f * cap);
 		const float foot = all.y + BOTTOM * all.h;
+		// the band holds its whole height from the first frame; the lines themselves still pile up from the
+		// foot, so the newest is always in the same place
 		const float head = foot - float(lines.size()) * h;
-		const SDL_FRect band = { x0 - pad, head - pad, wide + 2.0f * pad, float(lines.size()) * h + 2.0f * pad };
+		const SDL_FRect band = { x0 - pad, foot - float(LINES) * h - pad, wide + 2.0f * pad, float(LINES) * h + 2.0f * pad };
 		SDL_SetRenderDrawColor(ren, 0, 0, 0, BAND_ALPHA);
 		SDL_RenderFillRect(ren, &band);
 

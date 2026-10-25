@@ -46,12 +46,15 @@ struct fv2_pause
 	//                      changes, while on the arcade's fixed road it would be the next one's. A line that
 	//                      changes something else than it says is worse than no line.
 	//   CHANGE YOUR VIPER  the match finished off screen, then the select screen with two players.
-	//   TITLE SCREEN       the same road, and the game's own title at the end of it.
-	enum { RESUME, REMATCH, CHANGE_STAGE, CHANGE_VIPER, TITLE_SCREEN, LINES };
+	//   MAIN MENU          the same road, and THE CONSOLE'S OWN LIST OF MODES at the end of it. It said
+	//                      TITLE SCREEN and went to the game's, which on this board means walking through
+	//                      its GAME OVER scene -- Frederic saw it the 2026-10-25 and asked for the menu
+	//                      instead, which is where a console player expects to land.
+	enum { RESUME, REMATCH, CHANGE_STAGE, CHANGE_VIPER, MAIN_MENU, LINES };
 	static const char *name(int l)
 	{
 		static const char *const N[LINES] = { "RESUME", "REMATCH", "CHANGE STAGE", "CHANGE YOUR VIPER",
-											  "TITLE SCREEN" };
+											  "MAIN MENU" };
 		return l >= 0 && l < LINES ? N[l] : "?";
 	}
 	// Which lines this mode shows, as a mask of 1 << line. The host sets it when it opens the menu, because
@@ -88,14 +91,14 @@ struct fv2_pause
 
 	bool shown = false;
 	int who = 0;                   // the player who paused: the panel stands on his side, 1P left, 2P right
-	int sel = TITLE_SCREEN;
+	int sel = MAIN_MENU;
 	bool ready = false, tried = false;
 	SDL_Texture *cursor = nullptr;
 	fv2_texte *font = nullptr;     // the sheet, loaded once by the host and shared
 	int stick_x = 0, stick_y = 0;
 
 	// ANSWERED, AND HELD WHILE IT IS HEARD. Frederic's third complaint was that the menu did not respond:
-	// TITLE SCREEN closed it and, for the three and a half seconds the match takes to end off screen,
+	// MAIN MENU closed it and, for the three and a half seconds the match takes to end off screen,
 	// nothing visibly happened -- so he pressed Start again, which paused the game, which stopped the very
 	// thing he had asked for. So the chosen line now BLINKS while its sound plays, as a chosen line does
 	// everywhere else in these surfaces, and only then is it handed to the host. The host's part -- ignoring

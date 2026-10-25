@@ -239,6 +239,9 @@ struct console_play
 	// its two STAGE_SEL states are an empty stub. So the page opens on DECIDE_INT, the game frozen under
 	// it, and the stage is held before the match reads it ten frames later at ROUND_MASK_INT.
 	bool want_stage_page = false;
+	// MAIN MENU's own flag, raised at the far side of the way out of a match (arrive below) and read
+	// by the host, which is the one that owns the list.
+	bool want_list = false;
 	int stage_page_done = 0;      // once per trip through the select screen
 	bool seen_select = false;     // SEL_START or SELECT seen: the sub-state byte means something now
 	// AND A FLAG OF ITS OWN FOR "THIS IS A VERSUS", because at_select cannot be used here: it is cleared
@@ -545,6 +548,14 @@ struct console_play
 			train_punch_held = false;
 			train_pick_arm = false;
 		}
+		// THE PHASES BEFORE THE FIGHT, CUT -- and these are not the load. GAME's twenty sub-states
+		// (docs/fv2-etats.md) are ROUND_MASK_INT, _IN, _DSP, _OUT (0..3), then ROUND_INT, ROUND_DSP,
+		// SET_INT, SET_INT_POSE, SET_DSP, READY_INT, READY_DSP (4..10), then FIGHT_INT and FIGHT_DSP.
+		// The first four are the arena arriving, and cutting them gave the black screen written down
+		// above; the seven that follow are the announcement -- ROUND X, the pose, READY -- and nothing
+		// is loaded in them. Each is asked to move on the frame it begins, so every INT still runs its
+		// own frame and only the waiting goes. Training only: an ordinary fight keeps its announcement.
+		if ((m == 6 || m == 7) && su >= 4 && su <= 10) b.fv2_cut_submode();
 		const bool fighting = (m == 6 || m == 7) && (su == 11 || su == 12);
 		train_fighting = fighting;
 		// The clock, held by the game's own switch. Held rather than written once because that CONFIG block
@@ -628,7 +639,11 @@ struct console_play
 	{
 		if (leave_for == L_TO_TITLE) {
 			b.fv2_attract_to_title();
-			fprintf(stderr, "the console: back at the title screen\n");
+			// AND THE CONSOLE'S LIST WITH IT: the line is MAIN MENU, not TITLE SCREEN (fv2_pause.h). The
+			// game's title is still the ground it is drawn on -- it is the one screen this port opens the
+			// list over -- but the player lands on the menu rather than on the attract loop.
+			want_list = true;
+			fprintf(stderr, "the console: back at the title screen, the list of modes asked for\n");
 		} else {
 			choose_versus();
 			fprintf(stderr, "the console: back to the select screen, two players\n");

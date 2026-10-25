@@ -1934,6 +1934,7 @@ int main(int argc, char **argv)
 		int l0 = -1, l1 = -1, c0 = -1, c1 = -1, r0 = -1, r1 = -1;
 	};
 	HudCut hud_top, hud_foot;
+	bool hud_hide_mid = false;   // training: the stopped clock is left undrawn (see where it is set)
 	static constexpr int HUD_TOP_ROWS = 100;      // the band the bars and names live in
 	static constexpr int HUD_FOOT_ROWS = 60;      // the band the stage and the time live in
 	// How near an edge a block has to begin to count as hanging off it. Twenty-four columns, about a
@@ -2269,6 +2270,11 @@ int main(int argc, char **argv)
 				const bool mine = board.set == "fvipers2" && (gmode == 6 || gmode == 7);
 				hud_top = mine ? cuts(0, HUD_TOP_ROWS) : HudCut();
 				hud_foot = mine ? cuts(video::H - HUD_FOOT_ROWS, video::H) : HudCut();
+				// THE CLOCK IS NOT SHOWN IN TRAINING. It is stopped there, so what it shows is a number that
+				// never changes; Frederic asked for it gone the 2026-10-25. Nothing of the game is touched --
+				// the middle slice of the top band, which is the timer's own field and nothing else, is simply
+				// not drawn. Only during a fight, or the select screen would lose a strip of itself.
+				hud_hide_mid = mine && cplay.training_on;
 			}
 			// VF3_HUD_AUDIT=1: WHERE THE 2D ACTUALLY IS, row band by row band and column run by column run.
 			// Written to spread Fighting Vipers 2's HUD in widescreen -- the life bars and what hangs off them
@@ -2570,8 +2576,14 @@ int main(int argc, char **argv)
 			// l'ecran et le timer". Hard against the window's edge they left the whole of the widening on
 			// one side of each block, which reads as two things that fell off. The foot has nothing in its
 			// middle to measure against, and he passed it as it was, so it still goes hard against the edges.
-			auto band = [&](const HudCut &c, int y0, int y1, bool even) {
-				if (!c.left) { slice(0, video::W, y0, y1, 0); return; }
+			auto band = [&](const HudCut &c, int y0, int y1, bool even, bool no_mid) {
+				if (!c.left) {
+					if (!no_mid) { slice(0, video::W, y0, y1, 0); return; }
+					// no cut to spread by, but the clock's field is a measured place and does not move
+					slice(0, HUD_MID_L, y0, y1, 0);
+					slice(HUD_MID_R, video::W, y0, y1, 0);
+					return;
+				}
 				float dxl = -dl, dxr = dr;
 				if (even && c.c0 >= 0 && c.l0 >= 0 && c.r0 >= 0) {
 					const float stand_l = mid.x + c.c0 * ks, stand_r = mid.x + (c.c1 + 1) * ks;
@@ -2580,13 +2592,17 @@ int main(int argc, char **argv)
 					dxr = stand_r + ((all.x + all.w) - stand_r - wr) * 0.5f - (mid.x + c.r0 * ks);
 				}
 				slice(0, c.left, y0, y1, dxl);
-				slice(c.left, c.right, y0, y1, 0);
+				if (!no_mid) slice(c.left, c.right, y0, y1, 0);
 				slice(c.right, video::W, y0, y1, dxr);
 			};
 			if (dl > 0.5f && (hud_top.left || hud_foot.left)) {
-				band(hud_top, 0, HUD_TOP_ROWS, true);
+				band(hud_top, 0, HUD_TOP_ROWS, true, hud_hide_mid);
 				slice(0, video::W, HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS, 0);
-				band(hud_foot, video::H - HUD_FOOT_ROWS, video::H, false);
+				band(hud_foot, video::H - HUD_FOOT_ROWS, video::H, false, false);
+			} else if (hud_hide_mid) {
+				// in 4:3 there is nothing to spread, but the clock still goes
+				band(HudCut(), 0, HUD_TOP_ROWS, false, true);
+				slice(0, video::W, HUD_TOP_ROWS, video::H, 0);
 			} else {
 				SDL_RenderTexture(ren, tex_above, nullptr, &mid);
 			}
@@ -3448,7 +3464,7 @@ int main(int argc, char **argv)
 	// before they get here (fv2_pause.h says what each is waiting on).
 	auto chose_pause = [&](int line) {
 		fprintf(stderr, "the console's pause menu: %s chosen\n", fv2_pause::name(line));
-		if (line == fv2_pause::TITLE_SCREEN) {
+		if (line == fv2_pause::MAIN_MENU) {
 			// August's own lever, and this port already had it under another name: push the attract
 			// sequencer to the end of its list with its timer expired and the game walks off the end
 			// itself, which is the one road that installs the title screen the way the game does.
@@ -4288,6 +4304,18 @@ int main(int argc, char **argv)
 					const char *s = getenv("VF3_CONSOLE_STAGE");
 					return s && !strcmp(s, "none");
 				}();
+				// MAIN MENU has got the game back to its title screen: the console's list goes up over it, which
+				// is where that line said it was going.
+				if (cplay.want_list) {
+					cplay.want_list = false;
+					if (modes.ready && !modes.shown && !options.shown) {
+						modes.show();
+						music_mode_chosen = false;
+						sync_menu_sound();
+						fprintf(stderr, "frame %llu: MAIN MENU -- the list of modes is up\n",
+							(unsigned long long)game_frame);
+					}
+				}
 				if (cplay.want_stage_page) {
 					cplay.want_stage_page = false;
 					if (stages.ready && !stages.shown && !no_stage_page) {
