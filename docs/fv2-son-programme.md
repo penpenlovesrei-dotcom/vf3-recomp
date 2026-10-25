@@ -963,9 +963,32 @@ tables de saut relatives au PC — `jmp (A1)` en `0x60088C` après `lea (0x60088
 contrôle, le programme, le pitch bend, le moteur de copie, la programmation de la fente — lui est invisible.
 C'est le trou de 7 278 octets.
 
-**Ce qui n'est pas vérifié**, et je le dis avant de l'essayer : qu'ouvrir ces deux tables à Ghidra (poser les
-huit `bra.w` de `0x60088E` comme du code, et la table de `0x602730`) remonterait son compte. C'est la suite
-évidente et elle se mesure en une passe.
+### Et ouvrir les deux tables : mesuré, +49 fonctions et la couverture de 45 à 77 %
+
+Fait le 2026-10-25 (`tools/ghidra/FV2SonTablesDeSaut.java`). Les deux tables ont d'abord été **relues et
+vérifiées** avant qu'une ligne soit écrite, parce que leurs formes ne sont pas les mêmes :
+
+| | forme | cibles |
+|---|---|---|
+| `0x60088E`, le répartiteur de statut MIDI | **huit créneaux de 4 octets**, chacun un `bra.w` (le créneau `Fn` porte le `rts` qu'ils partagent) | 7 distinctes, toutes dans le code |
+| `0x602730`, les commandes de contrôle (banques `0x00`-`0x0F`) | **seize mots**, chacun un décalage **relatif à la base de la table** — `move.w $602730(pc,d2.w), d2` puis `jmp $602730(pc,d2.w)` | 12 distinctes (`0x602750` quatre fois : la banque inutilisée), toutes dans le code |
+
+Le script désassemble chaque créneau, ajoute une référence `COMPUTED_JUMP` de chaque `jmp` vers chacune de ses
+destinations, crée une fonction à chaque cible distincte, puis relance l'analyse. Et il imprime **le compte de
+fonctions et les octets couverts**, avant et après — le compte seul peut monter sans que la couverture suive.
+
+```
+before: 41 functions,  6806 bytes covered (45 % of the 15136 of code)
+   20 distinct targets: 18 functions created, 2 already there
+after:  90 functions, 11668 bytes covered (77 % of the 15136 of code)
+```
+
+**+49 fonctions, et la couverture de 45 à 77 %.** Les 90 rejoignent les 82 à 95 que le marcheur semé à la main
+atteignait : **l'écart est fermé, et la cause était bien les deux tables.** C'est, pour une fois dans cette
+journée, une affirmation que j'ai annoncée avant de la mesurer et que la mesure a confirmée.
+
+**Ce qui reste, et je n'en invente pas la raison :** 23 %, soit 3 468 octets, restent hors de tout corps de
+fonction. Non expliqué.
 
 
 ## 6. L'outillage, et comment refaire tout ça
