@@ -4327,10 +4327,15 @@ int main(int argc, char **argv)
 				}();
 				// MAIN MENU has got the game back to its title screen: the console's list goes up over it, which
 				// is where that line said it was going.
-				// AND IT WAITS FOR THE TITLE TO BE THERE. The list freezes the PowerPC, so opened a moment too
-				// early it froze the game on the SEGA logo with the menu in front of it -- what Frederic saw the
-				// 2026-10-25. fv2_on_title is the game saying it itself.
-				if (cplay.want_list && board.fv2_on_title()) {
+				// AND IT WAITS FOR THE TITLE TO BE DRAWN, not merely asked for. The list freezes the PowerPC, so
+				// opened a moment too early it freezes the game on whatever was on screen -- the SEGA logo, or a
+				// black frame between two screens, both of which Frederic saw. fv2_on_title says the game is in
+				// ADV's TITLE_INT or TITLE_DSP; TITLE_INT is the frame that INSTALLS the screen, so the picture
+				// is not there yet. Half a second of it being so is what is waited for, and the count starts over
+				// the moment the game is anywhere else.
+				static int title_up = 0;
+				title_up = board.fv2_on_title() ? title_up + 1 : 0;
+				if (cplay.want_list && title_up > 30) {
 					cplay.want_list = false;
 					if (modes.ready && !modes.shown && !options.shown) {
 						modes.show();

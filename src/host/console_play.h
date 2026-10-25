@@ -293,6 +293,7 @@ struct console_play
 	leave_phase leaving = L_OFF;
 	leave_dest leave_for = L_TO_TITLE;
 	int leave_frames = 0, leave_cut = -1, leave_scene = -1;
+	bool leave_said = false;   // the line about the end-of-game modes, said once a trip
 	static constexpr int LEAVE_GIVE_UP = 3600;   // a minute: a match that will not end is let go of
 
 	void leave_match(leave_dest what)
@@ -307,6 +308,7 @@ struct console_play
 		leave_for = what;
 		leave_frames = 0;
 		leave_cut = -1;
+		leave_said = false;
 		leave_scene = -1;
 	}
 
@@ -631,10 +633,31 @@ struct console_play
 			// next sub-state, which is exactly what the game's own handlers do between themselves. Sub 13 is
 			// JUDGE and 18 is VIC_DSP; NEXT_PROG_SEL (19) is LEFT ALONE, because it is the branch point
 			// fv2_end_match wrote for, and cutting it would be cutting the decision itself.
+			// THE MATCH IS HELD DECIDED while the end of it runs. fv2_end_match wrote the bit once; between
+			// the round's end and the branch point the game writes that word itself, and a hidden run of the
+			// 2026-10-25 caught it fighting five more rounds for exactly that reason (model3.cpp).
+			if ((b.fv2_mode() == 6 || b.fv2_mode() == 7)) b.fv2_hold_match_over();
 			const int su = b.fv2_submode();
 			if (su >= 13 && su <= 18 && su != leave_cut) {
 				leave_cut = su;
 				b.fv2_cut_submode();
+			}
+			// AND THE END OF THE GAME IS NOT WALKED THROUGH, IT IS STEPPED OVER. Once the match is decided the
+			// game leaves GAME for modes of its own -- CONTINUE (8, 9), RANKING (16, 17), OVER (18, 19),
+			// RESULT (22, 23), the twenty-four of docs/fv2-etats.md -- and expiring their screens, which is what
+			// this did, only makes them short: Frederic saw GAME OVER go by twice over. So where this is going
+			// to the title, the title is asked for AS SOON AS one of those modes is entered, and HELD, because
+			// those modes write the mode request themselves while they run. The fight is over by then -- that is
+			// what being in one of them means -- so this is not the fight-time request that does nothing.
+			if (leave_for == L_TO_TITLE) {
+				const int m = b.fv2_mode();
+				if (m == 8 || m == 9 || m == 16 || m == 17 || m == 18 || m == 19 || m == 22 || m == 23) {
+					if (!leave_said) {
+						leave_said = true;
+						fprintf(stderr, "the console: the game is in mode %d after the match -- the title asked for instead\n", m);
+					}
+					b.fv2_request_title();
+				}
 			}
 			return;
 		}
@@ -650,7 +673,10 @@ struct console_play
 				arrive(b);
 				return;
 			}
-			if (leave_frames % 30 == 1) b.fv2_request_title();
+			// EVERY FRAME, not now and then: those screens write the mode request themselves as they come
+			// and go, so a request made every half second leaves half a second of GAME OVER on screen --
+			// which is exactly what Frederic kept seeing. Held, it is read on the next tick and no sooner.
+			b.fv2_request_title();
 		}
 		// Firmly positive, because an already expired screen is negative and shortening it would
 		// lengthen it; four times our own edge, so our own writing is never written over again.

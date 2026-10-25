@@ -2003,6 +2003,20 @@ int Model3::fv2_rematch(uint32_t entry1_live, uint32_t entry2_live)
 //
 // Returns 1 when it wrote, -1 for a game this isn't known for or a moment that is not a round being
 // fought -- GAME's FIGHT_INT or FIGHT_DSP, because the two words mean nothing anywhere else.
+// AND THE SAME BIT HELD, nothing else. Measured on a hidden training run the 2026-10-25: MAIN MENU was
+// chosen at frame 3000, fv2_end_match wrote its two words and said so -- and the game fought ANOTHER
+// ROUND at 3010 and four more after it. The bit does not keep: between the round's end and the branch
+// point the game writes ADV_INFO_STATUS itself, and what it writes there is its own count of the rounds
+// won, which says the match is not decided. So it is put back every frame until the game leaves GAME,
+// which is the one place the branch point reads it. The timer is NOT touched here: writing 1 into it
+// again would end each new round in turn instead of ending the match.
+void Model3::fv2_hold_match_over()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ADV_INFO_STATUS + 4) return;
+	uint8_t &high = ram[FV2_ADV_INFO_STATUS ^ 3];
+	high = uint8_t(high | (FV2_MATCH_OVER >> 24));
+}
+
 int Model3::fv2_end_match()
 {
 	if (set != "fvipers2" || ram.size() <= FV2_ADV_INFO_STATUS + 4) return -1;

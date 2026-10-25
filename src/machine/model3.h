@@ -343,6 +343,7 @@ public:
 	// being fought; it says so if it is called anywhere else. It is TITLE SCREEN's and CHANGE YOUR VIPER's
 	// road both, and the host drives it (console_play.h).
 	int fv2_end_match();
+	void fv2_hold_match_over();   // the same bit put back, every frame, until the branch point reads it
 	// THE ENDING'S TWO BYTES: where the staff roll is in its list of segments, and which half of the
 	// current one is on screen -- a page of credits or a replay. August measured both; model3.cpp says
 	// what they are. The console's Dreamcast ending hangs its illustrations off them.
