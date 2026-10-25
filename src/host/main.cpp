@@ -1933,7 +1933,18 @@ int main(int argc, char **argv)
 	// twentieth of the picture, and the number is measured: the player icons begin at column 0, but the
 	// foot's STAGE 1 begins at 16 and its time ends at 476, so at eight the foot never moved at all.
 	static constexpr int HUD_EDGE = 24;
-	static constexpr int HUD_GAP = 5;             // how wide a run of empty columns has to be to be a cut
+	// THE TIMER'S FIELD, measured and FIXED, and that is the whole correction of the 2026-10-25. The cut
+	// used to be a gap looked for in the picture frame by frame, and the timer's own two digits have a gap
+	// between them exactly as wide as the gaps that frame the field -- five columns. At "0 1" the cut fell
+	// BETWEEN THE DIGITS: the 0 went out to the left and the 1 to the right, and the clock read as two
+	// numbers on opposite sides of the screen. Frederic photographed it.
+	//
+	// Geometry cannot tell those two gaps apart, because they are the same width. What tells them apart is
+	// that the field does not move: over ninety frames of a fight the band reads 0..28, 35..216, 222..269,
+	// 275..456, 463..491 and the middle run never budges, whatever the clock says. So the field is written
+	// down once -- the two gaps 217..221 and 270..274 are the cuts -- and what the timer draws inside it is
+	// no longer anyone's business.
+	static constexpr int HUD_MID_L = 217, HUD_MID_R = 275;
 	uint32_t side_colour[2] = { 0xFF000000u, 0xFF000000u };   // widescreen's bars beside the 2D (left, right)
 	bool sky_wide = false;
 	float bg_shift_x = 0, bg_shift_y = 0;   // the layers below the 3D moved back towards the frame before (draw_below)
@@ -2212,29 +2223,18 @@ int main(int argc, char **argv)
 						for (int y = y0; y < y1 && !any; y++) any = (game.view.above[size_t(y) * video::W + x] >> 24) != 0;
 						on[x] = any;
 					}
-					// SEARCHED FROM THE MIDDLE OUTWARDS, and that is not a detail. Searched from the edge in,
-					// the first gap found is the one between a player's icon and his life bar -- six columns
-					// wide, just like the gap around the timer -- and the cut fell there: the icons went out
-					// to the edges and the bars stayed where they were. From the middle out, the first gap
-					// is the one that matters, and everything beyond it travels together.
+					// Something has to hang off each edge, or there is nothing to push out: that is what
+					// leaves the select screen, a fade and the STAGE / VS banner exactly where they are.
 					bool at_edge = false, at_far = false;
 					for (int x = 0; x < HUD_EDGE; x++) at_edge = at_edge || on[x];
 					for (int x = video::W - HUD_EDGE; x < video::W; x++) at_far = at_far || on[x];
-					if (at_edge && at_far) {
-						int run = 0;
-						for (int x = video::W / 2; x >= 0; x--) {
-							if (on[x]) run = 0;
-							else if (++run >= HUD_GAP) { c.left = x; break; }
-						}
-						run = 0;
-						for (int x = video::W / 2; x < video::W; x++) {
-							if (on[x]) run = 0;
-							else if (++run >= HUD_GAP) { c.right = x + 1; break; }
-						}
-					}
-					// A cut on one side only would push one half of the HUD out and leave the other: both or
-					// neither. And they have to leave something in the middle to stand still.
-					if (c.left <= 0 || c.right <= 0 || c.left >= c.right) return HudCut();
+					if (!at_edge || !at_far) return HudCut();
+					// AND THE TWO CUTS HAVE TO BE EMPTY. Anything crossing them is one drawing spanning the
+					// field, and cutting a drawing in three is exactly the fault this is here to prevent.
+					for (int x = HUD_MID_L; x < HUD_MID_L + 5; x++) if (on[x]) return HudCut();
+					for (int x = HUD_MID_R - 5; x < HUD_MID_R; x++) if (on[x]) return HudCut();
+					c.left = HUD_MID_L;
+					c.right = HUD_MID_R;
 					// What each piece covers, which is what gets placed
 					auto ink = [&](int x0, int x1, int &a, int &b) {
 						a = b = -1;
@@ -2243,6 +2243,7 @@ int main(int argc, char **argv)
 					ink(0, c.left, c.l0, c.l1);
 					ink(c.left, c.right, c.c0, c.c1);
 					ink(c.right, video::W, c.r0, c.r1);
+					if (c.l0 < 0 || c.r0 < 0) return HudCut();   // nothing to move on one side
 					return c;
 				};
 				// FIGHTING VIPERS 2 ONLY, for now, and not because the rule is particular to it: nothing
