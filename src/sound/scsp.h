@@ -55,6 +55,9 @@ public:
 	// output gain), and the output gain (MVOL / 15).
 	std::vector<float> m_out;
 	float output_gain() const { return m_gain; }
+	// The DSP's MADRS mirror belongs to the GAME and not to the chip: see m_madrs_mirror below, which
+	// the board sets from the set once the chip is made (SoundBoard::madrs_mirror).
+	void set_madrs_mirror(bool on) { m_madrs_mirror = on; }
 	uint64_t samples_made() const { return m_written; }
 
 	// Looking in (for working out the game's mix; no effect on the output): each key-on, and
@@ -174,7 +177,15 @@ private:
 	// reverb's addresses, then clears that range, which with the mirror leaves them all at one place: the reverb
 	// short, as the reference's (the coin's and start's echoes die in about a second; kept apart, VF2's way, they
 	// rang on for several). VF3_SCSP_MADRS_SEPARATE=1: kept apart.
-	const bool m_madrs_mirror = [] { const char *e = getenv("VF3_SCSP_MADRS_SEPARATE"); return !(e && *e == '1'); }();
+	// AND IT IS WRONG FOR FIGHTING VIPERS 2, measured on the fv2 branch the 2026-10-24. With the mirror
+	// every MADRS entry lands at one place, so each of the DSP's delay lines reads and writes the same
+	// buffer: on that game's victory screen the loop feeds itself and a sound is born there and climbs
+	// 24 dB into the host's limiter. Kept apart it goes -- the state's mean peak falls from 22831 to 6532
+	// while every other state stays where it was. MAME corrected this on its own account (mamedev/mame
+	// #16527) and Supermodel kept ElSemi's older DSP for this very game until its DSP's memory access
+	// followed the manual. So: the mirror for the game it was measured right on, apart for the other.
+	// The board sets it per game (soundboard.h); the two variables force it either way, for comparing.
+	bool m_madrs_mirror = true;
 	// VF3_SCSP_MSLC_LATCH=1: MAME's MSLC status latched once a sample (for comparisons)
 	const bool m_latch_mslc_per_sample = [] { const char *e = getenv("VF3_SCSP_MSLC_LATCH"); return e && *e == '1'; }();
 	u8 m_BUFPTR;

@@ -702,6 +702,7 @@ struct Game
 		sound.attach(&board.sound_rom, &board.samples);
 		// the music/effects split reads Virtua Fighter 3's sound driver (soundboard.h)
 		sound.driver_known = board.set == "vf3";
+		sound.madrs_mirror = board.set == "vf3";   // (soundboard.h: right for VF3, wrong for Fighting Vipers 2)
 		board.on_line = [this](unsigned y) {
 			if (!tiles_on) return;
 			if (y == 0) tiles.clear();

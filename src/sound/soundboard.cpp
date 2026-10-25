@@ -116,6 +116,11 @@ void SoundBoard::reset()
 		h.time_is_zero = [this] { return cycles_now() == 0; };
 		scsp[n] = std::make_unique<scsp_device>(45158400 / 2, ram[n].data(), uint32_t(ram[n].size() * 2), h);
 		scsp[n]->group_of = [this, n](int slot) { return group_of(n, slot); };
+		// the MADRS mirror, per game (soundboard.h), unless one of the two variables says otherwise
+		{
+			const char *sep = getenv("VF3_SCSP_MADRS_SEPARATE"), *mir = getenv("VF3_SCSP_MADRS_MIRROR");
+			scsp[n]->set_madrs_mirror((sep && *sep == '1') ? false : (mir && *mir == '1') ? true : madrs_mirror);
+		}
 		for (int g = 0; g < 2; g++) scsp[n]->set_group_gain(g, volume[g]);
 		if (getenv("VF3_KEYON_LOG")) {   // (tests: each voice started, with the 68000's state then)
 			static FILE *kl = fopen(getenv("VF3_KEYON_LOG"), "w");
