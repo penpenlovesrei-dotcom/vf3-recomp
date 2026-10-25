@@ -393,17 +393,17 @@ moment — des compteurs qui parlent pour quatre voisins qui se taisent.
 
 ### Et le zéro n'était pas général : il dépend de l'arène
 
-Le même 2026-10-25, en forçant l'arène (`VF3_STAGE`, voir §4 quinquies) au lieu de laisser le jeu choisir la
+Le même 2026-10-25, en forçant l'arène (`VF3_STAGE`, voir §4 sexies) au lieu de laisser le jeu choisir la
 sienne, la même sonde sur la même scène de 4 200 images donne :
 
 | arène | écritures dans `0x600-0x6FF` |
 |---|---|
 | celle que le jeu choisit seul | **0** — la mesure ci-dessus |
 | **arène 2** | **993**, à partir de l'image 3783 |
-| **arène 7** | **0** |
+| les onze autres (1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) | **0** |
 
 Donc le zéro était vrai, et il ne voulait pas dire ce que j'en avais tiré. **Ce n'est pas un garde qui ne
-s'ouvre jamais : c'est un garde que certaines arènes ouvrent.** Les offsets touchés le confirment —
+s'ouvre jamais : c'est un garde qu'une arène sur douze ouvre.** Les offsets touchés le confirment —
 `0x600` à `0x63E` et `0x640` à `0x67E`, c'est-à-dire exactement `0x600 + fente × 2` et `0x640 + fente × 2`,
 les deux plages que `0x60153A` écrit (§5 bis quaterdecies). Le code que j'ai lu est bien celui qui s'exécute.
 
@@ -445,68 +445,6 @@ aussi, et surtout, pour ce qu'on croit avoir compris en lisant.
 **Ce qui reste ouvert**, réduit à sa vraie taille : une autre scène pourrait ouvrir ce garde. La question
 n'est plus « le portage perd-il des écritures » mais « ce chemin sert-il jamais », et elle se referme d'un
 seul lancement avec la sonde élargie dès qu'on soupçonne une scène de l'emprunter.
-
-
-## 4 quinquies. Le programme du DSP ne change pas par arène — mesuré, deux arènes
-
-Point 5 de la liste de lecture, **resté sans réponse faute de levier** depuis le début. Le levier existe
-depuis que l'autre session a écrit la sélection de décor : `Model3::fv2_hold_stage` commande l'arène d'un
-versus et `fv2_hold_training_stage` l'octet de route, qui commande celle du **premier match d'une partie**.
-
-`tools/vf3run.cpp` reçoit donc `VF3_STAGE=n`, qui **tient les deux** à chaque image — tenus et non écrits une
-fois, parce que le tirage marque son propre choix comme utilisé en le prenant. Le levier est dans mon outil
-et non dans `src/host/console_play.h`, qui est le fichier d'une autre session.
-
-### Le témoin d'abord : les deux passages diffèrent-ils vraiment ?
-
-Une écriture ne prouve pas que le jeu l'a lue. Deux passages de 4 200 images sur `fv2-fight.txt`, arènes 2
-et 7 :
-
-| | |
-|---|---|
-| empreinte de la RAM finale | `BC628470…` contre `DF3A2A6F…` — **différentes** |
-| les deux WAV | **différents**, et ils divergent à l'octet 7 352 753, soit l'échantillon 1 838 188, soit **41,7 s, l'image 2398** |
-| le levier | 4 écritures du tirage et 3 de la route sur les 600 premières images, 0 refus |
-
-La divergence commence là où l'arène se charge. **Le levier a pris**, et la comparaison porte sur deux
-choses différentes — ce qui est la condition pour que son résultat veuille dire quelque chose.
-
-### Le résultat : identique, écriture pour écriture
-
-Les séquences d'écritures, numéro d'image retiré pour que le décalage de chargement ne compte pas :
-
-| zone | arène 2 | arène 7 | |
-|---|---|---|---|
-| **MPRO** (le microcode) | 23 986 | 23 986 | **identiques** |
-| **COEF** | 4 838 | 4 838 | **identiques** |
-| **MADRS** | 1 768 | 1 768 | **identiques** |
-| `0x7C0-0x7FF` | 1 280 | 1 280 | **identiques** |
-| `0x600-0x6FF` (tampon FM) | **993** | **0** | différentes |
-
-**Le programme du DSP, ses coefficients et ses adresses de ligne de retard ne dépendent pas de l'arène.**
-Pas « se ressemblent » : les mêmes écritures, dans le même ordre, aux mêmes offsets, avec les mêmes valeurs,
-sur 31 872 écritures de configuration du DSP. Les 13 rafales MPRO tombent aux mêmes images des deux côtés, à
-sept images près sur la dernière — le chargement de l'arène ne prend pas exactement le même temps.
-
-**Ce qui change, en revanche, c'est le tampon FM** : 993 écritures dans l'arène 2 et aucune dans l'arène 7.
-Voir la fin du §4 : c'est la modulation logicielle, et c'est elle qui est propre à l'arène, pas le DSP.
-
-### Ce que ça établit, et ce que ça ne fait pas
-
-Ça ferme la question telle qu'elle était posée : **le pilote ne charge pas un effet par arène.** Les deux
-programmes distincts qu'on voit dans les deux passages (`149e507a` et `f977884a`) sont les mêmes deux, aux
-mêmes moments.
-
-Ce que ça ne fait pas :
-
-- **Deux arènes sur douze.** Identique écriture pour écriture est une preuve forte sur ces deux-là ; ce n'est
-  pas douze. Refaire le passage pour les dix autres coûte dix minutes et vaudrait d'être fait.
-- Une mesure précédente de ce document annonçait « 43 rafales MPRO et 9 programmes distincts » ; ce
-  comptage-ci en voit 13 et 2. Les deux ne comptent pas la même chose — regroupement des rafales et
-  empreinte de l'image complète contre empreinte de la séquence d'écritures. **La comparaison, elle, emploie
-  une seule méthode appliquée deux fois**, ce qui est la seule forme qui réponde à la question posée ; mais
-  l'écart entre les deux comptages n'est pas expliqué et je ne le présente pas comme résolu.
-- Rien sur *Virtua Fighter 3*, dont le pilote est le même mais les données non.
 
 
 ## 4 bis. Les trois autres choses, et ce que la table `0xF00` est vraiment
@@ -782,6 +720,108 @@ Et les champs de la fiche se recoupent aussi : le `+0xD` (priorité, que l'alloc
 victime) vient du `+0xA` de la région, et le `+9` (groupe d'exclusivité, que la recherche de §4 ter compare)
 du `+0xB` de la région. Ce que l'allocateur lit, c'est ce que la programmation écrit.
 
+
+## 4 sexies. Le programme du DSP change par arène — pour trois arènes sur douze
+
+Point 5 de la liste de lecture, **resté sans réponse faute de levier** depuis le début. Le levier existe
+depuis que l'autre session a écrit la sélection de décor : `Model3::fv2_hold_stage` commande l'arène d'un
+versus et `fv2_hold_training_stage` l'octet de route, qui commande celle du **premier match d'une partie**.
+
+`tools/vf3run.cpp` reçoit donc `VF3_STAGE=n`, qui **tient les deux** à chaque image — tenus et non écrits une
+fois, parce que le tirage marque son propre choix comme utilisé en le prenant. Le levier est dans mon outil
+et non dans `src/host/console_play.h`, qui est le fichier d'une autre session.
+
+> **Cette section a d'abord conclu l'inverse, et c'est l'erreur la plus instructive de la journée.** Avec
+> **deux** arènes — la 2 et la 7 — tout était identique écriture pour écriture, et j'ai écrit « le programme
+> du DSP ne change pas par arène » en notant la limite : « deux arènes sur douze… refaire les dix autres
+> coûte dix minutes et vaudrait d'être fait ». Les dix minutes ont retourné le titre : **la 2 et la 7 sont
+> toutes deux dans le groupe de neuf qui ne charge rien de plus.** Le caveat était le bon, l'affirmation ne
+> l'était pas. Ce qui suit est la mesure sur les douze.
+
+### Le témoin, arène par arène
+
+Une écriture ne prouve pas que le jeu l'a lue. Douze passages de 4 200 images sur `fv2-fight.txt`, un par
+arène, et pour chacun l'empreinte de la RAM finale et celle du WAV :
+
+**douze empreintes de RAM distinctes, douze WAV distincts.** Le levier a donc pris pour les douze, et chaque
+passage est bien une partie différente — la condition pour que la comparaison veuille dire quelque chose.
+
+### Toutes les arènes partagent le même chargement, et trois en ajoutent un
+
+Les rafales MPRO tombent aux mêmes images pour les douze jusqu'à l'image 2438. Puis la **dernière** rafale
+sépare les arènes en deux familles :
+
+| arènes | dernière rafale MPRO | programme |
+|---|---|---|
+| 1, 2, 3, 4, 5, 7, 8, 10, 12 | puce **1**, images 2396-2438, 1 225 écritures | `149e507a` |
+| **6**, **9** | puce **0**, images **2722-2738**, 1 193 écritures | **`efff4af1`** |
+| **11** | puce **0**, images **2736-2738**, 1 169 écritures | **`f977884a`** |
+
+**Trois arènes sur douze chargent un programme de plus, sur la puce 0, après le début du combat.** Et
+`efff4af1` **n'apparaît nulle part ailleurs** : neuf arènes ne le voient jamais. C'est donc une variation du
+microcode par arène, et non un simple décalage de chargement.
+
+Le détail de l'image 2722-2724 pour l'arène 9 est à noter : c'est **exactement** l'image où une mesure
+antérieure de ce document avait vu « un programme écrit à l'image 2724 ». Cette mesure portait donc sur une
+arène de ce groupe-là — celle que le jeu choisit seul.
+
+### Il fallait comparer les images, pas les comptes
+
+Le piège était à un pas. L'arène 11 fait **25 155 écritures MPRO** contre 23 986 pour les neuf — plus, donc
+« un programme différent », aurait-on conclu du compte seul. Mais en empreintant **l'image complète de
+`0x800-0xBFF`** à la fin de chaque rafale, l'arène 11 ne tient que les deux mêmes programmes que les neuf :
+sa rafale supplémentaire **recharge `f977884a`**, elle n'apporte rien de neuf. Les arènes 6 et 9, elles,
+tiennent bien un troisième programme.
+
+Une séquence d'écritures plus longue ne prouve pas un programme différent. Les deux méthodes ne répondent
+pas à la même question, et c'est la seconde qui répond à celle-ci.
+
+### Les coefficients, eux, varient en cinq jeux
+
+Même méthode, sur les séquences d'écritures COEF et MADRS, numéro d'image retiré :
+
+| arènes | COEF | MADRS |
+|---|---|---|
+| 1, 2, 5, 7, 10 | `5b9d79a9e0` | `1b9661bb72` |
+| 3, 4, 8, 12 | `308b7ad0ad` | `cd9a948eb7` |
+| 6 | `980fc20056` | `a29a1505aa` |
+| 9 | `099510d537` | `89bcda78a6` |
+| 11 | `32b130ec67` | `7444a5af8d` |
+
+**Cinq jeux distincts de coefficients et d'adresses de ligne de retard**, et les deux zones donnent
+**exactement la même partition** — ce qui est attendu, puisque l'interprète de `0x602B32` les écrit depuis
+les mêmes descripteurs (§5 bis bis). Les neuf arènes qui partagent un microcode se partagent donc malgré
+tout **deux** réglages différents.
+
+Et la plage contestée `0x7C0-0x7FF` suit le microcode : 1 280 écritures pour les neuf, 1 344 pour {6, 9, 11}.
+Les 64 de plus sont le programme plus long, pas une incursion nouvelle.
+
+### Le tampon FM : une seule arène sur douze
+
+| arènes | écritures dans `0x600-0x6FF` |
+|---|---|
+| 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 | **0** |
+| **2** | **993**, à partir de l'image 3783 |
+
+La modulation logicielle de `0x60153A` est donc employée par **une seule arène sur douze**. Voir la fin du
+§4 : c'est aussi là que `STWINH` se tranche, et il protège les 993 sans exception.
+
+### Ce que ça établit, et ce que ça ne fait pas
+
+**La réponse à la question posée est oui** : le pilote peut charger un programme DSP propre à l'arène, et il
+le fait pour trois des douze. Les paramètres, eux, varient pour toutes — en cinq jeux.
+
+Ce que ça ne fait pas :
+
+- **Rien sur *Virtua Fighter 3***, dont le pilote est le même et les données non.
+- **Une seule scène**, `fv2-fight.txt`, et seulement son premier match. Une partie plus longue traverse
+  plusieurs arènes et pourrait en montrer d'autres.
+- **Pourquoi** ces trois arènes-là, et pourquoi deux d'entre elles partagent un programme : non lu. Le
+  `0xEF1` qui choisit le préréglage est écrit par une commande de contrôle (§5 bis bis) ; qui la lui envoie
+  côté PowerPC n'est pas cherché.
+- Et l'écart de comptage avec la mesure antérieure de ce document (« 43 rafales, 9 programmes ») **reste
+  inexpliqué**. Ce comptage-ci en voit 13 à 15 selon l'arène, et 2 ou 3 programmes. Je ne le donne pas pour
+  résolu.
 
 ## 5. La plage `0x7C0-0x7FF` : le mécanisme est tranché, l'ampleur ne l'est pas
 
@@ -2732,8 +2772,8 @@ fiches à `0x400`, l'écriture en `+0x600` — sont venues de la recherche.
 > **Cette liste est close pour la lecture du code** : les 168 fonctions sont ouvertes (§5 ter), et les **cinq
 > premières entrées ci-dessous sont faites**, la dernière d'entre elles par une mesure le 2026-10-25. Ce qui
 > reste n'est plus « quelle fonction lire » mais **quel sens établir** — le tableau du §5 ter en donne la
-> liste. La seule chose qui demande encore à tourner est de **refaire la mesure des arènes pour les dix
-> autres**, ce qui prend dix minutes et ne demande aucune fenêtre.
+> liste. **Les douze arènes ont été mesurées** (§4 sexies), et c'est ce passage-là qui a retourné la
+> cinquième entrée : il n'y a plus de question de cette liste qui attende de tourner.
 
 1. ~~**La fonction qui contient `0x602BA2`**~~ — **faite le 2026-10-25**. C'est un interprète piloté par
    descripteurs, et ses 59 adresses sont énumérées : `0x714` à `0x794`, **aucune** dans `0x7C0-0x7FF`.
@@ -2748,12 +2788,12 @@ fiches à `0x400`, l'écriture en `+0x600` — sont venues de la recherche.
    expliqué » alors que le §3 ter le lisait : corrigé le 2026-10-25. Et le consommateur le confirme de
    l'autre bord — son créneau `0xFn` est un `rts`, parce que rien ne met jamais un message système dans
    l'anneau.
-5. ~~**Si le programme DSP change par arène**~~ — **mesuré le 2026-10-25, et la réponse est non.** Le
-   levier manquait ; il existe depuis que l'autre session a écrit la sélection de décor, et `VF3_STAGE=n`
-   dans `tools/vf3run.cpp` tient les deux leviers du jeu. Deux passages de 4 200 images, arènes 2 et 7, qui
-   **diffèrent bien** (RAM et WAV différents, divergence à l'image 2398) : MPRO, COEF, MADRS et
-   `0x7C0-0x7FF` sont **identiques écriture pour écriture**, 31 872 écritures. Ce qui change est le tampon
-   FM — 993 écritures contre 0. Voir §4 quinquies. Reste à refaire pour les dix autres arènes.
+5. ~~**Si le programme DSP change par arène**~~ — **mesuré sur les douze arènes le 2026-10-25, et la
+   réponse est OUI pour trois d'entre elles.** Les arènes **6** et **9** chargent sur la puce 0, vers
+   l'image 2730, un programme (`efff4af1`) que les neuf autres ne voient jamais ; l'arène **11** en
+   recharge un existant. Et les coefficients varient en **cinq jeux** sur les douze. Voir §4 sexies — qui
+   garde aussi l'erreur : avec deux arènes seulement, la 2 et la 7, tout paraissait identique, et les deux
+   sont dans le groupe de neuf qui ne charge rien de plus.
 6. **Ce que les deux dispositifs de Duff copient** (`0x601F3C`, `0x6023E2`) : 512 octets au plus, `A1` vers
    `A2`, et les deux sont dans `snd_reset`. Deux copies déroulées à la main au même endroit du démarrage,
    c'est l'installation de quelque chose de volumineux — une table ou un programme DSP. La taille `D5` et

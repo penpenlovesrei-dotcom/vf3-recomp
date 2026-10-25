@@ -15,9 +15,11 @@
 // (hex address into --ram-at's dump, a byte; "b" first: the backup RAM's) writes RAM before every frame.
 // VF3_STAGE=n holds Fighting Vipers 2's arena to scene n (1-12), for measuring what an arena changes from a
 // headless run -- it holds BOTH of the game's levers, the versus draw and the first match's route byte, and
-// says on frame 600 how often each had to write. Measured the 2026-10-25 with it: the DSP's program,
-// coefficients and delay addresses are identical write for write between two arenas, and what differs is the
-// software modulation of the FM ring buffer (docs/fv2-son-programme.md §4 quinquies)
+// says on frame 600 how often each had to write. Measured the 2026-10-25 with it, over all twelve arenas:
+// three of them (6, 9, 11) load an extra DSP program on chip 0 around frame 2730, and the coefficients come
+// in five distinct sets -- so the effect DOES vary with the arena. Two arenas alone had said the opposite,
+// because 2 and 7 are both in the group of nine that loads nothing more: the lesson of
+// docs/fv2-son-programme.md §4 sexies, which keeps that mistake with the measurement that corrected it
 // (VF3_POKE_FRAMES=from-to: only those). VF3_FREE_PLAY=1: the coin setting FREE PLAY before the boot, as the PC way.
 // HD 2D (docs/fv2-hd-2d.md): --tile-dump DIR writes every tile and every layer layout the game draws, once each,
 // with the hash in the name; --tile-scale N draws the tile plane N times its size (1, the default, is the
