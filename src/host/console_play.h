@@ -186,7 +186,17 @@ struct console_play
 	int sel_frames = -1;          // frames since the select screen appeared; -1 until it does
 	int since_choice = -1;        // frames since the fighter was chosen; -1 until it is
 
-	void choose_arcade() { inject_start = 8; swallow_start = true; }
+	// WHETHER THIS GAME IS A VERSUS, and it has to be a flag of its own: at_select is cleared thirty frames
+	// after the select screen and versus_trip is spent when the stage page opens, so by the time anyone
+	// pauses neither says anything. The pause menu asks this to decide whether CHANGE STAGE commands this
+	// match's arena or the next one's.
+	bool is_versus = false;
+	// AND IT IS NOT CLEARED THE MOMENT THE GAME IS IN ITS ATTRACT LOOP, which it still is for a few frames
+	// after the line is chosen -- the injected Start has not been read yet. Cleared that way the flag was
+	// false by the time anyone paused, and the versus lost its CHANGE STAGE line. So the game has to have
+	// been seen RUNNING first, which is the same wait Survival and the stage hold already use.
+	bool versus_ran = false;
+	void choose_arcade() { inject_start = 8; swallow_start = true; is_versus = false; versus_ran = false; }
 	void choose_survival(m3::Model3 &b) { survival = ARMED; armed_frames = 0; survival_was = b.fv2_survival(); choose_arcade(); }
 	void choose_random() { random_mode = R_ARMED; random_armed = 0; random_was = 0; choose_arcade(); }
 	// TRAINING is a two-player versus with the mode on top: the entry is the V.S. line's, word for word,
@@ -299,6 +309,8 @@ struct console_play
 		vs_stage = vs_scene ? S_ARMED : S_OFF;
 		vs_stage_armed = 0;
 		choose_arcade();
+		is_versus = true;      // (after choose_arcade, which clears it)
+		versus_ran = false;
 	}
 
 	// ---- what Start does, and it is two jobs told apart by one question ----
@@ -570,6 +582,8 @@ struct console_play
 	{
 		out = m3::Controls();
 		if (!on) return;
+		if (!b.fv2_in_attract()) versus_ran = true;
+		else if (versus_ran) { is_versus = false; versus_ran = false; }   // the game is over, and it ran
 		step_leaving(b);
 		step_training(b);
 		// The two task registers, read ONLY while the round is actually being fought (GAME's FIGHT_INT and

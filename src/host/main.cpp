@@ -3434,10 +3434,21 @@ int main(int argc, char **argv)
 					"the tasks seen fighting were %08X and %08X\n",
 					said, cplay.task_live[0], cplay.task_live[1]);
 		} else if (line == fv2_pause::CHANGE_STAGE) {
-			// The draw's own table, held so the only arena left free is this one and the game draws it
-			// itself (Model3::fv2_hold_stage). Data, not code: a write to the game's code would turn this
-			// port's recompiler off, which is what the stage page cost until the 2026-10-25.
-			board.fv2_hold_stage(pause.stage);
+			// THE CAROUSEL, the very page the V.S. line opens, instead of a scene number stepped sideways
+			// with no picture to go by. It parks the game in Sega's empty STAGE_SEL exactly as it does
+			// there, and its answer holds the draw's table (chose_stage above).
+			if (stages.ready) {
+				pause.hide();
+				stages.show();
+				board.fv2_park_stage_select();
+				cplay.swallow_start = true;
+				cplay.start_was = true;
+				sync_menu_sound();
+				return;
+			}
+		} else if (line == fv2_pause::RESUME) {
+			// Nothing to do but close, which is what B and Start already did -- the line is there so the
+			// way back is written down rather than guessed at.
 		}
 		pause.hide();
 		cplay.swallow_start = true;
@@ -3482,6 +3493,9 @@ int main(int argc, char **argv)
 	// The stage page answered, and the half second it is held for before the fight starts (fv2_stage_list.h)
 	int stage_wanted = -1;
 	uint64_t stage_locked_ns = 0;
+	// The pause menu answered, and the moment it was: the line blinks while its sound plays (fv2_pause.h)
+	int pause_wanted = -1;
+	uint64_t pause_locked_ns = 0;
 	std::vector<uint64_t> shot_at;   // VF3_SHOT_AT: the window at these passes, to build/host_window_at_N.png
 	if (const char *k = getenv("VF3_SHOT_AT"))
 		for (const char *q = k; *q;) { shot_at.push_back(strtoull(q, nullptr, 10)); while (*q && *q != ',') q++; if (*q) q++; }
@@ -3662,7 +3676,13 @@ int main(int argc, char **argv)
 					sync_menu_sound();
 					fprintf(stderr, "the console's pause menu: back to the fight\n");
 				} else if (chose >= 0) {
-					chose_pause(chose);
+					// NOT ANSWERED HERE. The line is held while its sound plays, as the carousel's is: the
+					// menu used to close on the very frame A was pressed and, for the three and a half
+					// seconds a way out of a match takes, nothing visibly happened -- so Frederic pressed
+					// Start again, which paused the game, which stopped the very thing he had asked for.
+					pause_wanted = chose;
+					pause.lock();
+					pause_locked_ns = SDL_GetTicksNS();
 				}
 				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
 					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
@@ -3800,6 +3820,15 @@ int main(int argc, char **argv)
 				sync_menu_sound();
 				fprintf(stderr, "frame %llu: VF3_CONSOLE_MODE=%s chosen without a hand\n",
 						(unsigned long long)game_frame, cm);
+			}
+		}
+		// The pause menu's answer, held while its sound is heard and then acted on
+		if (pause.shown && pause.locked) {
+			pause.lock_t = double(SDL_GetTicksNS() - pause_locked_ns) / 1e9;
+			if (pause.lock_t >= fv2_pause::HOLD_S && pause_wanted >= 0) {
+				const int line = pause_wanted;
+				pause_wanted = -1;
+				chose_pause(line);
 			}
 		}
 		// The half second the answered page is held for: the carousel stays, its chosen picture blinks, the
@@ -4091,7 +4120,18 @@ int main(int argc, char **argv)
 				// the first time round.
 				if (cplay.on) {
 					const bool st = live.start[0] || live.start[1] || script_ctl.start[0] || script_ctl.start[1];
-					switch (cplay.take_start(board, st, modes.shown || pause.shown || stages.shown)) {
+					// AND START IS DEAD WHILE A WAY OUT OF A MATCH IS RUNNING. Choosing TITLE SCREEN or
+					// CHANGE YOUR VIPER finishes the match off screen over three and a half seconds; a
+					// Start pressed in that interval used to pause the game, which froze the PowerPC and
+					// stopped the exit, so the menu looked as if it had done nothing. Measured in
+					// Frederic's own log of the 2026-10-25: the pause opened at frames 2200, 2236 and
+					// 2272 and TITLE SCREEN was chosen three times over.
+					bool busy = cplay.leaving != console_play::L_OFF;
+					if (busy) cplay.swallow_start = true;
+					const console_play::start_for what = busy
+						? console_play::start_for::none
+						: cplay.take_start(board, st, modes.shown || pause.shown || stages.shown);
+					switch (what) {
 					case console_play::start_for::list:
 						modes.show();
 						sync_menu_sound();
@@ -4102,13 +4142,22 @@ int main(int argc, char **argv)
 						fprintf(stderr, "frame %llu: Start off the title screen (mode %d, sub-state %d): the game asked for its title screen\n",
 								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
 						break;
-					case console_play::start_for::pause:
+					case console_play::start_for::pause: {
 						// The panel stands on the side of the player who paused.
+						// WHICH LINES THIS MODE SHOWS (fv2_pause.h). REMATCH is out of TRAINING, where the
+						// round restarts of itself and the lives are held. CHANGE STAGE is out of the
+						// modes that follow the arcade's fixed road -- the arena is drawn once a match,
+						// so there it would change the NEXT match's and not this one's.
+						uint32_t on = fv2_pause::ALL;
+						if (cplay.training_on) on &= ~(1u << fv2_pause::REMATCH);
+						else if (!cplay.is_versus) on &= ~(1u << fv2_pause::CHANGE_STAGE);
+						pause.on = on;
 						pause.show(!(live.start[0] || script_ctl.start[0]) && (live.start[1] || script_ctl.start[1]) ? 1 : 0);
 						sync_menu_sound();
 						fprintf(stderr, "frame %llu: Start in a game (mode %d, sub-state %d): the console's pause menu is up\n",
 								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
 						break;
+					}
 					case console_play::start_for::cut:
 						fprintf(stderr, "frame %llu: Start in the presentation or the replay (mode %d, sub-state %d) -> the state is cut short\n",
 								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
