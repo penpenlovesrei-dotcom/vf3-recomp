@@ -205,7 +205,13 @@ struct fv2_training
 			if (l.dmg > 0 && font && font->ready) {
 				char t[24];
 				snprintf(t, sizeof t, "DMG %d", l.dmg);
-				font->draw(ren, t, dmg_x, y + (h - cap) * 0.5f, cap / fv2_texte::CAP, DMG_INK, a);
+				// ON THE CELL'S OWN MIDDLE, and that needs the font's own geometry. draw() is given the top
+				// of the text's BOX, and the capitals begin CAP_TOP into it and are CAP tall; centring the
+				// box left the figures riding high against the arrows, which are centred in their cells.
+				// Frederic saw it as the DMG line being out of line with the icons.
+				const float fh = cap / fv2_texte::CAP;
+				const float top = y + h * 0.5f - cap * 0.5f - fv2_texte::CAP_TOP * fh;
+				font->draw(ren, t, dmg_x, top, fh, DMG_INK, a);
 			}
 		}
 	}

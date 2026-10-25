@@ -2250,7 +2250,13 @@ int main(int argc, char **argv)
 				// above names a game, and Virtua Fighter 3 hangs its HUD off the edges too. It is that VF3
 				// is this port's reference and its picture is not changed unasked. Frédéric asked for this
 				// one; the other has only to be asked for.
-				const bool mine = board.set == "fvipers2";
+				// AND ONLY DURING A FIGHT. The select screen reaches both edges too, and its top band is
+				// empty exactly where the timer's field is, so it was being cut and spread as well -- its
+				// row of portraits came out with a piece of itself repeated against the right edge,
+				// photographed the 2026-10-25. The HUD belongs to GAME, Sega's modes 6 and 7, and to no
+				// other screen.
+				const int gmode = board.fv2_mode();
+				const bool mine = board.set == "fvipers2" && (gmode == 6 || gmode == 7);
 				hud_top = mine ? cuts(0, HUD_TOP_ROWS) : HudCut();
 				hud_foot = mine ? cuts(video::H - HUD_FOOT_ROWS, video::H) : HudCut();
 			}
@@ -4138,6 +4144,20 @@ int main(int argc, char **argv)
 						// console_play parked the game on the tick it asked for the page; no page, so it is
 						// let go again at once and the game walks into DECIDE_INT as it always did.
 						board.fv2_leave_stage_select();
+					}
+				}
+				// TRAINING: ONE PLAYER CHOOSES BOTH FIGHTERS. On the select screen player 1's controls go to
+				// his own cursor until he has pressed punch, and to PLAYER 2'S from then on, so the same hands
+				// pick the opponent. Nothing of the game is touched: the controls are composed here, which is
+				// the one place this port composes them.
+				if (cplay.training_on && (board.fv2_mode() == 4 || board.fv2_mode() == 5)) {
+					if (!cplay.train_p1_chose) {
+						// (this press is his own choice: it stays his, and the routing begins after it)
+						if (live.punch[0] || script_ctl.punch[0]) cplay.train_p1_chose = true;
+					} else {
+						auto move = [](bool *a) { a[1] = a[1] || a[0]; a[0] = false; };
+						move(live.up); move(live.down); move(live.left); move(live.right);
+						move(live.punch); move(live.kick); move(live.guard);
 					}
 				}
 				// TRAINING'S COLUMN, fed with the PLAYER'S own controls and not with the game's memory --

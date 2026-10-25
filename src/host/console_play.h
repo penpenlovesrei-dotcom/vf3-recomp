@@ -144,6 +144,11 @@ struct console_play
 	// the points each player has just had taken off. The host reads them and clears them.
 	bool train_fighting = false;
 	int train_took[2] = { 0, 0 };        // points taken off player 1 and player 2 on this frame
+	// ONE PLAYER CHOOSES BOTH FIGHTERS. The mode opens a two-player versus, so the select screen comes up
+	// with two cursors -- and there is one pair of hands. Player 1 picks his own, and from that press on his
+	// controls are routed to player 2's cursor, so the same hands pick the opponent. The latch is the host's
+	// own: it SEES the press, so it needs no byte of the game's to tell it.
+	bool train_p1_chose = false;
 
 	enum { SEL_NOTHING, SEL_RANDOM, SEL_VERSUS } at_select = SEL_NOTHING;
 	int sel_frames = -1;          // frames since the select screen appeared; -1 until it does
@@ -436,8 +441,9 @@ struct console_play
 	void step_training(m3::Model3 &b)
 	{
 		train_fighting = false;
-		if (!training_on) return;
+		if (!training_on) { train_p1_chose = false; return; }
 		const int m = b.fv2_mode(), su = b.fv2_submode();
+		if (m != 4 && m != 5) train_p1_chose = false;   // off the select screen the latch means nothing
 		const bool fighting = (m == 6 || m == 7) && (su == 11 || su == 12);
 		train_fighting = fighting;
 		// The clock, held by the game's own switch. Held rather than written once because that CONFIG block
