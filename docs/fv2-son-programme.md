@@ -1214,6 +1214,495 @@ j'ai lu `jmp (An)` comme l'instruction entière, alors que la réponse était qu
 l'instruction que je n'avais pas regardée.
 
 
+## 5 bis quaterdecies. Le reste du programme, lu
+
+Les soixante dernières fonctions, lues le 2026-10-25 pour fermer la lecture. Elles se rangent en six
+familles, et plusieurs referment des boucles ouvertes ailleurs dans ce document.
+
+### Ce que le reset installe en RAM
+
+| | |
+|---|---|
+| `0x6003D0` | **copie les 64 longs de `0x600000` vers `0x0`** — la table des vecteurs, de la ROM vers la RAM. C'est ainsi que le 68000 obtient ses vecteurs, puisqu'à l'adresse 0 la carte met de la RAM et la ROM est à `0x600000`. La table de `0x600000` est le modèle, celle de `0x000` est la vivante |
+| `0x600592` | copie `[0x608030]` octets de `[0x60802C]` vers `[0x608038]` : **la table des instruments**, de la ROM vers la RAM. D'où le pointeur que `0x6014C0` et CC 1 suivent |
+| `0x600556` | copie un bloc de `[0x608000]` vers `0x3000` : **la table des fiches d'échantillon**, si `[0x608000]` n'est pas négatif. L'origine du `0x3000` du §5 bis sexies |
+| `0x600524` | `lea 0x603FE2, a0` puis 512 tours de deux `move.l` vers `0x2000`, et de nouveau vers `0x202000` : **4 096 octets de ROM dans chaque RAM sonore**, à `0x2000-0x2FFF`. Contenu non identifié |
+| `0x6002A2` | les 32 fiches de voix : `+0x15` sur seize octets par pas de 8, `+0x0B` et `+0x0D` à `0xFF`, `+0` à `0x10` |
+| `0x6003B6` | efface l'octet `0x17` des registres de **18** fentes (`moveq #$11`). Pourquoi 18 et non 32 n'est pas expliqué |
+
+### Les six créneaux de la table 1
+
+`0x600892`, `0x600896`, `0x60089A`, `0x60089E`, `0x6008A2`, `0x6008A6` : quatre octets chacun, un `bra.w`
+chacun. Ce sont **les créneaux de la table 1** eux-mêmes, que Ghidra compte comme des fonctions parce que le
+`jmp (A1)` de `0x60088C` y saute. Le septième créneau est le `rts` partagé de `0x6008AA` (§5 bis quinquies).
+
+### L'extinction d'une note
+
+| | |
+|---|---|
+| `0x60128E` | **note off**. Si le bit 6 de l'objet — la pédale de maintien — est posé, elle ne coupe rien : `bset #$1, $4(a4)`, la voix est marquée « à relâcher ». Sinon `move.b #$10, $0(a5)`, bits 0 et 5 du `+4`, et le `+0x0E`/`+0x10` de la fiche servent de compte à rebours |
+| `0x601370`, `0x601388` | un balayage des 32 fiches sur le canal `D1`, et le corps appelé pour chacune, qui lit `[0xED4]` et le `+7` de la fiche |
+| `0x601BFA` | balaie les 32 fiches et arrête **toutes celles du canal `D5`**, puis `andi.b #$ef, $c01.w`. C'est le « toutes notes coupées » qu'appelle CC `0x50` |
+| `0x602F68`, `0x602F84` | une **quatrième granularité d'arrêt** (§5 bis septies en donnait trois) : les voix dont le `+4` a le **bit 2** posé, sur les deux puces — le même bit que le prédicat du voleur de voix (§5 bis decies) |
+
+### Les onze éditeurs de la fiche d'instrument
+
+`0x6014DE` trouve l'objet de canal du canal courant et le laisse dans `A0`, en **dépilant l'adresse de
+retour** s'il n'y en a pas — une sortie d'urgence qui annule l'appelant. `0x6014C0` suit l'index `+2` de cet
+objet dans la table des instruments de `[0x608038]`, vérifie le mot magique `0x8000`, et laisse la fiche
+dans `A1`. Onze gestionnaires s'en servent, et le patron de partage de code est remarquable :
+
+| | écrit |
+|---|---|
+| `0x601582` | `$a(a1)` bits 7-4 |
+| `0x601598` | `$a(a1)` bit 3, posé ou effacé selon la valeur |
+| `0x6015B8` / `0x6015D6` | `$b(a1)` bit 7 / ses bits 6-0 — un drapeau et une valeur |
+| `0x6015EC` / `0x6015F6` | les mêmes, avec `D2 = 5` : donc `$10(a1)` |
+| `0x601600` / `0x60160A` | les mêmes, avec `D2 = 6` : donc `$11(a1)` |
+| `0x601572`, `0x60157A` | `D2 = 2`, et ils rejoignent les corps de CC `0x41` et `0x42` |
+
+Trois paires (drapeau, valeur) sur `+0x0B`, `+0x10`, `+0x11`, chacune écrite par deux gestionnaires qui
+partagent le même corps à un registre d'index près. Puis `0x601526` réapplique, en balayant les 32 fiches
+des deux puces par `0x60153A`.
+
+### `0x60153A`, et le tampon FM que ma sonde n'avait jamais vu écrire
+
+```
+0060154A  move.b $a(a1), $e(a5)        ; le +0x0A de l'instrument -> registre 0x0E de la fente
+00601550  move.l a5, d4 ; lsr.w #$4, d4 ; addi.l #$600, d4
+0060155C  move.w $c(a1), $0(a5)        ; -> 0x600 + fente x 2
+00601562  move.w $e(a1), $40(a5)       ; -> 0x640 + fente x 2
+```
+
+Le calcul est à regarder de près : `lsr.w #$4` ne décale que **le mot bas**. Avec `A5 = 0x100000 + fente ×
+0x20`, le mot bas vaut `fente × 0x20`, décalé de 4 il donne `fente × 2`, et le mot haut reste `0x0010`. Plus
+`0x600`, l'adresse est donc `0x100600 + fente × 2` — **le tampon FM**.
+
+**Et c'est la réconciliation d'une mesure du §4.** Ma sonde avait cherché les écritures en `+0x600` et en
+avait trouvé **zéro** sur 4 200 images de *Fighting Vipers 2* et 2 400 de *Virtua Fighter 3*, avec un témoin
+positif. Voici le code qui en ferait. Il n'est atteint que par `0x601526`, donc par ces onze contrôleurs-là.
+La conclusion n'est pas que la sonde s'est trompée : c'est que **la fonctionnalité existe et que ces scènes
+ne l'emploient pas**. Les deux faits tiennent ensemble.
+
+### Les groupes de voix de `0x380`
+
+La table de saut de `0x60376C` — celle du `jmp (A4)` de `0x60376A`, ouverte à la section « Et les cinq
+`jmp (An)` restants » — distribue six gestionnaires qui
+travaillent tous sur une structure `A0` de `0x10` octets : `+0` un masque de huit bits disant quels membres
+sont actifs, `+8` à `+0xF` **les numéros de fente des huit membres** (`move.b $8(a0,d6.w), d5 / andi.w #$1f /
+lsl.w #$5` donne `fente × 0x20`). Ce sont les **huit entrées de `0x380-0x3FF`** que le §2 avait vues sans
+savoir à quoi elles servaient : un **groupe de voix**, un instrument à plusieurs fentes.
+
+| | |
+|---|---|
+| `0x6039A6` | éteint **un** membre : `0x10` dans son registre `0x00`, `+4` bit 0 de sa fiche, le bit du membre effacé, `+0x0E` recopié dans `+0x10` |
+| `0x6039F4` | lit un panoramique du flux, le convertit par `0x601A98` — le convertisseur `DIPAN` du §5 quater — le range en `+2` et l'applique aux huit membres |
+| `0x603A38` | un niveau borné à 7, rangé dans `+3` sous masque `0x78`, appliqué aux huit |
+| `0x603A82` | **le même corps**, rejoint en `0x603A46` avec `D7 = 7` au lieu de `0x78` : la valeur `(v & 0xF) << 3` va donc dans les bits 6-3 du même octet. Deux champs, un corps, un masque dans un registre |
+| `0x603A90` | **charge une définition de groupe** : index borné par le mot `+0` de `[0x60803C]`, pointeur long à `+2 + index × 4`, et les octets copiés dans `+1`, `+3`, `+4` |
+
+`[0x60803C]` est donc la racine des définitions de groupe — et c'est le même long que `0x603198` teste pour
+décider si la fonctionnalité existe (§5 bis septies).
+
+### Les commandes de contrôle restantes
+
+| | |
+|---|---|
+| `0x602A60`, `0x602B20` | **choisissent la puce** : `D5` nul → `[0xC10] = 0`, sinon `0x200000`. C'est l'origine du sélecteur que tout le pilote consulte |
+| `0x602E4C`, `0x602E9E` | appellent `0x602E58` et `0x602EB0` une fois par puce |
+| `0x602E58` | un second lecteur du bloc de préréglages DSP (`0x602CE4`), qui exige `$10(a1) == 1` et compare `$11(a1)` au canal : une variante par canal |
+| `0x602EB0` | gardée par `0xEFB` comme CC 10, elle écrit l'octet `0x17` du registre de la fente d'indice `canal` (`(D5 & 0xF) << 5` ajouté à la base des registres), alimenté par le convertisseur `0x601A98`. **Quel champ portent respectivement les octets `0x16` et `0x17` n'est pas tranché** : CC 10 écrit `0x16`, ceci écrit `0x17`, et la disposition que j'ai des registres n'explique pas les deux |
+| `0x60279A`, `0x602834` | une paire qui pose `[0xC19]`/`[0xC1A]` et met l'un à l'échelle de l'autre |
+| `0x602AD0` | `[0xEF1 + puce] = 0xFF` : le préréglage DSP remis à « aucun » |
+| `0x602F38` / `0x602F40` | `[0xEDC]` à `0xFF` / à zéro. Et `0xEDC` est ce que `0x60344A` teste pour **exécuter l'événement suivant sans attendre le compte à rebours** : donc une avance rapide des pistes |
+| `0x602F46` / `0x602F62` | transposent de `+1` / `−1` le `+4` des objets dont le bit 0 est clair — même corps, `D1` valant `1` ou `0xFF` |
+| `0x602F9A` | `[0xEFE] = 0x8000` |
+| `0x603274` / `0x60327C` | `[0xC3F]` à 1 / à zéro |
+| `0x602F14`, `0x602F34`, `0x602F36`, `0x602F66` | des `rts` nus : des entrées de la table 4 qui ne font **rien** |
+| `0x601954` | la seconde moitié de `0x60193A`, que Ghidra compte à part parce que la première y tombe en passant |
+
+### Deux routines en double exemplaire
+
+`0x603718` et `0x60361E` sont **le même code** : `btst #$5, $0(a2)` sur les drapeaux de la piste, puis
+l'attente de `MOFULL` (bit 4 de l'octet `0x404`) avant d'écrire l'octet dans `MOBUF` à `0x407`. Deux copies
+de la recopie MIDI, dans deux chemins de lecture différents (§5 bis quater).
+
+Et `0x603638` est un **second lecteur de quantité à longueur variable** : `move.b (a3)+, d1 / bpl -> fini /
+andi.b #$7f / or / lsl.l #$7 / recommence`. Celui-là n'est **pas borné à deux octets** comme celui des
+delta-times (`0x603664`), il accumule autant d'octets que le flux en donne. Deux lecteurs de VLQ, deux
+limites.
+
+
+## 5 bis duodecies. `0x60048C` : l'initialisation qui pose les trois sentinelles
+
+82 octets, appelée une seule fois, depuis `0x60020C` dans `snd_reset`. Elle est courte et chaque ligne
+referme une boucle ouverte ailleurs.
+
+```
+0060048C  lea.l $400.w, a4 ; move.l #$100000, d0 ; bsr $6004de     ; la puce 0
+00600498  lea.l $200400.l, a4 ; move.l #$300000, d0 ; bsr $6004de  ; la puce 1
+006004DE  moveq #$1f, d7 ; move.l d0, (a4) ; lea.l $20(a4), a4 ; addi.w #$20, d0 ; dbra
+```
+
+**Voici la boucle que `group_of()` suppose.** Le premier long de chaque fiche reçoit l'adresse des registres
+de sa fente : `0x100000 + fente × 0x20` pour la première puce, `0x300000 + fente × 0x20` pour la seconde.
+C'est exactement ce que le portage teste (`r[0] != (n ? 0x30 : 0x10)`), et le §2 le donnait comme confirmé
+« par une boucle au reset » — la voici nommée.
+
+Puis les sentinelles, et les trois correspondent à un test lu dans une autre fonction :
+
+| | posé à | et c'est le sentinelle testé par |
+|---|---|---|
+| `[0xEF9]` | `0x77` | les bits que `0x60288A` compose dans le registre de banque (§5 bis sexies) |
+| `[0xC18]`, `[0x200C18]` | `0x7F` | le `cmpi.b #$7f, d0 / beq -> sortie` de `0x60288A` : « aucun jeu d'échantillons chargé » |
+| `[0xEF1]`, `[0x200EF1]` | `0xFF` | le `bmi -> abandon` de `0x602CE4` : négatif, donc « aucun préréglage DSP » |
+
+Et une ligne qui reste obscure : `moveq #$ff, d1 / move.b $60807d.l, d0 / lsr.l d0, d1` puis
+`[0xED8] = [0x200ED8] = d1`. `[0x60807D]` est le quota de voix, qui vaut 32 (§5 bis decies), et décaler un
+long de 32 rangs donne **zéro**. Le masque est donc nul sur cette ROM, et il ne serait non nul qu'avec un
+quota inférieur à 8. À quoi `0xED8` sert n'est **pas** lu.
+
+## 5 bis terdecies. `0x603282` : une recherche à deux niveaux, par banque et index
+
+80 octets, atteinte seulement par une table de saut. Elle est gardée deux fois, puis fait deux
+indirections :
+
+```
+00603282  tst.b $c1c.w ; bmi -> sortie          ; un mode, negatif = inactif
+00603288  cmp.b $c1b.w, d5 ; bne -> sortie      ; D5, le canal MIDI, doit valoir [0xC1B]
+0060328E  movea.l $60801c.l, a4 ; movea.l a4, a2
+00603298  move.b $c1c.w, d0 ; subi.w #$10, d0 ; lsl.w #$1, d0
+006032A2  move.w $2(a4, d0.w), d0
+006032A6  cmpi.w #$ffff, d0 ; beq -> 602644      ; absent
+006032AE  adda.l d0, a4
+006032B2  move.b $c1d.w, d0
+006032B6  cmp.w (a4), d0 ; bgt -> 602644         ; borne : le mot +0 de la sous-table
+006032BC  lsl.w #$1, d0 ; move.w $2(a4, d0.w), d1 ; adda.l d1, a2
+```
+
+Donc : **`[0xC1B]` un canal, `[0xC1C]` un premier index décalé de `0x10`, `[0xC1D]` un second**, et deux
+tables de mots en cascade depuis `[0x60801C]`, chacune bornée par son propre mot `+0` — la même convention
+que les quatre autres tables de ce pilote — avec `0xFFFF` pour « pas d'entrée ».
+
+Une recherche à deux niveaux par banque et index, gardée sur un canal : **ça ressemble beaucoup au protocole
+`A0 <banque> <index>`** que la liste de lecture cherchait. Ce n'est pas établi — ce qui l'est, c'est la forme
+de la recherche et les trois globales qui l'indexent.
+
+
+## 5 bis undecies. Les 35 changements de contrôle, et les deux structures qu'ils éditent
+
+Le §5 quater avait lu CC 1, 7 et 10. Voici la famille entière, lue le 2026-10-25, et elle se range en **deux
+groupes selon la structure visée** — ce qui est le fait d'architecture de cette lecture.
+
+### Groupe 1 : le registre LFO, dans l'objet de canal
+
+Le mot `+8` d'un objet de canal est l'image du registre `0x12` d'une fente, et cinq contrôleurs en éditent
+chacun un champ, puis appellent `0x60193A` pour l'appliquer :
+
+| CC | code | masque | champ du registre `0x12` |
+|---|---|---|---|
+| `0x01` | `0x601882` | `+9 & 0xE0` | **`PLFOS`** (bits 7-5), profondeur du LFO de hauteur |
+| `0x02` | `0x601904` | `+9 & 0xF8`, valeur `>>4` | **`ALFOS`** (bits 2-0), profondeur du LFO d'amplitude |
+| `0x15` | `0x60169C` | `+9 & 0xE7`, valeur `<<3`, rejetée si ≥ 4 | **`ALFOWS`** (bits 4-3), forme d'onde d'amplitude |
+| `0x18` | `0x6016CE` | `+8 & 0x83`, valeur `<<2`, bornée à `0x1F` | **`LFOF`** (bits 14-10), fréquence du LFO |
+| `0x14` | `0x60166C` → `0x601684` | `+8 & 0xFC`, rejeté si ≥ 3 | **`PLFOWS`** (bits 9-8), forme d'onde de hauteur |
+
+> **Correction du même jour.** J'avais d'abord écrit que `CC 0x12`, `0x13` et `0x14` allaient tous les trois
+> à `0x601684` et posaient `PLFOWS`. C'était faux, et la faute est instructive : mon extraction automatique
+> lisait vingt instructions depuis chaque gestionnaire et **franchissait le `bra`** qui termine les deux
+> premiers, attribuant à leur entrée le corps de la troisième. Seul `CC 0x14` écrit `PLFOWS` ; `0x12` et
+> `0x13` sautent vers `0x601632`, un corps générique.
+
+Et `CC 0x37` (`0x60186E`) **retombe dans le code de CC 1** après un prologue : une variante d'entrée, pas un
+gestionnaire à part.
+
+Trois contrôleurs passent par `0x601632`, un corps de huit instructions qui écrit simplement l'octet `D0` à
+un décalage fixe de l'objet, le décalage étant passé dans `D3` :
+
+| CC | code | décalage | |
+|---|---|---|---|
+| `0x11` | `0x60162A` | `+4`, valeur `−0x40` | une seconde transposition, signée par le biais |
+| `0x12` | `0x601652` | `+5`, valeur `−0x40` | **la transposition** — exactement le `+5` que `0x601390` ajoute au compte de demi-tons (§5 bis nonies) |
+| `0x13` | `0x60165C` | `+7`, valeur bornée à `0x0C` puis `<<4` | non identifié |
+
+Le `+5` referme une boucle : le §5 bis nonies l'avait vu **lu** comme transposition par le calcul de
+hauteur, et voici le contrôleur qui l'**écrit**.
+
+Deux autres éditent les octets de mixage du même objet :
+
+| CC | code | | |
+|---|---|---|---|
+| `0x0A` | `0x601A08` | `+6 & 0xE0`, 5 bits bas | **`DIPAN`** (§5 quater) |
+| `0x19` | `0x601702` | `+6 & 0x1F`, 3 bits hauts | **`DISDL`**, le niveau d'envoi direct |
+| `0x2A` | `0x601AB0` | `+0x0C & 0x78` | bits 7 et 2-0 de `+0x0C` |
+| `0x2B` | `0x601ADE` | `+0x0C & 0x07` | bits 7-3 de `+0x0C` |
+
+`+6` porte donc `DISDL` et `DIPAN` dans un octet, comme le registre `0x16` — et les deux contrôleurs se
+partagent proprement. `+0x0C` est le pendant plausible pour le registre `0x18` (`EFSDL`/`EFPAN`, l'envoi vers
+le DSP), mais **les deux masques se chevauchent sur le bit 7**, ce qui ne colle pas avec un découpage 3+5
+bits. Le partage exact de `+0x0C` n'est **pas établi**.
+
+### Groupe 2 : l'enveloppe ADSR, dans un gabarit pointé par `+0x1E`
+
+`0x601762` est la clé de ce groupe, et elle tient en cinq instructions :
+
+```
+00601764  move.w $1e(a0), d1 ; beq -> 601104    ; le +0x1E de l'objet : un POINTEUR de 16 bits
+0060176C  movea.l d1, a1 ; rts
+```
+
+Seize bits, donc une adresse **dans la RAM sonore**, pas dans l'espace des registres : c'est un **gabarit en
+RAM**. Il est posé en `0x6009A2` et `0x600B2A`, et le calcul qui précède y dit sa taille :
+`sub.b d0, d3 / mulu.w #$c, d3 / adda.l d3, a2` — une fiche de **`0x0C` octets**, choisie par un index borné.
+Ce n'est donc **pas** un miroir des `0x20` octets de registres d'une fente, mais une forme compressée, et
+seuls quelques champs y tiennent.
+
+Les contrôleurs `0x30` à `0x34` l'éditent, et les cinq champs tombent exactement sur la disposition des
+registres `0x08` et `0x0A` d'une fente, **avec un décalage de −2** (`a1+6` ↔ registre `0x08`) :
+
+| CC | code | écrit | champ SCSP |
+|---|---|---|---|
+| `0x30` | `0x601732` | `$7(a1) & 0xE0`, 5 bits | **`AR`** — registre `0x08`, bits 4-0 |
+| `0x32` | `0x6017A2` | `$6(a1) & 0xF83F`, valeur `<<6` | **`D1R`** — registre `0x08`, bits 10-6 |
+| `0x33` | `0x6017D4` | `$6(a1) & 0x07`, valeur `<<3` | **`D2R`** — registre `0x08`, bits 15-11 |
+| `0x31` | `0x601770` | `$8(a1) & 0x7C1F`, valeur `<<5` | **`DL`** — registre `0x0A`, bits 9-5 |
+| `0x34` | `0x601808` | `$9(a1) & 0xE0`, 5 bits | **`RR`** — registre `0x0A`, bits 4-0 |
+
+**Cinq champs, cinq correspondances exactes, un seul décalage.** C'est ce qui donne confiance : une
+hypothèse de décalage qui tomberait juste par hasard sur cinq masques de cinq bits à quatre positions
+différentes serait une coïncidence coûteuse. Et aucun de ces cinq n'appelle `0x60193A` — ils écrivent le
+gabarit, qui sera appliqué au prochain allumage de note.
+
+`CC 0x36` (`0x60183A`) écrit `$2(a1)` en octet, masqué à `0x3F`, soit — au même décalage — l'octet haut du
+registre `0x04`, `LSA`. **Non confirmé** : un seul champ ne vaut pas les cinq précédents.
+
+Le `+0x1E` est posé en `0x6009A2` et `0x600B2A`, tous deux dans la sélection d'un instrument. Le gabarit est
+donc celui de l'instrument courant.
+
+### Les trois qui font autre chose
+
+**`CC 0x40`, la pédale de maintien** (`0x601B0A`) : `bset #$6, $0(a0)` à l'appui, `bclr #$6` au relâchement,
+puis `bsr 0x601B50`. Donc **le bit 6 des drapeaux d'un objet de canal est la pédale de maintien** — ce qui
+explique enfin le `andi.b #$bf` que `0x602FA0` et `0x603080` appliquent aux vingt objets à l'arrêt général
+(§5 bis septies) : ils **relâchent la pédale partout**. La question posée là est répondue ici.
+
+**`CC 0x50`** (`0x601BA6`) : `andi.b #$bf, $0(a0)` et `andi.w #$7f18, $8(a0)` — la pédale relâchée et le même
+masque `0x7F18` que `0x603172`, qui efface `PLFOS`, `ALFOS` et `LFORE`. C'est une **remise à zéro des
+contrôleurs**.
+
+**`CC 0x41`, `0x42`, `0x4D`** (`0x6014FE`, `0x601510`, `0x601614`) passent tous par `0x6014DE` puis
+`0x6014C0` — deux routines de lecture d'arguments — avant d'agir. `0x601614` écrit `$5(a1)` ; quelle
+structure `A1` désigne là n'est **pas** établi, et ce n'est **pas** le `+5` d'une fiche de voix, dont
+l'écriture est en `0x6010F2` (§5 quater).
+
+Sur les 81 entrées de la table 3, **46 pointent sur le gestionnaire « rien » de `0x6014BE`**, et `CC 0x35`
+en fait partie — un trou au milieu du bloc `0x30-0x34`, `0x36`, `0x37`.
+
+
+## 5 bis decies. `0x601144` et `0x60119E` : l'allocation d'une voix, et le vol du plus ancien
+
+Deux fonctions à lire ensemble, 90 et 108 octets, parce que la seconde est la branche de secours de la
+première.
+
+### L'allocateur : un tourniquet, et deux portes avant lui
+
+```
+00601144  tst.b $ed6.w ; bmi -> 60115c              ; drapeaux de l'echantillon : bit 7 saute le quota
+0060114A  move.b $ee3(a3), d0 ; add.b $ee2(a3), d0  ; deux compteurs
+00601152  cmp.b $60807d.l, d0
+00601158  bge.w $60119e                             ; AU QUOTA -> on vole
+0060115C  move.b $ee0(a3), d0 ; add.b $ee1(a3), d0  ; les deux compteurs de categorie
+00601164  cmpi.b #$20, d0 ; beq -> 6011a0           ; 32 occupees -> on vole, MAIS PAS AU MEME ENDROIT
+0060116A  movea.l $ee4(a3), a4                      ; le curseur du tourniquet
+00601170  cmpi.w #$800, d0 ; bne -> 601180 ; lea.l $400.w, a4   ; bouclage en fin de table
+00601180  tst.b $4(a4) ; beq -> 601192               ; une fiche libre
+00601186  lea.l $20(a4), a4 ; dbra d7, $601170
+0060118E  bra.w $601106                             ; aucune libre alors que les compteurs disent autre chose
+00601192  move.l a4, d0 ; addi.w #$20, d0 ; move.l d0, $ee4(a3)  ; le curseur avance
+```
+
+Donc : **recherche en tourniquet** d'une fiche dont le `+4` est nul, le curseur gardé en `0xEE4`, avec
+bouclage de `0x800` à `0x400`. Et `[0x60807D]` est un **quota en ROM** sur le nombre de voix simultanées.
+**Il vaut `0x20` dans cette ROM, soit 32** — autant que de fentes : le quota est donc réglé grand ouvert, et
+sa porte ne s'ouvre qu'au moment où tout est occupé de toute façon. C'est un réglage que le pilote prévoit,
+pas une contrainte que ce jeu subit.
+
+### Le voleur : le plus ancien, par deux viviers
+
+`0x60119E` ne regarde que les fiches **occupées** (`tst.b $4(a4) ; beq -> suivante`) : ce n'est pas une
+allocation, c'est un vol. Elle garde **deux** candidats en parallèle, chacun le minimum de `+0xB` dans son
+vivier :
+
+| candidat | vivier |
+|---|---|
+| `A1` | les fiches passant le test : `D0 ≠ 0`, ou `0xED6` bit 7, ou **`+4` bit 2** |
+| `A3` | les fiches dont le **`+4` bit 5** est posé |
+
+et la sortie préfère `A3`, sinon `A1`, sinon rend `A4 = 0` sans rien arrêter — le `rts` de `0x601200`. Dans
+les deux premiers cas elle **arrête la voix choisie** (`bsr 0x6006DC`) avant de rendre la fiche.
+
+`+0xB` est le numéro de série posé à l'allumage depuis `0xEE0` ou `0xEE1` (§5 bis septies), donc chercher
+son minimum, c'est chercher **la voix la plus ancienne**.
+
+### Le point d'entrée encode l'urgence
+
+Le détail qui m'a arrêté : la porte du quota branche sur `0x60119E`, mais celle des 32 occupées branche sur
+`0x6011A0` — **une instruction plus loin**, sautant le `clr.l d0`. Or `D0` est exactement ce que le voleur
+teste pour décider s'il applique son prédicat :
+
+| entrée | `D0` | effet |
+|---|---|---|
+| `0x60119E`, depuis le quota | mis à zéro | le prédicat s'applique : seules les fiches marquées `+4` bit 2 sont volables |
+| `0x6011A0`, depuis les 32 occupées | vaut `0x20` | **tout est volable** |
+
+Donc « au quota » vole prudemment, « plus une seule fente » vole n'importe quoi. Deux politiques dans une
+fonction, choisies par l'adresse d'entrée.
+
+### Et une conséquence du marquage des catégories
+
+Le `+0xB` d'une voix de **catégorie A** a son bit 7 **forcé** par un `ori.b #$80` (§5 bis septies) ; celui
+d'une catégorie B ne l'a pas. Donc toute valeur B est `< 0x80` et toute valeur A est `≥ 0x80`, et une
+recherche de minimum **prendra toujours une voix B avant une voix A** à l'intérieur d'un même vivier. Le
+marquage n'est pas qu'une étiquette : il installe une **priorité**, la catégorie A étant protégée.
+
+C'est une déduction à partir de deux faits mesurés — le `ori` et la recherche de minimum — et elle vaut tant
+que les deux compteurs ne débordent pas l'un dans l'autre. Laquelle des deux catégories est la musique
+reste, elle, non établie.
+
+
+## 5 bis nonies. `0x601390` : le numéro de note devient `OCT`/`FNS`, et la table le prouve
+
+114 octets, un seul appelant — `0x600CA4`, dans l'allumage d'une note. Elle convertit une hauteur en
+registre de fente, et son unité se lit dans le code.
+
+```
+00601390  d4 = d5 >> 8 ; d5 &= 0xFF            ; d5 : demi-tons en haut, offset fin en bas
+0060139C  d3 = $c(a4) ; add.b $14(a4), d3      ; plus DEUX transpositions de la fiche
+006013A4  add.b d5, d3 ; ext.w ; ext.l ; lsl.l #$1, d3
+006013AC  d0 = d2 & 0x0F ; add.b d4, d0 ; ext ; lsl.l #$5, d0   ; demi-tons x 32
+006013BC  add.l d3, d0
+006013BE  bpl -> 6013CA
+006013C0  addi.w #$180, d0 ; addi.w #$f800, d4 ; bra     ; negatif : une octave en dessous
+006013CA  cmpi.l #$180, d0 ; bcs -> 6013da
+006013D2  subi.w #$180, d0 ; move.w #$800, d4            ; au-dela : une octave au-dessus
+006013DE  lea.l $603d62.l, a1 ; move.w (a1, d0.w), d3    ; LA TABLE DE HAUTEUR
+006013E8  d0 = d2 & 0xF0 ; lsl.w #$7, d0                 ; le quartet haut -> le champ OCT
+006013F0  add.w d4, d0 ; add.w d3, d0
+006013F4  andi.w #$7bff, d0                              ; bits 15 et 10, inutilises
+006013F8  movea.l $0(a4), a5 ; move.w d0, $10(a5)
+```
+
+**L'unité est le 1/16 de demi-ton.** `0x180` = 384, et `384 = 12 × 32` : douze demi-tons de 32 unités
+d'index — mais l'index est un **décalage en octets** dans une table de mots, donc 32 octets = 16 mots par
+demi-ton. Et `d0` est toujours pair (`d3` est décalé de 1, le terme des demi-tons de 5), ce qui est
+nécessaire : un `move.w` à une adresse impaire ferait une erreur d'adresse sur 68000.
+
+**La table de `0x603D62` le confirme d'elle-même.** Ses mots :
+
+```
+0000 0003 0007 000b 000e 0012 0016 001a 001e 0021 ...
+```
+
+croissants jusqu'à `03f8`, puis **l'entrée 192 revient à `0000`**. Donc 192 mots pour une octave, 16 par
+demi-ton — le même nombre que le modulo `0x180` du code, obtenu par un chemin indépendant. Et `0x3F8` tient
+juste sous les 10 bits de `FNS`.
+
+L'assemblage final est exactement la disposition du registre : le quartet haut de `d2` décalé de 7 atterrit
+sur les bits 11-14 (`OCT`), la correction d'octave vaut `±0x800` soit un pas de ce champ, `FNS` occupe les
+bits 9-0, et le masque `0x7BFF` efface les bits 15 et 10, les deux inutilisés.
+
+### Deux formules pour la hauteur, comme pour `TL`
+
+`0x603928` écrit lui aussi `$10(a5)`, par un tout autre calcul — vélocité × sensibilité signée plus hauteur
+de base, puis `(x<<1 + 0x4000) & 0x7800` pour l'octave (§5 bis octies). **Deux écrivains du registre de
+hauteur, deux formules**, appelés depuis deux endroits différents : `0x600CA4` pour celui-ci, `0x6037F2` et
+`0x60388E` pour l'autre. Le même doublement existe sur `TL`. Pourquoi deux chemins, et lequel sert quand,
+n'est **pas établi**.
+
+### Et un champ de plus nommé
+
+`+0x14` de la fiche de voix est posé à l'allumage depuis le `+5` de l'objet de canal
+(`0x600C60 : move.b $5(a0), $14(a4)`), et il est **ajouté au compte de demi-tons** ici. Donc le `+5` d'un
+objet de canal est une **transposition**. Le `+0x0C` de la fiche en est une seconde, additive elle aussi.
+
+
+## 5 bis octies. `0x603928` : la vélocité, et les deux choses qu'elle commande
+
+126 octets, appelée de `0x6037F2` et `0x60388E`, tous deux dans le chemin d'allumage d'une note. `A2` est la
+fiche d'instrument, `A4` la fiche de voix, `A5` les registres de la fente. L'entrée `D0` est la **vélocité**,
+gardée dans `D3` pour servir deux fois.
+
+### Premier usage : le niveau, par une courbe à points de rupture
+
+```
+0060392A  movea.l a2, a3 ; lea.l $6(a3), a3 ; moveq #$3, d1
+00603932  cmp.b  (a3), d0 ; bge -> 603946        ; au-dela du point : segment suivant
+00603936  sub.b  -$4(a3), d0                     ; moins l'abscisse du point courant
+0060393A  mulu.w $2(a3), d0 ; lsr.w #$8, d0      ; fois la pente, / 256
+00603940  add.b  -$3(a3), d0                     ; plus son ordonnee
+00603946  lea.l  $4(a3), a3 ; dbra d1, $603932
+0060394E  move.b -$3(a3), d0                     ; passe le dernier point : l'ordonnee finale
+00603952  move.b d0, $a(a4)                      ; LE +0x0A DE LA FICHE DE VOIX
+```
+
+**Cinq points de quatre octets à `+2` de la fiche d'instrument** — abscisse, ordonnée, et un mot — donc
+`+2` à `+0x15`, quatre segments interpolés linéairement. Le segment de `k` à `k+1` prend l'abscisse et
+l'ordonnée du point `k` et **le mot du point `k+1`** comme pente ; au-delà du dernier point, la valeur est
+plate.
+
+Et le résultat va dans **`+0x0A` de la fiche de voix** — précisément l'octet que l'application de CC 7
+multiplie par le volume du canal (`move.b $a(a4), d6 / mulu.w d0, d6`, §5 quater). La chaîne de volume est
+donc complète : vélocité → courbe de l'instrument → `+0x0A` → × volume du canal → `TL`.
+
+Mais les deux chemins vers `TL` **ne sont pas la même formule**, et c'est à noter pour la fidélité :
+
+```
+00603956  lsr.b #$1, d0                          ; 0..127
+00603958  movea.l $608028.l, a3 ; adda.w $2(a3), a3
+00603962  move.b (a3, d0.w), d0                  ; UNE TABLE EN ROM : niveau -> valeur
+00603968  move.b $5(a0), d1 ; mulu.w d0, d1
+0060396E  lsr.l #$8, d1 ; addq.w #$1, d1
+00603972  not.b d1 ; lsr.b #$1, d1
+00603976  move.b d1, $d(a5)                      ; TL
+```
+
+À l'allumage, le niveau traverse **une table en ROM** (`[0x608028]` plus son propre mot `+2`) avant la
+multiplication, et il y a un `addq.w #$1` que CC 7 n'a pas. CC 7, lui, multiplie directement. Deux formules
+pour le même registre, selon qu'on allume une note ou qu'on bouge le volume.
+
+### Second usage : la hauteur
+
+```
+0060397A  move.l d3, d0                          ; la velocite, a nouveau
+0060397C  move.w $1c(a2), d1 ; muls.w d1, d0     ; fois la sensibilite -- MULTIPLICATION SIGNEE
+00603982  lsr.l #$8, d0
+00603984  add.w $16(a2), d0                      ; plus la hauteur de base de l'instrument
+00603988  move.w d0, $ede.w                      ; rangee en 0xEDE
+0060398C  move.w d0, d1 ; lsl.w #$1, d1
+00603990  addi.w #$4000, d1 ; andi.w #$7800, d1  ; le champ OCT
+00603998  andi.w #$3ff, d0 ; or.w d1, d0         ; le champ FNS
+0060399E  move.w d0, $10(a5)
+```
+
+`+0x10` d'une fente est **`OCT`/`FNS`**, la hauteur : `OCT` sur les bits 14-11, signé, et `FNS` sur les bits
+9-0. La valeur interne est donc un nombre dont les bits hauts donnent l'octave et les dix bas la fraction, et
+le `+0x4000` avant le masque est le **biais** qui convertit l'octave signée vers l'encodage du registre.
+
+**La vélocité module donc aussi la hauteur**, par `+0x1C` de l'instrument — une sensibilité signée, d'où le
+`muls`. Et `0xEDE` garde la hauteur calculée : c'est elle que `0x600C50` recopie dans le `+0x12` de la fiche
+de voix (`move.w $ede.w, $12(a4)`), vue au §5 quater sans savoir d'où elle venait.
+
+### Ce que ça nomme dans la fiche d'instrument
+
+| | |
+|---|---|
+| `+2` à `+0x15` | **cinq points de la courbe de vélocité**, 4 octets chacun : abscisse, ordonnée, pente (mot) |
+| `+0x16` | la **hauteur de base** (mot) |
+| `+0x1C` | la **sensibilité de la vélocité sur la hauteur** (mot signé) |
+
+`+1` était déjà connu (l'octet de modulation, §5 quater) et `+0` porte un drapeau que CC 1 teste.
+
+
 ## 5 bis septies. `0x602FA0` : « réinitialise le son », et deux jeux de globales parallèles
 
 176 octets, **entrée 1 de la table 4** — les sous-commandes de la banque de contrôle `0x00`. Aucune
@@ -2034,6 +2523,68 @@ que l'ancien parcours ne trouvait pas — elle apparaît. Et `--cherche` **impri
 résultats**, parce qu'un compte rendu par un parcours incomplet ressemble à un compte complet.
 
 
+## 5 ter. Les 168 fonctions sont lues — et voici ce que ça ne veut pas dire
+
+Mesuré le 2026-10-25, en croisant la liste des corps que Ghidra tient avec les adresses que ce document
+cite : **168 fonctions sur 168, 14 488 octets sur 14 488.** Chaque fonction du programme sonore a été
+ouverte et décrite quelque part ci-dessus.
+
+**La mesure et sa méthode**, pour qu'on puisse la refaire et la contester :
+
+```
+tools/ghidra/FV2SonListe.java   -> FONCTION <adresse> <octets> et PLAGE <min> <max>
+puis : toute adresse 0x6xxxxx citee dans ce document est rattachee a la fonction
+       dont une PLAGE la contient ; on somme les octets des fonctions ainsi touchees
+```
+
+Elle compte **« citée »**, et c'est une borne haute, pour trois raisons qu'il faut dire :
+
+1. **`snd_reset` pèse 2 730 octets — 19 % du programme — et n'est lue qu'en morceaux.** L'effacement de la
+   zone DSP, les quatre blocs déroulés, les boucles d'initialisation, la queue de l'allumage de note : oui.
+   La fonction entière, ligne à ligne : non. En la retirant des deux côtés du rapport, la part lue tombe à
+   **88 %**, et c'est le chiffre le plus honnête des deux.
+2. **Citer une fonction n'est pas l'expliquer.** Plusieurs des soixante dernières sont décrites par ce
+   qu'elles écrivent et où, sans que le sens du champ soit établi.
+3. La mesure ne dit rien du **programme du DSP** lui-même, ni des données : séquences, instruments,
+   échantillons, microcode MPRO.
+
+### Ce qui reste explicitement non établi
+
+| | |
+|---|---|
+| `0x2000-0x2FFF` | 4 096 octets chargés de la ROM dans chaque RAM sonore par `0x600524`. Contenu inconnu |
+| octets `0x16` et `0x17` d'une fente | CC 10 écrit l'un, `0x602EB0` l'autre, tous deux avec un panoramique. La disposition que j'ai des registres n'explique pas les deux |
+| `+0x0C` d'un objet de canal | CC `0x2A` et `0x2B` s'y partagent des bits **qui se chevauchent sur le bit 7** |
+| `+0x0B`, `+0x10`, `+0x11` d'une fiche d'instrument | trois paires (drapeau, valeur), rôles inconnus |
+| `0x600396`, `0x60103C` | deux tables de données dont le sens manque (§« Les 4 % restants ») |
+| `0xED8`, `0xEFE`, `0xC3F`, `0xF80` | des globales dont l'écriture est lue et l'usage non |
+| les 512 octets des dispositifs de Duff | copiés puis complétés de zéros dans `snd_reset`, destination inconnue |
+| `0x6003B6` | efface l'octet `0x17` de **18** fentes, pas 32 |
+| laquelle des deux catégories de voix est la musique | trois angles concordants sur l'existence du partage, aucun sur l'orientation |
+| le comportement du matériel sur `0x7C0-0x7FF` | deux lignes de preuve sur ce que le **pilote** fait ; rien sur la puce |
+
+### Ce que la lecture a rendu au portage
+
+Quatre résultats qui touchent le code, et non seulement la documentation :
+
+1. **`group_of()` est juste, et ne repose plus sur une déduction** : la boucle qui pose le premier long d'une
+   fiche est `0x60048C`, et l'écriture du `+5` est `0x6010F2`.
+2. **Le `+6` d'une fiche est le canal MIDI**, que le portage ne connaissait pas — noté dans
+   `src/sound/soundboard.h`.
+3. **`TL` et la hauteur ont chacun deux formules**, selon qu'on allume une note ou qu'on bouge un contrôleur.
+   Un portage qui n'en implémente qu'une s'entendra.
+4. **Deux voies de sortie MIDI sont jetées** par `h.midi_out = [](int) {}` : l'octet `0xF0` périodique de
+   `snd_irq2` et la recopie par octet de `0x603718`/`0x60361E`. Si la carte principale les lit, ça compte.
+
+### Et deux mesures réconciliées
+
+Les écritures en `+0x600` — le tampon FM — que ma sonde avait comptées à **zéro** sur 4 200 images de
+*Fighting Vipers 2* et 2 400 de *Virtua Fighter 3*, témoin positif à l'appui. `0x60155C` est le code qui en
+ferait. Il n'est atteint que par onze contrôleurs précis. **Les deux faits tiennent ensemble** : la
+fonctionnalité existe, ces scènes ne l'emploient pas. C'était la seule mesure de ce document qui semblait
+contredire une lecture.
+
+
 ## 6. L'outillage, et comment refaire tout ça
 
 | | |
@@ -2072,6 +2623,11 @@ fiches à `0x400`, l'écriture en `+0x600` — sont venues de la recherche.
 
 
 ## 7. Ce que la suite doit lire, par ordre d'intérêt
+
+> **Cette liste est close pour la lecture du code** : les 168 fonctions sont ouvertes (§5 ter), et les quatre
+> premières entrées ci-dessous sont faites. Ce qui reste n'est plus « quelle fonction lire » mais **quel sens
+> établir** — le tableau du §5 ter en donne la liste — et la seule question qui demande encore une **mesure
+> sur le jeu** est la cinquième.
 
 1. ~~**La fonction qui contient `0x602BA2`**~~ — **faite le 2026-10-25**. C'est un interprète piloté par
    descripteurs, et ses 59 adresses sont énumérées : `0x714` à `0x794`, **aucune** dans `0x7C0-0x7FF`.
