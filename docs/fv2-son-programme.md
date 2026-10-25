@@ -928,12 +928,44 @@ C'est la même faute que les deux de la veille (§4, l'arithmétique des fiches)
 portée affirmée depuis une lecture, sans mesure.** Trois fois en deux jours, et la troisième avait l'air
 d'être vérifiée.
 
-### Ce qui reste donc ouvert
+### Et pourquoi Ghidra n'en trouve que 41 : mesuré, et c'était bien les tables de saut
 
-**Pourquoi Ghidra ne trouve que 41 fonctions** là où un marcheur semé à la main en atteint 95, dans un code
-que 139 `rts` découpent, **est sans explication**. Les tables de saut (`jmp (A1)` en `0x60088C`,
-`jmp $602730(pc,d2.w)` en `0x60272C`) sont une cause **plausible et non vérifiée** — et je ne l'écris pas
-autrement cette fois.
+La question est restée « sans explication » une heure, le temps de la mesurer au lieu de la supposer. Et
+d'abord en vérifiant que « 41 contre 95 » comparait bien la même chose — mon marcheur appelle *fonction* toute
+cible de `bsr`, ce que Ghidra ne fait pas. Sur mes 82 points d'entrée de cette passe :
+
+| | |
+|---|---|
+| 34 | sont une **entrée** de fonction Ghidra |
+| **2** | tombent **dans** un corps sans en être l'entrée — des étiquettes, pas des fonctions |
+| **46** | tombent **hors de tout corps** — du code que Ghidra ignore |
+
+Donc le dénominateur était honnête à deux près, et l'écart est réel. Ce que Ghidra couvre, en adresses :
+
+**6 806 des 15 136 octets de code, soit 45 %.** Et les trous ne sont pas dispersés : **le plus gros fait
+7 278 octets**, de `0x600BC6` à `0x602833` — près de la moitié du code en un bloc. Il commence **exactement**
+là où s'arrête le corps de `snd_reset`, que Ghidra a fondu sur 2 726 octets d'un seul tenant.
+
+Et le fait qui tranche :
+
+| cible du répartiteur | | état chez Ghidra |
+|---|---|---|
+| `0x60120A` | `8n` note off | **ignorée** |
+| `0x6008AC` | `9n` note on | **ignorée** |
+| `0x6025F2` | `An` le protocole du jeu | **ignorée** |
+| `0x601402` | `Bn` control change | **ignorée** |
+| `0x601C1A` | `Cn` program change | **ignorée** |
+| `0x6012D6` | `En` pitch bend | **ignorée** |
+
+**Les six, sans exception.** Ghidra suit les appels et les enchaînements, mais il ne récupère pas les deux
+tables de saut relatives au PC — `jmp (A1)` en `0x60088C` après `lea (0x60088E,PC,D0.w)`, et
+`jmp $602730(pc,d2.w)` en `0x60272C`. Tout ce qui n'est atteignable que par là — le note on, le note off, le
+contrôle, le programme, le pitch bend, le moteur de copie, la programmation de la fente — lui est invisible.
+C'est le trou de 7 278 octets.
+
+**Ce qui n'est pas vérifié**, et je le dis avant de l'essayer : qu'ouvrir ces deux tables à Ghidra (poser les
+huit `bra.w` de `0x60088E` comme du code, et la table de `0x602730`) remonterait son compte. C'est la suite
+évidente et elle se mesure en une passe.
 
 
 ## 6. L'outillage, et comment refaire tout ça
