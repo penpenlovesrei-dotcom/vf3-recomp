@@ -642,23 +642,11 @@ struct console_play
 				leave_cut = su;
 				b.fv2_cut_submode();
 			}
-			// AND THE END OF THE GAME IS NOT WALKED THROUGH, IT IS STEPPED OVER. Once the match is decided the
-			// game leaves GAME for modes of its own -- CONTINUE (8, 9), RANKING (16, 17), OVER (18, 19),
-			// RESULT (22, 23), the twenty-four of docs/fv2-etats.md -- and expiring their screens, which is what
-			// this did, only makes them short: Frederic saw GAME OVER go by twice over. So where this is going
-			// to the title, the title is asked for AS SOON AS one of those modes is entered, and HELD, because
-			// those modes write the mode request themselves while they run. The fight is over by then -- that is
-			// what being in one of them means -- so this is not the fight-time request that does nothing.
-			if (leave_for == L_TO_TITLE) {
-				const int m = b.fv2_mode();
-				if (m == 8 || m == 9 || m == 16 || m == 17 || m == 18 || m == 19 || m == 22 || m == 23) {
-					if (!leave_said) {
-						leave_said = true;
-						fprintf(stderr, "the console: the game is in mode %d after the match -- the title asked for instead\n", m);
-					}
-					b.fv2_request_title();
-				}
-			}
+			// AND THE END OF THE GAME IS WALKED THROUGH, NOT JUMPED OVER, and that is a correction of this
+			// same evening. Asking for the title from CONTINUE, RANKING, OVER or RESULT -- modes of their own,
+			// docs/fv2-etats.md -- does take those screens away, and it takes their housekeeping with them: the
+			// title came up GLITCHED, which Frederic saw at once. Those modes are left to run and are made
+			// SHORT instead, by the game's own lever, below.
 			return;
 		}
 		// L_CLEARING. AND THE TITLE ASKED FOR WHILE IT RUNS, when that is where this is going: the end of a
@@ -666,20 +654,16 @@ struct console_play
 		// them short -- Frederic saw GAME OVER go by the 2026-10-25. fv2_request_title is the game's own
 		// lever and it works here, where the attract loop is running again; it is renewed every half second
 		// because those screens write the mode themselves as they come and go.
-		if (leave_for == L_TO_TITLE) {
-			if (b.fv2_on_title()) {
-				fprintf(stderr, "the console: the title screen reached in %d frames, the end screens skipped\n", leave_frames);
-				leaving = L_OFF;
-				arrive(b);
-				return;
-			}
-			// EVERY FRAME, not now and then: those screens write the mode request themselves as they come
-			// and go, so a request made every half second leaves half a second of GAME OVER on screen --
-			// which is exactly what Frederic kept seeing. Held, it is read on the next tick and no sooner.
-			b.fv2_request_title();
+		if (leave_for == L_TO_TITLE && b.fv2_on_title()) {
+			fprintf(stderr, "the console: the title screen reached in %d frames\n", leave_frames);
+			leaving = L_OFF;
+			arrive(b);
+			return;
 		}
 		// Firmly positive, because an already expired screen is negative and shortening it would
 		// lengthen it; four times our own edge, so our own writing is never written over again.
+		// and every frame it is still positive, rather than once: each of those screens arms its own timer
+		// as it begins, so one write only shortens the first of them.
 		if (b.fv2_screen_timer() > 4 * 8) b.fv2_expire_screen();
 		if (b.fv2_scene_index() != leave_scene) {
 			fprintf(stderr, "the console: the end of the game is past in %d frames (%.1f s)\n",
