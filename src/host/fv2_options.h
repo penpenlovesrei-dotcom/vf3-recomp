@@ -205,6 +205,13 @@ struct fv2_options
 	bool changed = false;        // something was really written, as against stepped there and back
 	SDL_Texture *bg = nullptr, *cursor = nullptr, *init = nullptr;
 	SDL_Texture *vol_on = nullptr, *vol_off = nullptr, *vs_table = nullptr;
+	// THE TWO TABLES ARE A STACK, NOT A CHOICE, which is August's own word for it: the whole diagram, and
+	// over it the page of the character the cursor is on. Both are loaded once and for all -- going from one
+	// to the other is a key press, and sending a megabyte of texture up at every press is not.
+	SDL_Texture *vs_chara_tex = nullptr;
+	int vsc_w = 0, vsc_h = 0;
+	int vs_row_sel = 0;        // the row the cursor is on, in the whole diagram
+	int vs_chara = -1;         // whose page is open over it, -1 for none
 	SDL_Texture *inputs = nullptr;   // the game's own icons for the three buttons and the eight directions
 	int init_w = 0, init_h = 0, vs_w = 0, vs_h = 0;
 	int stick_x = 0, stick_y = 0;
@@ -273,6 +280,7 @@ struct fv2_options
 		one("option_vol_up_off.png", vol_off, nullptr, nullptr, 0, 0);
 		// The VS DIAGRAM's table, which STATS fills in. Its own grid is measured on the file.
 		one("vs_global.png", vs_table, &vs_w, &vs_h, 0, 0);
+		one("vs_chara.png", vs_chara_tex, &vsc_w, &vsc_h, 0, 0);
 		// The icons CONTROLLER lights: three buttons and eight arrows, the game's own. Its boxes below were
 		// measured on the file, so the page stays right if it is exported again at another size.
 		one("inputs.png", inputs, nullptr, nullptr, 512, 512);
@@ -284,7 +292,7 @@ struct fv2_options
 
 	void textures_lost(SDL_Renderer *ren, const std::string &assets)
 	{
-		for (SDL_Texture **t : { &bg, &cursor, &init, &vol_on, &vol_off, &vs_table, &inputs })
+		for (SDL_Texture **t : { &bg, &cursor, &init, &vol_on, &vol_off, &vs_table, &vs_chara_tex, &inputs })
 			if (*t) { SDL_DestroyTexture(*t); *t = nullptr; }
 		ready = false;
 		tried = false;
@@ -407,6 +415,7 @@ struct fv2_options
 		// nothing is chosen, and the only control the screen keeps is the one it never draws -- Start, plus
 		// Backspace for a keyboard without a pad. Everything else falls through to the mirror untouched.
 		if (at == SCR_CONTROLLER) return controller_event(e);
+		if (at == SCR_STATS) return stats_event(e, ctl);
 		switch (e.type) {
 		case SDL_EVENT_KEY_DOWN: {
 			if (e.key.repeat) return -1;
@@ -596,9 +605,135 @@ private:
 		return r;
 	}
 
+	// ---- STATS: the whole diagram, and a page for the character the cursor is on ----
+	//
+	// Up and down move over the fourteen, A opens that one's page and B comes back to the diagram; on the
+	// page itself NOTHING answers the stick, which is August's own rule and his reason: "le bandeau dit
+	// cette ligne est choisie ; la ou aucune ligne ne peut l'etre il dit quelque chose de faux". The band
+	// keeps blinking on the row the page came from, which is the row B falls back onto.
+	int stats_event(const SDL_Event &e, const player_controls ctl[2])
+	{
+		auto bound = [&](int action, SDL_Scancode sc) {
+			for (int p = 0; p < 2; p++) if (ctl[p].key[action] == sc) return true;
+			return false;
+		};
+		auto up = [&](int d) {
+			if (vs_chara >= 0) return;
+			vs_row_sel = (vs_row_sel + VS_ROWS + d) % VS_ROWS;
+			want_sound = SND_MOVE;
+		};
+		auto open_it = [&] {
+			if (vs_chara >= 0 || !vs_chara_tex) return;
+			vs_chara = vs_row_sel;
+			want_sound = SND_VALIDATE;
+		};
+		auto back = [&]() -> int {
+			if (vs_chara < 0) return go_back();
+			vs_chara = -1;
+			want_sound = SND_CANCEL;
+			return -1;
+		};
+		switch (e.type) {
+		case SDL_EVENT_KEY_DOWN: {
+			if (e.key.repeat) return -1;
+			const SDL_Scancode sc = e.key.scancode;
+			if (sc == SDL_SCANCODE_UP || bound(C_UP, sc)) up(-1);
+			else if (sc == SDL_SCANCODE_DOWN || bound(C_DOWN, sc)) up(+1);
+			else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER || sc == SDL_SCANCODE_SPACE
+					 || bound(C_PUNCH, sc)) open_it();
+			else if (sc == SDL_SCANCODE_BACKSPACE || bound(C_KICK, sc)) return back();
+			return -1;
+		}
+		case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+			switch (e.gbutton.button) {
+			case SDL_GAMEPAD_BUTTON_DPAD_UP: up(-1); break;
+			case SDL_GAMEPAD_BUTTON_DPAD_DOWN: up(+1); break;
+			case SDL_GAMEPAD_BUTTON_SOUTH: open_it(); break;
+			case SDL_GAMEPAD_BUTTON_EAST: return back();
+			default: break;
+			}
+			return -1;
+		case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+			if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY) {
+				const int dir = e.gaxis.value < -16000 ? -1 : e.gaxis.value > 16000 ? 1 : 0;
+				if (dir && dir != stick_y) up(dir);
+				stick_y = dir;
+			}
+			return -1;
+		default: return -1;
+		}
+	}
+
+	// THE GRID OF vs_chara.png, measured on its HEADER STRIP and on its COLUMN OF NAMES and nowhere else --
+	// August's own warning, and the reason is in his notes: the logo's watermark makes false rules all over
+	// the rest of the picture, and a first pass read columns 118 apart where the true ones are 237.
+	//
+	//     names 7..327     five columns of 237, to 1511
+	//     header 1..91     fourteen rows of 92, to 1383, then TOTAL
+	static constexpr float VSC_L = 327.0f / 1523.0f, VSC_W = 237.0f / 1523.0f;
+	static constexpr float VSC_T = 91.0f / 1508.0f, VSC_H = 92.0f / 1508.0f;
+	static constexpr int VSC_COLS = 5;   // FIGHT WIN LOSE DRAW RATIO
+
+	// A character's page: his fourteen lines against the others, raw out of the matrix. NOTHING IS SUMMED
+	// here but the TOTAL row -- the whole diagram is the sum, this is the data. KO and JUDGE have no column
+	// and that is right: they are totals for a character, and there is nothing to put on a line that speaks
+	// of one opponent. DRAW is what the three columns leave: fights less wins less losses.
+	void render_chara(SDL_Renderer *ren, const SDL_FRect &mid, m3::Model3 &board)
+	{
+		const float top = 0.165f * mid.h, bot = 0.885f * mid.h;
+		float th = bot - top, tw = th * float(vsc_w) / float(vsc_h ? vsc_h : 1);
+		if (tw > mid.w * 0.98f) { tw = mid.w * 0.98f; th = tw * float(vsc_h) / float(vsc_w ? vsc_w : 1); }
+		const SDL_FRect dst = { mid.x + (mid.w - tw) * 0.5f, mid.y + top + (bot - top - th) * 0.5f, tw, th };
+		SDL_RenderTexture(ren, vs_chara_tex, nullptr, &dst);
+
+		const int block = vs_block_of_row()[vs_chara];
+		const uint32_t base = VS_BASE + uint32_t(block) * VS_STRIDE;
+		auto u16 = [&](uint32_t off) -> uint32_t {
+			return off + 1 < board.backup.size() ? uint32_t(board.backup[off]) << 8 | board.backup[off + 1] : 0;
+		};
+		const float cw = VSC_W * tw, rh = VSC_H * th;
+		const float h = rh * 0.62f / fv2_texte::CAP;
+		// Black on this one, where the whole diagram is white: these cells are white and those are dark.
+		// The colour belongs to the picture, not to a rule in the drawing code.
+		const SDL_Color ink = { 20, 20, 30, 255 };
+		uint32_t tf = 0, tw_ = 0, tl = 0;
+		for (int r = 0; r < VS_ROWS; r++) {
+			const int adv = vs_block_of_row()[r];
+			const uint32_t f = u16(base + VS_FIGHT + uint32_t(adv) * 8);
+			const uint32_t w = u16(base + VS_WIN + uint32_t(adv) * 8);
+			const uint32_t l = u16(base + VS_LOSE + uint32_t(adv) * 8);
+			tf += f; tw_ += w; tl += l;
+			draw_chara_row(ren, f, w, l, dst.x + VSC_L * tw, dst.y + (VSC_T + float(r) * VSC_H) * th, cw, rh, h, ink);
+		}
+		draw_chara_row(ren, tf, tw_, tl, dst.x + VSC_L * tw, dst.y + (VSC_T + float(VS_ROWS) * VSC_H) * th, cw, rh, h, ink);
+	}
+
+	// The ratio is ALWAYS a percentage with two decimals, 0.00% included. A first version put a dash where
+	// there had been no fight -- nought out of nought not being nought per cent -- but the original screen
+	// writes 0.00%, and it is the original that settles it here.
+	void draw_chara_row(SDL_Renderer *ren, uint32_t f, uint32_t w, uint32_t l, float gl, float y,
+						float cw, float rh, float h, SDL_Color ink)
+	{
+		char ratio[16];
+		snprintf(ratio, sizeof ratio, "%.2f%%", f ? 100.0 * double(w) / double(f) : 0.0);
+		const std::string cells[VSC_COLS] = {
+			std::to_string(f), std::to_string(w), std::to_string(l),
+			std::to_string(f > w + l ? f - w - l : 0u), std::string(ratio),
+		};
+		// EACH FIGURE FITS ITS OWN CELL. The ratio is the longest thing on the page -- "100.00%" against a
+		// column measured for four digits -- and it ran out through the right-hand rule. So a cell that is
+		// too narrow for its text shrinks the text rather than letting it out: the column is the picture's,
+		// and the picture is what was measured.
+		for (int c = 0; c < VSC_COLS; c++)
+			draw_fitted(ren, cells[size_t(c)].c_str(), gl + (c + 0.5f) * cw, y + rh * 0.5f, cw * 0.90f, h, ink);
+	}
+
 	void render_stats(SDL_Renderer *ren, const SDL_FRect &mid, m3::Model3 &board)
 	{
 		if (!vs_table) { render_child(ren, mid); return; }
+		// A page open over the diagram: the two are a stack. The band below goes on blinking on the row it
+		// came from, which is where B will put the cursor back.
+		if (vs_chara >= 0 && vs_chara_tex) { render_chara(ren, mid, board); return; }
 		// The table fills the picture under the title and above the foot, keeping its own proportions.
 		const float top = 0.165f * mid.h, bot = 0.885f * mid.h;
 		float th = bot - top, tw = th * float(vs_w) / float(vs_h ? vs_h : 1);
@@ -617,9 +752,13 @@ private:
 			total.fight += v.fight; total.win += v.win; total.lose += v.lose;
 			total.draw += v.draw; total.ko += v.ko; total.judge += v.judge;
 			total.sko1 += v.sko1; total.sko2 += v.sko2;
-			draw_vs_row(ren, v, gl, gt + r * rh, cw, rh, h, PLAIN);
+			// The row the cursor is on, marked as a chosen line is marked everywhere else here
+			draw_vs_row(ren, v, gl, gt + r * rh, cw, rh, h, r == vs_row_sel ? CHOSEN : PLAIN);
 		}
-		draw_vs_row(ren, total, gl, gt + VS_ROWS * rh, cw, rh, h, CHOSEN);
+		// TOTAL IS NOT THE CURSOR. Both were yellow while the cursor was new, and two yellow rows say two
+		// different things in one colour: the sum has its own, paler and cooler.
+		static constexpr SDL_Color SUM = { 150, 230, 255, 255 };
+		draw_vs_row(ren, total, gl, gt + VS_ROWS * rh, cw, rh, h, SUM);
 	}
 
 	// All eight columns carry a figure now. SKO 1 and SKO 2 were blank while nobody could say where they
@@ -629,10 +768,16 @@ private:
 					 SDL_Color col)
 	{
 		const uint32_t n[VS_COLS] = { v.fight, v.win, v.lose, v.draw, v.ko, v.sko1, v.sko2, v.judge };
-		for (int c = 0; c < VS_COLS; c++) {
-			const std::string s = std::to_string(n[c]);
-			font->draw_mid(ren, s.c_str(), gl + (c + 0.5f) * cw, y + rh * 0.5f - h * 0.5f, h, col);
-		}
+		for (int c = 0; c < VS_COLS; c++)
+			draw_fitted(ren, std::to_string(n[c]).c_str(), gl + (c + 0.5f) * cw, y + rh * 0.5f, cw * 0.90f, h, col);
+	}
+
+	// Centred on (cx, cy), at height h, or at whatever smaller height makes it fit in `room`.
+	void draw_fitted(SDL_Renderer *ren, const char *t, float cx, float cy, float room, float h, SDL_Color col)
+	{
+		const float w = font->width(t, h);
+		const float k = w > room && w > 0 ? room / w : 1.0f;
+		font->draw_mid(ren, t, cx, cy - h * k * 0.5f, h * k, col);
 	}
 
 	// ---- CONTROLLER: the pad, drawn with the game's own icons, lit as it is held ----

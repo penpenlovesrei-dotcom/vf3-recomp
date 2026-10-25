@@ -3875,6 +3875,27 @@ int main(int argc, char **argv)
 				chose_stage(line);
 			}
 		}
+		// VF3_CONSOLE_STATS=row: the console's OPTIONS opened straight on STATS with the cursor on that
+		// row, and row>=100 opens that character's page (row-100). The fourth of this family, and for the
+		// same reason: the page FREEZES the game, so the only other way in is VF3_KEYS_S, which goes by the
+		// clock -- six key presses timed against a boot whose length is the machine's.
+		if (static const char *cs2 = getenv("VF3_CONSOLE_STATS"); cs2 && cplay.on) {
+			static const int want = atoi(cs2);
+			static bool done = false;
+			if (!done && modes.shown && options.ready) {
+				done = true;
+				modes.hide();
+				options.show();
+				options.at = fv2_options::SCR_STATS;
+				options.vs_row_sel = (want >= 100 ? want - 100 : want) % 14;   // (the fourteen characters)
+				options.vs_chara = want >= 100 ? options.vs_row_sel : -1;
+				cplay.swallow_start = true;
+				cplay.start_was = true;
+				sync_menu_sound();
+				fprintf(stderr, "frame %llu: VF3_CONSOLE_STATS=%d -- STATS opened without a hand\n",
+						(unsigned long long)game_frame, want);
+			}
+		}
 		// VF3_CONSOLE_ENDING=frame: the game's staff roll asked for at that frame, and VF3_ENDING_DC=1 to
 		// watch it the Dreamcast's way. Written to see the thing at all: reaching the ending for real means
 		// finishing the ladder, and this port's own notes have it among the states never reached.
