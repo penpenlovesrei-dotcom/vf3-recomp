@@ -149,6 +149,13 @@ struct console_play
 	// controls are routed to player 2's cursor, so the same hands pick the opponent. The latch is the host's
 	// own: it SEES the press, so it needs no byte of the game's to tell it.
 	bool train_p1_chose = false;
+	// THE BANNER OVER THE LOAD, HIDDEN. The four ROUND_MASK sub-states are the arena arriving (below),
+	// and over them the game draws the stage's name, ROUND n and the two fighters' names. Frederic asked
+	// for a training to begin without that announcement, the 2026-10-25. The load cannot be shortened, so
+	// what is dropped is the DRAWING: the host leaves the 2D layer out for those four sub-states and the
+	// arena comes up bare. Nothing of the game is touched -- it draws exactly what it always drew, and
+	// the host simply does not put it on the screen.
+	bool train_hide_banner = false;
 	// THE PRESENTATION STAYS, AND NOW WE KNOW WHY: it is the arena loading, not a wait anybody put there.
 	// Frederic asked for the fight to start straight away, with no STAGE / VS screen and no ROUND 1.
 	// Asking GAME's sub-states 0 to 3 to move on -- which is all fv2_cut_submode does -- gave a BLACK
@@ -469,6 +476,7 @@ struct console_play
 		if (!training_on) { train_p1_chose = false; return; }
 		const int m = b.fv2_mode(), su = b.fv2_submode();
 		if (m != 4 && m != 5) train_p1_chose = false;   // off the select screen the latch means nothing
+		train_hide_banner = (m == 6 || m == 7) && su <= 3;   // GAME's four ROUND_MASK sub-states
 		const bool fighting = (m == 6 || m == 7) && (su == 11 || su == 12);
 		train_fighting = fighting;
 		// The clock, held by the game's own switch. Held rather than written once because that CONFIG block

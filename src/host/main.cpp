@@ -2513,8 +2513,14 @@ int main(int argc, char **argv)
 			const SDL_FRect bar = s ? SDL_FRect{ mid.x + mid.w, all.y, all.x + all.w - (mid.x + mid.w), all.h } : SDL_FRect{ all.x, all.y, mid.x - all.x, all.h };
 			if (bar.w > 0) SDL_RenderFillRect(ren, &bar);
 		}
-		draw_below(all, mid);
-		SDL_RenderTexture(ren, g3_shown && g3.tex ? g3.tex : tex3d, nullptr, &all);
+		// TRAINING'S LOAD IS SHOWN BLACK, not as what is behind the banner. Hiding only the 2D left a plain
+		// grey rectangle for the two seconds the arena takes to arrive -- the 3D's cleared colour, because
+		// there is nothing to draw yet -- which reads as a fault rather than as a transition. So for those
+		// four sub-states the picture is left as the clear left it (console_play.h).
+		if (!cplay.train_hide_banner) {
+			draw_below(all, mid);
+			SDL_RenderTexture(ren, g3_shown && g3.tex ? g3.tex : tex3d, nullptr, &all);
+		}
 		const float ky = mid.h / video::H;
 		for (int s = 0; s < 2; s++)
 			for (const SideRun &r : side_cover[s]) {
@@ -2524,6 +2530,10 @@ int main(int argc, char **argv)
 				                        : SDL_FRect{ all.x, y0, mid.x - all.x, y1 - y0 };
 				if (bar.w > 0) SDL_RenderFillRect(ren, &bar);
 			}
+		// TRAINING leaves the banner out: nothing of the 2D is drawn over the four ROUND_MASK sub-states,
+		// so the arena comes up without its name, its round number and the two fighters' names over it
+		// (console_play.h). The game draws them as it always did; the host just does not show them.
+		if (cplay.train_hide_banner) { /* nothing of the 2D this frame */ } else
 		// The 2D over the 3D. In widescreen the HUD's two bands are drawn in three slices each, the outer two
 		// pushed out to the window's edges and the middle left exactly where it was (HudCut above). Only
 		// when the picture IS wider than 4:3 and only when a cut was found: everything else is one blit, as
