@@ -377,8 +377,16 @@ Mesuré en élargissant la sonde `VF3_SCSP_DSPLOG` à toute la fenêtre de regis
 | Virtua Fighter 3, `vf3-match.txt`, 2400 images, 15 417 écritures | **0** |
 
 Pas une seule, sur les deux jeux. La sonde voit bien les deux chips et les petits offsets — elle journalise
-par ailleurs 1726 et 715 écritures du mot `0x6` des fentes, aux offsets `0x00C`, `0x02C`, `0x04C`… — donc le
-zéro est un zéro, pas un angle mort.
+par ailleurs 1726 et 715 écritures du mot `0x6` des fentes, aux offsets `0x00C`, `0x02C`, `0x04C`…
+
+**Et le 2026-10-25, un témoin positif sur la branche elle-même**, parce qu'une sonde muette et une sonde qui
+dit « rien » sont indiscernables dans la sortie. La branche `RINGBUF` a été pointée temporairement sur
+`0x400-0x4FF`, une plage écrite à coup sûr (les registres communs) : **786 179 lignes**. La condition, le
+libellé et le `fprintf` fonctionnent donc, et la branche est atteignable. Le zéro est un zéro.
+
+Les autres zéros de ce document portent leur propre témoin **dans la même ligne** : `dspprog` annonce
+`frcl 0 adrl 0 yrl 0 negb 0` à côté de `iwt 23 twt 39 mrd 23 mwt 10 ewt 5`, comptés par le même code au même
+moment — des compteurs qui parlent pour quatre voisins qui se taisent.
 
 **Conséquence : l'inquiétude que j'avais soulevée est sans objet.** Le portage route bien `0x600-0x6FF` vers
 le tampon circulaire FM de MAME, et le chemin audio l'écrase bien à chaque échantillon — mais **il n'y a rien
@@ -870,6 +878,62 @@ Le dernier passage de la fonction écrit l'octet `0x100017 + fente*0x20`, soit *
 (le niveau de retour du DSP et son panoramique), avec la valeur de la table — ou **`0xE0` de force**
 (EFSDL = 7, le maximum) si le drapeau global `0xEFB` de la RAM son est posé. C'est l'interrupteur de la
 réverbération.
+
+
+## 5 ter. A5 et A6 : une affirmation à moi, fausse, et défaite le lendemain
+
+Le 2026-10-24 j'ai écrit — en commentaire Ghidra, dans un script et dans le message de `fd74c38` — que le
+pilote met A5 à `0x00100000` et A6 à `0x1000` **une fois au reset et n'y touche plus**, et que le dire à
+Ghidra remonterait son compte de fonctions. **Les deux moitiés étaient fausses.**
+
+### Ce que la mesure dit
+
+| | écritures | |
+|---|---|---|
+| **A5** | **33** | `0x00100000` par `lea` en sept endroits ; **`[0xC10]`, le décalage du chip (0 ou `0x200000`), en trois** ; zéro en deux ; un pointeur indirect dans une vingtaine d'autres |
+| **A6** | **8** | `0x1000` deux fois, `0x00201000` une fois, et des pointeurs indirects |
+
+Ce sont des **registres d'adresse ordinaires**, pas des bases globales. Et en `0x600B9C` — dans la section
+4 quinquies de ce document, écrite la même nuit — A5 prend **l'adresse des registres d'une fente**. Le
+document se contredisait déjà lui-même à deux sections d'écart.
+
+### Ce que l'intervention a donné
+
+Posées sur toute la plage puis l'analyse relancée, en sans-interface :
+
+```
+functions before: 41
+functions after:  41   (+0)
+```
+
+Rien. Et il restait une **constante fausse dans la base du projet**, que le décompilateur aurait appliquée aux
+vingt-six endroits où A5 est autre chose. Retirée (`tools/ghidra/FV2SonRegistresDefaire.java`, qui relit
+`null` pour le vérifier), le commentaire de `0x600142` remplacé par ce qui a été mesuré, et
+`FV2SonRegistres.java` supprimé du dépôt.
+
+### Les trois façons dont ça a tenu, et la quatrième pendant la correction
+
+1. **L'affirmation vient d'une seule instruction, généralisée** — le `lea` du reset — alors que mes notes de
+   la même session **citaient déjà** `movea.l $c10.w, a5` en `0x602B32`. Le contre-exemple était en main et
+   n'a pas été lu.
+2. **Mon premier balayage d'opcodes a rendu « zéro écriture »**, ce qui ressemblait à une confirmation. Le
+   masque `0xFFC0` avait été écrit `0xF1C0`, qui **effaçait les bits du registre** : la comparaison ne pouvait
+   jamais être vraie. Je ne l'ai attrapé que parce que j'avais lu les instructions à la main la veille et que
+   le zéro contredisait ce que je savais. Sans cette vérité sous les yeux, j'aurais publié un deuxième faux.
+3. **Et pendant la correction elle-même** : mon filtre `Select-String` cherchait `Defaire>` là où le préfixe
+   est `FV2SonRegistresDefaire.java>`. Le script avait tourné et réussi ; sa sortie était masquée. Une passe
+   réussie et une passe muette, indiscernables — exactement la mémoire du dépôt sur les sondes, en petit.
+
+C'est la même faute que les deux de la veille (§4, l'arithmétique des fiches) : **une fréquence ou une
+portée affirmée depuis une lecture, sans mesure.** Trois fois en deux jours, et la troisième avait l'air
+d'être vérifiée.
+
+### Ce qui reste donc ouvert
+
+**Pourquoi Ghidra ne trouve que 41 fonctions** là où un marcheur semé à la main en atteint 95, dans un code
+que 139 `rts` découpent, **est sans explication**. Les tables de saut (`jmp (A1)` en `0x60088C`,
+`jmp $602730(pc,d2.w)` en `0x60272C`) sont une cause **plausible et non vérifiée** — et je ne l'écris pas
+autrement cette fois.
 
 
 ## 6. L'outillage, et comment refaire tout ça
