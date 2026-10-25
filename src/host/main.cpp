@@ -79,6 +79,10 @@
 //   VF3_WINDOW=WxH       the window's size in points
 //   VF3_DATA=dir         the data folder
 //   VF3_PACE_LOG=1       the pacing and the pictures' times every 2 s
+//   VF3_SND_HOST=N       every N frames, what the sound costs THE HOST: the sound thread's own work in
+//                        ms, and -- the figure that matters -- how long the game blocks waiting for it.
+//                        Not the same thing as vf3run's number, where the board is inside the frame
+//                        loop. Use with VF3_SND_PROF=1 for the split inside the board
 //   VF3_KEYS=k@F,...     presses key k (an SDL key name) when game frame F is reached; the window 3 frames later
 //                        goes to build/host_window_F.png
 //   VF3_MENU_KEYS=k,...  presses these keys (esc, up, down, left, right, enter, or SDL key names) 6 passes of the
@@ -120,6 +124,7 @@
 #include "../machine/romset.h"
 #include "../rec/ppc_rec.h"
 #include "../sound/soundboard.h"
+#include "../sound/sound_prof.h"
 #include "../video/tilegen.h"
 #include "../video/sky_lead.h"
 #include "../video/r3d_scene.h"
@@ -1004,6 +1009,10 @@ struct Game
 	bool sound_busy = false, sound_quit = false, sound_job_on = false;
 	std::vector<uint8_t> sound_midi;
 	std::vector<int16_t> sound_out;
+	// The sound thread's own wall time, for VF3_SND_HOST. In milliseconds and not in rdtsc cycles, so it
+	// compares directly with what vf3run reports -- answering "what does the sound cost" in cycles and then
+	// converting with a guessed clock would be a weaker answer than measuring the thing asked about.
+	std::atomic<double> sound_ms{ 0.0 };
 	void sound_wait()
 	{
 		std::unique_lock<std::mutex> lk(sound_m);
@@ -1018,9 +1027,14 @@ struct Game
 				sound_cv.wait(lk, [this] { return sound_busy || sound_quit; });
 				if (sound_quit) return;
 				lk.unlock();
+				const auto snd_t0 = std::chrono::steady_clock::now();
 				for (uint8_t b : sound_midi) sound.midi_in(b);
 				sound_out.clear();
 				sound.run(1.0 / FRAME_HZ, sound_out);
+				sound_ms.store(sound_ms.load(std::memory_order_relaxed)
+				               + std::chrono::duration<double, std::milli>(
+				                     std::chrono::steady_clock::now() - snd_t0).count(),
+				               std::memory_order_relaxed);
 				if (!sound_job_on) sound_out.clear();
 				lk.lock();
 				sound_busy = false;
@@ -1139,7 +1153,45 @@ struct Game
 	{
 		board.run_frame_end();
 		if (!sound_thread.joinable()) sound_start();
-		sound_wait();   // (the frame before's sound, made meanwhile)
+		// VF3_SND_HOST=N: what the sound costs THE HOST, every N frames, and it is not the number vf3run
+		// gives. In the runner the board is inside the frame loop, so its time is the frame's; here it is on
+		// a thread of its own, a frame behind, so its cost splits in two and only one half is the frame's:
+		//
+		//   the CPU cost      -- the thread's own work, which VF3_SND_PROF already counts (sound_prof.h);
+		//   the FRAME cost    -- how long the game thread blocks right here waiting for the frame before's
+		//                        sound. If that is zero the sound costs the picture NOTHING, however much
+		//                        CPU it burns; if it is not, this is the real figure.
+		//
+		// Measured with the wall clock and not with rdtsc, because what is wanted is the delay the player
+		// would feel, not cycles.
+		static const unsigned long snd_host = getenv("VF3_SND_HOST")
+		                                    ? strtoul(getenv("VF3_SND_HOST"), nullptr, 10) : 0;
+		static double attente_ms = 0.0, attente_max = 0.0, image_ms = 0.0;
+		static auto image_t0 = std::chrono::steady_clock::now();
+		static unsigned long snd_n = 0;
+		if (snd_host) {
+			const auto a = std::chrono::steady_clock::now();
+			sound_wait();
+			const double d = std::chrono::duration<double, std::milli>(
+			                     std::chrono::steady_clock::now() - a).count();
+			attente_ms += d;
+			if (d > attente_max) attente_max = d;
+			image_ms += std::chrono::duration<double, std::milli>(a - image_t0).count();
+			image_t0 = a;
+			if (++snd_n % snd_host == 0) {
+				const double travail = sound_ms.exchange(0.0, std::memory_order_relaxed);
+				fprintf(stderr, "sndhost image %llu : le fil du son travaille %.3f ms a l'image,"
+				                " le jeu l'attend %.3f ms (max %.3f) ; periode %.2f ms,"
+				                " soit %.1f %% de CPU et %.2f %% d'image\n",
+				        (unsigned long long)frame, travail / snd_host, attente_ms / snd_host, attente_max,
+				        image_ms / snd_host, 100.0 * travail / std::max(1e-9, image_ms),
+				        100.0 * attente_ms / std::max(1e-9, image_ms));
+				sndprof::report("hote", int(snd_host));
+				attente_ms = attente_max = image_ms = 0.0;
+			}
+		} else {
+			sound_wait();   // (the frame before's sound, made meanwhile)
+		}
 		audio.insert(audio.end(), sound_out.begin(), sound_out.end());
 		sound_out.clear();
 		// (tests: what the GAME itself says to the sound board, frame by frame, with the state it was in when

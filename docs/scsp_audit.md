@@ -191,8 +191,58 @@ exactement ce qu'on attend d'une optimisation qui a porté sur lui.
 poste et près d'un tiers du travail d'une image**. Il reste loin d'être un goulot en absolu — 4,64 ms sur un
 budget de 17,4 — mais c'est désormais là que se trouve la marge la plus facile, et le DSP en est la moitié.
 
-**Ce que ça n'établit pas** : rien sur l'hôte réel, où la carte son tourne sur son propre fil et une image en
-retard, de sorte que son coût est du temps CPU et non du temps d'image. Et rien sur une autre scène.
+**Ce que ça n'établit pas** : rien sur une autre scène. Quant à l'hôte, c'était la réserve de cette section
+et elle est levée : voir §4 ter juste en dessous.
+
+
+## 4 ter. Et dans l'hôte, le son ne coûte rien à l'image
+
+Les 30,5 % ci-dessus sont ceux du **lanceur sans interface**, où la carte son tourne **dans** la boucle
+d'image. Dans l'hôte elle est sur **un fil à elle, une image en retard** : son coût se sépare en deux, et une
+seule moitié est celle de l'image.
+
+| | |
+|---|---|
+| **le coût CPU** | le travail du fil, qu'il faut bien faire quelque part |
+| **le coût d'image** | le temps que le fil du jeu passe **bloqué** à attendre le son de l'image précédente, dans `finish_frame`. Si c'est zéro, le son ne coûte **rien** à la photo, quel que soit le CPU qu'il brûle |
+
+Mesuré le 2026-10-26 avec `VF3_SND_HOST=500`, sans fenêtre (`VF3_HIDDEN=1`), 120 secondes de jeu réel,
+7 500 images, fenêtres 2000-7499 une fois le cadencement calé :
+
+| | |
+|---|---|
+| le fil du son travaille | **1,49 ms par image** (1,35 à 1,57) |
+| le jeu l'attend | **0,000 ms**, et le maximum jamais vu est **0,016 ms** |
+| la période d'image | **17,38 ms**, soit exactement 1/57,524 |
+| donc | **8,5 % d'un cœur**, et **0,00 % de l'image** |
+
+**La période de 17,38 ms est ce qui rend la mesure valable** : l'hôte cadence bien au rythme du Model 3 même
+sans fenêtre, et ce n'est pas une supposition — c'est le chiffre que la sonde imprime. Les premières centaines
+d'images donnent 16,0 à 19,4 ms, le temps que le cadencement se cale ; c'est pourquoi la moyenne porte sur
+2000-7499 et non sur tout.
+
+**La marge est d'un facteur 11,7** : le fil a 17,38 ms pour faire 1,49 ms de travail. C'est pourquoi l'attente
+est nulle, et pourquoi elle le reste même dans les scènes chargées — le maximum de 0,016 ms représente
+0,09 % d'une image.
+
+### Ce que ça change pour la priorité D
+
+Les deux chiffres disent des choses opposées et les deux sont vrais :
+
+| | part du son |
+|---|---|
+| `vf3run --rec`, la carte son dans la boucle | **30,5 % de l'image** |
+| l'hôte, la carte son sur son fil | **0,00 % de l'image**, 8,5 % d'un cœur |
+
+Donc **optimiser le son davantage n'achète pas d'image** sur une machine qui a des cœurs à revendre : ça
+achète du **temps CPU**, c'est-à-dire de la marge thermique, de l'autonomie, et de la place pour une machine
+plus petite. Le gain de −24 % obtenu sur le DSP reste un vrai gain ; il ne se voit simplement pas dans la
+cadence ici.
+
+**Ce que ça n'établit pas**, et c'est la limite qui compte : **une seule machine**, celle de Frédéric, avec
+des cœurs libres. Sur deux cœurs, ou sur un Steam Deck, le fil du son est en concurrence avec celui du jeu et
+celui des images, et l'attente pourrait cesser d'être nulle. C'est la mesure suivante, et elle demande l'autre
+machine. Rien non plus sur une scène autre que le démarrage et l'attract.
 
 
 ## 5. Ce que le programme DSP contient vraiment
@@ -325,6 +375,6 @@ fidélité qui n'achète rien ne se garde pas. Le résultat négatif, lui, est c
     champ, avec la provenance de chaque nombre et les écarts assumés marqués comme tels. Écrit le
     2026-10-25, et **vérifié** par `tools/son/test_scsp_contract.cpp` contre `scsp.cpp` et contre la ROM.
 - ~~**Les mesures sous `--rec`**~~ : **faites le 2026-10-25**, voir §4 bis. La part du son passe de 9,6 % à
-  **30,5 %**, la carte étant 4,3 fois plus rapide et le son inchangé. **Dans l'hôte** : toujours non mesuré,
-  et le cas y est différent — le son est sur son propre fil, donc son coût est du temps CPU et non du temps
-  d'image.
+  **30,5 %**, la carte étant 4,3 fois plus rapide et le son inchangé. **Et dans l'hôte, mesuré le
+  2026-10-26** (§4 ter) : le fil du son travaille **1,49 ms par image** et **le jeu ne l'attend jamais** —
+  0,000 ms, maximum 0,016 jamais dépassé. Soit **8,5 % d'un cœur et 0,00 % de l'image**.

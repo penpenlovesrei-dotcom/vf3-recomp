@@ -65,6 +65,7 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 |---|---|---|
 | `VF3_SND_PROF=1` | le coût du son par parties : boucle, 68000, voix, DSP, mélange | `sound_prof.h` |
 | `VF3_PROF=1` | le coût par carte, toutes les 500 images (`prof …: board … sound …`) | `tools/vf3run.cpp` |
+| `VF3_SND_HOST=N` | **ce que le son coûte à l'hôte** : le travail du fil, et surtout **l'attente du jeu** — ce n'est pas le chiffre de `vf3run` | `src/host/main.cpp` |
 | `VF3_SCSP_DSPLOG=f` | **chaque écriture** dans les registres du DSP, du tampon FM, du mot `0x6` et des mots `SA` d'une fente | `soundboard.cpp` |
 | `VF3_FICHES=f` | les fiches de voix vivantes, avec canal et catégorie — ce qui a tranché « quelle catégorie est la musique » | `tools/vf3run.cpp` |
 | `VF3_STAGE=n` | **force l'arène** (1-12), en tenant les deux leviers du jeu | `tools/vf3run.cpp` |

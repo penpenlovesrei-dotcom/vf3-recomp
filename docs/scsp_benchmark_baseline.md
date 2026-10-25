@@ -159,10 +159,11 @@ proprement.**
 
 ## Ce que ces chiffres ne disent pas
 
-1. **Rien sur le temps d'une image dans le jeu.** Dans l'hôte, la carte son tourne sur **un fil à elle**, une
-   image en retard (`src/host/main.cpp`). Ses 0,45 ms économisées sont du temps processeur en moins — chaleur,
-   batterie, cœurs laissés au rendu — **pas** une image qui arrive plus tôt. Dans `vf3run`, tout est sur un
-   fil, et là le gain se lit directement.
+1. ~~**Rien sur le temps d'une image dans le jeu.**~~ **Mesuré le 2026-10-26** (`docs/scsp_audit.md` §4 ter),
+   et cette ligne avait vu juste : dans l'hôte le fil du son travaille 1,49 ms par image et **le jeu ne
+   l'attend jamais** — 0,000 ms, maximum 0,016. Les 0,45 ms économisées sont donc bien du temps processeur en
+   moins — chaleur, batterie, cœurs laissés au rendu — et **pas** une image qui arrive plus tôt. Dans
+   `vf3run`, tout est sur un fil, et là le gain se lit directement.
 2. ~~**Rien sur la version recompilée.**~~ **Mesuré le 2026-10-25** (`docs/scsp_audit.md` §4 bis), et la
    prévision de cette ligne était juste : avec `--rec` la carte passe de 13,77 à **3,23 ms** et le son reste
    à **1,42**, donc sa part va de 9,6 % à **30,5 %**. Les pourcentages de ce document ne s'y transposent
