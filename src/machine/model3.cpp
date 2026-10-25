@@ -1704,9 +1704,21 @@ constexpr uint32_t FV2_MATCH_OVER = 0x40000000;        // set when the match, no
 constexpr uint32_t FV2_ROUNDS_LOST_1P = 0x00581455;
 constexpr uint32_t FV2_ROUND_NUMBER = 0x00581456;
 constexpr uint32_t FV2_ROUNDS_LOST_2P = 0x0058FDBA;
-constexpr uint32_t FV2_LIFE_1P = 0x00700566, FV2_LIFE_2P = 0x00707566;
-constexpr uint32_t FV2_LIFE_MAX_1P = 0x00700568, FV2_LIFE_MAX_2P = 0x00707568;
+// THE TWO FIGHTERS, REACHED THE WAY THE GAME REACHES THEM: through its own two pointers, and not by the
+// addresses they happen to hold. fv2_game_FIGHT_DSP itself reads `lwz r3,[0x0007511C] ; lwz r3,0(r3)`, and
+// ROUND_MASK_INT writes the round's starting health at block+0x68 through the same pair. In every dump so
+// far they read 0x00700500 and 0x00707500, which is where August's fixed LIFE_1P and LIFE_2P came from --
+// block+0x66 and block+0x68 -- but a fixed address is a copy of an answer and the pointer is the question.
+constexpr uint32_t FV2_FIGHTER_PTR[2] = { 0x0007511C, 0x00075120 };
+constexpr uint32_t FV2_LIFE_IN_BLOCK = 0x66, FV2_LIFE_MAX_IN_BLOCK = 0x68;
 constexpr uint16_t FV2_LIFE_PLAUSIBLE = 2000;          // a starting life above this is not a fighter's block
+// The game's OWN "no round clock" switch, and it is not a value to hold: fv2_game_FIGHT_DSP reads
+//     lis r3,0x0012 ; lwz r3,-4020(r3) ; rlwinm. r0,r3,31,0,0 ; bne <skip the whole countdown>
+// so bit 0 of the word at 0x0011F04C -- Sega's CONFIG_CB_DISP, in the CONFIG block beside *PLAY KUHN --
+// makes the handler not decrement the timer at all. Read out of the code the 2026-10-25 with
+// tools/fv2/desas_ppc.py. Holding the timer's value instead would raise the question August had to leave
+// open (does the game read this word or write it?); this one is a condition, so there is no question.
+constexpr uint32_t FV2_CB_DISP = 0x0011F04C;
 constexpr uint32_t FV2_TASK_ENTRY2 = 0x00700100;       // player 2's, and NOT 0x00707000, which August measured wrong first
 constexpr uint8_t FV2_MODE_GAME_INT = 6;
 // LEAVING A MATCH by the game's own road (fv2_end_match below). GAME_TIMER is the word fv2_game_FIGHT_DSP
@@ -1924,14 +1936,11 @@ bool Model3::fv2_match_over() const
 int Model3::fv2_rematch(uint32_t entry1_live, uint32_t entry2_live)
 {
 	if (set != "fvipers2" || ram.size() <= FV2_TASK_ENTRY2 + 3) return -1;
-	auto refill = [&](uint32_t life, uint32_t max) {
-		const uint16_t m = uint16_t(ram[max ^ 3] << 8 | ram[(max + 1) ^ 3]);
-		if (m == 0 || m > FV2_LIFE_PLAUSIBLE) return false;   // not a fight, or not the block we think
-		ram[life ^ 3] = uint8_t(m >> 8);
-		ram[(life + 1) ^ 3] = uint8_t(m);
-		return true;
+	auto refill = [&](int who) {
+		const int m = fv2_life_max(who);
+		return m > 0 && fv2_set_life(who, m);
 	};
-	const bool one = refill(FV2_LIFE_1P, FV2_LIFE_MAX_1P), two = refill(FV2_LIFE_2P, FV2_LIFE_MAX_2P);
+	const bool one = refill(1), two = refill(2);
 	if (!one && !two) return 0;
 	ram[FV2_MODE_REQUEST ^ 3] = FV2_MODE_GAME_INT;   // the only one that commands
 	ram[FV2_ROUNDS_LOST_1P ^ 3] = 0;
@@ -2019,6 +2028,63 @@ void Model3::fv2_expire_screen()
 	if (set != "fvipers2" || ram.size() <= FV2_SCREEN_TIMER + 1) return;
 	ram[FV2_SCREEN_TIMER ^ 3] = uint8_t(FV2_SCREEN_TIMER_EDGE >> 8);
 	ram[(FV2_SCREEN_TIMER + 1) ^ 3] = uint8_t(FV2_SCREEN_TIMER_EDGE);
+}
+
+// ---- THE TWO FIGHTERS, AND THE ROUND'S CLOCK: what TRAINING is made of ----
+//
+// The block the game is using for a fighter, by its own pointer. 0 when there is none -- outside a fight
+// the pointer holds whatever it held, so every reader below checks the health as well, which is the guard
+// that actually catches a block that is not a fighter's.
+uint32_t Model3::fv2_fighter(int player) const
+{
+	if (set != "fvipers2") return 0;
+	const uint32_t at = FV2_FIGHTER_PTR[player == 2 ? 1 : 0];
+	if (ram.size() <= at + 3) return 0;
+	const uint32_t block = *reinterpret_cast<const uint32_t *>(&ram[at]);
+	return block + FV2_LIFE_MAX_IN_BLOCK + 1 < ram.size() ? block : 0;
+}
+
+int Model3::fv2_life_max(int player) const
+{
+	const uint32_t b = fv2_fighter(player);
+	if (!b) return -1;
+	const uint32_t at = b + FV2_LIFE_MAX_IN_BLOCK;
+	const int m = ram[at ^ 3] << 8 | ram[(at + 1) ^ 3];
+	return m > 0 && m <= FV2_LIFE_PLAUSIBLE ? m : -1;   // not a fight, or not the block we think
+}
+
+int Model3::fv2_life(int player) const
+{
+	const uint32_t b = fv2_fighter(player);
+	if (!b || fv2_life_max(player) < 0) return -1;
+	const uint32_t at = b + FV2_LIFE_IN_BLOCK;
+	return ram[at ^ 3] << 8 | ram[(at + 1) ^ 3];
+}
+
+// The same guard every time: an implausible starting life means this is not the block we think, and then
+// nothing is written at all.
+bool Model3::fv2_set_life(int player, int v)
+{
+	const int m = fv2_life_max(player);
+	if (m < 0) return false;
+	const uint32_t at = fv2_fighter(player) + FV2_LIFE_IN_BLOCK;
+	const int w = v < 0 ? 0 : v > m ? m : v;
+	ram[at ^ 3] = uint8_t(w >> 8);
+	ram[(at + 1) ^ 3] = uint8_t(w);
+	return true;
+}
+
+// The round's clock stopped by the game's own switch rather than by holding its value: bit 0 of
+// CONFIG_CB_DISP, which fv2_game_FIGHT_DSP tests before it decrements anything. Held, because the game
+// loads that block from its backup and this is a working copy. Returns 1 when it had to write.
+int Model3::fv2_freeze_timer(bool on)
+{
+	if (set != "fvipers2" || ram.size() <= FV2_CB_DISP + 3) return -1;
+	uint8_t &low = ram[(FV2_CB_DISP + 3) ^ 3];    // bit 0 of the word is the lowest bit of its last byte
+	const uint8_t want = uint8_t(on ? (low | 1) : (low & ~1));
+	if (low == want) return 0;
+	low = want;
+	return 1;
 }
 
 // Player 2's task register, the companion of fv2_task_state. The host watches both while a fight runs so it

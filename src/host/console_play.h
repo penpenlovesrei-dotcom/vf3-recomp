@@ -112,13 +112,38 @@ struct console_play
 	// stage select below rests on, and it is why the route table is NOT used for it: held at 3, a versus
 	// still fought in scene 8.
 	//
-	// What is NOT here either, and should not be mistaken for it: everything else a training mode is -- the
-	// timer that does not run out, the health that comes back, the dummy's behaviour. The owner has a draft
-	// of that in the patched ROM of the summer, and the Dreamcast version has the real thing; neither has
-	// been read yet.
+	// AND THE REST OF IT, built the 2026-10-25 on the form August gave it (MenuConsole.md section 9
+	// quinquies) and on this port's own reading of the game for the substance:
+	//
+	//   the entry      TRAINING opens a two-player versus, by the V.S. line's own road, word for word;
+	//   the clock      stopped by the GAME'S OWN SWITCH -- bit 0 of CONFIG_CB_DISP, which FIGHT_DSP tests
+	//                  before it decrements anything. August held the timer's value, which left open the
+	//                  question his own notes called the trap of section 12: does the game read this word
+	//                  or write it? A condition has no such question;
+	//   the two lives  held, with a DELAY and a FLOOR, and both numbers are his and exist for his reasons.
+	//                  His first version gave the life back every frame and the verdict was "it comes back
+	//                  too fast": it never went DOWN, the hit was erased on the frame it landed, and the
+	//                  mode was useless because its damage could not be read. So: the delay is how many
+	//                  frames without new damage before the life fills, and the floor is how low it may go
+	//                  -- without it, waiting would mean accepting the K.O. at the end of a long series,
+	//                  which ends the round, which is exactly what a training must not do.
+	//   leaving        the mode goes OUT the moment a way out of a match begins. His two functions, each
+	//                  right on its own, held each other: the way out finishes the match by emptying the
+	//                  lives, and the training filled them every frame, so the player was locked in.
+	//
+	// The dummy's behaviour is not here. Nothing stands in for it yet and nothing pretends to.
 	static constexpr int MARBLE_ARENA = 3;
 	enum { T_OFF, T_ARMED, T_HELD } training = T_OFF;
 	int training_armed = 0;
+	bool training_on = false;            // the mode itself, as opposed to the arena it arms
+	static constexpr int TRAIN_DELAY = 48;    // eight tenths of a second without new damage before the fill
+	static constexpr int TRAIN_FLOOR = 25;    // per cent of the starting health, below which the life is held
+	int train_was[2] = { -1, -1 };       // the life as we last left it: our own writing is never damage
+	int train_quiet[2] = { 0, 0 };       // frames since this player last took a hit
+	// What the host needs from this frame to draw the column: whether a round is being fought at all, and
+	// the points each player has just had taken off. The host reads them and clears them.
+	bool train_fighting = false;
+	int train_took[2] = { 0, 0 };        // points taken off player 1 and player 2 on this frame
 
 	enum { SEL_NOTHING, SEL_RANDOM, SEL_VERSUS } at_select = SEL_NOTHING;
 	int sel_frames = -1;          // frames since the select screen appeared; -1 until it does
@@ -127,7 +152,19 @@ struct console_play
 	void choose_arcade() { inject_start = 8; swallow_start = true; }
 	void choose_survival(m3::Model3 &b) { survival = ARMED; armed_frames = 0; survival_was = b.fv2_survival(); choose_arcade(); }
 	void choose_random() { random_mode = R_ARMED; random_armed = 0; random_was = 0; choose_arcade(); }
-	void choose_training() { training = T_ARMED; training_armed = 0; choose_arcade(); }
+	// TRAINING is a two-player versus with the mode on top: the entry is the V.S. line's, word for word,
+	// which was already proved. The arena is still held to Marble Arena by the route byte.
+	void choose_training()
+	{
+		training = T_ARMED;
+		training_armed = 0;
+		training_on = true;
+		for (int i = 0; i < 2; i++) { train_was[i] = -1; train_quiet[i] = 0; train_took[i] = 0; }
+		choose_versus(MARBLE_ARENA);
+		// AND NO CAROUSEL. The stage page belongs to the V.S. line, where choosing the arena is the point;
+		// training has its own and asking for it twice would be a page to dismiss before every session.
+		versus_trip = false;
+	}
 	// ---- VERSUS's arena ----
 	// The page (fv2_stage_list.h) hands the scene in, 0 meaning the game chooses as it does on the board.
 	// The lever is the picker, HELD exactly as TRAINING holds its route byte and for the same reason -- the
@@ -184,6 +221,12 @@ struct console_play
 
 	void leave_match(leave_dest what)
 	{
+		// LEAVING A MATCH TURNS THE TRAINING OFF, and not merely suspends its holding. The two are each
+		// right on their own and were measured holding each other in August's fork: the way out finishes
+		// the match, the training fills the lives every frame, and the player is locked in. Quitting the
+		// match is quitting the training; turning it back on by itself for the next one would be the same
+		// surprise the other way round.
+		training_on = false;
 		leaving = L_ENDING;
 		leave_for = what;
 		leave_frames = 0;
@@ -387,6 +430,46 @@ struct console_play
 	void arm_real_ending() { want_real_ending = true; }
 
 	// Once a frame, before the game runs. Returns what to hand the game on top of the player's own controls.
+	// One frame of TRAINING. The game is a two-player versus and never knows it is anything else: nothing
+	// is diverted, no state is invented, and turning the mode off gives an ordinary fight back on the next
+	// frame.
+	void step_training(m3::Model3 &b)
+	{
+		train_fighting = false;
+		if (!training_on) return;
+		const int m = b.fv2_mode(), su = b.fv2_submode();
+		const bool fighting = (m == 6 || m == 7) && (su == 11 || su == 12);
+		train_fighting = fighting;
+		// The clock, held by the game's own switch. Held rather than written once because that CONFIG block
+		// is a working copy the game loads from its backup.
+		b.fv2_freeze_timer(fighting);
+		if (!fighting) {
+			for (int i = 0; i < 2; i++) { train_was[i] = -1; train_quiet[i] = 0; }
+			return;
+		}
+		for (int who = 1; who <= 2; who++) {
+			const int k = who - 1;
+			const int max = b.fv2_life_max(who), now = b.fv2_life(who);
+			if (max <= 0 || now < 0) { train_was[k] = -1; continue; }
+			const int floor = max * TRAIN_FLOOR / 100;
+			if (train_was[k] < 0) { train_was[k] = now; train_quiet[k] = 0; }
+			// DAMAGE IS WHAT THE GAME TOOK OFF SINCE WE LAST LEFT IT, never what we put there ourselves:
+			// every write below sets train_was to what it wrote, so the next frame compares against ours.
+			const int hit = train_was[k] - now;
+			if (hit > 0) {
+				train_took[k] += hit;
+				train_quiet[k] = 0;
+			} else if (++train_quiet[k] > 60 * 60) {
+				train_quiet[k] = 60 * 60;
+			}
+			int want = now;
+			if (now < floor) want = floor;                      // never low enough to be knocked out
+			else if (train_quiet[k] >= TRAIN_DELAY) want = max;  // quiet long enough: the life comes back
+			if (want != now) b.fv2_set_life(who, want);
+			train_was[k] = want;
+		}
+	}
+
 	// One frame of the way out of a match. Nothing here counts rounds: the attract loop is what says the
 	// match is over, and the scene index is what says the end-of-game screens are past.
 	void step_leaving(m3::Model3 &b)
@@ -449,6 +532,7 @@ struct console_play
 		out = m3::Controls();
 		if (!on) return;
 		step_leaving(b);
+		step_training(b);
 		// The two task registers, read ONLY while the round is actually being fought (GAME's FIGHT_INT and
 		// FIGHT_DSP, sub-states 11 and 12): see task_live above for why no other moment will do.
 		{
@@ -558,17 +642,17 @@ struct console_play
 			break;
 		case R_OFF: break;
 		}
+		// TRAINING'S ARENA IS NOW THE DRAW'S, not the route table's, and that follows from the entry: the
+		// mode opens a VERSUS, and the route byte was measured not to command one (held at 3, a versus
+		// still fought in scene 8). The draw's table does -- it is what the stage page holds -- so training
+		// holds it the same way, and the vs_stage machinery below does the holding.
 		switch (training) {
 		case T_ARMED:
-			// nothing touched yet: the same wait as Survival, for the same reason -- the game is still in its
-			// attract loop when the line is chosen. The arena is read when a match starts, well after this.
-			if (!b.fv2_in_attract()) { b.fv2_hold_training_stage(MARBLE_ARENA); training = T_HELD; }
+			if (!b.fv2_in_attract()) training = T_HELD;
 			else if (++training_armed > 300) training = T_OFF;   // (the game never started: give up)
 			break;
 		case T_HELD:
-			// Given back when the game ends: left in place it would send the NEXT game to the same arena too.
-			if (b.fv2_in_attract()) { b.fv2_release_training_stage(); training = T_OFF; }
-			else b.fv2_hold_training_stage(MARBLE_ARENA);
+			if (b.fv2_in_attract()) training = T_OFF;
 			break;
 		case T_OFF: break;
 		}

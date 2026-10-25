@@ -347,6 +347,19 @@ public:
 	int fv2_screen_timer() const;      // signed: an expired screen is negative
 	void fv2_expire_screen();          // CONTINUE and GAME OVER are modes of their own: this is the only lever there
 	int fv2_scene_index() const;       // the arena now loaded; a change says the end-of-game screens are past
+	// THE TWO FIGHTERS, reached through the game's own two pointers (0x0007511C and 0x00075120) rather than
+	// by the addresses those pointers happen to hold -- which is how fv2_game_FIGHT_DSP itself reads them.
+	// The health is at block+0x66 and the round's starting health at block+0x68; an implausible starting
+	// health means this is not a fighter's block and then nothing is written. It is what REMATCH refills
+	// and what TRAINING holds.
+	uint32_t fv2_fighter(int player) const;    // 0 when there is no fighter block to speak of
+	int fv2_life(int player) const;
+	int fv2_life_max(int player) const;
+	bool fv2_set_life(int player, int v);
+	// THE ROUND'S CLOCK STOPPED BY THE GAME'S OWN SWITCH: bit 0 of CONFIG_CB_DISP (0x0011F04C), which
+	// fv2_game_FIGHT_DSP tests before it decrements the timer at all. Held, because that block is a working
+	// copy the game loads from its backup. model3.cpp carries the instructions it was read from.
+	int fv2_freeze_timer(bool on);
 	// Survival: a flag the game reads, and the operator setting that has to agree with it. Measured as 0 and 0
 	// on a stock board. The flag must NOT be set during the attract loop -- set there it stops the game
 	// starting at all, the injected Start is ignored and no credit is ever taken -- so the host arms it and

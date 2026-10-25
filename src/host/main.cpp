@@ -132,6 +132,7 @@
 #include "fv2_options.h"
 #include "fv2_pause.h"
 #include "fv2_stage_list.h"
+#include "fv2_training.h"
 #include "fv2_texte.h"
 #include "menu.h"
 #include "controls.h"
@@ -2510,14 +2511,19 @@ int main(int argc, char **argv)
 	fv2_options options;
 	fv2_pause pause;   // Start during a match, over the fight
 	fv2_stage_list stages;   // VERSUS's arena, chosen before the match (fv2_stage_list.h)
+	fv2_training train;      // TRAINING's column of inputs and its damage (fv2_training.h)
 	// The console's surfaces, over the picture the game made (and under this port's menu, if that is open as
 	// well): mid is the game's own 4:3 screen, which is what their placement was measured against. ONE place
 	// draws them, because F12 photographs the window by composing it again -- and a photograph that left the
 	// page out would not be a photograph of what is on screen.
 	auto draw_console = [&](m3::Model3 &b) {
 		SDL_FRect all, mid;
-		if (!modes.shown && !options.shown && !pause.shown && !stages.shown) return;
+		const bool column = cplay.training_on && cplay.train_fighting;
+		if (!modes.shown && !options.shown && !pause.shown && !stages.shown && !column) return;
 		picture_rect(all, mid);
+		// TRAINING's column goes UNDER the surfaces and over the fight, and only while a round is being
+		// fought: a column that stayed up through the judgement and the replay would be reading itself.
+		if (column) train.render(ren, all, mid);
 		if (modes.shown) modes.render(ren, all, mid);
 		// The OPTIONS page's backdrop covers the 4:3 screen and NOTHING IS DIMMED: the Dreamcast does not dim
 		// this one, measured (docs/fv2-dreamcast-menus.md section 3bis).
@@ -2547,6 +2553,7 @@ int main(int argc, char **argv)
 		options.load(ren, find_assets(), &console_font, stderr);
 		pause.load(ren, find_assets(), &console_font, stderr);
 		stages.load(ren, find_assets(), &console_font, stderr);
+		train.load(ren, find_assets(), &console_font, stderr);
 	}
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
@@ -2755,6 +2762,7 @@ int main(int argc, char **argv)
 					options.load(ren, find_assets(), &console_font, stderr);
 					pause.load(ren, find_assets(), &console_font, stderr);
 					stages.load(ren, find_assets(), &console_font, stderr);
+					train.load(ren, find_assets(), &console_font, stderr);
 				}
 				g_pc_mode = !cfg.arcade;
 				cfg_dirty = true;
@@ -3393,6 +3401,7 @@ int main(int argc, char **argv)
 			options.textures_lost(ren, find_assets());
 			pause.textures_lost(ren, find_assets());
 			stages.textures_lost(ren, find_assets());
+			train.textures_lost(ren, find_assets());
 		}
 		new_frame = true;   // (the next picture sends the 2D again)
 	};
@@ -3971,6 +3980,21 @@ int main(int argc, char **argv)
 						// let go again at once and the game walks into DECIDE_INT as it always did.
 						board.fv2_leave_stage_select();
 					}
+				}
+				// TRAINING'S COLUMN, fed with the PLAYER'S own controls and not with the game's memory --
+				// which is the point of it: it has to show what was done, including what the game ignored.
+				// Player 1's, and the damage it reads is what player 2 has just had taken off him.
+				if (cplay.training_on && cplay.train_fighting && train.ready) {
+					const bool st = live.start[0] || script_ctl.start[0];
+					(void)st;
+					train.feed(live.up[0] || script_ctl.up[0], live.down[0] || script_ctl.down[0],
+							   live.left[0] || script_ctl.left[0], live.right[0] || script_ctl.right[0],
+							   live.punch[0] || script_ctl.punch[0], live.kick[0] || script_ctl.kick[0],
+							   live.guard[0] || script_ctl.guard[0]);
+					if (cplay.train_took[1] > 0) train.damage(cplay.train_took[1]);
+					cplay.train_took[0] = cplay.train_took[1] = 0;
+				} else if (!cplay.training_on && !train.lines.empty()) {
+					train.clear();
 				}
 				// THE PAGE IS UP AND THE GAME IS STILL RUNNING: it is held in Sega's empty STAGE_SEL every
 				// frame, because a request is only read once and the point here is that it is never walked
