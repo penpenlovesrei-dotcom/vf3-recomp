@@ -1,5 +1,7 @@
 # Audit du sous-système sonore — ce qu'il y a, ce qu'il coûte
 
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+
 Écrit le 2026-10-24, sur la branche `fv2` au commit `335c050`, machine de Frédéric (Windows 11, g++ 16.1.0
 MSYS2, `-O2`). Toutes les mesures de ce document ont été exécutées ; les commandes sont données telles quelles
 pour qu'elles se refassent.

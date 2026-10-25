@@ -1,5 +1,7 @@
 # Sources du SCSP — ce qui a été lu, et ce qu'on en sait
 
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+
 Relevé le 2026-10-24. Chaque ligne dit **où elle a été lue**. Ce qui n'a pas été vérifié est marqué comme tel ;
 rien ici n'est déduit d'un souvenir.
 

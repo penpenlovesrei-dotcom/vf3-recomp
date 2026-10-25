@@ -1,5 +1,7 @@
 # Le programme son, lu dans son code
 
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+
 Commencé le 2026-10-24. **C'est un début, pas un relevé complet** : le programme fait 512 Ko et ce qui suit
 en couvre une poignée de fonctions. Chaque ligne dit où elle a été lue.
 

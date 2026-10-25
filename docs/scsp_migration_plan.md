@@ -1,5 +1,7 @@
 # Sortir du SCSP de MAME — le plan, et ce qui est déjà fait
 
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+
 **C'est un plan.** Au 2026-10-24, l'étape 0 est faite et rien d'autre. Le cœur du son est toujours celui de
 MAME, modifié.
 

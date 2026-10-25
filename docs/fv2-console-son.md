@@ -1,5 +1,7 @@
 # Le son de la liste des modes — le plan, avant d'écrire
 
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+
 Écrit le 2026-10-21, après avoir **défait** une première version des bruitages posée le jour même.
 
 Ce document n'est pas une description de ce qui existe : rien de tout ça n'est écrit. C'est la liste des

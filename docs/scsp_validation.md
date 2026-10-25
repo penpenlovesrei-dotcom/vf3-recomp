@@ -1,5 +1,7 @@
 # Valider le son — ce qui est en place, et ce qui manque
 
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+
 État au 2026-10-24. La partie « en place » a été exécutée et vérifiée ; la partie « manque » est une liste de
 travaux, pas une promesse tenue.
 

@@ -1,5 +1,7 @@
 # Le banc du son — la ligne de base, et chaque lot mesuré contre elle
 
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+
 Mesuré le 2026-10-24. Machine de Frédéric (Windows 11, g++ 16.1.0 MSYS2, `-O2 -g`), branche `fv2`, ligne de
 base au commit `335c050`. **Un seul banc à la fois** : deux runs lancés ensemble se disputent les cœurs et les
 chiffres ne veulent plus rien dire.

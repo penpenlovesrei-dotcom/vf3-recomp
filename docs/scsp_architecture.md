@@ -1,5 +1,7 @@
 # Le SCSP autonome — contrat d'interface et découpage
 
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+
 > **Mise à jour du 2026-10-25.** Ce document décrit l'**interface C++**. Le second morceau du contrat —
 > ce que le pilote attend de la **puce**, champ par champ, avec la provenance de chaque nombre — existe
 > maintenant à part : `src/sound/scsp_contract.h`, vérifié par `tools/son/test_scsp_contract.cpp` contre
