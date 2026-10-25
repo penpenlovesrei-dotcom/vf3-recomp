@@ -149,22 +149,31 @@ struct console_play
 	// controls are routed to player 2's cursor, so the same hands pick the opponent. The latch is the host's
 	// own: it SEES the press, so it needs no byte of the game's to tell it.
 	bool train_p1_chose = false;
-	// THE PRESENTATION IS STILL THERE, and it is not for want of trying. Frederic asked for the fight to
-	// start straight away, with no STAGE / VS screen and no ROUND 1. GAME's sub-states 0 to 3 are
-	// ROUND_MASK_INT, _IN, _DSP and _OUT, and asking any of them to move on -- which is all
-	// fv2_cut_submode does, and exactly what Sega's own handlers do between themselves -- gives a
-	// BLACK SCREEN with nothing on it but the HUD. Measured three ways the 2026-10-25, each on a build
-	// whose timestamp was checked:
+	// THE PRESENTATION STAYS, AND NOW WE KNOW WHY: it is the arena loading, not a wait anybody put there.
+	// Frederic asked for the fight to start straight away, with no STAGE / VS screen and no ROUND 1.
+	// Asking GAME's sub-states 0 to 3 to move on -- which is all fv2_cut_submode does -- gave a BLACK
+	// SCREEN with nothing on it but the HUD, three times over: all four cut, ROUND_MASK_DSP alone, and
+	// ROUND_MASK_DSP at its forty-first frame, which is where this port's own note had cut it.
 	//
-	//   all four cut             black. ROUND_MASK_INT alone stops three tasks, clears the match-over
-	//                            bit and sets both fighters' health, so that one at least must run;
-	//   ROUND_MASK_DSP alone     black as well, though it is the only one of the four that waits;
-	//   ROUND_MASK_DSP at its    black again. This port's own note had cut it at image 2360 of a
-	//     forty-first frame      2319-2450 run, so the handler was given its opening frames first.
+	// So the four were READ, out of a RAM dump with tools/fv2/desas_ppc.py, the handler table being at
+	// 0x000243B4 (0x000244F4 is the table of NAMES, which is not the same thing):
 	//
-	// So the arena's loading is somewhere in those four and not where that note implied. What would
-	// settle it is READING fv2_game_ROUND_MASK_DSP at 0x0000BD2C and the three beside it, the way the
-	// stage draw was read with tools/fv2/desas_ppc.py -- not another guess at which one is safe.
+	//   ROUND_MASK_INT  0x0000BD2C  clears three fields, plays three sounds, sets the round's health
+	//   ROUND_MASK_IN   0x0000BEAC  if ROUND_NO is 1 and this is neither a rematch nor Survival, calls
+	//                               0x0005ECAC and 0x0005AF90 -- and that is the LOADING, done once a
+	//                               match and not once a round
+	//   ROUND_MASK_DSP  0x0000BF00  `lwz r3,[0x002750B8] ; cmpwi r3,0 ; bne <stay>` -- it does nothing
+	//                               at all but WAIT for that counter to fall to zero, and only then
+	//                               arms the next task and asks for the next sub-state
+	//   ROUND_MASK_OUT  0x0000BF48  two calls, then on
+	//
+	// 0x002750B8 is work outstanding: read out of three dumps it holds 9, 2 and 0 at different moments.
+	// So ROUND_MASK_DSP's length IS the load's length, and cutting it starts the fight on an arena that
+	// has not arrived -- which is exactly the black screen. There is nothing to shorten here: between
+	// rounds, where nothing is loaded, the game already passes through in no time.
+	//
+	// What could still be done is hide the BANNER that is drawn over the load. That does not make the
+	// fight start any sooner; it replaces a screen that says what is coming with a blank one.
 
 	enum { SEL_NOTHING, SEL_RANDOM, SEL_VERSUS } at_select = SEL_NOTHING;
 	int sel_frames = -1;          // frames since the select screen appeared; -1 until it does
