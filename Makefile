@@ -109,13 +109,20 @@ $(BIN)/test_scsp_adsr: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_fentes $(BIN)/test_scsp_adsr
+# Le pas, les deux LFO et la modulation par anneau (tools/son/test_scsp_lfo.cpp) : bloc 4 de l'architecture.
+# Lit l'accumulateur de phase par une rampe, et fixe les deux divergences deliberees du portage (PLFOS, MDL).
+$(BIN)/test_scsp_lfo: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_lfo.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_fentes $(BIN)/test_scsp_adsr $(BIN)/test_scsp_lfo
 	$(BIN)/test_scspdsp
 	$(BIN)/test_scsp_contract
 	$(BIN)/test_scsp_core
 	$(BIN)/test_scsp_regs
 	$(BIN)/test_scsp_fentes
 	$(BIN)/test_scsp_adsr
+	$(BIN)/test_scsp_lfo
 
 clean:
 	rm -rf build

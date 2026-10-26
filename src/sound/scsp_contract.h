@@ -369,6 +369,58 @@ inline constexpr unsigned PLFOS_CHAMP_DECALAGE = 5;
 inline constexpr unsigned PLFOS_CHAMP_LARGEUR  = 0x7;   // le champ du registre, avant que la lecture en jette le bit bas
 
 // ---------------------------------------------------------------------------------------------------
+// 11. PITCH, LFO AND RING MODULATION, measured 2026-10-26 by tools/son/test_scsp_lfo.cpp.
+//
+// The probe is worth naming because it is exact: with a RAMP whose sample k is 1024*k, the linear
+// interpolation of a straight line is exact, and the left output equals cur_addr minus (frac mod 4). The
+// output IS the phase accumulator, so the step is read off the second sample instead of being counted.
+//
+//   (1) OCT IS A SIGNED FOUR-BIT FIELD IN XOR-BIASED FORM: `(OCT ^ 8) - 8`, so field 0xF is -1 and field
+//       0x8 is -8. Step = (1024 + FNS) shifted by that plus two. Measured: 4096 at OCT=0/FNS=0, 8192 at
+//       OCT=+1, 2048 at field 0xF, 16 at field 0x8, and 8188 at FNS=0x3FF. A reimplementation reading OCT
+//       as unsigned would play eight octaves high on half the notes.
+//
+//   (2) EIGHT OF THE THIRTY-TWO LFO RATES DO NOTHING. phase_step is
+//       `(u32)((1 << LFO_SHIFT) * LFOFreq[LFOF] * 256.0f / 44100.0f)` and the conversion TRUNCATES, so a
+//       rate needs LFOFreq >= 44100/65536 = 0.673 Hz to advance at all. LFOF 0 to 7 (0.17 to 0.55 Hz) are
+//       below it: their phase never moves. Measured one by one. A rewrite keeping the phase in floating
+//       point, or rounding instead of truncating, would make eight rates vibrate that this port freezes.
+//
+//   (3) THE PHASE IS INCREMENTED BEFORE THE TABLE IS READ (`phase += phase_step; p = table[phase >> 8]`),
+//       so the first sample reads index 1 and the period runs 1,2,...,255,0. The phase is a u16, which is
+//       what wraps it -- the explicit mask in PLFO_Step/ALFO_Step is compiled out when LFO_SHIFT is 8, not
+//       because it would be useless.
+//
+//   (4) ALFOS'S EIGHT DEPTHS, read at the trough of the square wave: 4096, 3904, 3728, 3440, 2896, 2048,
+//       1024, 256 -- which is ASCALE {0, 0.4, 0.8, 1.5, 3, 6, 12, 24} dB through a truncating table.
+//       ALFOS=0 attenuates nothing AND does not advance the LFO's phase, since `if (ALFOS(slot) != 0)`
+//       guards the call.
+//
+//   (5) PLFOS DROPS ITS LOW BIT, ON PURPOSE. Section 8 says why the table's mask is a read mask; here is
+//       what it does: the register's three-bit field collapses into pairs, 0 with 1, 2 with 3, 4 with 5,
+//       6 with 7. Measured steps 4096, 4096, 4112, 4112, 4224, 4224, 4672, 4672. It is a DELIBERATE
+//       divergence from MAME, taken from Supermodel and set by ear for VF3 (docs/scsp_audit.md §2): VF3's
+//       music has voices at PLFOS 1 whose vibrato was lost without it. Do not "fix" it by accident.
+//
+//   (6) THE RING MODULATION'S DEPTH IS 24, NOT MAME'S 26, AND MDL'S LOW BIT IS DROPPED:
+//       `smp >>= 0x18 - (MDL & 0xE)`. The other deliberate divergence, set by ear on Pai's arena theme.
+//       Measured with the ring written straight through the register window (0x600-0x6FF) and STWINH=1 so
+//       the slot cannot overwrite it: for a ring value of 16384 the address offset is 1, 1, 4, 4, 16, 16,
+//       64, 64, 256, 256 for MDL 0 to 9 -- the pairs are equal.
+//
+//   (7) THE MODULATION'S GUARD IS AN OR OVER THREE FIELDS, not a test of MDL:
+//       `if (MDL != 0 || MDXSL != 0 || MDYSL != 0)`. A slot with MDL=0 still modulates when MDXSL is set
+//       (that is the offset of 1 above), and all three at zero modulate nothing even with a full ring. A
+//       rewrite examining only MDL would lose the first behaviour and never notice on a game that leaves
+//       MDXSL at zero.
+//
+//   (8) LFORE IS NEVER READ. The field exists (bit 15 of word 9, "LFO reset") and the macro is defined,
+//       but nothing in scsp.cpp calls it: the LFO's phase is zeroed only by StartSlot, through
+//       Compute_LFO. Setting it or not changes nothing, measured. Whether the real chip resets the LFO
+//       there is beyond what any measurement here can settle -- recorded rather than left to be
+//       rediscovered.
+
+// ---------------------------------------------------------------------------------------------------
 // 9. THE OSCILLATOR'S LOOPING, which is not what reading the code suggests.
 //
 // Measured 2026-10-26 by tools/son/test_scsp_fentes.cpp, which keeps the exact index sequences. Three

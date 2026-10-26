@@ -83,7 +83,7 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 
 ## 5. Les tests
 
-`make test` construit et lance les six, et ils ne demandent ni ROM ni fenêtre pour l'essentiel :
+`make test` construit et lance les sept, et ils ne demandent ni ROM ni fenêtre pour l'essentiel :
 
 | | |
 |---|---|
@@ -94,6 +94,7 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 | `tools/son/test_scsp_regs.cpp` | **ce qu'une écriture dans un registre se relit**, mot par mot de 0x000 à 0x42F : deux masques (ce qui monte, ce qui reste levé), les trois mots dont le bit 5 colle par trois chemins différents, et la plage contestée 0x7C0-0x7FF mesurée dans **les deux** réglages du miroir MADRS. 9 cas. Bloc 1 de l'architecture |
 | `tools/son/test_scsp_fentes.cpp` | **l'oscillateur, l'adressage PCM et les quatre bouclages**, mesures à l'échantillon exact : `SDIR` met l'enveloppe de côté, donc la sortie vaut l'échantillon brut et la suite des **indices** se lit. 11 cas. Bloc 2 de l'architecture |
 | `tools/son/test_scsp_adsr.cpp` | **l'enveloppe ADSR** : une onde continue fait que la sortie *est* l'enveloppe, et son multiplicateur se relit sans arrondi. Les **durées d'attaque en échantillons** y encodent les tables de temps de MAME, pour qu'une formule à leur place ne passe pas inaperçue. 10 cas. Bloc 3 |
+| `tools/son/test_scsp_lfo.cpp` | **le pas, les deux LFO et la modulation par anneau**. Une rampe fait de la sortie l'**accumulateur de phase**, donc le pas se lit au lieu d'être compté. Fixe les **deux divergences délibérées** du portage (`PLFOS` et `MDL` perdent leur bit bas) pour que personne ne les « corrige ». 11 cas. Bloc 4 |
 
 La seconde partie du test du contrat s'efface, **avec une ligne visible**, quand `build/fv2-son-68000.bin`
 n'est pas là — elle vient d'une ROM que le dépôt ne porte pas.

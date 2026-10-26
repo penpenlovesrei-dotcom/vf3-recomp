@@ -143,6 +143,10 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
 4. **Pitch, LFO, modulation FM** — `OCT`/`FNS`, les quatre formes de LFO, `PLFOS`/`ALFOS`, et la modulation par
    anneau (`MDL`/`MDXSL`/`MDYSL`). **Les réglages de ce portage se gardent tels quels** jusqu'à mesure
    contraire : profondeur FM à 24 et bit bas de `MDL` ignoré (`docs/scsp_audit.md` §2).
+   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_lfo.cpp`, onze cas, et il fixe les deux réglages
+   nommés ci-dessus plutôt que de les laisser à la bonne volonté d'un relecteur. Il a aussi trouvé que **huit
+   des trente-deux cadences de LFO ne font rien** — `phase_step` tronque à zéro en dessous de 0,673 Hz — et que
+   `LFORE` n'est lu nulle part dans ce cœur (`scsp_contract.h` §11).
 5. **Le DSP d'effets** — 128 pas, `TEMP`/`MEMS`/`MIXS`/`EFREG`, `PACK`/`UNPACK`, la ligne de retard dans la RAM
    son, l'accès mémoire sur pas impairs. C'est **le bloc le plus coûteux** (la moitié de la carte son) et celui
    qui a le plus à gagner d'être écrit pour ce qu'il est : un programme fixe de 112 pas exécuté 44 100 fois par

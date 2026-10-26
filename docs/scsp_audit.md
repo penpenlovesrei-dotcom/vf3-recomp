@@ -239,10 +239,76 @@ achète du **temps CPU**, c'est-à-dire de la marge thermique, de l'autonomie, e
 plus petite. Le gain de −24 % obtenu sur le DSP reste un vrai gain ; il ne se voit simplement pas dans la
 cadence ici.
 
-**Ce que ça n'établit pas**, et c'est la limite qui compte : **une seule machine**, celle de Frédéric, avec
-des cœurs libres. Sur deux cœurs, ou sur un Steam Deck, le fil du son est en concurrence avec celui du jeu et
-celui des images, et l'attente pourrait cesser d'être nulle. C'est la mesure suivante, et elle demande l'autre
-machine. Rien non plus sur une scène autre que le démarrage et l'attract.
+**Ce que ça n'établit pas**, et c'était la limite qui comptait : **une seule machine**, celle de Frédéric, avec
+des cœurs libres. Sur deux cœurs le fil du son est en concurrence avec celui du jeu et celui des images, et
+l'attente pouvait cesser d'être nulle. **Cette mesure a été faite depuis** — §4 quater : l'attente reste
+nulle, et le son coûte deux fois plus cher. Rien toujours sur une scène autre que le démarrage et l'attract.
+
+
+## 4 quater. Sur deux cœurs : deux fois plus cher, et l'attente reste nulle
+
+C'est la mesure que le §4 ter nommait comme la suivante, et elle **dément sa prédiction**. Frédéric l'a lancée
+le 2026-10-26 sur son portable : **AMD A9-9425, deux cœurs et deux processeurs logiques** (pas de SMT),
+Radeon R5 intégrée, Windows 10 build 19045, 1366 x 768, 4 433 images. Avec fenêtre, donc dans les conditions
+réelles du jeu.
+
+État stable, les six fenêtres des images 1500 à 3999 :
+
+| | |
+|---|---|
+| le fil du son travaille | **5,75 ms par image** (5,04 à 6,47) |
+| le jeu l'attend | **0,001 à 0,002 ms**, maximum 0,437 ms |
+| la période d'image | **33,5 ms**, soit 29,9 images/s |
+| donc | **17,4 % d'un cœur** (12,9 à 20,6), et **0,00 % de l'image** |
+
+**Le son coûte deux fois plus cher qu'il ne coûtait**, 17,4 % d'un cœur contre 8,5 % sur la machine de bureau :
+c'est le même travail sur un processeur plus lent, et 52,2 cycles par pas de DSP ici. Avec deux processeurs
+logiques, cela fait **8,7 % de la machine**.
+
+**Mais l'attente ne cesse pas d'être nulle.** C'est le résultat, et il était à démontrer : le §4 ter écrivait
+que "sur deux cœurs [...] l'attente pourrait cesser d'être nulle". Elle ne cesse pas. Le fil a 33,5 ms pour
+faire 5,75 ms de travail, soit une marge de 5,8 ; elle a fondu d'un facteur 11,7 à 5,8, et elle tient.
+
+### Ce qui limite la cadence, et ce n'est pas le son
+
+Les 23 à 31 images/s de cette machine sont fixées par **la photo**, et le journal le dit poste par poste :
+
+| | |
+|---|---|
+| une image (le CPU du jeu) | 4,8 à 10,3 ms |
+| une photo | **18,3 à 32,8 ms**, dont **8,7 à 17,1 ms de téléversements** |
+| l'entre-deux du 3D | jusqu'à 11,3 ms |
+| le rendu GPU lui-même | 1,5 à 3,3 ms seulement |
+| le son, en parallèle | 5,75 ms, attendu 0,001 |
+
+Le GPU ne travaille presque pas ; ce sont les téléversements et la préparation des triangles qui tiennent la
+cadence. Le son ne peut pas être la limite à 5,75 ms de travail parallèle pour 0,001 ms d'attente.
+
+### Ce que cette mesure n'établit pas
+
+**La sonde mesure l'attente BLOQUANTE, pas la concurrence.** Sur deux cœurs, le fil du son et le fil
+principal se disputent la machine : cache, ordonnanceur, fréquence. Ce coût-là ne se voit pas dans
+`attente_ms`, qui ne compte que le temps passé à attendre dans `finish_frame`. Pour l'isoler il faudrait la
+même scène **son coupé** et comparer les cadences ; cette mesure n'a pas été faite. On ne peut donc pas dire
+"le son est gratuit sur deux cœurs" — seulement que **le jeu ne l'attend pas**.
+
+Deux autres réserves : le démarrage est lent sur cette machine (960 images en 81 s) et la première fenêtre,
+à l'image 499, montre une attente maximale de 69,975 ms — c'est la recompilation, pas l'état stable. Et la
+file audio ne s'accumule jamais : 0 octet partout, sauf 1 304 une fois.
+
+### Où va le temps du son, sur cette machine
+
+| | part du son |
+|---|---|
+| DSP | **49,8 %** (47,0 à 54,2) |
+| 68000 | 35,1 % |
+| voix | 12,9 % |
+| boucle et timers | 1,7 % |
+| mélange | 0,6 % |
+
+Le DSP reste la moitié, comme sous `--rec` et comme dans l'hôte. Si le son doit un jour coûter moins sur une
+machine de cette taille, c'est là et nulle part ailleurs — et la part des voix a doublé (6,4 → 15,0 %) à
+mesure que la musique s'est chargée, ce qui en fait le second poste et non le troisième.
 
 
 ## 5. Ce que le programme DSP contient vraiment

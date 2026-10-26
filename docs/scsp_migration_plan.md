@@ -2,7 +2,7 @@
 
 > Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
 
-**C'est un plan.** Au 2026-10-26, les étapes 0 et 3 sont faites, et des blocs 1, 2 et 3 il y a le test mais pas
+**C'est un plan.** Au 2026-10-26, les étapes 0 et 3 sont faites, et des blocs 1 à 4 il y a le test mais pas
 encore l'implémentation. Le cœur du son est toujours celui de MAME, modifié — mais la carte ne lui parle plus que par
 `scsp_core.h`, et le son est identique à l'octet sur trois arènes.
 
@@ -39,14 +39,21 @@ le premier venu.
 | le lot défait | un quatrième, sur les voix, qui ne gagnait rien : défait, et le résultat négatif consigné |
 | tester | `tools/son/test_scspdsp.cpp` (`make test`) : les deux corps du DSP contre une référence qui décode dans la boucle, seize cas, et quatre fautes injectées pour montrer qu'il sait échouer |
 
-Ce que l'étape 0 **n'a pas** fait, et il faut le lire avant la suite : il n'y a que quatre tests de bloc sur
-huit — le DSP (bloc 7), les registres (bloc 1), les fentes (bloc 2) et l'enveloppe (bloc 3), les trois
-derniers écrits le 2026-10-26 — et qu'une seule scène de mesure. **Les deux mesures qui manquaient sont faites** : dans l'hôte le 2026-10-26
-(`docs/scsp_audit.md` §4 ter — le son y coûte 8,5 % d'un cœur et **0,00 % de l'image**, le jeu ne l'attendant
-jamais), et sous `--rec` le
-2026-10-25** (`docs/scsp_audit.md` §4 bis) : la part du son y est de **30,5 %** au lieu de 9,6 %, parce que
-la carte Model 3 y est 4,3 fois plus rapide et que le son, lui, ne change pas. C'est donc sous `--rec` que la
-marge du son compte, et le DSP en fait la moitié.
+Ce que l'étape 0 **n'a pas** fait, et il faut le lire avant la suite : il n'y a que cinq tests de bloc sur
+huit — le DSP (bloc 7), les registres (bloc 1), les fentes (bloc 2), l'enveloppe (bloc 3) et les LFO
+(bloc 4), les quatre derniers écrits le 2026-10-26 — et qu'une seule scène de mesure.
+
+**Les trois mesures qui manquaient sont faites** :
+
+| où | part du son | ce que ça dit |
+|---|---|---|
+| `vf3run --rec`, la carte dans la boucle d'image | **30,5 % de l'image** (§4 bis, 2026-10-25) | la carte Model 3 y est 4,3 fois plus rapide et le son, lui, ne change pas. C'est là que sa marge compte |
+| l'hôte, la carte sur son fil, machine de bureau | **8,5 % d'un cœur, 0,00 % de l'image** (§4 ter, 2026-10-26) | le jeu ne l'attend jamais |
+| l'hôte, **portable AMD à deux cœurs** | **17,4 % d'un cœur, 0,00 % de l'image** (§4 quater, 2026-10-26) | deux fois plus cher, et l'attente reste nulle. La cadence y est tenue par les téléversements de la photo, pas par le son |
+
+Le DSP fait la moitié du son dans les trois. Ce qui reste non mesuré : la **concurrence** sur deux cœurs — la
+sonde compte l'attente bloquante, pas le coût de partager le cache et l'ordonnanceur ; il faudrait la même
+scène son coupé. Et toujours une seule scène, le démarrage et l'attract.
 
 
 ## Étape 1 — le reste du gain processeur, s'il en faut
