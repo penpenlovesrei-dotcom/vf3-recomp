@@ -1220,7 +1220,9 @@ void Model3::write8(uint32_t a, uint8_t d)
 		case 0x04: write_inputs(a & 0x3F, d); break;
 		case 0x08:
 			if ((a & 0xF) == 0) {         // MIDI data
-				midi.push_back(d);
+				// dropped when the host owns the sound, and the interrupt still answered: the game is told
+				// its byte was taken, because as far as it is concerned it was (model3.h)
+				if (!mute_game_midi) midi.push_back(d);
 				irq.deassert(0x40);
 			} else if ((a & 0xF) == 4) {  // MIDI control
 				midi_ctrl = d;

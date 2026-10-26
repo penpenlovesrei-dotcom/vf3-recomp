@@ -466,6 +466,12 @@ public:
 
 	// The MIDI bytes sent to the sound board (played by the sound board once it exists)
 	std::deque<uint8_t> midi;
+	// WHO OWNS THE SOUND, and this is the host's say (src/host/console_state.h). In the states where the
+	// console owns it -- the list and the OPTIONS tree, and above all the half where the game is walking
+	// home behind the menu -- what the GAME says to its sound board is dropped at the one place the game
+	// says anything: the write below. What the port itself puts in this queue is untouched, so a menu that
+	// beeps goes on beeping over a game that has gone quiet.
+	bool mute_game_midi = false;
 	uint8_t midi_ctrl = 0;
 
 	uint64_t frame = 0;

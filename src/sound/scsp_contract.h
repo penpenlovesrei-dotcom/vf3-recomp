@@ -335,13 +335,21 @@ inline const Champ *champ_fente(const char *nom)
 // Places `valeur` in the 16 words of a slot, where this table says the field lives.
 //
 // Returns false if the name is unknown, so a caller cannot silently write nothing. The two conventions are
-// told apart by the SHAPE of the mask: a run of low contiguous bits (1, 3, 7, 0x1F, 0xFF...) is a value to
-// shift, anything else is a bit already in place.
+// told apart by the shape of the mask AND BY THE SHIFT: a field is a bit already in place only when its
+// shift is zero and its mask is not a run of low contiguous bits. Every one of the eight in-place fields
+// (KYONEX, KYONB, PCM8B, EGHOLD, LPSLNK, LFORE, STWINH, SDIR) has shift zero, so the extra condition costs
+// nothing -- and it is what makes PLFOS come out right.
+//
+// BECAUSE PLFOS BREAKS THE SHAPE RULE ALONE: its mask is 0x0006, which is not contiguous (section 10's
+// deviation drops the field's low bit on purpose), but its shift is 5. Judged on shape alone it looked like
+// a bit in place, and this function then OR-ed 0x0006 into word 9 WITH NO SHIFT -- straight onto ALFOWS
+// (bits 4-3) and ALFOS (bits 2-0). A helper that silently writes the wrong field is worse than one that
+// refuses, and only the LFO test's measurement showed it.
 inline bool pose(std::uint16_t mot[16], const char *nom, unsigned valeur)
 {
 	const Champ *c = champ_fente(nom);
 	if (!c) return false;
-	const bool bit_en_place = (c->masque & (c->masque + 1)) != 0;
+	const bool bit_en_place = c->decalage == 0 && (c->masque & (c->masque + 1)) != 0;
 	if (bit_en_place) {
 		if (valeur) mot[c->mot] = std::uint16_t(mot[c->mot] | c->masque);
 		else        mot[c->mot] = std::uint16_t(mot[c->mot] & ~c->masque);
@@ -351,6 +359,14 @@ inline bool pose(std::uint16_t mot[16], const char *nom, unsigned valeur)
 	                            | ((valeur & c->masque) << c->decalage));
 	return true;
 }
+
+// AND ONE ENTRY OF THIS TABLE IS A READ MASK AND NOT A WRITE MASK, which is worth saying plainly because
+// nothing in the struct distinguishes the two. PLFOS's mask is 0x0006 because that is what the
+// implementation READS out of a THREE-bit register field (bits 7-5 of word 9); the field itself is 7 wide.
+// So `pose(mot, "PLFOS", 1)` cannot put a 1 in the register -- `1 & 6` is zero -- and a test that wants to
+// show the deviation must write the register's bits itself. Every other field's mask is also its width.
+inline constexpr unsigned PLFOS_CHAMP_DECALAGE = 5;
+inline constexpr unsigned PLFOS_CHAMP_LARGEUR  = 0x7;   // le champ du registre, avant que la lecture en jette le bit bas
 
 // ---------------------------------------------------------------------------------------------------
 // 9. THE OSCILLATOR'S LOOPING, which is not what reading the code suggests.

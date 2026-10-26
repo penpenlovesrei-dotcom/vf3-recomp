@@ -1,5 +1,8 @@
 #pragma once
 #include "../machine/model3.h"
+#include "console_state.h"
+#include <vector>
+#include <vector>
 
 // Fighting Vipers 2's console way: a console's own menu over an arcade game.
 //
@@ -35,6 +38,49 @@
 struct console_play
 {
 	bool on = false;              // the console way is set, and this is the game it was measured on
+	// WHERE THE CONSOLE IS, one state at a time, the way the game holds its own (console_state.h). Every
+	// question this layer used to answer with a handful of booleans -- does the game run, who owns the
+	// screen, who owns the sound -- is a property of this one value, read from its table.
+	console_ui ui;
+
+	// ---- WHAT THE PORT ASKS OF THE GAME, and the ONE place any of it is written ----
+	//
+	// Frederic's fourth rule of the 2026-10-25. The surfaces used to write the game's RAM themselves,
+	// each from wherever it happened to be: the pause menu ended the match from its own answer, the
+	// carousel restarted the fight from its, the list asked for the title from a third place, and the
+	// carousel's park was renewed from the host's frame loop. Four hands in the same memory, at four
+	// different moments of the frame.
+	//
+	// Now a surface says WHAT IT WANTS and this layer does it, in order, at the top of step() -- which is
+	// the moment that already belonged to it: after the frame that has run, before the frame that will.
+	// The game's own dispatcher reads a request once a tick, so a write placed here is read by the very
+	// next tick and by no other.
+	enum class ask { end_match, rematch, title_now, stage_free };
+	std::vector<ask> asked;
+	void ask_for(ask a) { asked.push_back(a); }
+
+	void do_asked(m3::Model3 &b)
+	{
+		for (ask a : asked) switch (a) {
+		case ask::end_match:
+			fprintf(stderr, "the console: the match asked to end, the game's own exit says %d\n", b.fv2_end_match());
+			break;
+		case ask::rematch:
+			fprintf(stderr, "the console: a rematch asked for, the game says %d (1 written, 0 no life block to \n"
+				"trust), the tasks seen fighting were %08X and %08X\n",
+				b.fv2_rematch(task_live[0], task_live[1]), task_live[0], task_live[1]);
+			break;
+		case ask::title_now:
+			b.fv2_attract_to_title();
+			fprintf(stderr, "the console: the title screen asked for from the attract loop\n");
+			break;
+		case ask::stage_free:
+			b.fv2_leave_stage_select();
+			fprintf(stderr, "the console: the select screen let go of\n");
+			break;
+		}
+		asked.clear();
+	}
 	bool start_was = false;       // the player's Start last frame: this works on the edge, not the level
 	bool swallow_start = true;    // Start is held back until it has been seen released
 	int inject_start = 0;         // frames of Start still to hand the game
@@ -254,9 +300,6 @@ struct console_play
 	// its two STAGE_SEL states are an empty stub. So the page opens on DECIDE_INT, the game frozen under
 	// it, and the stage is held before the match reads it ten frames later at ROUND_MASK_INT.
 	bool want_stage_page = false;
-	// MAIN MENU's own flag, raised at the far side of the way out of a match (arrive below) and read
-	// by the host, which is the one that owns the list.
-	bool want_list = false;
 	int stage_page_done = 0;      // once per trip through the select screen
 	bool seen_select = false;     // SEL_START or SELECT seen: the sub-state byte means something now
 	// AND A FLAG OF ITS OWN FOR "THIS IS A VERSUS", because at_select cannot be used here: it is cleared
@@ -682,11 +725,10 @@ struct console_play
 	{
 		if (leave_for == L_TO_TITLE) {
 			if (!b.fv2_on_title()) b.fv2_attract_to_title();
-			// AND THE CONSOLE'S LIST WITH IT: the line is MAIN MENU, not TITLE SCREEN (fv2_pause.h). The
-			// game's title is still the ground it is drawn on -- it is the one screen this port opens the
-			// list over -- but the player lands on the menu rather than on the attract loop.
-			want_list = true;
-			fprintf(stderr, "the console: back at the title screen, the list of modes asked for\n");
+			// AND THE LIST IS ALREADY UP: MAIN MENU put it there on the frame it was chosen, and the state
+			// machine's MENU_IN half is what this walk home has been happening behind (console_state.h).
+			// Nothing is asked for here; the host reads the end of the way out and turns MENU_IN into MENU.
+			fprintf(stderr, "the console: back at the title screen\n");
 		} else {
 			choose_versus();
 			fprintf(stderr, "the console: back to the select screen, two players\n");
@@ -697,6 +739,11 @@ struct console_play
 	{
 		out = m3::Controls();
 		if (!on) return;
+		// What the surfaces asked for, first and in order, and then the hold the carousel's own state wants
+		// renewed every frame: a request is read once, and the point of the park is that it is never walked
+		// out of (model3.cpp). Both are writes, and this is where the writing happens.
+		do_asked(b);
+		if (ui.at == cstate::STAGE) b.fv2_park_stage_select();
 		if (!b.fv2_in_attract()) versus_ran = true;
 		else if (versus_ran) { is_versus = false; versus_ran = false; }   // the game is over, and it ran
 		step_leaving(b);
