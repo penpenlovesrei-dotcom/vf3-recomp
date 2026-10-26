@@ -2026,6 +2026,27 @@ int Model3::fv2_end_match()
 	if ((mode != 6 && mode != 7) || (sub != 11 && sub != 12)) return -1;
 	uint8_t &high = ram[FV2_ADV_INFO_STATUS ^ 3];        // the bit is in the top byte; the rest is left alone
 	high = uint8_t(high | (FV2_MATCH_OVER >> 24));
+	// AND A TIME-OUT DOES NOT ALWAYS GET THE PLAYER OUT, which was measured the 2026-10-26 and is NOT
+	// mended here, because what it wants is not a write but a door the game may not have. Read at
+	// 0x0000DB48 out of a RAM dump (tools/fv2/desas_ppc.py), NEXT_PROG_SEL tests two bits of
+	// ADV_INFO_STATUS and nothing else:
+	//
+	//     rlwinm. r0,r10,28,0,0 ; bne 0x0000DD4C     bit 0x00000008: the ladder is finished -> the ending
+	//     rlwinm. r0,r10,1,0,0  ; beq 0x0000DD28     bit 0x40000000 CLEAR -> another round of this match
+	//
+	// and the fall-through -- the one this function arms -- is the LADDER: it reads 0x0058145A against
+	// 0x00581457 + 1 and walks on to the next opponent. "This match is decided" therefore means "the
+	// next one, please" for whoever won it, and there is no third branch that means "stop playing".
+	//
+	// On the arcade road that is invisible and the exit works: the forced time-out makes the HUMAN lose,
+	// his ladder ends there, and the game walks its own road to CONTINUE and GAME OVER. In a VERSUS the
+	// winner inherits the game -- the board's own INTRUDE rule -- so the game loads the next round and
+	// the way out waits for ever. Measured four times on a scripted versus: the match says decided every
+	// frame and the game is in ROUND_MASK twenty frames later.
+	// Two levers were tried and neither is the door: restart_attract from the fight does put the game in
+	// ADV, but the match's task stays alive, so nothing of this port agrees that a game has ended; and
+	// writing both lives to 0 is not a K.O., the game deciding that in its own handler as it applies
+	// damage.
 	for (int i = 0; i < 4; i++) ram[(FV2_GAME_TIMER + uint32_t(i)) ^ 3] = i == 3 ? 1 : 0;
 	return 1;
 }

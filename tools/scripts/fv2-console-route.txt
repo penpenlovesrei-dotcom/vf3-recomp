@@ -1,0 +1,30 @@
+# Fighting Vipers 2, the console way: the WHOLE ROAD in one run, for the state trace.
+#
+# Two presses are all it takes, because every other answer is given by the test hooks of main.cpp, which
+# exist for exactly this: a surface freezes the game, so a press timed by game frames never arrives.
+#
+#   1300  Start on the title screen           -> the list of modes (PLAY -> MENU)
+#         VF3_CONSOLE_MODE=versus              -> V.S. chosen            (MENU -> PLAY)
+#         the select screen picks for nobody, as it does on the board, and the carousel opens on its own
+#         when the fighters are chosen                                   (PLAY -> STAGE)
+#         VF3_CONSOLE_STAGE=5                  -> the arena answered     (STAGE -> PLAY)
+#   3000  both players play at random, and that is NOT decoration: the way out of a match asks the game
+#         to time the round out, and a round timed out between two fighters at EQUAL life is a DRAW, which
+#         the game answers by fighting that round over -- measured the 2026-10-26, twice: with nobody
+#         playing, and with both playing from the fight's own first frame, MAIN MENU left the game loading
+#         a round again twenty frames later. Someone has to be AHEAD on life when the clock is taken away,
+#         so the blows are thrown for a good while before the menu is opened.
+#   4200  Start in the fight                  -> the pause menu          (PLAY -> PAUSE)
+#         VF3_CONSOLE_PAUSE=4                  -> MAIN MENU              (PAUSE -> MENU_IN -> MENU)
+#
+# Run it with verifier-console.cmd, which sets those three hooks and prints the trace. What the trace must
+# say, in this order (docs/fv2-console.md, "La couche console a un etat"):
+#
+#   PLAY -> MENU -> PLAY -> STAGE -> PLAY -> PAUSE -> MENU_IN -> MENU
+#
+# with, between MENU_IN and MENU: the match asked to end, the match over in a few frames, the title screen
+# reached, and not one byte of the game's own sound in between.
+1300 press p1.start 8
+3000 random p1 7
+3000 random p2 11
+4200 press p1.start 8

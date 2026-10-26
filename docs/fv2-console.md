@@ -755,3 +755,40 @@ et son état déclare que le jeu ne tourne pas dessous.
 - un training qui se terminait tout seul laissait son mode allumé ;
 - les coups de pied et gardes d'un **script** n'étaient pas routés en training, là où ceux d'une main
   l'étaient.
+
+### La porte de sortie d'un VERSUS n'existe pas à ce point de branchement (2026-10-26)
+
+`verifier-console.cmd` joue tout le chemin sans les mains et imprime la trace des états. Il va jusqu'au
+bout **en ARCADE** ; **en VERSUS il reste coincé**, et voici pourquoi, lu dans le code plutôt que deviné.
+
+`NEXT_PROG_SEL` (`0x0000DB48`), désassemblé d'un vidage de RAM avec `tools/fv2/desas_ppc.py`, teste **deux
+bits** de `ADV_INFO_STATUS` et rien d'autre :
+
+```
+0000DB48  lis r10,0x0058 ; lwz r10,5104(r10)      ADV_INFO_STATUS
+0000DB50  rlwinm. r0,r10,28,0,0 ; bne 0x0000DD4C  bit 0x00000008 : l'échelle est finie -> la fin du jeu
+0000DB58  rlwinm. r0,r10,1,0,0  ; beq 0x0000DD28  bit 0x40000000 ABSENT -> une manche de plus
+0000DB60  ...                                     sinon : l'ÉCHELLE (0x0058145A contre 0x00581457 + 1)
+```
+
+Le passage par défaut — celui que `fv2_end_match` arme en posant `0x40000000` — **est l'échelle** : il lit
+le numéro d'adversaire et passe au suivant. « Ce match est décidé » veut donc dire « au suivant » pour
+celui qui l'a gagné, et il n'y a **pas de troisième branche** qui veuille dire « on arrête de jouer ».
+
+Sur la route arcade ça ne se voit pas et la sortie marche : le chrono forcé fait perdre **l'humain**, son
+échelle s'arrête là, et le jeu déroule sa propre route vers `CONTINUE` puis `GAME OVER`. En VERSUS, le
+gagnant **hérite de la partie** — la règle INTRUDE de la borne — donc le jeu charge la manche suivante et
+la sortie attend indéfiniment. Mesuré quatre fois : la sonde dit « the match says decided » à chaque
+image et le jeu est dans `ROUND_MASK` vingt images plus tard.
+
+Deux leviers essayés, aucun n'est la porte :
+
+- `fv2_restart_attract()` depuis le combat met bien le jeu en `ADV` (mode 3), mais **la tâche du match
+  reste vivante**, donc `fv2_in_attract()` continue de dire qu'une partie tourne et rien de ce portage
+  n'admet que le jeu est fini ;
+- écrire 0 dans les deux vies **n'est pas un K.O.** : le jeu décide le K.O. dans son propre gestionnaire,
+  en appliquant les dégâts.
+
+**Ce qui reste à faire** : trouver ce que le jeu fait quand l'échelle du dernier joueur s'arrête (la route
+de la défaite, pas celle du branchement), ou renoncer à la route du jeu pour un VERSUS et arrêter la
+partie comme la borne le ferait — ce qui demande d'abord de savoir quelle tâche tient la partie.

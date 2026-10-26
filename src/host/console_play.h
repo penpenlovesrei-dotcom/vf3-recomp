@@ -756,6 +756,11 @@ struct console_play
 			return;
 		}
 		if (leaving == L_ENDING) {
+			// A WAY OUT THAT IS TAKING LONG SAYS SO, and says what the game is doing meanwhile. Without this
+			// a match that will not end is a minute of silence and then one line saying it gave up.
+			if (leave_frames % 60 == 0)
+				fprintf(stderr, "the console: the way out is %d frames old -- mode %d sub %d, the match says %s\n",
+					leave_frames, b.fv2_mode(), b.fv2_submode(), b.fv2_match_over() ? "decided" : "not decided");
 			if (b.fv2_in_attract()) {
 				fprintf(stderr, "the console: the match is over in %d frames (%.1f s), the end screens next\n",
 						leave_frames, double(leave_frames) / 57.5);
