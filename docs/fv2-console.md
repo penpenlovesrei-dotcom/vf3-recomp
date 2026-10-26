@@ -685,3 +685,73 @@ pas des sous-états, donc la demande de sous-état ne les atteint pas.
 **Mesuré le 2026-10-25**, choisi à l'image 2100 d'une manche en cours : le match est fini en **203 images
 (3,5 s)**, la fin de partie passe en **12 images (0,2 s)**, et le jeu arrive — écran titre pour l'un,
 écran de sélection à deux joueurs et un nouveau combat pour l'autre, photographié.
+
+## La couche console a un état, comme le jeu (2026-10-26)
+
+Frédéric, le 2026-10-25 : « *de tout le jeu, aucun état ou sous état n'empiète sur les autres, sauf celui
+que l'on a intégré. On dirait encore du bricolage, comme sur la rom.* » Il avait raison, et le défaut est
+nommable : la carte tient **un état à la fois** — vingt-quatre modes, chacun son INT qui l'installe et son
+DSP qui le déroule, une table de gestionnaires, un octet qui dit où on est (`docs/fv2-etats.md`). Rien
+n'empiète parce que rien ne coexiste. Notre couche console, elle, n'avait pas d'état du tout : une douzaine
+de booléens (`swallow_start`, `want_list`, `want_stage_page`, `mode_wanted`, `versus_trip`,
+`stage_page_done`, `seen_select`, `stage_from_pause`, `training_on`, `leaving`, `leave_for`) qui encodaient
+ensemble une machine à états que personne n'avait écrite, et un gel décidé par un booléen `stopped` avec
+des exceptions ajoutées une par une.
+
+### La table (`src/host/console_state.h`)
+
+Huit états, et chacun **déclare quatre choses**. Rien d'autre ne les décide.
+
+| état | le jeu tourne | l'écran | le son | les commandes |
+|---|---|---|---|---|
+| `PLAY` | oui | au jeu | au jeu | au jeu |
+| `PAUSE` | non | par-dessus l'image du jeu | aux deux | au port |
+| `STAGE` | oui, garé dans `STAGE_SEL` | par-dessus | aux deux | au port |
+| `STAGE_HELD` | non | par-dessus | aux deux | au port |
+| `GOING` | oui | au port (le rideau) | **au port** | au port |
+| `MENU_IN` | oui | au port (le fond de la liste) | **au port** | au port |
+| `MENU` | non | au port | aux deux | au port |
+| `OPTIONS` | non | au port | aux deux | au port |
+
+- **l'écran « au port »** veut dire que l'image du jeu **n'est pas dessinée** : ni couverte, ni assombrie,
+  pas dessinée. C'est la différence entre une surface qui cache ce qu'il y a derrière et un état qui
+  possède l'écran ;
+- **le son « au port »** veut dire que ce que le **jeu** dit à sa carte est jeté à l'endroit unique où le
+  jeu dit quelque chose (`Model3::mute_game_midi`, le seul `midi.push_back`). Ce que le port met dans la
+  même file passe : le menu bipe sur un jeu devenu muet ;
+- **là où le jeu est figé et où le port n'est pas muet**, c'est le port qui tourne la carte son — sinon
+  aucune image de son n'est faite. Le menu pause et le carrousel n'étaient pas dans cet ensemble : leurs
+  bruitages attendaient dans la file que le jeu reparte, et la musique du combat s'arrêtait sous eux.
+
+`MENU_IN` et `GOING` sont la forme INT/DSP de Sega là où elle a un sens : la surface est installée pendant
+que le jeu finit ce qu'il faisait **derrière elle**, ni vu ni entendu. C'est ce qui a réglé d'un coup les
+trois défauts du 25 octobre — `GAME OVER` entendu, l'image noire sous la liste, le titre glitché — qui
+étaient trois symptômes d'une même règle absente.
+
+### Un seul endroit ouvre, un seul endroit écrit
+
+`enter(état, pourquoi)` est le seul endroit qui ouvre ou ferme une surface, et il porte les trois lignes
+qui doivent toujours accompagner un tel changement (retenir le Start du joueur, le noter non relâché,
+régler le périphérique son). Quatorze endroits le faisaient à la main ; ceux qui en oubliaient une étaient
+les défauts.
+
+`console_play::ask_for()` est le seul endroit qui écrit dans la RAM du jeu pour le compte du port : une
+surface dit ce qu'elle veut (finir le match, une revanche, l'écran titre, lâcher l'écran de sélection) et
+`console_play` l'exécute en tête de son `step` — après l'image qui a tourné, avant celle qui va tourner,
+c'est-à-dire au moment où le répartiteur du jeu lit une demande. **Une exception, écrite plutôt que
+laissée à découvrir** : la page OPTIONS écrit les réglages de la borne, parce qu'elle *est* les réglages,
+et son état déclare que le jeu ne tourne pas dessous.
+
+### Ce que la table a sorti d'elle-même
+
+- le menu pause et le carrousel tenus sur un combat ne faisaient entendre ni leurs bruitages ni la musique
+  du combat (mesuré après : **1714 images de son à 57,6/s** sous le menu pause, le pic jamais à zéro) ;
+- les faire entrer dans cet ensemble a révélé une **corruption de tas** : la carte est au jeu, et la
+  tourner pendant que le fil d'émulation finit l'image en vol, c'est l'écrire à deux. Une attente à
+  l'endroit où ça tourne couvre les quatre surfaces ;
+- `CHANGE YOUR VIPER` avait le même défaut que `MAIN MENU` et aucune réponse, faute d'avoir une image à
+  mettre devant : c'est le rideau (`loading.png`, l'image de chargement de la Dreamcast), mesuré 52 images
+  de bout en bout ;
+- un training qui se terminait tout seul laissait son mode allumé ;
+- les coups de pied et gardes d'un **script** n'étaient pas routés en training, là où ceux d'une main
+  l'étaient.
