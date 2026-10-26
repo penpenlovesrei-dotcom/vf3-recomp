@@ -505,4 +505,96 @@ inline constexpr unsigned PLFOS_CHAMP_LARGEUR  = 0x7;   // le champ du registre,
 //       `if (KEYONB(s2) && s2->EG.state == SCSP_RELEASE)`. A rewrite that restarted on every KYONEX
 //       would make every repeated note in the game click.
 
+// ---------------------------------------------------------------------------------------------------
+// 12. TIMERS AND INTERRUPTS, measured 2026-10-26 by tools/son/test_scsp_irq.cpp.
+//
+// Measured through the SINK, not through the audio: scsp::sink carries the three ways the chip speaks to
+// the board, and a sink that records everything measures this block without one note of music.
+//
+//   (1) A TIMER'S LENGTH, AND THE "+1" THAT IS A DELIBERATE DIVERGENCE:
+//       `((255 - (reg & 0xff)) << ((reg >> 8) & 7)) + 1`. MAME writes the same thing WITHOUT the +1, and
+//       scsp.cpp says what the +1 fixed: at 49 samples instead of 50, VF3's tick (timer A at 0xCE) ran at
+//       900 Hz instead of 882 and the music came out 0.8 % fast against Supermodel. The THIRD deliberate
+//       divergence of this port, after PLFOS and MDL. Measured: 0xCE -> 50, 0x0000 -> 256, 0x00FE -> 2,
+//       0x0100 -> 511, 0x07CE -> 6273.
+//
+//   (2) A COUNT OF 255 DOES NOT ARM THE TIMER AT ALL -- `if ((... & 0xff) != 255)`. Not a length of zero:
+//       no arming, and the sink hears nothing.
+//
+//   (3) THE LEVELS ARE ASSEMBLED BIT BY BIT from SCILV0/1/2 by DecodeSCI -- bit 0 of the level from
+//       SCILV0, bit 1 from SCILV1, bit 2 from SCILV2 -- and they are RECOMPUTED ONLY when one of the words
+//       0x424-0x429 is written. Arming SCIEB before SCILV leaves every level at zero. With the driver's
+//       table the measured levels are MIDI 3, timer A 2, timer B 1, as section 3 says.
+//
+//   (4) ONE LINE AT A TIME, IN A FIXED ORDER. CheckPendingIRQ returns at the first source that is both
+//       pending and enabled: CPU (0x20), then timer A (0x40), then B (0x80), then C (0x100), then MIDI
+//       (0x8). With A and B both pending, A's level rises and B's is never seen.
+//
+//   (5) LINE 0 FALLS ONLY WHEN SOMETHING IS PENDING THAT NOTHING IS ARMED FOR. `if (!pend) return;` comes
+//       first, so with SCIPD empty no line is touched at all. Timer C -- noted in SCIPD, absent from
+//       SCIEB -- is the case that produces the bare `irq(0, false)`. Line 0 is the fifth line, and the
+//       reason scsp_core.h carries a line AND a state instead of a level alone.
+//
+//   (6) SCIRE ON AN ALREADY-EXPIRED TIMER RE-PENDS IT IMMEDIATELY, because the counter is still 0xFFFF.
+//       scsp.cpp attributes this to real hardware and notes in the same breath that another game
+//       disagrees -- so it is a choice, not a certainty, and it is recorded as one.
+//
+//   (7) TIMER A PENDS ON THE MAIN SIDE TOO (MainCheckPendingIRQ(0x40)); B and C touch only the slave
+//       side. Visible in MCIPD, which nothing in VF3 reads (section 2) -- but uniforming it would change
+//       an observable state for nothing.
+//
+//   (8) THE DMA runs both ways (DDIR), zero-fills with DGATE, clears DEXE when done, and SAVES AND
+//       RESTORES its own three registers -- but only when DDIR is 0, the one direction whose destination
+//       could be those registers. Measured by aiming a RAM-to-register DMA at 0x412.
+//
+//   (9) A MIDI BYTE IN raises the MIDI line, and READING 0x404 pops the FIFO and drops the line when it
+//       empties -- in UpdateRegR, not in the read itself. A rewrite that returned the register without a
+//       read hook would leave the interrupt raised forever.
+
+// ---------------------------------------------------------------------------------------------------
+// 13. THE MIX AND THE OUTPUT STAGE, measured 2026-10-26 by tools/son/test_scsp_mix.cpp.
+//
+// THREE SEGA-STYLE DECIBEL TABLES, and that is the shape of this block. None is a formula: each is a sum
+// of terms picked bit by bit, which gives gains nothing makes round.
+//     TL     0.4, 0.8, 1.5, 3, 6, 12, 24, 48 dB, one bit each (the first three break the doubling rule)
+//     DIPAN  3, 6, 12, 24 dB over four bits, and bit 4 chooses WHICH channel is attenuated
+//     SDLT   -inf, -36, -30, -24, -18, -12, -6, 0 dB for DISDL's eight values
+//
+//   (1) THE SCALE'S FACTOR OF FOUR IS IN THE TABLE: `m_LPANTABLE[i] = FIX(4.0f * LPAN * TL * fSDL)`, and
+//       FIX multiplies by 4096, so full level centred is 16384 and the mix returns FOUR TIMES the sample.
+//       That is where the factor the slot and LFO tests measured comes from -- not the adapter, not the
+//       output stage.
+//
+//   (2) DISDL=0 IS SILENCE, not "very quiet": `fSDL = 0.0` outright. Measured, for a source of 8192:
+//       0, 518, 1036, 2066, 4124, 8230, 16422, 32768.
+//
+//   (3) DIPAN ATTENUATES ONE CHANNEL AND LEAVES THE OTHER AT FULL LEVEL. It is not a balance law that
+//       slides. A rewrite using a continuous pan curve -- a cosine, a square root -- would change the
+//       absolute level of every off-centre voice in the game.
+//
+//   (4) DIPAN 0x0F IS A HARD CUT, not the sum of its four bits: `if ((iPAN & 0xf) == 0xf) PAN = 0.0`. A
+//       special case in the middle of an otherwise additive table, so a rewrite that just sums the bits
+//       would leak -45 dB where the chip gives nothing.
+//
+//   (5) DAC18B CHANGES THE RESOLUTION, NOT THE GAIN. The two output branches divide by 131072 and by
+//       32768 after a `>> 2`, and the factor of four cancels: the level is identical, but WITHOUT the bit
+//       the sum's two low bits are thrown away. Measured with a source of 5000 and TL=1: 19099 with it,
+//       19096 without.
+//
+//   (6) THE CLAMP IS ASYMMETRIC, `clamp(smpl, -131072, 131071)`, as any signed integer is. Five voices at
+//       full level come out at 131071, not 131072.
+//
+//   (7) MVOL IS NEVER APPLIED INSIDE THE CHIP. `case 0x0: m_gain = MVOL() / 15.0;` and nothing else:
+//       m_gain is only EXPOSED through output_gain(), which the board reads to multiply itself. So the
+//       master volume sits ABOVE the chip, like this port's per-group gains and effects leveller.
+//       AND THAT IS A GAP IN THE INTERFACE: scsp::core has no way to return MVOL, so the board descends
+//       through ->device() to get it -- one of the ->device() calls step 3 flagged as the last to go. A
+//       standalone core must either apply MVOL itself, which would change the sound, or carry one more
+//       accessor. The choice is open; measuring it keeps it from being discovered by wiring.
+//
+//   (8) AND THE THREE TABLES CROSS-CHECK EACH OTHER. They are separate in the code but share terms, so
+//       the same attenuation asked through three different registers must give the same integer: -3 dB is
+//       23196 whether through TL or DIPAN, and -24 dB is 2066 whether through TL or DISDL. That check
+//       rests on no recorded value and would catch a rewrite that changed one table alone.
+
 } // namespace scsp_contract

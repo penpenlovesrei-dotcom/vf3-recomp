@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace banc {
@@ -90,6 +91,15 @@ struct Banc {
 		std::vector<std::int32_t> g(n);
 		for (unsigned i = 0; i < n; i++) g[i] = out[std::size_t(i) * 2];
 		return g;
+	}
+
+	// Les deux canaux, pour le bloc qui mesure le panoramique : la moitie des faits de DIPAN et d'EFPAN sont
+	// sur le canal que `gauche()` jette.
+	std::pair<std::int32_t, std::int32_t> stereo(unsigned n)
+	{
+		std::vector<std::int32_t> out(std::size_t(n) * 2, 0);
+		coeur.run(n, out.data());
+		return { out[std::size_t(n - 1) * 2], out[std::size_t(n - 1) * 2 + 1] };
 	}
 };
 

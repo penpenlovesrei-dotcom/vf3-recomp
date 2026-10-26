@@ -115,7 +115,19 @@ $(BIN)/test_scsp_lfo: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/s
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_fentes $(BIN)/test_scsp_adsr $(BIN)/test_scsp_lfo
+# Les timers, les cinq lignes d'interruption et le DMA (tools/son/test_scsp_irq.cpp) : bloc 6. Mesure par le
+# PUITS et non par le son, et fixe le "+1" de timer_samples, troisieme divergence voulue du portage.
+$(BIN)/test_scsp_irq: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_irq.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+# Le melange et le rendu (tools/son/test_scsp_mix.cpp) : bloc 7, le dernier. Lit les trois tables de
+# decibels a la Sega (TL, DIPAN, SDLT) dans leur entier, et les DEUX canaux.
+$(BIN)/test_scsp_mix: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_mix.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_fentes $(BIN)/test_scsp_adsr $(BIN)/test_scsp_lfo $(BIN)/test_scsp_irq $(BIN)/test_scsp_mix
 	$(BIN)/test_scspdsp
 	$(BIN)/test_scsp_contract
 	$(BIN)/test_scsp_core
@@ -123,6 +135,8 @@ test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)
 	$(BIN)/test_scsp_fentes
 	$(BIN)/test_scsp_adsr
 	$(BIN)/test_scsp_lfo
+	$(BIN)/test_scsp_irq
+	$(BIN)/test_scsp_mix
 
 clean:
 	rm -rf build

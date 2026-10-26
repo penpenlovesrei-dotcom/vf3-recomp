@@ -83,7 +83,7 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 
 ## 5. Les tests
 
-`make test` construit et lance les sept, et ils ne demandent ni ROM ni fenêtre pour l'essentiel :
+`make test` construit et lance les neuf, et ils ne demandent ni ROM ni fenêtre pour l'essentiel :
 
 | | |
 |---|---|
@@ -95,6 +95,8 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 | `tools/son/test_scsp_fentes.cpp` | **l'oscillateur, l'adressage PCM et les quatre bouclages**, mesures à l'échantillon exact : `SDIR` met l'enveloppe de côté, donc la sortie vaut l'échantillon brut et la suite des **indices** se lit. 11 cas. Bloc 2 de l'architecture |
 | `tools/son/test_scsp_adsr.cpp` | **l'enveloppe ADSR** : une onde continue fait que la sortie *est* l'enveloppe, et son multiplicateur se relit sans arrondi. Les **durées d'attaque en échantillons** y encodent les tables de temps de MAME, pour qu'une formule à leur place ne passe pas inaperçue. 10 cas. Bloc 3 |
 | `tools/son/test_scsp_lfo.cpp` | **le pas, les deux LFO et la modulation par anneau**. Une rampe fait de la sortie l'**accumulateur de phase**, donc le pas se lit au lieu d'être compté. Fixe les **deux divergences délibérées** du portage (`PLFOS` et `MDL` perdent leur bit bas) pour que personne ne les « corrige ». 11 cas. Bloc 4 |
+| `tools/son/test_scsp_irq.cpp` | **les trois timers, les cinq lignes d'interruption et le DMA**, mesurés par le **puits** et non par le son : on compare des entiers, pas des gains. Fixe le `+1` de `timer_samples`, troisième divergence voulue. 11 cas. Bloc 6 |
+| `tools/son/test_scsp_mix.cpp` | **le mélange et le rendu** : les **trois tables de décibels à la Sega** (`TL`, `DIPAN`, `SDLT`) lues en entier et sur les **deux** canaux, plus un contrôle qui les recoupe l'une par l'autre sans valeur enregistrée. 9 cas. Bloc 7 |
 
 La seconde partie du test du contrat s'efface, **avec une ligne visible**, quand `build/fv2-son-68000.bin`
 n'est pas là — elle vient d'une ROM que le dépôt ne porte pas.

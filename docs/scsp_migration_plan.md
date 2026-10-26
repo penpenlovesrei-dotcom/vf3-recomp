@@ -2,9 +2,10 @@
 
 > Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
 
-**C'est un plan.** Au 2026-10-26, les étapes 0 et 3 sont faites, et des blocs 1 à 4 il y a le test mais pas
-encore l'implémentation. Le cœur du son est toujours celui de MAME, modifié — mais la carte ne lui parle plus que par
-`scsp_core.h`, et le son est identique à l'octet sur trois arènes.
+**C'est un plan.** Au 2026-10-26, les étapes 0 et 3 sont faites et **les sept blocs ont un test, aucun n'a
+d'implémentation**. Le cœur du son est toujours celui de MAME, modifié — mais la carte ne lui parle plus que
+par `scsp_core.h`, et le son est identique à l'octet sur trois arènes. Le filet est donc posé : ce qui vient
+ensuite est du code autonome, bloc par bloc, chacun contre son test.
 
 
 ## Pourquoi, et dans quel ordre les quatre objectifs se servent
@@ -39,9 +40,10 @@ le premier venu.
 | le lot défait | un quatrième, sur les voix, qui ne gagnait rien : défait, et le résultat négatif consigné |
 | tester | `tools/son/test_scspdsp.cpp` (`make test`) : les deux corps du DSP contre une référence qui décode dans la boucle, seize cas, et quatre fautes injectées pour montrer qu'il sait échouer |
 
-Ce que l'étape 0 **n'a pas** fait, et il faut le lire avant la suite : il n'y a que cinq tests de bloc sur
-SEPT — les registres (1), les fentes (2), l'enveloppe (3), les LFO (4) et le DSP (5), les quatre
-premiers écrits le 2026-10-26. Manquent les timers et les interruptions (6) et le mélange (7) — et qu'une seule scène de mesure.
+Ce que l'étape 0 n'avait pas fait a été fait depuis, et il faut le lire avant la suite. Elle laissait un seul
+test de bloc sur sept ; **les sept en ont un** maintenant, les six derniers écrits le 2026-10-26 : les
+registres (1), les fentes (2), l'enveloppe (3), les LFO (4), le DSP (5), les timers et les interruptions (6)
+et le mélange (7). Ce qui manque encore : **une seule scène de mesure**, le démarrage et l'attract.
 
 **Les trois mesures qui manquaient sont faites** :
 

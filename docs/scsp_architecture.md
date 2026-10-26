@@ -156,9 +156,18 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
 6. **Timers, interruptions, synchronisation** — A/B/C, `SCIEB`/`SCIPD`/`SCILV`, `MCIEB`/`MCIPD`, le DMA, et la
    cadence des interruptions, dont Mednafen dit qu'elle est ce qui fait dériver le tempo de 2 %
    (`docs/scsp_references.md`).
+   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_irq.cpp`, onze cas, mesurés par le puits
+   plutôt que par le son. Il fixe le `+1` de `timer_samples` — la troisième divergence voulue du portage, celle
+   qui a remis le tic de VF3 à 882 Hz — et il a trouvé que la **ligne 0 ne retombe pas quand rien n'est en
+   attente** : `CheckPendingIRQ` sort avant, et le `-0` n'arrive que sur une source en attente que rien n'arme
+   (`scsp_contract.h` §12).
 7. **Mélange et rendu** — `DISDL`/`DIPAN`, `EFSDL`/`EFPAN`, `MVOL`, `DAC18B`, les tables de panoramique. Les
    deux volumes par groupe et le niveleur d'effets de ce portage sont **au-dessus** du chip, pas dedans : ils
    restent dans la carte.
+   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_mix.cpp`, neuf cas. Il lit les trois tables de
+   décibels en entier, et il a établi que **`MVOL` n'est jamais appliqué dans la puce** — elle l'expose seulement,
+   et la carte multiplie — ce qui est un **trou dans l'interface** : `scsp::core` ne sait pas rendre `MVOL`,
+   donc la carte descend par `->device()` (`scsp_contract.h` §13).
 
 
 ## 4. Ce que la Model 3 a de particulier, et qu'une doc Saturn ne dira pas
