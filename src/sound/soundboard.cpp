@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <cmath>
 
 namespace {
@@ -42,8 +43,8 @@ struct SoundBoard::Bus : m68000_bus
 		switch (a >> 20) {
 		// Les deux puces a l'heure AVANT de les lire : l'interface neuve ne remet pas le temps a jour
 		// d'elle-meme (soundboard.h, sync_sound).
-		case 0x1: b.sync_sound(0); return b.scsp[0]->read_reg((a & 0xFFF) >> 1);
-		case 0x3: b.sync_sound(1); return b.scsp[1]->read_reg((a & 0xFFF) >> 1);
+		case 0x1: b.sync_sound(0); return b.tete[0]->read_reg((a & 0xFFF) >> 1);
+		case 0x3: b.sync_sound(1); return b.tete[1]->read_reg((a & 0xFFF) >> 1);
 		default: return peek(a);
 		}
 	}
@@ -91,8 +92,13 @@ struct SoundBoard::Bus : m68000_bus
 		}
 		switch (a >> 20) {
 		case 0x0: case 0x2: {
-			u16 &w = b.ram[(a >> 20) == 2][(a & 0xFFFFF) >> 1];
+			const int puce = (a >> 20) == 2;
+			const u32 mot = (a & 0xFFFFF) >> 1;
+			u16 &w = b.ram[puce][mot];
 			w = (w & ~mem_mask) | (data & mem_mask);
+			// La trace doit les porter : la puce joue depuis la RAM, et un rejeu sans elles n'aurait aucun
+			// echantillon a jouer. C'est l'un des quatre manques de VF3_SCSP_WLOG (scsp_trace.h).
+			if (b.trace[puce]) b.trace[puce]->ram_ecrite(mot, data, mem_mask);
 			break;
 		}
 		case 0x1:
@@ -102,9 +108,9 @@ struct SoundBoard::Bus : m68000_bus
 				else fprintf(wl, "%d b %04x %02x\n", b.frames, (a & 0xFFFF) + 1, data & 0xFF);
 			}
 			b.sync_sound(0);
-			b.scsp[0]->write_reg((a & 0xFFF) >> 1, data, mem_mask);
+			b.tete[0]->write_reg((a & 0xFFF) >> 1, data, mem_mask);
 			break;
-		case 0x3: b.sync_sound(1); b.scsp[1]->write_reg((a & 0xFFF) >> 1, data, mem_mask); break;
+		case 0x3: b.sync_sound(1); b.tete[1]->write_reg((a & 0xFFF) >> 1, data, mem_mask); break;
 		case 0x4:
 			if (a == 0x400000 && (mem_mask & 0xFF)) b.ctrl = uint8_t(data);
 			break;
@@ -144,6 +150,17 @@ void SoundBoard::reset()
 		sinks[n].b = this;
 		sinks[n].n = n;
 		scsp[n] = std::make_unique<scsp_mame>(45158400 / 2, ram[n].data(), uint32_t(ram[n].size() * 2), sinks[n]);
+		// VF3_SCSP_TRACE=f : la trace d'acces, un fichier par puce (f.0 et f.1), pour tools/son/rejouer.
+		// Elle commence ICI, a la remise a zero, parce que la RAM y est connue -- huit mots, les vecteurs du
+		// 68000 que la carte vient d'y copier. L'enregistreur le verifie au lieu de le supposer.
+		tete[n] = scsp[n].get();
+		trace[n].reset();
+		if (const char *base = getenv("VF3_SCSP_TRACE")) {
+			const std::string f = std::string(base) + "." + std::to_string(n);
+			auto e = std::make_unique<scsp::enregistreur>(*scsp[n], f.c_str(), unsigned(n), 45158400 / 2,
+			                                             ram[n].data(), uint32_t(ram[n].size() * 2));
+			if (e->bon()) { tete[n] = e.get(); trace[n] = std::move(e); }
+		}
 		scsp[n]->device().group_of = [this, n](int slot) { return group_of(n, slot); };
 		// the MADRS mirror, per game (soundboard.h), unless one of the two variables says otherwise
 		{
@@ -226,7 +243,7 @@ void SoundBoard::energy_take(double e[2][32])
 
 void SoundBoard::midi_in(uint8_t byte)
 {
-	scsp[0]->midi_in(byte);
+	tete[0]->midi_in(byte);
 }
 
 void SoundBoard::fire_due()
@@ -237,7 +254,7 @@ void SoundBoard::fire_due()
 			if (tm.on && tm.at <= now) {
 				if (tm.period) tm.at += tm.period;
 				else tm.on = false;
-				scsp[n]->timer_fired(t);
+				tete[n]->timer_fired(t);
 			}
 		}
 }
@@ -284,12 +301,12 @@ void SoundBoard::sync_sound(int n)
 	// l'echantillon d'indice 0 compris (scsp_mame.cpp, sample_index). Sans ce +1 le tout premier echantillon
 	// de la partie n'etait jamais fabrique -- une paire sur 3 219 865, que seul le harnais a vue.
 	const uint64_t veut = cycles_now() / 256 + 1;
-	const uint64_t fait = scsp[n]->samples_made();
+	const uint64_t fait = tete[n]->samples_made();
 	if (veut <= fait) return;
 	const uint32_t k = uint32_t(veut - fait);
 	const size_t base = pcm[n].size();
 	pcm[n].resize(base + size_t(k) * 2);
-	scsp[n]->run(k, pcm[n].data() + base);
+	tete[n]->run(k, pcm[n].data() + base);
 }
 
 void SoundBoard::run(double seconds, std::vector<int16_t> &out)

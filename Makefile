@@ -41,7 +41,8 @@ HOST = src/host/main.cpp src/host/menu.cpp src/host/sysinfo.cpp src/host/d3d11_m
 CORE = src/ppc/ppc.cpp src/machine/model3.cpp src/machine/romset.cpp src/machine/fv2_portraits.cpp src/host/input_script.cpp \
 	src/rec/ppc_rec.cpp src/rec/vf3_map.cpp src/rec/fv2_map.cpp src/video/tilegen.cpp src/video/r3d_scene.cpp src/video/r3d_raster.cpp \
 	src/video/tex3d_hd.cpp src/video/tilehd.cpp \
-	src/sound/soundboard.cpp src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp \
+	src/sound/soundboard.cpp src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp \
+	src/sound/scsp_trace.cpp src/sound/scsp_select.cpp src/core/mame_shim.cpp \
 	third_party/mame/m68000/m68000.cpp third_party/mame/m68000/m68000-decode.cpp \
 	third_party/mame/m68000/m68000-sdf.cpp third_party/mame/m68000/m68000-sdp.cpp \
 	third_party/mame/315-5881/crypt_315_5881.cpp
@@ -124,6 +125,12 @@ $(BIN)/test_scsp_irq: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/s
 # Le melange et le rendu (tools/son/test_scsp_mix.cpp) : bloc 7, le dernier. Lit les trois tables de
 # decibels a la Sega (TL, DIPAN, SDLT) dans leur entier, et les DEUX canaux.
 $(BIN)/test_scsp_mix: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_mix.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+# Le rejoueur (tools/son/rejouer.cpp) : point 2 de l'etape 2 du plan de migration. Rejoue une trace d'acces
+# dans un ou deux coeurs et compare le PCM, les interruptions, les armements, les lectures et le MIDI.
+$(BIN)/rejouer: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_trace.cpp src/sound/scsp_select.cpp src/core/mame_shim.cpp tools/son/rejouer.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 

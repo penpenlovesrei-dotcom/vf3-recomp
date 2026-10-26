@@ -2,8 +2,8 @@
 
 > Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
 
-**C'est un plan.** Au 2026-10-26, les étapes 0 et 3 sont faites et **les sept blocs ont un test, aucun n'a
-d'implémentation**. Le cœur du son est toujours celui de MAME, modifié — mais la carte ne lui parle plus que
+**C'est un plan.** Au 2026-10-26, **l'étape 2 est faite en entier** — contrat, tests par bloc, sélecteur et
+rejoueur — ainsi que les étapes 0 et 3. **Les sept blocs ont un test, aucun n'a d'implémentation.** Le cœur du son est toujours celui de MAME, modifié — mais la carte ne lui parle plus que
 par `scsp_core.h`, et le son est identique à l'octet sur trois arènes. Le filet est donc posé : ce qui vient
 ensuite est du code autonome, bloc par bloc, chacun contre son test.
 
@@ -89,12 +89,32 @@ Rien ne s'écrit avant ces trois-là, et c'est le gros du travail :
    — et **vérifié** par `tools/son/test_scsp_contract.cpp` : 55 contrôles contre `src/sound/scsp.cpp` et
    contre la ROM du pilote, avec un compte qui doit fermer pour qu'aucun champ ne soit silencieusement sauté.
 1. **Les tests par bloc** de `docs/scsp_validation.md` §3b, écrits avant les blocs qu'ils testent. Le premier
-   des huit existe depuis le 2026-10-24 (`make test` : le DSP, ses deux corps et les quatre contrôles que les
-   jeux ne posent jamais) ; les sept autres non. **Le contrat ci-dessus est désormais testé lui aussi**, par
-   le même `make test`.
-2. **Le sélecteur et le rejoueur** : les deux cœurs dans le même binaire, la même séquence d'accès rejouée dans
-   les deux (la trace de `VF3_SCSP_WLOG` existe, le rejoueur non), et la comparaison des PCM, des états
-   observables, des interruptions et des timers — pas seulement du WAV.
+   des sept existe depuis le 2026-10-24 (`make test` : le DSP, ses deux corps et les quatre contrôles que
+   les jeux ne posent jamais) — ~~les six autres non~~ **et les six autres depuis le 2026-10-26** : registres,
+   fentes, enveloppe, LFO, timers et interruptions, mélange. **Le contrat ci-dessus est testé lui aussi**, par
+   le même `make test`, qui enchaîne désormais neuf tests.
+2. ~~**Le sélecteur et le rejoueur**~~ — **faits le 2026-10-26.**
+   - `src/sound/scsp_select.h` : `scsp::make(nom, ...)`, la porte par laquelle un second cœur entrera.
+     Aujourd'hui `mame` est la seule entrée, et le fichier le dit plutôt que de faire semblant.
+   - `src/sound/scsp_trace.h` : le format de trace, l'enregistreur et le rejoueur. **Le format est neuf, et
+     `VF3_SCSP_WLOG` ne pouvait pas servir de départ** : il note l'image et non l'échantillon — donc
+     l'instant d'une écriture dans la trame, qui est ce qui décide où tombent les interruptions — et il
+     laisse de côté la puce 1, les lectures, le MIDI entrant, les timers qui se déclenchent et **les
+     écritures de la RAM son**, sans lesquelles un rejeu n'a aucun échantillon à jouer.
+   - `tools/son/rejouer.cpp` et `rejouer.cmd` : le rejeu et la comparaison du PCM, des interruptions, des
+     armements de timer, des lectures de registre et du MIDI sortant — la première divergence, située à
+     l'échantillon.
+   - L'enregistrement passe par **une seule porte**, `SoundBoard::tete[n]` : un décorateur de `scsp::core`
+     plutôt qu'une sonde posée aux huit sites d'appel, pour qu'un neuvième ajouté un jour ne puisse pas
+     échapper à la trace en silence.
+
+   **Ce qui a été vérifié**, et dans cet ordre, parce qu'un contrôle ne vaut rien sans celui d'avant :
+   | | |
+   |---|---|
+   | la trace est **complète** | le rejeu retrouve le PCM que la carte a produit, **identique à l'octet sur 229 991 échantillons**, pour les deux puces. C'est ce qui établit qu'aucun état n'entre par une porte que la trace ne note pas |
+   | le comparateur **sait échouer** | un seul échantillon modifié dans la référence, et il le nomme : « échantillon 100000 droite » |
+   | `mame` contre `mame` | identiques sur les cinq flux |
+   | la carte n'a **pas changé** | `vf3run` 1200 images contre la construction de `9753fde` : **même empreinte MD5**. Le détour par `tete[n]` ne coûte rien au son |
 3. ~~**L'interface** de `docs/scsp_architecture.md` §2, posée **d'abord sur le cœur de MAME**~~ — **faite le
    2026-10-26.** `src/sound/scsp_core.h` est l'interface telle que le §2 l'avait dessinée (trois méthodes de
    `sink`, le temps **poussé** par `run(n, out)`, l'unité l'échantillon, aucune allocation) ;
@@ -148,7 +168,11 @@ Rien ne s'écrit avant ces trois-là, et c'est le gros du travail :
    s'entend pas sur cette scène — l'empreinte est identique — mais ça reste une perte de précision écrite
    dans le code plutôt que corrigée.
 
-L'ordre importe : (3) avant (2), parce qu'un rejoueur écrit contre l'ancienne interface sera à refaire.
+L'ordre importait : (3) avant (2), parce qu'un rejoueur écrit contre l'ancienne interface aurait été à
+refaire. Il a été respecté — l'interface le 2026-10-26 au matin, le rejoueur le soir, et le rejoueur ne
+connaît que `scsp::core`.
+
+**L'étape 2 est donc close, et rien ne bloque plus l'étape 3.**
 
 
 ## Étape 3 — les blocs, un par un

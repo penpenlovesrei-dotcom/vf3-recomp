@@ -11,6 +11,7 @@
 #pragma once
 #include "scsp.h"
 #include "scsp_mame.h"
+#include "scsp_trace.h"
 #include "../../third_party/mame/m68000/m68000.h"
 #include <cstdint>
 #include <memory>
@@ -83,6 +84,14 @@ private:
 	// d'energie, le miroir MADRS. C'est l'etape 3 de docs/scsp_migration_plan.md, et ces `device()`-la sont
 	// ce qui doit partir en dernier.
 	std::unique_ptr<scsp_mame> scsp[2];
+	// LA TETE PAR LAQUELLE LA CARTE PARLE A LA PUCE, et c'est `tete[n]` et non `scsp[n]` qu'il faut appeler.
+	//
+	// Sans VF3_SCSP_TRACE elle vaut scsp[n].get() et ne coute rien. Avec, c'est un scsp::enregistreur qui
+	// enveloppe la puce et note chaque appel (src/sound/scsp_trace.h), si bien que la trace passe par UNE
+	// porte au lieu d'etre posee a huit endroits -- et qu'un neuvieme appel ajoute un jour ne peut pas y
+	// echapper en silence. Les `->device()` restent sur scsp[n] : ils ne sont pas l'affaire de la puce.
+	std::unique_ptr<scsp::enregistreur> trace[2];
+	scsp::core *tete[2] = { nullptr, nullptr };
 	// Ce que la carte branche sous chaque puce : trois methodes au lieu de cinq std::function.
 	struct Sink final : scsp::sink {
 		SoundBoard *b = nullptr;

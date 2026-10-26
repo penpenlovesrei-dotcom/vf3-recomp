@@ -40,6 +40,8 @@ connaissance qu'on ne retrouve pas est perdue. D'où ce fichier.
 | `src/sound/scsp_core.h` | **l'interface neuve** d'un cœur de SCSP : trois méthodes de `sink`, le temps poussé, l'unité l'échantillon |
 | `src/sound/scsp_mame.h`, `.cpp` | **l'adaptateur** qui présente le cœur de MAME à travers elle — l'étape 3 du plan de migration, et les trois endroits où les deux ne coïncident pas y sont nommés |
 | `src/sound/scsp_contract.h` | **le contrat matériel** : 48 champs et les constantes du pilote, chaque nombre avec sa provenance, les écarts assumés marqués `DEVIATION` |
+| `src/sound/scsp_select.h`, `.cpp` | **le sélecteur** : `scsp::make(nom, ...)`, par où un second cœur entrera. `mame` est la seule entrée aujourd'hui, et le fichier le dit |
+| `src/sound/scsp_trace.h`, `.cpp` | **le format de trace, l'enregistreur et le rejoueur** : chaque accès à l'échantillon près, les écritures de RAM comprises. L'enregistrement passe par une seule porte, `SoundBoard::tete[n]`, et non par les huit sites d'appel |
 | `src/sound/sound_prof.h` | le profilage par parties (`VF3_SND_PROF=1`) |
 
 ## 3. Les outils
@@ -72,7 +74,8 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 | `VF3_FICHES=f` | les fiches de voix vivantes, avec canal et catégorie — ce qui a tranché « quelle catégorie est la musique » | `tools/vf3run.cpp` |
 | `VF3_STAGE=n` | **force l'arène** (1-12), en tenant les deux leviers du jeu | `tools/vf3run.cpp` |
 | `VF3_VOLUMES=m,e` | les volumes musique et effets, séparément | `tools/vf3run.cpp` |
-| `VF3_SCSP_WLOG=f` | la trace des écritures de registres, pour un futur rejoueur | `soundboard.cpp` |
+| `VF3_SCSP_WLOG=f` | la trace des écritures de registres, à LIRE : image par image, puce 0 seulement. Pas de quoi rejouer — voir `VF3_SCSP_TRACE` | `soundboard.cpp` |
+| `VF3_SCSP_TRACE=f` | **la trace rejouable** : `f.0` et `f.1`, chaque accès à l'échantillon près, les écritures de RAM comprises, plus `f.N.pcm` comme référence | `scsp_trace.h` |
 | `VF3_SCSP_RESTE=N` | ce que les deux puces laissent dans les tampons, toutes les N images — un reste qui **grandit** serait le signe d'une désynchronisation | `soundboard.cpp` |
 | `VF3_KEYON_LOG=1` | les allumages de note | `soundboard.cpp` |
 | `VF3_SCSP_SOLO=n` | n'écouter qu'une fente | `soundboard.cpp` |
@@ -87,6 +90,7 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 
 | | |
 |---|---|
+| `tools/son/rejouer.cpp`, `rejouer.cmd` | **le rejoueur** : une trace d'accès rejouée dans un ou deux cœurs, et la première divergence située à l'échantillon — PCM, interruptions, armements de timer, lectures de registre, MIDI sortant. Le `.cmd` prend la trace et lance les deux contrôles en une commande |
 | `tools/son/banc_scsp.h` | le montage que les tests de bloc partagent : un cœur neuf, sa RAM, le keyage d'une fente par la table du contrat. **Aucune attente** n'y vit — ce qu'on attend d'un bloc appartient au test de ce bloc |
 | `tools/son/test_scspdsp.cpp` | les deux corps du DSP contre une référence qui décode dans la boucle. 16 cas, dont les quatre contrôles qu'aucun jeu ne pose |
 | `tools/son/test_scsp_core.cpp` | **MAME piloté uniquement par l'interface neuve**, registres écrits par la table du contrat : un champ faux y coupe le son |

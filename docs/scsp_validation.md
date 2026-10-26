@@ -146,8 +146,14 @@ de `docs/scsp_architecture.md` §3) :
 
 `comparer-son.cmd` compare deux **constructions**. Pour une réécriture, il faut comparer deux **cœurs dans le
 même binaire** : la même séquence d'accès rejouée dans les deux, et la comparaison des PCM, des états
-observables, des interruptions et des timers, pas seulement du WAV final. `VF3_SCSP_WLOG` donne déjà la trace
-d'accès ; il manque le rejoueur.
+observables, des interruptions et des timers, pas seulement du WAV final.
+
+**Fait le 2026-10-26** : `tools/son/rejouer` et `tools/son/rejouer.cmd`, sur le format de
+`src/sound/scsp_trace.h` et le sélecteur de `src/sound/scsp_select.h`. `VF3_SCSP_WLOG` n'a pas servi de
+départ : il note l'image et non l'échantillon, et laisse de côté la puce 1, les lectures, le MIDI entrant,
+les timers et les écritures de RAM. Le rejeu retrouve le PCM de la carte **à l'octet** sur 229 991
+échantillons, ce qui établit que la trace est complète — le contrôle à passer avant que comparer deux cœurs
+veuille dire quelque chose.
 
 
 ## 4. Le trou que ce travail a creusé, et qui est bouché
