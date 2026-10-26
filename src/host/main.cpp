@@ -4161,8 +4161,20 @@ int main(int argc, char **argv)
 			was_at = now_at;
 		}
 		{
+			// WHO TURNS THE SOUND BOARD is the state's too, and it was the last thing still asked of two
+			// surface flags. A frozen game runs no frames, so it makes no sound frames either: wherever the
+			// game is held AND the port is not silent -- the list, the OPTIONS tree, the pause menu and the
+			// carousel held over a fight -- the port has to turn the board over itself.
+			//
+			// THE PAUSE MENU AND THAT CAROUSEL WERE NOT IN THAT SET, and it shows what the table is for: they
+			// freeze the game exactly as the list does, their beeps were made exactly as promptly -- and
+			// nothing was turning the board, so nothing came out until the game started again. The fight's
+			// music goes on under them now, which is what a console does.
 			static bool was_up = false;
-			const bool up = modes.shown || options.shown;
+			const bool up = cplay.on && !cplay.ui.game_runs() && !cplay.ui.game_sound();
+			// and the game's own music is held only where the port owns the picture as well: under the pause
+			// menu and the carousel the game's screen is still there, and its music belongs with it
+			const bool holds_music = cplay.on && cplay.ui.port_screen() && !cplay.ui.game_runs();
 			if (up && !was_up) {
 				// THE QUEUE IS EMPTIED ON THE WAY IN, and that is what makes the menu's sounds prompt.
 				// Frederic heard them "en decale" -- late, and only once the game started again. The board
@@ -4179,7 +4191,7 @@ int main(int argc, char **argv)
 				menu_sound_last = 0;
 				menu_sound_frames = 0;
 				menu_sound_t0 = 0;
-				music_held = game.music_now;
+				music_held = holds_music ? game.music_now : -1;
 				if (music_held >= 0) {
 					game.stop_music();
 					fprintf(stderr, "the console's music: A0 10 %02X was playing, stopped\n", music_held);
@@ -4220,7 +4232,14 @@ int main(int argc, char **argv)
 			if (pause.want_sound) { heard(pause.want_sound); pause.want_sound = fv2_pause::SND_NONE; }
 			if (stages.want_sound) { heard(stages.want_sound); stages.want_sound = fv2_stage_list::SND_NONE; }
 		}
-		if (stopped && cplay.on && (modes.shown || options.shown)) {
+		if (stopped && cplay.on && !cplay.ui.game_sound()) {
+			// AND NOT WHILE A FRAME IS STILL IN FLIGHT. The board is the game's: turned here while the
+			// emulation thread is still finishing the frame that was in flight when the surface opened,
+			// the two write it at once. Measured the 2026-10-26, on the pause menu the moment it joined
+			// this set: a hidden arcade run died of heap corruption two seconds in. The list and the
+			// OPTIONS tree never showed it because they are opened from the event loop, which waits for
+			// that frame before it opens anything; the pause menu is opened from the frame itself.
+			if (game.emu_thread.joinable()) game.job_wait();
 			const uint64_t now = SDL_GetTicksNS();
 			if (menu_sound_last) menu_sound_owed += double(now - menu_sound_last) / 1e9 * FRAME_HZ;
 			menu_sound_last = now;
