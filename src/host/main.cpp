@@ -1128,14 +1128,16 @@ struct Game
 	bool mute_fight_voice = false;
 	void note_music()
 	{
-		if (mute_voices)
-			for (size_t i = 0; i + 2 < board.midi.size();)
+		if (mute_voices) {
+			for (size_t i = 0; i + 2 < board.midi.size();) {
 				if (board.midi[i] == 0xA0 && board.midi[i + 1] == 0x30)
 					board.midi.erase(board.midi.begin() + long(i), board.midi.begin() + long(i) + 3);
 				else
 					i++;
-		if (mute_fight_voice)
-			for (size_t i = 0; i + 2 < board.midi.size();)
+			}
+		}
+		if (mute_fight_voice) {
+			for (size_t i = 0; i + 2 < board.midi.size();) {
 				if (board.midi[i] == 0xA0 && board.midi[i + 1] == 0x2B) {
 					// IT SAYS WHAT IT DROPPED. A sound that was never going to be heard looks exactly like a
 					// sound that was dropped, so the probe has to speak for itself.
@@ -1143,6 +1145,8 @@ struct Game
 					board.midi.erase(board.midi.begin() + long(i), board.midi.begin() + long(i) + 3);
 				} else
 					i++;
+			}
+		}
 		for (size_t i = 0; i + 2 < board.midi.size(); i++) {
 			if (board.midi[i] != 0xA0) continue;
 			if (board.midi[i + 1] == 0x10) music_now = board.midi[i + 2];
@@ -3358,7 +3362,6 @@ int main(int argc, char **argv)
 	// what the lines this port cannot do yet are -- drawn, dimmed, and passed by -- rather than quietly
 	// missing. Each says below why it is one.
 	bool ending_asked = false;   // ENDING on the DISPLAY page: the page closes so the roll can be seen
-	bool ending_real = false;    // which of the two that line does: the roll now, or the game's own ending
 	if (cplay.on) {
 		auto fixed = [](const char *v) { return [v] { return std::string(v); }; };
 		// A pack to load: one already in, or at least one PNG sitting in the folder. The dump writes into a

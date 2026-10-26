@@ -389,7 +389,6 @@ struct console_play
 	leave_phase leaving = L_OFF;
 	leave_dest leave_for = L_TO_TITLE;
 	int leave_frames = 0, leave_cut = -1, leave_scene = -1;
-	bool leave_said = false;   // the line about the end-of-game modes, said once a trip
 	static constexpr int LEAVE_GIVE_UP = 3600;   // a minute: a match that will not end is let go of
 
 	void leave_match(leave_dest what)
@@ -404,7 +403,6 @@ struct console_play
 		leave_for = what;
 		leave_frames = 0;
 		leave_cut = -1;
-		leave_said = false;
 		leave_scene = -1;
 	}
 
