@@ -21,6 +21,9 @@
 //   screen   who owns the picture. GAME: the port draws nothing of its own. OVER: the port draws over the
 //            picture the game made, which is what a pause menu is. PORT: the port draws its own ground and the
 //            game's picture is NOT DRAWN AT ALL -- not covered, not dimmed, not drawn.
+//   controls who has the keys and the pad: the game, or the surface that is up. A property, and not a
+//            question asked of each surface in turn -- the four used to be asked one after another, each
+//            about its own flag, with nothing saying that only one of them could answer.
 //   sound    who owns the sound board. GAME: its commands go through. BOTH: they go through and the port adds
 //            its own effects over them. PORT: the game's commands are DROPPED before the board hears them, and
 //            only the port is heard.
@@ -28,6 +31,13 @@
 // Those three lines are the whole of it. "Nothing of the game is seen or heard while the port owns the screen"
 // stops being an intention and becomes a row in a table -- which is how MENU_IN, the state where the game walks
 // home behind the menu, is silent without anybody having to remember to silence it.
+//
+// AND ONE PLACE WRITES THE GAME'S RAM on the port's account: console_play::ask_for, performed at the top
+// of console_play::step -- after the frame that has run, before the frame that will, which is the moment
+// the game's own dispatcher reads a request. There is ONE exception, and it is written down rather than
+// left to be discovered: the OPTIONS page writes the arcade's own settings (fv2_options.h,
+// Model3::fv2_set_option). That page IS the settings, and OPTIONS declares runs = false, so no frame of
+// the game runs between its write and its next read: the write is at a defined moment by construction.
 //
 // The INT/DSP shape is Sega's too, and it is used where it means something: MENU_IN is the menu installing
 // itself while the game finishes what it was doing; MENU is the menu running with the game held still. The
@@ -47,12 +57,14 @@ enum class cstate {
 
 enum class cscreen { GAME, OVER, PORT };
 enum class csound { GAME, BOTH, PORT };
+enum class cinput { GAME, PORT };
 
 struct crule {
 	const char *name;
 	bool runs;
 	cscreen screen;
 	csound sound;
+	cinput controls;
 };
 
 // The table. One row a state, in the enum's own order, and every property of every state is read from here --
@@ -60,13 +72,13 @@ struct crule {
 inline const crule &crules(cstate s)
 {
 	static const crule TABLE[] = {
-		{ "PLAY",       true,  cscreen::GAME, csound::GAME },
-		{ "PAUSE",      false, cscreen::OVER, csound::BOTH },
-		{ "STAGE",      true,  cscreen::OVER, csound::BOTH },
-		{ "STAGE_HELD", false, cscreen::OVER, csound::BOTH },
-		{ "MENU_IN",    true,  cscreen::PORT, csound::PORT },
-		{ "MENU",       false, cscreen::PORT, csound::BOTH },
-		{ "OPTIONS",    false, cscreen::PORT, csound::BOTH },
+		{ "PLAY",       true,  cscreen::GAME, csound::GAME, cinput::GAME },
+		{ "PAUSE",      false, cscreen::OVER, csound::BOTH, cinput::PORT },
+		{ "STAGE",      true,  cscreen::OVER, csound::BOTH, cinput::PORT },
+		{ "STAGE_HELD", false, cscreen::OVER, csound::BOTH, cinput::PORT },
+		{ "MENU_IN",    true,  cscreen::PORT, csound::PORT, cinput::PORT },
+		{ "MENU",       false, cscreen::PORT, csound::BOTH, cinput::PORT },
+		{ "OPTIONS",    false, cscreen::PORT, csound::BOTH, cinput::PORT },
 	};
 	return TABLE[int(s)];
 }
@@ -89,6 +101,7 @@ struct console_ui {
 	bool over_game() const { return rule().screen == cscreen::OVER; }
 	bool game_sound() const { return rule().sound == csound::GAME; }
 	bool port_sound() const { return rule().sound == csound::PORT; }      // the game's commands are dropped
+	bool port_controls() const { return rule().controls == cinput::PORT; }  // the surface has the keys and the pad
 	bool playing() const { return at == cstate::PLAY; }
 	bool menu_up() const { return at == cstate::MENU || at == cstate::MENU_IN; }
 };

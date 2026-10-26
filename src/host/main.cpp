@@ -3816,7 +3816,10 @@ int main(int argc, char **argv)
 			};
 			// The console's list of modes, while it is up: its own surface takes the keys and the pad, and
 			// Escape is left alone so this port's menu can always be reached.
-			if (modes.shown && !ours(e)) {
+			// WHO HAS THE KEYS AND THE PAD is the state's, like the rest (console_state.h): one state is up, so
+			// one surface reads the event, and the other three cannot. They used to be asked one after another,
+			// each about its own flag, with nothing saying only one of them could answer.
+			if (cplay.ui.menu_up() && !ours(e)) {
 				const int chose = modes.handle_event(e, cfg.ctl);
 				// A LINE CHOSEN BEFORE THE GAME IS HOME WAITS FOR IT. Every mode's entry hands the game a
 				// Start on the title screen or asks the attract loop for something, and neither means
@@ -3838,7 +3841,7 @@ int main(int argc, char **argv)
 			// The pause menu, the same way. It reads and writes nothing of the game's RAM while a frame runs,
 			// so the wait below is for the same reason as the page's: the frame in flight when it opened may
 			// not have finished.
-			if (pause.shown && !ours(e)) {
+			if (cplay.ui.at == cstate::PAUSE && !ours(e)) {
 				if (game.emu_thread.joinable()) game.job_wait();
 				const int chose = pause.handle_event(e, cfg.ctl);
 				if (chose == fv2_pause::CANCELLED) {
@@ -3859,7 +3862,7 @@ int main(int argc, char **argv)
 			// VERSUS's stage select, the same way. It touches no RAM of the game's at all -- it only hands a
 			// scene number to console_play, which holds the patch later -- but it waits for the frame in flight
 			// like the others, so a surface never acts half inside a frame.
-			if (stages.shown && !ours(e)) {
+			if ((cplay.ui.at == cstate::STAGE || cplay.ui.at == cstate::STAGE_HELD) && !ours(e)) {
 				if (game.emu_thread.joinable()) game.job_wait();
 				const int chose = stages.handle_event(e, cfg.ctl);
 				if (chose == fv2_stage_list::CANCELLED) {
@@ -3887,7 +3890,7 @@ int main(int argc, char **argv)
 					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
 			}
 			// The OPTIONS page, the same way, and the same two keys left alone for the same reasons.
-			if (options.shown && !ours(e)) {
+			if (cplay.ui.at == cstate::OPTIONS && !ours(e)) {
 				// This page reads and writes the game's own RAM, so not while a frame runs alongside. The page
 				// freezes the game, but the frame that was in flight when it opened may not have finished.
 				if (game.emu_thread.joinable()) game.job_wait();
@@ -4338,7 +4341,7 @@ int main(int argc, char **argv)
 					if (busy) cplay.swallow_start = true;
 					const console_play::start_for what = busy
 						? console_play::start_for::none
-						: cplay.take_start(board, st, modes.shown || pause.shown || stages.shown);
+						: cplay.take_start(board, st, cplay.ui.port_controls());
 					switch (what) {
 					case console_play::start_for::list:
 						enter(cstate::MENU, "Start on the title screen");
@@ -4485,8 +4488,11 @@ int main(int argc, char **argv)
 				// frame, because a request is only read once and the point here is that it is never walked
 				// out of. Nothing of the player reaches the game meanwhile -- the carousel has the keys and
 				// the pad, as it does under the three surfaces that freeze instead.
-				if (stages.shown) {
-					// (the park itself is renewed by console_play's own step, the one place that writes)
+				// AND NOTHING OF THE PLAYER REACHES THE GAME WHERE THE PORT HAS THE CONTROLS. It matters in the two
+				// states where the game RUNS under a surface -- the carousel parked on the select screen, and the
+				// list with the game walking home behind it -- and is harmless in the others, where no frame runs
+				// at all. (The carousel's park is renewed by console_play's own step, the one place that writes.)
+				if (cplay.ui.port_controls()) {
 					live = m3::Controls();
 					script_ctl = m3::Controls();
 				}

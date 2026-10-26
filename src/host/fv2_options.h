@@ -359,6 +359,9 @@ struct fv2_options
 		const int v = value(board, i);
 		if (v < 0) return;
 		const int n = std::clamp(v + d * s.step, s.lo, s.hi);
+		// THE ONE WRITE TO THE GAME'S RAM THAT DOES NOT GO THROUGH console_play::ask_for, and the reason is
+		// in console_state.h: this page IS the arcade's settings, and the state it belongs to declares that
+		// the game does not run under it, so no frame of the game falls between this write and its reading.
 		if (n != v && board.fv2_set_option(int(s.live), s.bytes, n)) changed = true;
 	}
 	void initialize(m3::Model3 &board)
