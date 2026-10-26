@@ -4359,8 +4359,11 @@ int main(int argc, char **argv)
 						if (cplay.training_on) on &= ~(1u << fv2_pause::REMATCH);
 						else if (!cplay.is_versus) on &= ~(1u << fv2_pause::CHANGE_STAGE);
 						pause.on = on;
+						// The one surface enter() does not open itself, because which hand pressed Start says which side
+						// the panel stands on. It is opened here and the state entered on the same line: the state is what
+						// freezes the fight behind it (console_state.h).
 						pause.show(!(live.start[0] || script_ctl.start[0]) && (live.start[1] || script_ctl.start[1]) ? 1 : 0);
-						sync_menu_sound();
+						enter(cstate::PAUSE, "Start in a game");
 						fprintf(stderr, "frame %llu: Start in a game (mode %d, sub-state %d): the console's pause menu is up\n",
 								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
 						break;
