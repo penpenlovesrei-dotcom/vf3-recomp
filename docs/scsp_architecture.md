@@ -121,11 +121,25 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
    commun (0x400-0x45F), les registres DSP (COEF 0x700, MADRS 0x780, MPRO 0x800, TEMP, MEMS, MIXS, EFREG,
    EXTS). Y compris les bits réservés, ce qui se relit, et **la plage 0x7C0-0x7FF**, dont ce portage et MAME ne
    font pas la même chose (`docs/scsp_references.md`). Se teste sans aucun son : écrire, relire.
+   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_regs.cpp`, neuf cas, et il a déjà rapporté
+   deux choses qu'aucune lecture n'avait vues — l'exception « bit 5 » de MAME tombe sur MCIRE (0x42E) et non
+   sur MCIPD (0x42C), que le commentaire nomme ; et la plage 0x7C0-0x7FF, mesurée dans les **deux** réglages
+   du miroir MADRS plutôt que dans celui qui est par défaut.
 2. **Fentes, oscillateur, PCM, adressage, bouclage** — 8 et 16 bits signés, `SA`/`LSA`/`LEA`, les quatre modes
    `LPCTL`, l'interpolation linéaire, les limites de la RAM. Se teste en comptant des échantillons.
+   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_fentes.cpp`, onze cas, et il a démenti la
+   lecture sur les quatre bouclages à la fois. La boucle de bouclage tourne sur `cur_addr` **et** `nxt_addr`,
+   mais `nxt_addr` est réaffecté à chaque échantillon : sa réécriture d'adresse est perdue, ses effets de bord
+   (`Backwards`, `StopSlot`) ne le sont pas. Tout se déclenche donc **un échantillon tôt**, et aucun échantillon
+   au-delà de `LEA` n'est jamais lu — contrairement à ce que la lecture seule prédisait (`scsp_contract.h` §9).
 3. **Enveloppes ADSR** — les quatre états, `AR`/`D1R`/`D2R`/`RR`, `DL`, `EGHOLD`, `KRS`, `LPSLNK`, et les
    tables de temps. **Attention** : les tables `ARTimes`/`DRTimes` de MAME sont des constantes mesurées, pas
    une formule ; les reprendre est un choix de fidélité à assumer explicitement.
+   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_adsr.cpp`, dix cas. Il fixe les durées d'attaque
+   **en échantillons** (1297, 332, 83, 24, 1 pour `AR` = 0x10 à 0x1F), si bien qu'une formule à la place des
+   tables échoue là et nulle part ailleurs — l'avertissement ci-dessus devient une mesure. Il montre aussi que
+   l'attaque multiplie le **volume brut** quand tout le reste passe par la courbe en décibels, et que `DECAY1`
+   décrémente toujours une fois même quand `DL=0` le fait céder aussitôt (`scsp_contract.h` §10).
 4. **Pitch, LFO, modulation FM** — `OCT`/`FNS`, les quatre formes de LFO, `PLFOS`/`ALFOS`, et la modulation par
    anneau (`MDL`/`MDXSL`/`MDYSL`). **Les réglages de ce portage se gardent tels quels** jusqu'à mesure
    contraire : profondeur FM à 24 et bit bas de `MDL` ignoré (`docs/scsp_audit.md` §2).

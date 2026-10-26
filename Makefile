@@ -91,10 +91,31 @@ $(BIN)/test_scsp_core: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core
+# What a register write reads back (tools/son/test_scsp_regs.cpp): block 1 of the architecture's order,
+# and the plan wants these written BEFORE the blocks they test. No ROM, no sound: write, read back.
+$(BIN)/test_scsp_regs: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_regs.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+# L'oscillateur, l'adressage PCM et les quatre bouclages (tools/son/test_scsp_fentes.cpp) : bloc 2 de
+# l'architecture. Mesure la suite exacte des indices d'echantillon, SDIR mettant l'enveloppe de cote.
+$(BIN)/test_scsp_fentes: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_fentes.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+# L'enveloppe ADSR (tools/son/test_scsp_adsr.cpp) : bloc 3 de l'architecture. Une onde continue fait que la
+# sortie EST l'enveloppe, et les durees d'attaque en echantillons encodent les tables de temps de MAME.
+$(BIN)/test_scsp_adsr: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_adsr.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_fentes $(BIN)/test_scsp_adsr
 	$(BIN)/test_scspdsp
 	$(BIN)/test_scsp_contract
 	$(BIN)/test_scsp_core
+	$(BIN)/test_scsp_regs
+	$(BIN)/test_scsp_fentes
+	$(BIN)/test_scsp_adsr
 
 clean:
 	rm -rf build

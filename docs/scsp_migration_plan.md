@@ -2,8 +2,9 @@
 
 > Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
 
-**C'est un plan.** Au 2026-10-24, l'étape 0 est faite et rien d'autre. Le cœur du son est toujours celui de
-MAME, modifié.
+**C'est un plan.** Au 2026-10-26, les étapes 0 et 3 sont faites, et des blocs 1, 2 et 3 il y a le test mais pas
+encore l'implémentation. Le cœur du son est toujours celui de MAME, modifié — mais la carte ne lui parle plus que par
+`scsp_core.h`, et le son est identique à l'octet sur trois arènes.
 
 
 ## Pourquoi, et dans quel ordre les quatre objectifs se servent
@@ -38,8 +39,9 @@ le premier venu.
 | le lot défait | un quatrième, sur les voix, qui ne gagnait rien : défait, et le résultat négatif consigné |
 | tester | `tools/son/test_scspdsp.cpp` (`make test`) : les deux corps du DSP contre une référence qui décode dans la boucle, seize cas, et quatre fautes injectées pour montrer qu'il sait échouer |
 
-Ce que l'étape 0 **n'a pas** fait, et il faut le lire avant la suite : il n'y a qu'un test par bloc sur huit,
-qu'une seule scène de mesure. **Les deux mesures qui manquaient sont faites** : dans l'hôte le 2026-10-26
+Ce que l'étape 0 **n'a pas** fait, et il faut le lire avant la suite : il n'y a que quatre tests de bloc sur
+huit — le DSP (bloc 7), les registres (bloc 1), les fentes (bloc 2) et l'enveloppe (bloc 3), les trois
+derniers écrits le 2026-10-26 — et qu'une seule scène de mesure. **Les deux mesures qui manquaient sont faites** : dans l'hôte le 2026-10-26
 (`docs/scsp_audit.md` §4 ter — le son y coûte 8,5 % d'un cœur et **0,00 % de l'image**, le jeu ne l'attendant
 jamais), et sous `--rec` le
 2026-10-25** (`docs/scsp_audit.md` §4 bis) : la part du son y est de **30,5 %** au lieu de 9,6 %, parce que

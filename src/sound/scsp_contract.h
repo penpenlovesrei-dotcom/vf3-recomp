@@ -26,6 +26,7 @@
 // contract.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace scsp_contract {
@@ -149,6 +150,35 @@ inline constexpr unsigned SCILV0  = 0x424;
 inline constexpr unsigned SCILV1  = 0x426;
 inline constexpr unsigned SCILV2  = 0x428;
 inline constexpr unsigned MCIEB   = 0x42A;
+inline constexpr unsigned MCIPD   = 0x42C;
+inline constexpr unsigned MCIRE   = 0x42E;
+
+// AND THESE FOUR DO NOT ALL BEHAVE THE SAME WAY in the implementation we are leaving, which matters because
+// a rewrite that makes them uniform changes behaviour without meaning to. Measured 2026-10-26 by
+// tools/son/test_scsp_regs.cpp, which keeps the three cases:
+//
+//   0x420 SCIPD : the write is an OR of bit 5 only, so bit 5 can be SET and never cleared by a write.
+//                 That is the intended exception; scsp.cpp says so in a comment.
+//   0x422 SCIRE : an ordinary whole register (mask 0xFFFF). ResetInterrupts reads it, and the driver WRITES
+//                 it twice -- 0x80 at 0x600792 and 0x40 at 0x6032FE: the timer acknowledgement.
+//   0x42C MCIPD : a plain assignment -- but UpdateReg sees bit 5 and calls MainCheckPendingIRQ(0x20), and a
+//                 READ copies m_mcipd back over the word. So bit 5 also comes back, by another route.
+//   0x42E MCIRE : receives the OR exception that the comment intends FOR MCIPD. Its bit 5 therefore can
+//                 never be cleared, while its twin SCIRE is an ordinary register. The asymmetry is MAME's,
+//                 not the chip's as far as any reading can tell: no datasheet we have says it.
+//
+// WHAT THIS COSTS VF3: nothing measurable, and that is itself a measurement rather than a hope. All 28
+// accesses to the SCSP's common registers in the whole reached program are absolute long addresses
+// (desas_son.py --cherche 100400 1005ff), and not one of them names 0x42C or 0x42E; the only other form is
+// the `lea $100418, a0` at 0x60028C, whose loop copies exactly the ten words 0x418-0x42A that section 3's
+// table holds. So the driver never touches MCIPD or MCIRE. A rewrite may reproduce the asymmetry or fix it
+// deliberately -- but it should not discover it by ear, and it should not "clean it up" believing it is
+// unobservable on other hardware.
+//
+// AND THE SEARCH THAT PROVED IT HAD TO BE AIMED FIRST: `--cherche 0x42c` returns nothing, but so does
+// `--cherche 0x418`, a register the driver demonstrably writes. The board maps the chip at 0x100000
+// (soundboard.h), so the program names 0x100418, never 0x418. A probe that answers "0 found" to a question
+// it cannot see is worse than no probe.
 
 // ---------------------------------------------------------------------------------------------------
 // 3. THE INTERRUPT CONTRACT. (a) read in the driver, and (c) for which bit each source raises.
@@ -276,5 +306,135 @@ inline constexpr unsigned REGISTRE_BANQUE = 0x400001;
 // (a) The chips play only from their own RAM; the 68000 copies samples in, 512 bytes a pass, from the
 // banked window (the unrolled copy at 0x601F3C). An implementation that reads samples straight from ROM
 // would not need the copy -- and would then not be running this driver.
+
+// ---------------------------------------------------------------------------------------------------
+// 8. WRITING A FIELD, which the two conventions of section 0 make less obvious than it looks.
+//
+// This lives here and not in a test because BOTH tests need it, and two copies of a rule about which
+// fields shift and which do not is two chances to disagree. The first version of it was in
+// test_scsp_core.cpp alone, and it shifted blindly: KYONB went out as zero, the voice stayed silent, and
+// the failure message accused the contract.
+// ---------------------------------------------------------------------------------------------------
+inline const Champ *cherche(const Champ *table, std::size_t n, const char *nom)
+{
+	for (std::size_t i = 0; i < n; i++) {
+		const char *a = table[i].nom, *b = nom;
+		while (*a && *a == *b) { ++a; ++b; }
+		if (!*a && !*b) return table + i;
+	}
+	return nullptr;
+}
+
+// A slot's field, by name, or nullptr. The caller decides what a missing name means: a test should die,
+// since a name that is not in the table is a typo and not a condition.
+inline const Champ *champ_fente(const char *nom)
+{
+	return cherche(FENTE, sizeof FENTE / sizeof *FENTE, nom);
+}
+
+// Places `valeur` in the 16 words of a slot, where this table says the field lives.
+//
+// Returns false if the name is unknown, so a caller cannot silently write nothing. The two conventions are
+// told apart by the SHAPE of the mask: a run of low contiguous bits (1, 3, 7, 0x1F, 0xFF...) is a value to
+// shift, anything else is a bit already in place.
+inline bool pose(std::uint16_t mot[16], const char *nom, unsigned valeur)
+{
+	const Champ *c = champ_fente(nom);
+	if (!c) return false;
+	const bool bit_en_place = (c->masque & (c->masque + 1)) != 0;
+	if (bit_en_place) {
+		if (valeur) mot[c->mot] = std::uint16_t(mot[c->mot] | c->masque);
+		else        mot[c->mot] = std::uint16_t(mot[c->mot] & ~c->masque);
+		return true;
+	}
+	mot[c->mot] = std::uint16_t((mot[c->mot] & ~(c->masque << c->decalage))
+	                            | ((valeur & c->masque) << c->decalage));
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------
+// 9. THE OSCILLATOR'S LOOPING, which is not what reading the code suggests.
+//
+// Measured 2026-10-26 by tools/son/test_scsp_fentes.cpp, which keeps the exact index sequences. Three
+// facts, and a reimplementation that misses the third plays one sample too many in every loop:
+//
+//   (1) LSA AND LEA COUNT SAMPLES, while the 16-bit fetch counts BYTES. The fetch takes
+//       `(cur_addr >> (SHIFT-1)) & ~1` -- two bytes per sample -- but the loop comparison takes
+//       `cur_addr >> SHIFT`, one index. With LEA = 8 the period is 8 samples, not 4; measured.
+//
+//   (2) THE RAM FOLDS AT 1 MB AND SA LOSES ITS LOW BIT. read_word does `a &= 0xffffe`. So the sample
+//       after the last word of RAM is the FIRST word of RAM, and an odd SA reads the same word as SA-1.
+//
+//   (3) THE LOOP TEST RUNS ON TWO ADDRESSES, AND ONE OF THEM IS A GHOST. The `for (addr_select...)` loop
+//       in UpdateSlot applies the looping to `cur_addr` and to `nxt_addr`. But the line just above it is
+//       `slot->nxt_addr = slot->cur_addr + (1 << SHIFT)`: nxt_addr is reassigned every sample, so
+//       whatever the nxt_addr pass WRITES into the address is thrown away next tick -- while its SIDE
+//       EFFECTS, `Backwards = 1` and `StopSlot`, survive. Since nxt_addr is always one index ahead, every
+//       one of those side effects fires ONE SAMPLE EARLY, and no sample beyond LEA is ever read:
+//           LPCTL=0 (no loop)   stops after index 6 with LEA=8, not after 7;
+//           LPCTL=2 (reverse)   goes 0,1,2,3 then 6,5,4,7,6,5,4...  -- never 8;
+//           LPCTL=3 (ping-pong) goes 0..7 then 6,5,4,5,6,7,6...     -- never 8.
+//       Reading the code alone predicts an index 8 in modes 2 and 3. It is not there. A rewrite that
+//       applies the looping to cur_addr only -- the obvious simplification -- shifts all four modes.
+//
+// Also measured, and smaller: PCM8B takes the HIGH byte of a word first (read_byte is big-endian, as the
+// 68000 that fills the RAM) and sends it out `<< 8`, not stretched over 16 bits; SBCTL bit 0 is
+// `sample ^= 0x7FFF` WITHOUT truncation while bit 1 is `(s16)(sample ^ 0x8000)` WITH it, so the two
+// together give the negative minus one (1000 -> -1001); and SSCTL=3 returns from UpdateSlot before
+// anything, so unlike SSCTL=2 it does not even advance the read head.
+
+// ---------------------------------------------------------------------------------------------------
+// 10. THE ENVELOPE, whose shape is two arithmetics and whose times are a table of constants.
+//
+// Measured 2026-10-26 by tools/son/test_scsp_adsr.cpp, which reads the multiplier sample by sample.
+//
+//   (1) TWO ARITHMETICS, not one. In UpdateSlot the ATTACK state multiplies the sample by the RAW VOLUME
+//       -- `sample * EG_Update(slot) >> SHIFT`, linear -- while every other state goes through
+//       m_EG_TABLE, a decibel curve of 3/32 dB per step, 95.9 dB end to end. The two nearly meet but not
+//       quite: at saturation the attack path yields 4092 and the table 4096, so the FIRST sample of every
+//       voice comes out 4 parts in 4096 below the next. Measured, not rounding noise.
+//
+//   (2) A VOICE DOES NOT START FROM SILENCE. StartSlot sets `EG.volume = 0x17F << EG_SHIFT`: 383 of 1023,
+//       37 % of the way up. With AR=0 (m_ARTABLE[0] = 0, "infinite time") the multiplier sits at
+//       383 << 2 = 1532 forever, which is how the test reads the constant back out.
+//
+//   (3) THE TIMES ARE CONSTANTS, NOT A CURVE. ARTimes/DRTimes are 64 values measured on hardware; the
+//       gaps between neighbours follow no simple law. Reusing them is a fidelity CHOICE, and the test
+//       pins it down in samples so the choice cannot be made by accident: with KRS=0, OCT=0, FNS=0, the
+//       attack saturates after 1297 samples at AR=0x10, 332 at 0x14, 83 at 0x18, 24 at 0x1C, 1 at 0x1F.
+//       A reimplementation that fits an exponential to these will differ here, which is the point.
+//
+//   (4) DECAY1 ALWAYS DECREMENTS ONCE, even when it does not last. Its exit test
+//       (`volume >> (EG_SHIFT+5) <= EG.DL`) runs AFTER `volume -= EG.D1R`. So DL=0, which makes
+//       EG.DL = 0x1F and the test true on the first tick, still loses one D1R step: the plateau reads
+//       4052, not 4096. One index, 0.09 dB -- and a rewrite that tests before decrementing would pass
+//       every other case here.
+//
+//   (5) DL IS INVERTED (`EG.DL = 0x1f - DL`), so the plateau where D2R takes over is m_EG_TABLE at index
+//       (0x1F - DL) * 32 + 31: 258 for DL=8, 16 for DL=0x10, 1 for DL=0x18.
+//
+//   (6) DECAY2 CONSULTS THE REGISTER, NOT THE TABLE. `if (D2R(slot) == 0) return` reads the register
+//       field, not EG.D2R. The two can disagree -- a non-zero D2R can give a zero EG.D2R at a low rate --
+//       and then the level does not freeze, it falls by zero per sample. It sounds the same and is not.
+//
+//   (7) EGHOLD HOLDS THE OUTPUT, NOT THE VOLUME. In ATTACK, `if (EG.EGHOLD) return 0x3ff << (SHIFT-10)`
+//       comes first: the volume still climbs, but the output is full from the first sample. A slow attack
+//       then does nothing audible except delay DECAY1.
+//
+//   (8) LPSLNK ENDS THE ATTACK FROM THE OSCILLATOR, and it is the one place where this block depends on
+//       section 9's. The ATTACK-to-DECAY1 transition is inside `if (!LPSLNK(slot))`, so with LPSLNK the
+//       state stays ATTACK when the volume saturates; it leaves only through the loop's
+//       `if (addr1 >= LSA && !Backwards)`. With LSA=20 that is NINETEEN samples on the attack path, not
+//       twenty: the LPSLNK test runs BEFORE the envelope is applied, so the twentieth sample is already
+//       using the table.
+//
+//   (9) KRS=0xF MEANS ZERO, not "ignore KRS". `rate = octave + 2*KRS + ((FNS>>9)&1)` except at 0xF, where
+//       rate = 0 outright -- octave and the FNS bit included. Measured at OCT=2, AR=0x18: KRS=0 saturates
+//       in 56 samples, KRS=1 in 45, the FNS bit alone in 50, and KRS=0xF in 83 -- which is exactly the
+//       OCT=0 figure, so the octave really is discarded and not halved.
+//
+//  (10) A SECOND KYONEX ON A SOUNDING VOICE DOES NOTHING. The scan starts a slot only
+//       `if (KEYONB(s2) && s2->EG.state == SCSP_RELEASE)`. A rewrite that restarted on every KYONEX
+//       would make every repeated note in the game click.
 
 } // namespace scsp_contract

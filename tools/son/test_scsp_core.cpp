@@ -34,37 +34,18 @@ void rate(const char *quoi, const std::string &detail)
 	++echecs;
 }
 
-// The contract's field table, by name, so the test says "AR" and not "bits 4-0 of word 4".
-const scsp_contract::Champ &champ(const char *nom)
-{
-	for (const scsp_contract::Champ &c : scsp_contract::FENTE)
-		if (!strcmp(c.nom, nom)) return c;
-	fprintf(stderr, "test_scsp_core: le contrat n'a pas de champ nomme %s\n", nom);
-	std::exit(2);
-}
-
-// Places a value in a slot register word, exactly where the contract says it lives.
-//
-// ET LE CONTRAT MELE DEUX CONVENTIONS, parce que l'implementation le fait : la plupart des champs sont
-// "(mot >> decalage) & masque", une valeur a decaler ; mais les bits uniques sont ecrits "(mot >> 0) &
-// 0x1000", c'est-a-dire LE BIT EN PLACE, masque sans decalage. KYONEX, KYONB, PCM8B, EGHOLD, LPSLNK,
-// LFORE, STWINH et SDIR sont de ceux-la.
-//
-// Un `pose` qui decalerait aveuglement ecrit ZERO pour ces champs-la -- c'est ce qui est arrive la premiere
-// fois que ce test a tourne : la voix restait muette et le message accusait le contrat, alors que le defaut
-// etait ici. On distingue les deux par la forme du masque : un masque de bits bas contigus (1, 3, 7, 0x1F...)
-// est une valeur, tout le reste est un bit en place.
+// Les champs se posent par le contrat lui-meme (scsp_contract::pose), et non par une copie locale.
+// LA COPIE LOCALE A EXISTE, et c'est pour cela qu'elle n'existe plus : le contrat mele deux conventions --
+// la plupart des champs sont une valeur a decaler, mais les bits uniques sont ecrits EN PLACE, masque sans
+// decalage (KYONEX, KYONB, PCM8B, EGHOLD, LPSLNK, LFORE, STWINH, SDIR). La premiere version de ce test
+// decalait aveuglement, KYONB sortait a zero, la voix restait muette et le message accusait le contrat alors
+// que le defaut etait ici. Une seule regle, dans le fichier qui porte la table : scsp_contract.h section 8.
 void pose(std::uint16_t mot[16], const char *nom, unsigned valeur)
 {
-	const scsp_contract::Champ &c = champ(nom);
-	const bool bit_en_place = (c.masque & (c.masque + 1)) != 0;
-	if (bit_en_place) {
-		if (valeur) mot[c.mot] = std::uint16_t(mot[c.mot] | c.masque);
-		else        mot[c.mot] = std::uint16_t(mot[c.mot] & ~c.masque);
-		return;
+	if (!scsp_contract::pose(mot, nom, valeur)) {
+		fprintf(stderr, "test_scsp_core: le contrat n'a pas de champ nomme %s\n", nom);
+		std::exit(2);
 	}
-	mot[c.mot] = std::uint16_t((mot[c.mot] & ~(c.masque << c.decalage))
-	                           | ((valeur & c.masque) << c.decalage));
 }
 
 // What the board plugs underneath, remembering what it was told.
