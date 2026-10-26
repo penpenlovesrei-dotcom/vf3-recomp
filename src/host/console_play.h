@@ -91,9 +91,8 @@ struct console_play
 	// chosen, written only once a game is actually running, and then held every frame, because nothing says the
 	// game does not clear it when a fight begins (the roster patch had to be held for the same reason). It is
 	// put back when the game ends: left on, it blocks the next game, and ARCADE stops working.
-	enum { OFF, ARMED, HELD } survival = OFF;
-	int armed_frames = 0;         // given up after 300: the game never started
-	int survival_was = 0;         // what the flag was before the menu touched it
+	// (the three values this carried, and the two counters beside them, are the holds machine's now:
+	// H_SURVIVAL, down by step_holds)
 
 	// ---- RANDOM and VERSUS: both hang off the select screen's own timing ----
 	// Which is why neither could be wired until the game's state machine was read: what was missing was not
@@ -131,9 +130,7 @@ struct console_play
 	// The arming is kept all the same: it costs nothing, it is the shape Survival already uses, and it is what
 	// gives a moment to put the flag back when the game ends. The flag itself is Sega's own RANDOM_CHARA
 	// (model3.cpp says how it was found).
-	enum { R_OFF, R_ARMED, R_SET } random_mode = R_OFF;
-	int random_armed = 0;
-	int random_was = 0;
+	// (H_RANDOM in the holds machine)
 
 	// ---- TRAINING, first half: the arena ----
 	// There is no training MODE on this board -- Sega's twenty-four hold none, and the arcade notes say so --
@@ -179,8 +176,7 @@ struct console_play
 	//
 	// The dummy's behaviour is not here. Nothing stands in for it yet and nothing pretends to.
 	static constexpr int MARBLE_ARENA = 3;
-	enum { T_OFF, T_ARMED, T_HELD } training = T_OFF;
-	int training_armed = 0;
+	// (H_TRAINING in the holds machine)
 	bool training_on = false;            // the mode itself, as opposed to the arena it arms
 	static constexpr int TRAIN_DELAY = 48;    // eight tenths of a second without new damage before the fill
 	static constexpr int TRAIN_FLOOR = 25;    // per cent of the starting health, below which the life is held
@@ -269,14 +265,14 @@ struct console_play
 	// been seen RUNNING first, which is the same wait Survival and the stage hold already use.
 	bool versus_ran = false;
 	void choose_arcade() { inject_start = 8; swallow_start = true; is_versus = false; versus_ran = false; }
-	void choose_survival(m3::Model3 &b) { survival = ARMED; armed_frames = 0; survival_was = b.fv2_survival(); choose_arcade(); }
-	void choose_random() { random_mode = R_ARMED; random_armed = 0; random_was = 0; choose_arcade(); }
+	// (the flag is read HERE, before anything of this port has touched it, and handed to the hold)
+	void choose_survival(m3::Model3 &b) { arm_hold(H_SURVIVAL, b.fv2_survival()); choose_arcade(); }
+	void choose_random() { arm_hold(H_RANDOM); choose_arcade(); }
 	// TRAINING is a two-player versus with the mode on top: the entry is the V.S. line's, word for word,
 	// which was already proved. The arena is still held to Marble Arena by the route byte.
 	void choose_training()
 	{
-		training = T_ARMED;
-		training_armed = 0;
+		arm_hold(H_TRAINING);
 		training_on = true;
 		for (int i = 0; i < 2; i++) { train_was[i] = -1; train_quiet[i] = 0; train_took[i] = 0; }
 		choose_versus(MARBLE_ARENA);
@@ -289,10 +285,7 @@ struct console_play
 	// The lever is the picker, HELD exactly as TRAINING holds its route byte and for the same reason -- the
 	// game unpacks and reloads its own code, so the patch goes back whenever Sega's words come back -- and
 	// GIVEN BACK when the game ends, or the next game would fight there too.
-	enum { S_OFF, S_ARMED, S_HELD } vs_stage = S_OFF;
-	int vs_scene = 0;
-	int vs_stage_armed = 0;
-	int vs_frames = 0, vs_repatch = 0;
+	int vs_scene = 0;   // (the holding itself is H_STAGE in the holds machine)
 
 	// THE MOMENT THE CHARACTERS ARE CHOSEN, which is where the summer's ROM put its stage select and
 	// where Sega left room for one. The six SEL sub-states are SEL_START, SELECT, STAGE_SEL_INT,
@@ -360,15 +353,17 @@ struct console_play
 	// so answering the page is only a matter of asking for DECIDE_INT, the one it would have gone to itself.
 	void stage_chosen(m3::Model3 &b, int scene)
 	{
-		b.fv2_leave_stage_select();
+		// NOTHING IS WRITTEN HERE ANY MORE: the page's answer is ASKED FOR, and both writes happen where
+		// every write of this layer happens -- at the top of step(), on the frame boundary.
+		(void)b;
+		ask_for(ask::stage_free);
 		vs_scene = scene >= 1 ? scene : 0;
-		if (!vs_scene) { vs_stage = S_OFF; fprintf(stderr, "the console's stage: nothing held, the game picks its own\n"); return; }
-		// IT SAYS WHAT IT DID. A patch that was not applied leaves a picture that looks perfectly normal --
-		// the game simply picks its own arena -- so a silent hold is indistinguishable from a working one.
-		const int said = b.fv2_hold_stage(vs_scene);
-		fprintf(stderr, "the console's stage: holding scene %d, the picker says %d (1 patched, 0 nothing to do, -1 refused)\n",
-				vs_scene, said);
-		vs_stage = S_HELD;
+		if (!vs_scene) {
+			drop_hold(H_STAGE);
+			fprintf(stderr, "the console's stage: nothing held, the game picks its own\n");
+			return;
+		}
+		arm_hold(H_STAGE);
 	}
 
 	void choose_versus(int scene = 0)
@@ -380,8 +375,7 @@ struct console_play
 		sel_frames = -1;
 		since_choice = -1;
 		vs_scene = scene >= 1 && scene <= 14 ? scene : 0;
-		vs_stage = vs_scene ? S_ARMED : S_OFF;
-		vs_stage_armed = 0;
+		if (vs_scene) arm_hold(H_STAGE); else drop_hold(H_STAGE);
 		choose_arcade();
 		is_versus = true;      // (after choose_arcade, which clears it)
 		versus_ran = false;
@@ -735,6 +729,126 @@ struct console_play
 		}
 	}
 
+	// ---- WHAT THIS PORT HOLDS IN THE GAME WHILE A MODE RUNS: four things, ONE machine ----
+	//
+	// Survival's flag, RANDOM_CHARA, the training's mark and the arena the draw must pick were four
+	// little state machines written one after another, each with its own three-valued enum, its own
+	// counter, its own copy of the same give-up, and its own switch at the end of step(). They are the
+	// same shape, and it is the shape the measurements imposed, not a choice:
+	//
+	//   ARMED   chosen, and nothing written yet. Survival's flag written during the attract loop stops
+	//           the game starting at all -- measured -- so nothing may be written until a game is
+	//           actually running, and the wait is given up on after HOLD_GIVE_UP frames rather than
+	//           guessed at;
+	//   LIVE    written. Two of the four have to be put back EVERY frame, because the game reloads what
+	//           they sit in: the roster patch's discipline (Survival's flag, and the draw's table, which
+	//           lives in code the game unpacks again). The other two are written once;
+	//   and back to OFF when the game ends, with what was there before put back -- left on, Survival's
+	//           flag blocks the next game and ARCADE stops working.
+	//
+	// So: one table, one machine, and each of the four says only what it writes.
+	enum { H_SURVIVAL, H_RANDOM, H_TRAINING, H_STAGE, H_COUNT };
+	enum { H_OFF, H_ARMED, H_LIVE };
+	static const char *hold_name(int h)
+	{
+		static const char *const N[H_COUNT] = { "Survival", "RANDOM", "TRAINING", "the arena" };
+		return h >= 0 && h < H_COUNT ? N[h] : "?";
+	}
+	// which of them the game takes back if they are not put back: measured, not assumed (see above)
+	static bool hold_renews(int h) { return h == H_SURVIVAL || h == H_STAGE; }
+	static constexpr int HOLD_GIVE_UP = 300;
+	uint8_t hold_at[H_COUNT] = {};
+	int hold_wait[H_COUNT] = {};
+	int hold_was[H_COUNT] = {};     // what the game had there before this port touched it
+	int stage_frames = 0, stage_repatch = 0;
+
+	void arm_hold(int h, int was = 0) { hold_at[h] = H_ARMED; hold_wait[h] = 0; hold_was[h] = was; }
+	void drop_hold(int h) { hold_at[h] = H_OFF; }
+
+	// What each one writes when a game begins, and nothing else belongs here.
+	void hold_begin(m3::Model3 &b, int h)
+	{
+		switch (h) {
+		case H_SURVIVAL: b.fv2_set_survival(true); break;
+		case H_RANDOM:
+			// read HERE and not when the line was chosen: it is the running game's value that has to go back
+			hold_was[H_RANDOM] = b.fv2_random_chara();
+			b.fv2_set_random_chara(true);
+			break;
+		case H_TRAINING: break;   // the mode writes nothing of its own: its holding is step_training's
+		case H_STAGE: {
+			// IT SAYS WHAT IT DID. A patch that was not applied leaves a picture that looks perfectly
+			// normal -- the game simply picks its own arena -- so a silent hold reads like a working one.
+			const int said = b.fv2_hold_stage(vs_scene);
+			stage_frames = stage_repatch = 0;
+			fprintf(stderr, "the console's stage: holding scene %d, the picker says %d (1 patched, 0 nothing to do)\n",
+				vs_scene, said);
+			break;
+		}
+		}
+	}
+
+	// What each one puts back when the game ends.
+	void hold_end(m3::Model3 &b, int h)
+	{
+		switch (h) {
+		case H_SURVIVAL: b.fv2_set_survival(hold_was[H_SURVIVAL] != 0); break;
+		case H_RANDOM: b.fv2_set_random_chara(hold_was[H_RANDOM] > 0); break;
+		case H_TRAINING:
+			// THE MODE GOES OUT WITH THE GAME. Leaving a match already turned it off (leave_match); a
+			// training that ends by itself used to leave it on, and the next game would have been one too.
+			training_on = false;
+			break;
+		case H_STAGE:
+			// Sega's own words back, and the native code made again: the native code was made from OUR two
+			// words, so putting Sega's back is a mismatch in its turn.
+			b.fv2_release_stage();
+			break;
+		}
+	}
+
+	// What each one has to put back every frame, for those that need it.
+	void hold_renew(m3::Model3 &b, int h)
+	{
+		if (h == H_SURVIVAL) b.fv2_set_survival(true);
+		else if (h == H_STAGE) {
+			// (measured: how often the patch really has to be laid again)
+			if (b.fv2_hold_stage(vs_scene) > 0) ++stage_repatch;
+			if (++stage_frames % 300 == 0)
+				fprintf(stderr, "the console's stage: %d frames held, %d of them re-patched\n", stage_frames, stage_repatch);
+		}
+	}
+
+	void step_holds(m3::Model3 &b)
+	{
+		const bool running = !b.fv2_in_attract();
+		for (int h = 0; h < H_COUNT; h++) switch (hold_at[h]) {
+		case H_ARMED:
+			if (running) {
+				// IT SAYS THAT IT TOOK. A hold that never went in looks exactly like a game played without it,
+				// which is how Survival's first version went unnoticed for a day.
+				hold_at[h] = H_LIVE;
+				hold_begin(b, h);
+				fprintf(stderr, "the console: %s is held, the game having started\n", hold_name(h));
+			}
+			else if (++hold_wait[h] > HOLD_GIVE_UP) {
+				hold_at[h] = H_OFF;
+				fprintf(stderr, "the console: %s was armed and no game started in %d frames -- let go of\n",
+					hold_name(h), HOLD_GIVE_UP);
+			}
+			break;
+		case H_LIVE:
+			if (!running) {
+				hold_end(b, h);
+				hold_at[h] = H_OFF;
+				fprintf(stderr, "the console: %s put back, the game being over\n", hold_name(h));
+			}
+			else if (hold_renews(h)) hold_renew(b, h);
+			break;
+		default: break;
+		}
+	}
+
 	void step(m3::Model3 &b, m3::Controls &out)
 	{
 		out = m3::Controls();
@@ -830,75 +944,6 @@ struct console_play
 				}
 			}
 		}
-		switch (survival) {
-		case ARMED:
-			// nothing written yet: waiting for the game to actually be running
-			if (!b.fv2_in_attract()) { survival = HELD; b.fv2_set_survival(true); }
-			else if (++armed_frames > 300) survival = OFF;   // (the game never started: give up rather than guess)
-			break;
-		case HELD:
-			if (b.fv2_in_attract()) { b.fv2_set_survival(survival_was != 0); survival = OFF; }
-			else b.fv2_set_survival(true);
-			break;
-		case OFF: break;
-		}
-		switch (random_mode) {
-		case R_ARMED:
-			// nothing written yet: waiting for the game to actually be running, as Survival does
-			if (!b.fv2_in_attract()) {
-				random_was = b.fv2_random_chara();
-				b.fv2_set_random_chara(true);
-				random_mode = R_SET;
-			}
-			else if (++random_armed > 300) random_mode = R_OFF;   // (the game never started: give up)
-			break;
-		case R_SET:
-			// written once and not held; put back when the game ends, so it does not carry into the next one
-			if (b.fv2_in_attract()) { b.fv2_set_random_chara(random_was > 0); random_mode = R_OFF; }
-			break;
-		case R_OFF: break;
-		}
-		// TRAINING'S ARENA IS NOW THE DRAW'S, not the route table's, and that follows from the entry: the
-		// mode opens a VERSUS, and the route byte was measured not to command one (held at 3, a versus
-		// still fought in scene 8). The draw's table does -- it is what the stage page holds -- so training
-		// holds it the same way, and the vs_stage machinery below does the holding.
-		switch (training) {
-		case T_ARMED:
-			if (!b.fv2_in_attract()) training = T_HELD;
-			else if (++training_armed > 300) training = T_OFF;   // (the game never started: give up)
-			break;
-		case T_HELD:
-			if (b.fv2_in_attract()) training = T_OFF;
-			break;
-		case T_OFF: break;
-		}
-		switch (vs_stage) {
-		case S_ARMED:
-			// the same wait as TRAINING's and Survival's: the game is still in its attract loop when the page
-			// closes, and the arena is read when the match starts, well after this
-			if (!b.fv2_in_attract()) {
-				const int said = b.fv2_hold_stage(vs_scene);
-				fprintf(stderr, "the console's stage: holding scene %d, the picker says %d (1 patched, 0 nothing to do)\n",
-				        vs_scene, said);
-						vs_stage = S_HELD;
-			}
-			else if (++vs_stage_armed > 300) vs_stage = S_OFF;   // (the game never started: give up)
-			break;
-		case S_HELD:
-			if (b.fv2_in_attract()) {
-				// Sega's own words back, and the native code made again: after the rebuild below the native
-				// code was made from OUR two words, so putting Sega's back is a mismatch in its turn.
-				b.fv2_release_stage();
-				vs_stage = S_OFF;
-			}
-			else {
-				// (mesure : combien de fois la rustine doit vraiment etre reposee)
-				if (b.fv2_hold_stage(vs_scene) > 0) ++vs_repatch;
-				if (++vs_frames % 300 == 0)
-					fprintf(stderr, "the console's stage: %d frames held, %d of them re-patched\n", vs_frames, vs_repatch);
-			}
-			break;
-		case S_OFF: break;
-		}
+		step_holds(b);
 	}
 };
