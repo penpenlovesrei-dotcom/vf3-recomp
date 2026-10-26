@@ -138,6 +138,7 @@
 #include "fv2_pause.h"
 #include "fv2_stage_list.h"
 #include "fv2_training.h"
+#include "fv2_curtain.h"
 #include "fv2_fin.h"
 #include "fv2_texte.h"
 #include "menu.h"
@@ -2808,6 +2809,7 @@ int main(int argc, char **argv)
 	fv2_options options;
 	fv2_pause pause;   // Start during a match, over the fight
 	fv2_stage_list stages;   // VERSUS's arena, chosen before the match (fv2_stage_list.h)
+	fv2_curtain curtain;     // the Dreamcast's loading picture, over a game being taken somewhere (fv2_curtain.h)
 	// A line of the list chosen while a match was still ending, held until it is (see where it is set).
 	int mode_wanted = -1;
 	fv2_training train;      // TRAINING's column of inputs and its damage (fv2_training.h)
@@ -2818,8 +2820,12 @@ int main(int argc, char **argv)
 	auto draw_console = [&](m3::Model3 &b) {
 		SDL_FRect all, mid;
 		const bool column = cplay.training_on && cplay.train_fighting;
-		if (!modes.shown && !options.shown && !pause.shown && !stages.shown && !column) return;
+		const bool veil = cplay.ui.at == cstate::GOING;
+		if (!modes.shown && !options.shown && !pause.shown && !stages.shown && !column && !veil) return;
 		picture_rect(all, mid);
+		// THE CURTAIN FIRST, and under everything: it is not a surface the player works, it is what is on
+		// screen while the game is taken from one place to another (fv2_curtain.h).
+		if (veil) curtain.render(ren, all, mid);
 		// TRAINING's column goes UNDER the surfaces and over the fight, and only while a round is being
 		// fought: a column that stayed up through the judgement and the replay would be reading itself.
 		if (column) train.render(ren, all, mid);
@@ -2853,6 +2859,7 @@ int main(int argc, char **argv)
 		pause.load(ren, find_assets(), &console_font, stderr);
 		stages.load(ren, find_assets(), &console_font, stderr);
 		train.load(ren, find_assets(), &console_font, stderr);
+		curtain.load(ren, find_assets(), stderr);
 		fin.find(find_assets(), stderr);
 		fin.want = cfg.ending_dc;
 	}
@@ -3064,6 +3071,7 @@ int main(int argc, char **argv)
 					pause.load(ren, find_assets(), &console_font, stderr);
 					stages.load(ren, find_assets(), &console_font, stderr);
 					train.load(ren, find_assets(), &console_font, stderr);
+					curtain.load(ren, find_assets(), stderr);
 				}
 				g_pc_mode = !cfg.arcade;
 				cfg_dirty = true;
@@ -3595,6 +3603,11 @@ int main(int argc, char **argv)
 			else {
 				cplay.ask_for(console_play::ask::end_match);
 				cplay.leave_match(console_play::L_TO_SELECT);
+				// AND THE CURTAIN OVER IT, for the same reason MAIN MENU has the list's ground over it: the end
+				// of a game is CONTINUE and then GAME OVER, modes of their own, and this road let the player
+				// watch them go by and hear them. GOING says the port owns the screen and the sound while the
+				// game walks to its select screen (console_state.h).
+				enter(cstate::GOING, "CHANGE YOUR VIPER: the game is taken to the select screen");
 			}
 		} else if (line == fv2_pause::REMATCH) {
 			// August's own road, and the one his notes did not expect: the game already restarts a fight
@@ -3758,6 +3771,7 @@ int main(int argc, char **argv)
 			pause.textures_lost(ren, find_assets());
 			stages.textures_lost(ren, find_assets());
 			train.textures_lost(ren, find_assets());
+			curtain.textures_lost(ren, find_assets());
 		}
 		new_frame = true;   // (the next picture sends the 2D again)
 	};
@@ -4424,6 +4438,9 @@ int main(int argc, char **argv)
 				// says when it is done, and that is the transition.
 				if (cplay.ui.at == cstate::MENU_IN && cplay.leaving == console_play::L_OFF)
 					enter(cstate::MENU, "the game is home");
+				// and the curtain comes down when the road it was drawn over is finished
+				if (cplay.ui.at == cstate::GOING && cplay.leaving == console_play::L_OFF)
+					enter(cstate::PLAY, "the select screen is reached");
 				if (cplay.want_stage_page) {
 					cplay.want_stage_page = false;
 					if (stages.ready && !stages.shown && !no_stage_page) {

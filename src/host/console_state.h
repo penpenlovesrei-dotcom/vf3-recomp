@@ -50,6 +50,7 @@ enum class cstate {
 	PAUSE,        // the pause menu over a frozen fight
 	STAGE,        // the carousel on the select screen: the game RUNS, parked in Sega's empty STAGE_SEL
 	STAGE_HELD,   // the carousel opened from the pause menu: there is no sub-state to park in, so the game is held
+	GOING,        // a way out of a match that leads back into the game: the curtain, and the game walks behind it
 	MENU_IN,      // the list is up and the game is walking home behind it: seen by nobody, heard by nobody
 	MENU,         // the list, with the game held still at its title screen
 	OPTIONS,      // the OPTIONS tree, the same way
@@ -76,6 +77,7 @@ inline const crule &crules(cstate s)
 		{ "PAUSE",      false, cscreen::OVER, csound::BOTH, cinput::PORT },
 		{ "STAGE",      true,  cscreen::OVER, csound::BOTH, cinput::PORT },
 		{ "STAGE_HELD", false, cscreen::OVER, csound::BOTH, cinput::PORT },
+		{ "GOING",      true,  cscreen::PORT, csound::PORT, cinput::PORT },
 		{ "MENU_IN",    true,  cscreen::PORT, csound::PORT, cinput::PORT },
 		{ "MENU",       false, cscreen::PORT, csound::BOTH, cinput::PORT },
 		{ "OPTIONS",    false, cscreen::PORT, csound::BOTH, cinput::PORT },
