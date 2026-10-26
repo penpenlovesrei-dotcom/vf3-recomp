@@ -4065,8 +4065,9 @@ int main(int argc, char **argv)
 						(unsigned long long)game_frame, fin.want ? "DREAMCAST" : "ARCADE");
 			}
 		}
-		// VF3_CONSOLE_PAUSE=n: the pause menu answered without a hand -- 0 TITLE SCREEN, 1 CHANGE YOUR VIPER,
-		// 2 REMATCH, 3 CHANGE STAGE -- as soon as it is up, however it was opened. The third of this family,
+		// VF3_CONSOLE_PAUSE=n: the pause menu answered without a hand -- the line's own number in fv2_pause.h,
+		// which is 0 RESUME, 1 REMATCH, 2 CHANGE STAGE, 3 CHANGE YOUR VIPER, 4 MAIN MENU -- as soon as it is
+		// up, however it was opened. The third of this family,
 		// and for the same reason as the first two: the menu FREEZES the game, so VF3_KEYS_S goes by a clock
 		// the game no longer shares and a measurement silently becomes a run that chose nothing.
 		if (static const char *cp = getenv("VF3_CONSOLE_PAUSE"); cp) {
@@ -4364,12 +4365,12 @@ int main(int argc, char **argv)
 				// the first time round.
 				if (cplay.on) {
 					const bool st = live.start[0] || live.start[1] || script_ctl.start[0] || script_ctl.start[1];
-					// AND START IS DEAD WHILE A WAY OUT OF A MATCH IS RUNNING. Choosing TITLE SCREEN or
+					// AND START IS DEAD WHILE A WAY OUT OF A MATCH IS RUNNING. Choosing MAIN MENU or
 					// CHANGE YOUR VIPER finishes the match off screen over three and a half seconds; a
 					// Start pressed in that interval used to pause the game, which froze the PowerPC and
 					// stopped the exit, so the menu looked as if it had done nothing. Measured in
 					// Frederic's own log of the 2026-10-25: the pause opened at frames 2200, 2236 and
-					// 2272 and TITLE SCREEN was chosen three times over.
+					// 2272 and the line was chosen three times over.
 					bool busy = cplay.leaving != console_play::L_OFF;
 					if (busy) cplay.swallow_start = true;
 					const console_play::start_for what = busy

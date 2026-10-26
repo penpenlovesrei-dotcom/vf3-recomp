@@ -45,7 +45,9 @@ struct fv2_pause
 	//                      drawn once a match, so in a versus and in training it is this match's arena that
 	//                      changes, while on the arcade's fixed road it would be the next one's. A line that
 	//                      changes something else than it says is worse than no line.
-	//   CHANGE YOUR VIPER  the match finished off screen, then the select screen with two players.
+	//   CHANGE YOUR VIPER  the match finished off screen, then the select screen with two players -- and
+	//                      the Dreamcast's loading picture over the whole road, so that the end of the
+	//                      game is neither seen nor heard (fv2_curtain.h, the GOING state).
 	//   MAIN MENU          the same road, and THE CONSOLE'S OWN LIST OF MODES at the end of it. It said
 	//                      TITLE SCREEN and went to the game's, which on this board means walking through
 	//                      its GAME OVER scene -- Frederic saw it the 2026-10-25 and asked for the menu

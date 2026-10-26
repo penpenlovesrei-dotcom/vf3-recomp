@@ -205,7 +205,8 @@ struct console_play
 	bool train_pick_arm = false;
 	// WHETHER THE CLOCK IS STILL STOPPED BY US. The freeze is a bit of the game's CONFIG block, held while
 	// training runs; when the mode goes out -- and leaving a match turns it out -- nobody put it back, so
-	// the clock stayed stopped for ever. That is why TITLE SCREEN did nothing in training: fv2_end_match
+	// the clock stayed stopped for ever. That is why MAIN MENU (TITLE SCREEN as the line was called then)
+	// did nothing in training: fv2_end_match
 	// sets GAME_TIMER to 1 and waits for FIGHT_DSP to count it down, and FIGHT_DSP does not count at all
 	// while that bit is set. The match could not end, so there was nothing to leave.
 	bool train_froze = false;
@@ -224,8 +225,11 @@ struct console_play
 	// command is dropped: from the announcement's first state to a little past the fight's first frame,
 	// and never during the fight itself, where the same bank carries what the blows say.
 	int train_hush = 0;
-	// THE PRESENTATION STAYS, AND NOW WE KNOW WHY: it is the arena loading, not a wait anybody put there.
-	// Frederic asked for the fight to start straight away, with no STAGE / VS screen and no ROUND 1.
+	// WHAT STAYS BEFORE A FIGHT IS THE LOAD, and only the load: the four ROUND_MASK sub-states. The
+	// seven that follow them -- ROUND, SET, READY -- are the announcement, they load nothing, and
+	// step_training cuts them, which is why a training fight now begins ten frames after the load ends
+	// instead of three hundred. The paragraph below is why the four themselves cannot go.
+	//
 	// Asking GAME's sub-states 0 to 3 to move on -- which is all fv2_cut_submode does -- gave a BLACK
 	// SCREEN with nothing on it but the HUD, three times over: all four cut, ROUND_MASK_DSP alone, and
 	// ROUND_MASK_DSP at its forty-first frame, which is where this port's own note had cut it.
@@ -248,7 +252,8 @@ struct console_play
 	// rounds, where nothing is loaded, the game already passes through in no time.
 	//
 	// What could still be done is hide the BANNER that is drawn over the load. That does not make the
-	// fight start any sooner; it replaces a screen that says what is coming with a blank one.
+	// fight start any sooner; it replaces a screen that says what is coming with a blank one, and
+	// Frederic liked the blank one less when it was tried the 2026-10-25.
 
 	// ---- THE TRIP THROUGH THE SELECT SCREEN: one state, and it is read from the game's own ----
 	//
@@ -772,11 +777,12 @@ struct console_play
 			// SHORT instead, by the game's own lever, below.
 			return;
 		}
-		// L_CLEARING. AND THE TITLE ASKED FOR WHILE IT RUNS, when that is where this is going: the end of a
-		// game is CONTINUE and then GAME OVER, each a mode of its own, and expiring their screens only makes
-		// them short -- Frederic saw GAME OVER go by the 2026-10-25. fv2_request_title is the game's own
-		// lever and it works here, where the attract loop is running again; it is renewed every half second
-		// because those screens write the mode themselves as they come and go.
+		// L_CLEARING: the end-of-game screens. CONTINUE and then GAME OVER are modes of their own, and the
+		// only lever there is their screen timer -- asking for the title from inside them takes their
+		// housekeeping with them and the title comes up GLITCHED, which Frederic saw the 2026-10-25. So
+		// they are walked through and made SHORT, and what hides them is the port's own screen: the list's
+		// ground where this leads to the menu, the Dreamcast's loading picture where it leads back into the
+		// game (console_state.h, MENU_IN and GOING). Nothing of them is seen or heard either way.
 		if (leave_for == L_TO_TITLE && b.fv2_on_title()) {
 			fprintf(stderr, "the console: the title screen reached in %d frames\n", leave_frames);
 			leaving = L_OFF;
