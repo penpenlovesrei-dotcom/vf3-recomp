@@ -250,14 +250,67 @@ struct console_play
 	// What could still be done is hide the BANNER that is drawn over the load. That does not make the
 	// fight start any sooner; it replaces a screen that says what is coming with a blank one.
 
-	enum { SEL_NOTHING, SEL_RANDOM, SEL_VERSUS } at_select = SEL_NOTHING;
-	int sel_frames = -1;          // frames since the select screen appeared; -1 until it does
-	int since_choice = -1;        // frames since the fighter was chosen; -1 until it is
+	// ---- THE TRIP THROUGH THE SELECT SCREEN: one state, and it is read from the game's own ----
+	//
+	// Six flags did this: at_select with three values, two frame counters, seen_select, stage_page_done
+	// and versus_trip, in two blocks of step() that each worked out where the game was for themselves --
+	// and a comment on versus_trip explaining that at_select could not be used because it was cleared
+	// thirty frames in. That is the overlapping Frederic named: two readings of one screen, neither of
+	// them the game's.
+	//
+	// The game's own reading is three moments, and both jobs hang off them (docs/fv2-etats.md):
+	//
+	//   AWAY   not on SEL at all (modes 4 and 5 are SEL_INT and SEL_DSP);
+	//   SEEN   the screen is up and has been SEEN up -- sub-state 0 or 1, SEL_START or SELECT. That
+	//          condition is not pedantry: THE SUB-STATE BYTE IS STALE WHEN A MODE BEGINS, and it cost a
+	//          measurement. Entering SEL it still held what ADV had left there -- 5 -- so a test on
+	//          "sub >= 4" fired at frame 1202, right after V.S. was chosen and three hundred frames
+	//          before anyone picked a fighter;
+	//   DONE   the fighters are chosen. AND IT IS THE REQUEST THAT SAYS SO, not the sub-state: SELECT
+	//          writes DECIDE_INT into SUBMODE_REQUEST and Sega's dispatcher acts on it the NEXT tick
+	//          (model3.cpp), so reading the request catches the game in the one tick where DECIDE_INT
+	//          has been asked for and has not run. The page opens there and the game is parked in
+	//          Sega's empty STAGE_SEL on the spot, overwriting the request before the game reads it:
+	//          DECIDE_INT then runs exactly once, when the page lets go. Reading MODE_SUB, as this did
+	//          first, caught it a tick late and ran DECIDE_INT twice. (sub >= 4 is the net under it.)
+	//
+	// And what the trip WANTS is two plain questions asked when the mode was chosen, instead of a mode
+	// enum consulted later: bring player 2 in, and open the carousel once the fighters are picked.
+	enum { SEL_AWAY, SEL_SEEN, SEL_DONE };
+	uint8_t sel_at = SEL_AWAY;
+	int sel_frames = 0;           // frames since the screen was seen
+	bool sel_two_players = false; // this trip brings player 2 in (V.S. and TRAINING)
+	bool sel_wants_page = false;  // this trip opens the console's carousel between the fighters and the fight
+	// Thirty frames before player 2's Start, to clear the transition and the press that opened the screen.
+	static constexpr int SEL_P2_AT = 30;
 
-	// WHETHER THIS GAME IS A VERSUS, and it has to be a flag of its own: at_select is cleared thirty frames
-	// after the select screen and versus_trip is spent when the stage page opens, so by the time anyone
-	// pauses neither says anything. The pause menu asks this to decide whether CHANGE STAGE commands this
-	// match's arena or the next one's.
+	void step_select(m3::Model3 &b, m3::Controls &out)
+	{
+		(void)out;
+		const int m = b.fv2_mode(), su = b.fv2_submode(), ask = b.fv2_submode_request();
+		if (m != 4 && m != 5) { sel_at = SEL_AWAY; sel_frames = 0; return; }
+		if (sel_at == SEL_AWAY) {
+			if (su == 0 || su == 1) { sel_at = SEL_SEEN; sel_frames = 0; }
+			return;
+		}
+		if (sel_at != SEL_SEEN) return;
+		++sel_frames;
+		if (sel_two_players && sel_frames == SEL_P2_AT) {
+			inject_start_p2 = 8;
+			sel_two_players = false;
+		}
+		if (ask < 4 && su < 4) return;   // the fighters are not chosen yet
+		sel_at = SEL_DONE;
+		if (!sel_wants_page) return;
+		sel_wants_page = false;   // (spent: a later game asks for it again by choosing V.S. again)
+		want_stage_page = true;
+		// parked on this very tick, which is the whole of the paragraph above
+		b.fv2_park_stage_select();
+	}
+
+	// WHETHER THIS GAME IS A VERSUS, and it has to be a flag of its own: the trip through the select
+	// screen is over long before anyone pauses, and its two wants are spent. The pause menu asks this to
+	// decide whether CHANGE STAGE commands this match's arena or the next one's.
 	bool is_versus = false;
 	// AND IT IS NOT CLEARED THE MOMENT THE GAME IS IN ITS ATTRACT LOOP, which it still is for a few frames
 	// after the line is chosen -- the injected Start has not been read yet. Cleared that way the flag was
@@ -278,7 +331,7 @@ struct console_play
 		choose_versus(MARBLE_ARENA);
 		// AND NO CAROUSEL. The stage page belongs to the V.S. line, where choosing the arena is the point;
 		// training has its own and asking for it twice would be a page to dismiss before every session.
-		versus_trip = false;
+		sel_wants_page = false;
 	}
 	// ---- VERSUS's arena ----
 	// The page (fv2_stage_list.h) hands the scene in, 0 meaning the game chooses as it does on the board.
@@ -293,13 +346,6 @@ struct console_play
 	// its two STAGE_SEL states are an empty stub. So the page opens on DECIDE_INT, the game frozen under
 	// it, and the stage is held before the match reads it ten frames later at ROUND_MASK_INT.
 	bool want_stage_page = false;
-	int stage_page_done = 0;      // once per trip through the select screen
-	bool seen_select = false;     // SEL_START or SELECT seen: the sub-state byte means something now
-	// AND A FLAG OF ITS OWN FOR "THIS IS A VERSUS", because at_select cannot be used here: it is cleared
-	// THIRTY FRAMES after the select screen appears, by the machinery that injects player 2's Start (below).
-	// The fighters are chosen three hundred frames later, so by then at_select says SEL_NOTHING and the page
-	// never opened -- measured, and that was the whole of the second failure.
-	bool versus_trip = false;
 
 	// THE TWO TASK REGISTERS AS THEY READ WHILE A FIGHT IS RUNNING, kept so the pause menu's REMATCH can
 	// hand back whichever of them the game has stopped. The versus is player 2 stepping into player 1's
@@ -368,12 +414,11 @@ struct console_play
 
 	void choose_versus(int scene = 0)
 	{
-		at_select = SEL_VERSUS;
-		versus_trip = true;        // (lives until the fighters are chosen: at_select does not, see above)
-		stage_page_done = 0;
-		seen_select = false;
-		sel_frames = -1;
-		since_choice = -1;
+		// what this trip through the select screen wants of it, asked here and nowhere else
+		sel_at = SEL_AWAY;
+		sel_frames = 0;
+		sel_two_players = true;
+		sel_wants_page = true;
 		vs_scene = scene >= 1 && scene <= 14 ? scene : 0;
 		if (vs_scene) arm_hold(H_STAGE); else drop_hold(H_STAGE);
 		choose_arcade();
@@ -872,34 +917,8 @@ struct console_play
 				if (const int t2 = b.fv2_task2_state(); t2 > 0) task_live[1] = uint32_t(t2);
 			}
 		}
-		// The characters chosen: SELECT (1) gives way to DECIDE_INT (4), and the stage page belongs in
-		// between -- where Sega's own STAGE_SEL_INT and STAGE_SEL_DSP sit empty. Raised once per trip
-		// through the select screen, and only for a versus, which is the mode Frederic asked for.
-		{
-			// THE SUB-STATE BYTE IS STALE WHEN A MODE BEGINS, and that cost a measurement: entering SEL it
-			// still held what ADV had left there -- 5 -- so a test on "sub >= 4" fired at frame 1202, right
-			// after V.S. was chosen and three hundred frames before anyone picked a fighter. So the select
-			// screen has to have been SEEN first: sub 0 or 1, SEL_START or SELECT, in SEL's own mode.
-			// AND IT IS THE REQUEST THAT IS WATCHED, not the sub-state. SELECT writes DECIDE_INT into
-			// SUBMODE_REQUEST and Sega's dispatcher acts on it the NEXT tick (model3.cpp), so reading the
-			// request catches the game in the one tick where DECIDE_INT has been asked for and has not run.
-			// The page is opened there and the game parked in STAGE_SEL on the spot, overwriting the request
-			// before the game ever reads it: DECIDE_INT then runs exactly once, when the page lets go.
-			// Reading MODE_SUB, as this did first, caught it a tick late and ran DECIDE_INT twice.
-			const int m = b.fv2_mode(), su = b.fv2_submode(), ask = b.fv2_submode_request();
-			if (m != 4 && m != 5) seen_select = false;
-			else {
-				if (su == 0 || su == 1) { seen_select = true; stage_page_done = 0; }
-				// su >= 4 is the net under it: if ever the tick above is missed, the page still opens.
-				if (seen_select && !stage_page_done && versus_trip && (ask >= 4 || su >= 4)) {
-					stage_page_done = 1;
-					seen_select = false;
-					versus_trip = false;   // (spent: a later game asks for it again by choosing V.S. again)
-					want_stage_page = true;
-					b.fv2_park_stage_select();
-				}
-			}
-		}
+		// THE TRIP THROUGH THE SELECT SCREEN is a state of its own now, and it is read from the game's.
+		step_select(b, out);
 		if (skip_logo > 0) {
 			const int mode = b.fv2_mode(), sub = b.fv2_submode();
 			// The SEGA logo, and not a sub-state before it: the tasks that draw are cleared BETWEEN sub-state
@@ -924,26 +943,6 @@ struct console_play
 		}
 		if (inject_start > 0) { out.start[0] = true; inject_start--; }
 		if (inject_start_p2 > 0) { out.start[1] = true; inject_start_p2--; }
-		if (at_select != SEL_NOTHING) {
-			const int mode = b.fv2_mode();
-			const bool on_select = mode == 4 || mode == 5;   // SEL_INT, SEL_DSP
-			if (!on_select) {
-				// Before the screen: wait. After it: the work is done either way, and a hold that outlived
-				// its screen would be a hold on whatever came next.
-				if (sel_frames >= 0) at_select = SEL_NOTHING;
-			} else {
-				sel_frames++;
-				if (at_select == SEL_VERSUS) {
-					if (sel_frames == 30) { inject_start_p2 = 8; at_select = SEL_NOTHING; }
-				} else {
-					constexpr int SEL_SUB_DECIDE = 4;
-					if (since_choice >= 0) since_choice++;
-					else if (b.fv2_submode() >= SEL_SUB_DECIDE) since_choice = 0;
-					if (since_choice > 90) at_select = SEL_NOTHING;        // (90 frames past the choice: let go)
-					else if (sel_frames >= 30) out.start[0] = true;        // held, every frame
-				}
-			}
-		}
 		step_holds(b);
 	}
 };
