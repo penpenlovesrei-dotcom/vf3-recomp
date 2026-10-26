@@ -10,6 +10,7 @@
 // 44.1 kHz.
 #pragma once
 #include "scsp.h"
+#include "scsp_mame.h"
 #include "../../third_party/mame/m68000/m68000.h"
 #include <cstdint>
 #include <memory>
@@ -76,7 +77,37 @@ private:
 	struct Bus;
 	std::unique_ptr<Bus> bus;
 	std::unique_ptr<m68000_device> cpu;
-	std::unique_ptr<scsp_device> scsp[2];
+	// Les deux puces, derriere l'interface neuve (src/sound/scsp_core.h). La carte ne leur parle plus que
+	// par elle -- registres, temps, timers, MIDI -- et n'atteint l'ancienne classe, par `->device()`, que
+	// pour ce qui n'est pas l'affaire de la puce : les gains par groupe du partage musique/effets, la sonde
+	// d'energie, le miroir MADRS. C'est l'etape 3 de docs/scsp_migration_plan.md, et ces `device()`-la sont
+	// ce qui doit partir en dernier.
+	std::unique_ptr<scsp_mame> scsp[2];
+	// Ce que la carte branche sous chaque puce : trois methodes au lieu de cinq std::function.
+	struct Sink final : scsp::sink {
+		SoundBoard *b = nullptr;
+		int n = 0;
+		void irq(int level, bool on) override;
+		void midi_out(std::uint8_t byte) override;
+		void timer(int which, std::uint32_t samples, std::uint32_t period) override;
+	};
+	Sink sinks[2];
+	// Les echantillons de la trame, accumules par sync_sound() au fil des acces registre, et melanges a la
+	// fin. En entiers signes a l'echelle 18 bits (scsp_mame::PLEINE_ECHELLE), comme la puce les a.
+	std::vector<std::int32_t> pcm[2];
+	// Remet les deux puces a l'heure du 68000. A APPELER AVANT TOUT ACCES REGISTRE : l'ancienne classe le
+	// faisait d'elle-meme (son write() commencait par update()), l'interface neuve ne le fait pas -- c'est
+	// le prix du temps pousse, et le §2 de l'architecture le dit : "l'appelant garantit que le temps est a
+	// jour avant d'y toucher". Sans cet appel, toute la trame serait fabriquee d'un coup a la fin et les
+	// ecritures ne tomberaient plus au meme endroit dans le son.
+	// UNE SEULE PUCE, celle qu'on touche. L'ancien chemin n'avancait que celle-la (son write() appelait
+	// update() sur elle seule) ; remettre les DEUX a l'heure a chaque acces fabrique un echantillon de
+	// l'autre trop tot, et le harnais l'a vu : une paire perdue sur 4200 images et tout le son decale d'un
+	// echantillon a partir de l'image 1006, ou le pilote charge un programme DSP en 2450 ecritures.
+	void sync_sound(int n);
+	void sync_sound() { sync_sound(0); sync_sound(1); }
+	// Le nombre d'octets MIDI que la carte a jetes (elle n'en fait rien aujourd'hui), compte plutot que tu.
+	std::uint64_t midi_out_jetes = 0;
 	std::vector<uint16_t> ram[2];
 	int frames = 0;   // run() calls (tests' logs)
 	const std::vector<uint8_t> *rom = nullptr, *samples = nullptr;

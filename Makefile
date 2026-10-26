@@ -41,7 +41,7 @@ HOST = src/host/main.cpp src/host/menu.cpp src/host/sysinfo.cpp src/host/d3d11_m
 CORE = src/ppc/ppc.cpp src/machine/model3.cpp src/machine/romset.cpp src/machine/fv2_portraits.cpp src/host/input_script.cpp \
 	src/rec/ppc_rec.cpp src/rec/vf3_map.cpp src/rec/fv2_map.cpp src/video/tilegen.cpp src/video/r3d_scene.cpp src/video/r3d_raster.cpp \
 	src/video/tex3d_hd.cpp src/video/tilehd.cpp \
-	src/sound/soundboard.cpp src/sound/scsp.cpp src/sound/scspdsp.cpp src/core/mame_shim.cpp \
+	src/sound/soundboard.cpp src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp \
 	third_party/mame/m68000/m68000.cpp third_party/mame/m68000/m68000-decode.cpp \
 	third_party/mame/m68000/m68000-sdf.cpp third_party/mame/m68000/m68000-sdp.cpp \
 	third_party/mame/315-5881/crypt_315_5881.cpp
@@ -84,9 +84,17 @@ $(BIN)/test_scsp_contract: $(call objs,tools/son/test_scsp_contract.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract
+# MAME's SCSP driven ONLY through the new interface (tools/son/test_scsp_core.cpp): step 3 of the migration
+# plan, the one that decides whether the contract holds. Writes its registers through scsp_contract.h's own
+# field table, so a wrong field there stops the sound here instead of in a game.
+$(BIN)/test_scsp_core: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_core.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core
 	$(BIN)/test_scspdsp
 	$(BIN)/test_scsp_contract
+	$(BIN)/test_scsp_core
 
 clean:
 	rm -rf build

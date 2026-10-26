@@ -40,8 +40,10 @@ struct SoundBoard::Bus : m68000_bus
 			return u16(0x18 + ((a >> 1) & 7));   // the autovectors
 		a &= 0xFFFFFE;
 		switch (a >> 20) {
-		case 0x1: return b.scsp[0]->read((a & 0xFFF) >> 1);
-		case 0x3: return b.scsp[1]->read((a & 0xFFF) >> 1);
+		// Les deux puces a l'heure AVANT de les lire : l'interface neuve ne remet pas le temps a jour
+		// d'elle-meme (soundboard.h, sync_sound).
+		case 0x1: b.sync_sound(0); return b.scsp[0]->read_reg((a & 0xFFF) >> 1);
+		case 0x3: b.sync_sound(1); return b.scsp[1]->read_reg((a & 0xFFF) >> 1);
 		default: return peek(a);
 		}
 	}
@@ -99,9 +101,10 @@ struct SoundBoard::Bus : m68000_bus
 				else if (mem_mask == 0xFF00) fprintf(wl, "%d b %04x %02x\n", b.frames, a & 0xFFFF, data >> 8);
 				else fprintf(wl, "%d b %04x %02x\n", b.frames, (a & 0xFFFF) + 1, data & 0xFF);
 			}
-			b.scsp[0]->write((a & 0xFFF) >> 1, data, mem_mask);
+			b.sync_sound(0);
+			b.scsp[0]->write_reg((a & 0xFFF) >> 1, data, mem_mask);
 			break;
-		case 0x3: b.scsp[1]->write((a & 0xFFF) >> 1, data, mem_mask); break;
+		case 0x3: b.sync_sound(1); b.scsp[1]->write_reg((a & 0xFFF) >> 1, data, mem_mask); break;
 		case 0x4:
 			if (a == 0x400000 && (mem_mask & 0xFF)) b.ctrl = uint8_t(data);
 			break;
@@ -135,38 +138,22 @@ void SoundBoard::reset()
 	for (auto &c : timers) for (auto &t : c) t = Timer();
 	bus = std::make_unique<Bus>(*this);
 	cpu = std::make_unique<m68000_device>(*bus, uint32_t(CLOCK));
+	midi_out_jetes = 0;
 	for (int n = 0; n < 2; n++) {
-		scsp_device::host h;
-		if (n == 0)
-			h.irq = [this](int line, int state) { cpu->set_input_line(line, state == CLEAR_LINE ? CLEAR_LINE : ASSERT_LINE); };
-		else
-			h.irq = [](int, int) {};
-		h.midi_out = [](int) {};
-		h.timer_adjust = [this, n](int t, scsp_device::attotime delay, scsp_device::attotime period) {
-			Timer &tm = timers[n][t];
-			if (delay == scsp_device::NEVER) { tm.on = false; return; }
-			auto to_cycles = [](scsp_device::attotime as) {
-				return uint64_t((as * CLOCK + AS_PER_SEC - 1) / AS_PER_SEC);
-			};
-			tm.on = true;
-			tm.at = cycles_now() + std::max<uint64_t>(1, to_cycles(delay));
-			// timers A-C count the samples: due on one (the 68000's cycles at 256 a sample), as Supermodel's
-			if (t < scsp_device::TIMER_RCV) tm.at = std::max(tm.at / 256 * 256, cycles_now() + 1);
-			tm.period = period ? std::max<uint64_t>(1, to_cycles(period)) : 0;
-		};
-		h.sample_index = [this] { return cycles_now() / 256; };
-		h.time_is_zero = [this] { return cycles_now() == 0; };
-		scsp[n] = std::make_unique<scsp_device>(45158400 / 2, ram[n].data(), uint32_t(ram[n].size() * 2), h);
-		scsp[n]->group_of = [this, n](int slot) { return group_of(n, slot); };
+		pcm[n].clear();
+		sinks[n].b = this;
+		sinks[n].n = n;
+		scsp[n] = std::make_unique<scsp_mame>(45158400 / 2, ram[n].data(), uint32_t(ram[n].size() * 2), sinks[n]);
+		scsp[n]->device().group_of = [this, n](int slot) { return group_of(n, slot); };
 		// the MADRS mirror, per game (soundboard.h), unless one of the two variables says otherwise
 		{
 			const char *sep = getenv("VF3_SCSP_MADRS_SEPARATE"), *mir = getenv("VF3_SCSP_MADRS_MIRROR");
-			scsp[n]->set_madrs_mirror((sep && *sep == '1') ? false : (mir && *mir == '1') ? true : madrs_mirror);
+			scsp[n]->device().set_madrs_mirror((sep && *sep == '1') ? false : (mir && *mir == '1') ? true : madrs_mirror);
 		}
-		for (int g = 0; g < 2; g++) scsp[n]->set_group_gain(g, volume[g]);
+		for (int g = 0; g < 2; g++) scsp[n]->device().set_group_gain(g, volume[g]);
 		if (getenv("VF3_KEYON_LOG")) {   // (tests: each voice started, with the 68000's state then)
 			static FILE *kl = fopen(getenv("VF3_KEYON_LOG"), "w");
-			scsp[n]->on_key_on = [this, n](const scsp_device::key_on &k) {
+			scsp[n]->device().on_key_on = [this, n](const scsp_device::key_on &k) {
 				if (!kl) return;
 				auto w = [&](uint32_t a) {
 					a &= 0xFFFFFF;
@@ -213,32 +200,33 @@ void SoundBoard::set_volumes(float music, float effects)
 	volume[0] = music;
 	volume[1] = effects;
 	for (auto &s : scsp)
-		if (s) for (int g = 0; g < 2; g++) s->set_group_gain(g, volume[g]);
+		if (s) for (int g = 0; g < 2; g++) s->device().set_group_gain(g, volume[g]);
 }
 
 uint16_t SoundBoard::reg_word(int n, uint32_t i)
 {
-	return scsp[n]->read(i);
+	sync_sound(n);
+	return scsp[n]->device().read(i);
 }
 
 void SoundBoard::energy_on(bool on)
 {
 	for (auto &s : scsp)
-		if (s) s->m_probe = on;
+		if (s) s->device().m_probe = on;
 }
 
 void SoundBoard::energy_take(double e[2][32])
 {
 	for (int n = 0; n < 2; n++)
 		for (int sl = 0; sl < 32; sl++) {
-			e[n][sl] = scsp[n] ? scsp[n]->m_probe_direct[sl] : 0.0;
-			if (scsp[n]) scsp[n]->m_probe_direct[sl] = 0.0;
+			e[n][sl] = scsp[n] ? scsp[n]->device().m_probe_direct[sl] : 0.0;
+			if (scsp[n]) scsp[n]->device().m_probe_direct[sl] = 0.0;
 		}
 }
 
 void SoundBoard::midi_in(uint8_t byte)
 {
-	scsp[0]->midi_in_byte(byte);
+	scsp[0]->midi_in(byte);
 }
 
 void SoundBoard::fire_due()
@@ -252,6 +240,56 @@ void SoundBoard::fire_due()
 				scsp[n]->timer_fired(t);
 			}
 		}
+}
+
+// Ce que la carte fait des trois evenements de la puce. L'ancien cablage etait cinq std::function posees a
+// la construction ; voici les memes gestes, nommes et non plus anonymes.
+void SoundBoard::Sink::irq(int level, bool on)
+{
+	if (n != 0) return;   // seule la premiere puce est reliee aux lignes du 68000
+	b->cpu->set_input_line(level, on ? ASSERT_LINE : CLEAR_LINE);
+}
+
+void SoundBoard::Sink::midi_out(std::uint8_t)
+{
+	// La carte n'en fait rien -- mais le pilote s'en sert en TROIS endroits (un 0xF0 tous les dix tics, une
+	// recopie par piste, un MIDI thru : docs/fv2-son-programme.md), donc on COMPTE plutot que de taire.
+	++b->midi_out_jetes;
+}
+
+void SoundBoard::Sink::timer(int which, std::uint32_t samples, std::uint32_t period)
+{
+	Timer &tm = b->timers[n][which];
+	if (samples == 0) { tm.on = false; return; }
+	// L'interface compte en ECHANTILLONS, la carte en cycles du 68000 : 11 289 600 / 44 100 = 256 tout rond,
+	// donc la conversion est exacte pour les timers A-C, que l'ancien code arrondissait de toute facon au
+	// multiple de 256 juste en dessous.
+	//
+	// ET C'EST LE SECOND ENDROIT OU LE DECOUPAGE DU §2 NE TIENT PAS TOUT A FAIT : les horloges du recepteur
+	// et de l'emetteur MIDI (TIMER_RCV, TIMER_TRA) ne sont PAS quantifiees a 256 par l'ancien code, elles
+	// gardent la precision du cycle. Les passer en echantillons la perd. Ce que ca change s'entend ou ne
+	// s'entend pas, et c'est au harnais differentiel de le dire -- pas a moi de le supposer.
+	tm.on = true;
+	tm.at = b->cycles_now() + std::max<std::uint64_t>(1, std::uint64_t(samples) * 256);
+	if (which < scsp_device::TIMER_RCV) tm.at = std::max(tm.at / 256 * 256, b->cycles_now() + 1);
+	tm.period = period ? std::max<std::uint64_t>(1, std::uint64_t(period) * 256) : 0;
+}
+
+// Remet les deux puces a l'heure du 68000, en poussant ce qu'elles doivent. Voir soundboard.h : sans cet
+// appel avant chaque acces registre, les ecritures ne tomberaient plus au meme endroit dans le son.
+void SoundBoard::sync_sound(int n)
+{
+	if (!scsp[n]) return;
+	// A l'horloge `cible` il doit exister cible + 1 echantillons : l'ancien coeur compte INCLUSIVEMENT,
+	// l'echantillon d'indice 0 compris (scsp_mame.cpp, sample_index). Sans ce +1 le tout premier echantillon
+	// de la partie n'etait jamais fabrique -- une paire sur 3 219 865, que seul le harnais a vue.
+	const uint64_t veut = cycles_now() / 256 + 1;
+	const uint64_t fait = scsp[n]->samples_made();
+	if (veut <= fait) return;
+	const uint32_t k = uint32_t(veut - fait);
+	const size_t base = pcm[n].size();
+	pcm[n].resize(base + size_t(k) * 2);
+	scsp[n]->run(k, pcm[n].data() + base);
 }
 
 void SoundBoard::run(double seconds, std::vector<int16_t> &out)
@@ -282,12 +320,15 @@ void SoundBoard::run(double seconds, std::vector<int16_t> &out)
 	}
 	{
 		sndprof::Scope prof_flush(sndprof::FLUSH);
-		scsp[0]->update();
-		scsp[1]->update();
+		sync_sound();
 	}
-	std::vector<float> &a = scsp[0]->m_out, &b = scsp[1]->m_out;
+	// Les echantillons accumules au fil de la trame par sync_sound(), en entiers a l'echelle 18 bits.
+	// L'ancien chemin lisait des flottants de la puce ; la reconversion est EXACTE (scsp_mame.h, note 2),
+	// donc diviser ici par PLEINE_ECHELLE rend exactement ce que l'ancien chemin rendait.
+	std::vector<std::int32_t> &a = pcm[0], &b = pcm[1];
 	const size_t n = std::min(a.size(), b.size());
-	float ga = scsp[0]->output_gain(), gb = scsp[1]->output_gain();
+	constexpr double ECHELLE = 1.0 / scsp_mame::PLEINE_ECHELLE;
+	float ga = scsp[0]->device().output_gain(), gb = scsp[1]->device().output_gain();
 	static const int solo = getenv("VF3_SCSP_SOLO") ? atoi(getenv("VF3_SCSP_SOLO")) : -1;   // (tests: one SCSP alone)
 	if (solo == 0) gb = 0;
 	if (solo == 1) ga = 0;
@@ -296,7 +337,8 @@ void SoundBoard::run(double seconds, std::vector<int16_t> &out)
 	constexpr double CEILING = 0.891, RELEASE = 1.0 / (0.1 * 44100);
 	sndprof::Scope prof_mix(sndprof::MIX);
 	for (size_t i = 0; i + 1 < n; i += 2) {
-		double l = (double(a[i]) * ga + double(b[i]) * gb) * gain, r = (double(a[i + 1]) * ga + double(b[i + 1]) * gb) * gain;
+		double l = (double(a[i]) * ECHELLE * ga + double(b[i]) * ECHELLE * gb) * gain,
+		       r = (double(a[i + 1]) * ECHELLE * ga + double(b[i + 1]) * ECHELLE * gb) * gain;
 		if (gain > 1.0) {
 			const double peak = std::max(std::fabs(l), std::fabs(r));
 			const double want = peak > CEILING ? CEILING / peak : 1.0;
@@ -309,4 +351,14 @@ void SoundBoard::run(double seconds, std::vector<int16_t> &out)
 	}
 	a.erase(a.begin(), a.begin() + n);
 	b.erase(b.begin(), b.begin() + n);
+	// VF3_SCSP_RESTE=N : ce que les deux puces laissent derriere elles, toutes les N images. La carte ne
+	// melange que min(puce 0, puce 1) : si l'une est en avance d'un echantillon a la fin d'une trame, cet
+	// echantillon attend la suivante. C'est normal ; ce qui ne l'est pas serait un reste qui GRANDIT.
+	if (static const unsigned long tous = getenv("VF3_SCSP_RESTE")
+	                                    ? strtoul(getenv("VF3_SCSP_RESTE"), nullptr, 10) : 0;
+	    tous && frames % tous == 0)
+		fprintf(stderr, "reste image %llu : puce 0 %zu paires, puce 1 %zu paires (melangees %zu)\n",
+		        (unsigned long long)frames, a.size() / 2, b.size() / 2, n / 2);
+	// (les deux restes, s'il y en a, repartent avec la trame suivante : c'est ce que l'ancien chemin faisait
+	// de m_out, et le decalage d'un echantillon entre les deux puces ne doit pas se perdre)
 }

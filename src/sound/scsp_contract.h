@@ -32,7 +32,22 @@ namespace scsp_contract {
 
 // A field as the implementation reads it: value = (word[mot] >> decalage) & masque. The triple is kept in
 // exactly that form, and not as a bit range, so the test can compare it to the macro character for
-// character. `bits_hauts`/`bits_bas` in the comments give the human-readable range.
+// character. The comments give the human-readable range.
+//
+// CAREFUL, AND THIS COST AN HOUR ON 2026-10-26: the table MIXES TWO CONVENTIONS, because the implementation
+// does. Most fields are a value to shift -- `(word >> 6) & 0x3F`. But every single-bit field is written
+// `(word >> 0) & 0x1000`: THE BIT IN PLACE, a mask with no shift. KYONEX, KYONB, PCM8B, EGHOLD, LPSLNK,
+// LFORE, STWINH and SDIR are of that kind.
+//
+// So a reader that blindly does `(value & masque) << decalage` writes ZERO for those. That is exactly what
+// happened the first time tools/son/test_scsp_core.cpp ran: the voice stayed silent and the failure message
+// blamed the contract, while the fault was in the caller. The two are told apart by the SHAPE of the mask --
+// a contiguous low-bit mask (1, 3, 7, 0x1F, 0x3F...) is a value, anything else is a bit in place:
+//
+//     const bool bit_en_place = (masque & (masque + 1)) != 0;
+//
+// The convention is kept rather than normalised, because the contract's job is to say what the
+// implementation does, and its test compares the two literally.
 struct Champ {
 	const char *nom;
 	unsigned    mot;          // word index inside the block (byte offset = 2 * mot)

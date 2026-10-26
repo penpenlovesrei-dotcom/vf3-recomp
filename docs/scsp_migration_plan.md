@@ -84,9 +84,58 @@ Rien ne s'écrit avant ces trois-là, et c'est le gros du travail :
 2. **Le sélecteur et le rejoueur** : les deux cœurs dans le même binaire, la même séquence d'accès rejouée dans
    les deux (la trace de `VF3_SCSP_WLOG` existe, le rejoueur non), et la comparaison des PCM, des états
    observables, des interruptions et des timers — pas seulement du WAV.
-3. **L'interface** de `docs/scsp_architecture.md` §2, posée **d'abord sur le cœur de MAME** : un adaptateur qui
-   présente l'ancien cœur à travers le contrat neuf. C'est le geste qui décide si le contrat tient, et il ne
-   coûte rien à défaire.
+3. ~~**L'interface** de `docs/scsp_architecture.md` §2, posée **d'abord sur le cœur de MAME**~~ — **faite le
+   2026-10-26.** `src/sound/scsp_core.h` est l'interface telle que le §2 l'avait dessinée (trois méthodes de
+   `sink`, le temps **poussé** par `run(n, out)`, l'unité l'échantillon, aucune allocation) ;
+   `src/sound/scsp_mame.{h,cpp}` est l'adaptateur qui présente l'ancien cœur à travers elle ; et
+   `tools/son/test_scsp_core.cpp` est ce qui décide que le contrat tient — il pilote MAME **uniquement** par
+   `scsp::core`, et **écrit ses registres par la table de champs du contrat**, de sorte qu'un champ faux y
+   coupe le son au lieu d'attendre d'être trouvé dans un jeu.
+
+   **Les trois endroits où l'ancien cœur et la forme neuve ne coïncident pas** sont nommés dans
+   `scsp_mame.h` plutôt que masqués : le temps est **tiré** chez l'ancien (l'adaptateur répond lui-même à la
+   question « quelle heure est-il »), la sortie est en flottants (la reconversion est **exacte**, les
+   diviseurs étant des puissances de deux), et **la sortie MIDI est en bits là où le contrat demande des
+   octets** — l'adaptateur ne la franchit pas, il **compte les bits** pour que le manque soit visible.
+
+   **Et la carte est branchée dessus**, le 2026-10-26 aussi : `soundboard.cpp` ne parle plus aux puces que
+   par l'interface — registres, temps, timers, MIDI — et n'atteint l'ancienne classe, par `->device()`, que
+   pour ce qui n'est pas l'affaire de la puce (les gains par groupe, la sonde d'énergie, le miroir MADRS).
+   Ces `device()`-là sont ce qui doit partir en dernier.
+
+   **Au harnais : IDENTIQUE A L'OCTET**, sur `fv2-fight.txt`, 4 200 images, `--rec`, et sur **trois arènes**
+   (2, 7 et 9) — mêmes longueurs, mêmes empreintes MD5. Celle de l'arène 9 est `9a2310f8af00…`, c'est-à-dire
+   **exactement la référence prise le matin même avant tout ce travail** : c'est aussi l'arène que le jeu
+   choisit seul, ce qui ferme la boucle.
+
+   **Trois choses que le harnais a trouvées et que le raisonnement seul n'aurait pas données :**
+
+   - **le §2 se trompait sur les interruptions.** Il proposait `irq(int level)`, 0 pour rien, « pas une
+     ligne à la fois ». Or la puce éteint **quatre lignes distinctes** indépendamment et peut en éteindre
+     une pendant qu'une autre est levée : un seul numéro ne peut pas dire laquelle est retombée.
+     `scsp_core.h` porte donc `irq(level, on)`, et dit pourquoi. **C'est exactement ce que l'étape 3 existe
+     pour découvrir.**
+   - **vider le tampon de l'ancien cœur en entier perdait des échantillons.** `run()` copiait `2n` valeurs
+     puis appelait `clear()` : tout ce que l'ancien cœur avait fabriqué au-delà partait. Le harnais l'a vu —
+     une paire perdue à l'image 1006, et tout le son d'après identique **une fois décalé d'un échantillon**.
+     Un `clear()` de trop fait passer un cœur fidèle pour infidèle.
+   - **et une hypothèse à moi, fausse, écartée par la mesure** : j'avais cru que remettre les *deux* puces à
+     l'heure à chaque accès (au lieu de celle qu'on touche) expliquait l'écart. Corrigé, l'empreinte n'a pas
+     bougé d'un bit. La correction est juste — l'ancien chemin n'avançait qu'une puce — mais **elle
+     n'expliquait rien**, et c'est la mesure qui l'a dit.
+
+   - **et la paire manquante était une convention de comptage.** L'`update()` de l'ancien cœur fait
+     `n = idx - m_written + 1` : il fabrique les échantillons d'indice `m_written` **jusqu'à `idx` inclus**,
+     donc à l'horloge `idx` il en a fait `idx + 1`. La nouvelle interface dit « `run(n)` fait n
+     échantillons », ce qui est plus propre — mais il fallait que l'adaptateur absorbe l'écart. Il le fait
+     en annonçant un indice **en retard d'un** sur son compteur, et la carte vise `cible + 1`. Sans ça le
+     tout premier échantillon de la partie n'était jamais fabriqué : **une paire sur 3 219 865**, que ni le
+     code ni l'oreille n'auraient montrée, et que le harnais a trouvée en une comparaison.
+
+   Reste ouvert de cette étape : les horloges du récepteur et de l'émetteur MIDI perdent la précision du
+   cycle en passant par une interface comptée en échantillons (`soundboard.cpp`, `Sink::timer`). Ça ne
+   s'entend pas sur cette scène — l'empreinte est identique — mais ça reste une perte de précision écrite
+   dans le code plutôt que corrigée.
 
 L'ordre importe : (3) avant (2), parce qu'un rejoueur écrit contre l'ancienne interface sera à refaire.
 

@@ -37,6 +37,8 @@ connaissance qu'on ne retrouve pas est perdue. D'où ce fichier.
 | `src/sound/soundboard.h`, `.cpp` | la carte son : un 68000, deux SCSP, la ROM d'échantillons banquée. **C'est ici qu'on entre** |
 | `src/sound/scsp.h`, `.cpp` | **le chip, et c'est le code de MAME** (`license:BSD-3-Clause`, ElSemi et R. Belmont), modifié. Le dépôt est MIT : la licence est compatible, la frontière est ici |
 | `src/sound/scspdsp.h`, `.cpp` | le DSP d'effets, réécrit par ce portage — les deux corps `Run<0>` et `Run<USES_ALL>`, et le gain mesuré de −24 % |
+| `src/sound/scsp_core.h` | **l'interface neuve** d'un cœur de SCSP : trois méthodes de `sink`, le temps poussé, l'unité l'échantillon |
+| `src/sound/scsp_mame.h`, `.cpp` | **l'adaptateur** qui présente le cœur de MAME à travers elle — l'étape 3 du plan de migration, et les trois endroits où les deux ne coïncident pas y sont nommés |
 | `src/sound/scsp_contract.h` | **le contrat matériel** : 48 champs et les constantes du pilote, chaque nombre avec sa provenance, les écarts assumés marqués `DEVIATION` |
 | `src/sound/sound_prof.h` | le profilage par parties (`VF3_SND_PROF=1`) |
 
@@ -71,6 +73,7 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 | `VF3_STAGE=n` | **force l'arène** (1-12), en tenant les deux leviers du jeu | `tools/vf3run.cpp` |
 | `VF3_VOLUMES=m,e` | les volumes musique et effets, séparément | `tools/vf3run.cpp` |
 | `VF3_SCSP_WLOG=f` | la trace des écritures de registres, pour un futur rejoueur | `soundboard.cpp` |
+| `VF3_SCSP_RESTE=N` | ce que les deux puces laissent dans les tampons, toutes les N images — un reste qui **grandit** serait le signe d'une désynchronisation | `soundboard.cpp` |
 | `VF3_KEYON_LOG=1` | les allumages de note | `soundboard.cpp` |
 | `VF3_SCSP_SOLO=n` | n'écouter qu'une fente | `soundboard.cpp` |
 | `VF3_SCSP_MADRS_MIRROR`, `VF3_SCSP_MADRS_SEPARATE` | forcer l'un ou l'autre côté de la question `0x7C0-0x7FF` | `soundboard.cpp` |
@@ -80,11 +83,12 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 
 ## 5. Les tests
 
-`make test` construit et lance les deux, et ils ne demandent ni ROM ni fenêtre pour l'essentiel :
+`make test` construit et lance les trois, et ils ne demandent ni ROM ni fenêtre pour l'essentiel :
 
 | | |
 |---|---|
 | `tools/son/test_scspdsp.cpp` | les deux corps du DSP contre une référence qui décode dans la boucle. 16 cas, dont les quatre contrôles qu'aucun jeu ne pose |
+| `tools/son/test_scsp_core.cpp` | **MAME piloté uniquement par l'interface neuve**, registres écrits par la table du contrat : un champ faux y coupe le son |
 | `tools/son/test_scsp_contract.cpp` | **le contrat contre ce qu'il décrit** : 48 champs contre les macros de `scsp.cpp`, les constantes contre la ROM. 55 contrôles, et **un compte qui doit fermer** pour qu'aucun champ ne soit silencieusement sauté |
 
 La seconde partie du test du contrat s'efface, **avec une ligne visible**, quand `build/fv2-son-68000.bin`
