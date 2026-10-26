@@ -629,6 +629,47 @@ struct console_play
 	// One frame of TRAINING. The game is a two-player versus and never knows it is anything else: nothing
 	// is diverted, no state is invented, and turning the mode off gives an ordinary fight back on the next
 	// frame.
+	// ---- TRAINING: ONE PLAYER CHOOSES BOTH FIGHTERS ----
+	//
+	// On the select screen player 1's controls go to his own cursor until he has pressed punch, and to
+	// PLAYER 2'S from then on, so the same hands pick the opponent. Nothing of the game is touched: the
+	// controls are composed in the host's frame loop and this is handed them there, after the column has
+	// read them (main.cpp says why that order is not free).
+	//
+	// Two things had to be learnt by getting them wrong, and both are latches here rather than rules in
+	// the host's loop, which is where they were:
+	//
+	//   the button has to be SEEN RELEASED first. The press that chose TRAINING in the console's list is
+	//   still down when the select screen arrives several frames later, and taken for a choice it made
+	//   player 1's pad pick player 2's fighter first -- "la manette en P1 choisit en premier le P2",
+	//   the 2026-10-25. It reaches the game no more than it counts, or it would validate player 1's
+	//   fighter on the frame the screen appeared, wherever the cursor happened to stand;
+	//
+	//   and the press that DID choose has to be let go before it is routed on, or one press chooses
+	//   both: the directions travel at once, the punch waits for its release.
+	void route_training(m3::Model3 &b, m3::Controls &live, m3::Controls &script)
+	{
+		const int m = b.fv2_mode();
+		if (!training_on || (m != 4 && m != 5)) return;   // the select screen's job, and no other screen's
+		const bool punch = live.punch[0] || script.punch[0];
+		auto move = [](bool *a) { a[1] = a[1] || a[0]; a[0] = false; };
+		if (!train_pick_arm) {
+			if (!punch) train_pick_arm = true;
+			else { live.punch[0] = false; script.punch[0] = false; }
+		} else if (!train_p1_chose) {
+			// (this press is his own choice: it stays his, and the routing begins after it)
+			if (punch) { train_p1_chose = true; train_punch_held = true; }
+		} else {
+			move(live.up); move(live.down); move(live.left); move(live.right);
+			move(live.kick); move(live.guard);
+			move(script.up); move(script.down); move(script.left); move(script.right);
+			move(script.kick); move(script.guard);
+			if (train_punch_held && !punch) train_punch_held = false;
+			if (train_punch_held) { live.punch[0] = false; script.punch[0] = false; }
+			else { move(live.punch); move(script.punch); }
+		}
+	}
+
 	void step_training(m3::Model3 &b)
 	{
 		train_fighting = false;
@@ -894,55 +935,80 @@ struct console_play
 		}
 	}
 
+	// Whether a game is running, and whether the one that ran was a versus: the pause menu asks it.
+	void note_game_over(m3::Model3 &b)
+	{
+		if (!b.fv2_in_attract()) versus_ran = true;
+		else if (versus_ran) { is_versus = false; versus_ran = false; }   // the game is over, and it ran
+	}
+
+	// The two task registers, read ONLY while the round is actually being fought (GAME's FIGHT_INT and
+	// FIGHT_DSP, sub-states 11 and 12): see task_live above for why no other moment will do.
+	void note_tasks(m3::Model3 &b)
+	{
+		const int m = b.fv2_mode(), su = b.fv2_submode();
+		if (m != 6 && m != 7) return;
+		if (su != 11 && su != 12) return;
+		if (const int t1 = b.fv2_task_state(); t1 > 0) task_live[0] = uint32_t(t1);
+		if (const int t2 = b.fv2_task2_state(); t2 > 0) task_live[1] = uint32_t(t2);
+	}
+
+	// The road that skips the SEGA logo, once the scene the attract loop was drawing is tidy.
+	void step_logo(m3::Model3 &b)
+	{
+		if (skip_logo <= 0) return;
+		const int mode = b.fv2_mode(), sub = b.fv2_submode();
+		// The SEGA logo, and not a sub-state before it: the tasks that draw are cleared BETWEEN sub-state
+		// 1 and sub-state 2 (model3.cpp), so this is the first moment the scene is the game's own idea of
+		// empty. Asking any earlier would carry the old one over, which is the whole defect.
+		const bool tidy = (mode == 2 || mode == 3) && (sub == 2 || sub == 3);
+		// (tests: VF3_NO_SKIP=1 restarts the attract loop and then lets the game walk to its own title
+		// screen, logo and all. For telling a fault that belongs to the restart from one that belongs to
+		// asking for the title early -- the dark fighters of the 2026-10-23 are one or the other.)
+		static const bool no_skip = getenv("VF3_NO_SKIP") != nullptr;
+		if (tidy && no_skip) skip_logo = 0;
+		else if (tidy) { b.fv2_request_title(); skip_logo = 0; }
+		else skip_logo--;
+	}
+
+	// The game's own ending, once the game says the MATCH is over. Earlier than that and the next round's
+	// branch point takes it with nothing recorded to replay; later is too late, the branch has read the
+	// bit already. Written once and not held, as every request here is.
+	void step_real_ending(m3::Model3 &b)
+	{
+		if (!want_real_ending || !b.fv2_match_over()) return;
+		b.fv2_finish_ladder();
+		want_real_ending = false;
+		fprintf(stderr, "the console ENDING: the match is over -- the game's own ending asked for\n");
+	}
+
+	// The presses this layer hands the game, eight frames each (see the top for why eight).
+	void inject(m3::Controls &out)
+	{
+		if (inject_start > 0) { out.start[0] = true; inject_start--; }
+		if (inject_start_p2 > 0) { out.start[1] = true; inject_start_p2--; }
+	}
+
+	// ---- ONE FRAME OF THE CONSOLE LAYER, and the order is the whole of this function ----
+	//
+	// It is written down because it is not free, and because two of the faults of the 2026-10-25 were
+	// nothing but an order: the writes go in first, on the frame boundary, where the game's dispatcher
+	// will read them; what reads the game comes after, so it reads this frame and not the last one.
 	void step(m3::Model3 &b, m3::Controls &out)
 	{
 		out = m3::Controls();
 		if (!on) return;
-		// What the surfaces asked for, first and in order, and then the hold the carousel's own state wants
-		// renewed every frame: a request is read once, and the point of the park is that it is never walked
-		// out of (model3.cpp). Both are writes, and this is where the writing happens.
-		do_asked(b);
-		if (ui.at == cstate::STAGE) b.fv2_park_stage_select();
-		if (!b.fv2_in_attract()) versus_ran = true;
-		else if (versus_ran) { is_versus = false; versus_ran = false; }   // the game is over, and it ran
-		step_leaving(b);
-		step_training(b);
-		step_ending(b);
-		// The two task registers, read ONLY while the round is actually being fought (GAME's FIGHT_INT and
-		// FIGHT_DSP, sub-states 11 and 12): see task_live above for why no other moment will do.
-		{
-			const int m = b.fv2_mode(), su = b.fv2_submode();
-			if ((m == 6 || m == 7) && (su == 11 || su == 12)) {
-				if (const int t1 = b.fv2_task_state(); t1 > 0) task_live[0] = uint32_t(t1);
-				if (const int t2 = b.fv2_task2_state(); t2 > 0) task_live[1] = uint32_t(t2);
-			}
-		}
-		// THE TRIP THROUGH THE SELECT SCREEN is a state of its own now, and it is read from the game's.
-		step_select(b, out);
-		if (skip_logo > 0) {
-			const int mode = b.fv2_mode(), sub = b.fv2_submode();
-			// The SEGA logo, and not a sub-state before it: the tasks that draw are cleared BETWEEN sub-state
-			// 1 and sub-state 2 (model3.cpp), so this is the first moment the scene is the game's own idea of
-			// empty. Asking any earlier would carry the old one over, which is the whole defect.
-			const bool tidy = (mode == 2 || mode == 3) && (sub == 2 || sub == 3);
-			// (tests: VF3_NO_SKIP=1 restarts the attract loop and then lets the game walk to its own title
-			// screen, logo and all. For telling a fault that belongs to the restart from one that belongs to
-			// asking for the title early -- the dark fighters of the 2026-10-23 are one or the other.)
-			static const bool no_skip = getenv("VF3_NO_SKIP") != nullptr;
-			if (tidy && no_skip) skip_logo = 0;
-			else if (tidy) { b.fv2_request_title(); skip_logo = 0; }
-			else skip_logo--;
-		}
-		// The real ending, once the game says the MATCH is over. Earlier than that and the next round own
-		// branch point takes it with nothing recorded to replay; later is too late, the branch has read the
-		// bit already. Written once and not held, as every request here is.
-		if (want_real_ending && b.fv2_match_over()) {
-			b.fv2_finish_ladder();
-			want_real_ending = false;
-			fprintf(stderr, "the console ENDING: the match is over -- the game's own ending asked for\n");
-		}
-		if (inject_start > 0) { out.start[0] = true; inject_start--; }
-		if (inject_start_p2 > 0) { out.start[1] = true; inject_start_p2--; }
-		step_holds(b);
+		do_asked(b);                                              // what the surfaces asked for
+		if (ui.at == cstate::STAGE) b.fv2_park_stage_select();    // the hold that state wants renewed
+		note_game_over(b);                                        // is a game running, and was it a versus
+		step_leaving(b);                                          // the way out of a match, if one runs
+		step_training(b);                                         // the clock, the lives, the column's reading
+		step_ending(b);                                           // which picture of the Dreamcast's ending
+		note_tasks(b);                                            // the two task registers, while they fight
+		step_select(b, out);                                      // the trip through the select screen
+		step_logo(b);                                             // the road that skips the SEGA logo
+		step_real_ending(b);                                      // the game's own ending, when asked for
+		inject(out);                                              // the presses handed to the game
+		step_holds(b);                                            // what this port holds while a mode runs
 	}
 };

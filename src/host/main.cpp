@@ -4451,39 +4451,14 @@ int main(int argc, char **argv)
 				} else if (!cplay.training_on && !train.lines.empty()) {
 					train.clear();
 				}
-				// TRAINING: ONE PLAYER CHOOSES BOTH FIGHTERS. On the select screen player 1's controls go to
-				// his own cursor until he has pressed punch, and to PLAYER 2'S from then on, so the same hands
-				// pick the opponent. Nothing of the game is touched: the controls are composed here, which is
-				// the one place this port composes them.
-				//
-				// AND IT COMES AFTER THE COLUMN, not before. Routed first, it had already emptied player 1's
-				// controls by the time the column read them, so the column showed nothing of what was being
-				// pressed -- Frederic saw the buttons stop matching. The column reads the hands; this moves
-				// what the hands did to the other player; the order between them is not free.
-				if (cplay.training_on && (board.fv2_mode() == 4 || board.fv2_mode() == 5)) {
-					const bool punch = live.punch[0] || script_ctl.punch[0];
-					auto move = [](bool *a) { a[1] = a[1] || a[0]; a[0] = false; };
-					if (!cplay.train_pick_arm) {
-						// THE BUTTON HAS TO BE LET GO FIRST: the press that chose TRAINING in the console's list is
-						// still down when the select screen arrives (console_play.h), and taken for a choice it made
-						// player 1's pad pick player 2's fighter first -- the fault Frederic reported.
-						if (!punch) cplay.train_pick_arm = true;
-						// and it reaches the game no more than it counts here, or it would validate player 1's
-						// fighter on the frame the screen appeared, wherever the cursor happened to stand
-						else { live.punch[0] = false; script_ctl.punch[0] = false; }
-					} else if (!cplay.train_p1_chose) {
-						// (this press is his own choice: it stays his, and the routing begins after it)
-						if (punch) { cplay.train_p1_chose = true; cplay.train_punch_held = true; }
-					} else {
-						move(live.up); move(live.down); move(live.left); move(live.right);
-						move(live.kick); move(live.guard);
-						move(script_ctl.up); move(script_ctl.down); move(script_ctl.left); move(script_ctl.right);
-						// the punch only once the one that chose him has been let go (console_play.h)
-						if (cplay.train_punch_held && !punch) cplay.train_punch_held = false;
-						if (cplay.train_punch_held) { live.punch[0] = false; script_ctl.punch[0] = false; }
-						else { move(live.punch); move(script_ctl.punch); }
-					}
-				}
+				// TRAINING: ONE PLAYER CHOOSES BOTH FIGHTERS, and the whole of how is console_play's
+				// (route_training). What belongs here is only that the controls exist here -- this is the one
+				// place this port composes them -- and the ORDER: it comes AFTER the column, never before.
+				// Routed first, it had already emptied player 1's controls by the time the column read them, so
+				// the column showed nothing of what was being pressed, which Frederic saw as the buttons no
+				// longer matching. The column reads the hands; this moves what the hands did to the other
+				// player; the order between them is not free.
+				cplay.route_training(board, live, script_ctl);
 				// THE PAGE IS UP AND THE GAME IS STILL RUNNING: it is held in Sega's empty STAGE_SEL every
 				// frame, because a request is only read once and the point here is that it is never walked
 				// out of. Nothing of the player reaches the game meanwhile -- the carousel has the keys and
