@@ -40,8 +40,8 @@ le premier venu.
 | tester | `tools/son/test_scspdsp.cpp` (`make test`) : les deux corps du DSP contre une référence qui décode dans la boucle, seize cas, et quatre fautes injectées pour montrer qu'il sait échouer |
 
 Ce que l'étape 0 **n'a pas** fait, et il faut le lire avant la suite : il n'y a que cinq tests de bloc sur
-huit — le DSP (bloc 7), les registres (bloc 1), les fentes (bloc 2), l'enveloppe (bloc 3) et les LFO
-(bloc 4), les quatre derniers écrits le 2026-10-26 — et qu'une seule scène de mesure.
+SEPT — les registres (1), les fentes (2), l'enveloppe (3), les LFO (4) et le DSP (5), les quatre
+premiers écrits le 2026-10-26. Manquent les timers et les interruptions (6) et le mélange (7) — et qu'une seule scène de mesure.
 
 **Les trois mesures qui manquaient sont faites** :
 
