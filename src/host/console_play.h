@@ -59,6 +59,15 @@ struct console_play
 	std::vector<ask> asked;
 	void ask_for(ask a) { asked.push_back(a); }
 
+	// AND A STATE IS ASKED FOR THE SAME WAY. The state is this layer's (console_state.h) but only one
+	// place in the host may change it, because changing it opens and closes surfaces -- so what happens
+	// here says WHICH state it wants and the host enters it, exactly as a surface says what it wants
+	// written and this layer writes it. Without this the end of a way out of a match was read back by
+	// the host in two ifs of its own, which is the same thing said twice.
+	cstate want_state = cstate::PLAY;
+	const char *want_why = nullptr;
+	void ask_state(cstate s, const char *why) { want_state = s; want_why = why; }
+
 	void do_asked(m3::Model3 &b)
 	{
 		for (ask a : asked) switch (a) {
@@ -811,12 +820,15 @@ struct console_play
 	{
 		if (leave_for == L_TO_TITLE) {
 			if (!b.fv2_on_title()) b.fv2_attract_to_title();
-			// AND THE LIST IS ALREADY UP: MAIN MENU put it there on the frame it was chosen, and the state
-			// machine's MENU_IN half is what this walk home has been happening behind (console_state.h).
-			// Nothing is asked for here; the host reads the end of the way out and turns MENU_IN into MENU.
+			// THE LIST IS ALREADY UP: MAIN MENU put it there on the frame it was chosen, and MENU_IN is the
+			// half this walk home has been happening behind. Now that the game is where it was going, the
+			// other half is asked for (console_state.h).
+			if (ui.at == cstate::MENU_IN) ask_state(cstate::MENU, "the game is home");
 			fprintf(stderr, "the console: back at the title screen\n");
 		} else {
 			choose_versus();
+			// and the curtain comes down: the select screen is the game's own again
+			if (ui.at == cstate::GOING) ask_state(cstate::PLAY, "the select screen is reached");
 			fprintf(stderr, "the console: back to the select screen, two players\n");
 		}
 	}

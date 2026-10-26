@@ -4371,11 +4371,9 @@ int main(int argc, char **argv)
 					// stopped the exit, so the menu looked as if it had done nothing. Measured in
 					// Frederic's own log of the 2026-10-25: the pause opened at frames 2200, 2236 and
 					// 2272 and the line was chosen three times over.
-					bool busy = cplay.leaving != console_play::L_OFF;
-					if (busy) cplay.swallow_start = true;
-					const console_play::start_for what = busy
-						? console_play::start_for::none
-						: cplay.take_start(board, st, cplay.ui.port_controls());
+					// (a way out of a match is a state of its own now -- GOING or MENU_IN -- and both give the
+					// controls to the port, so take_start withholds the press there without being told twice)
+					const console_play::start_for what = cplay.take_start(board, st, cplay.ui.port_controls());
 					switch (what) {
 					case console_play::start_for::list:
 						enter(cstate::MENU, "Start on the title screen");
@@ -4452,15 +4450,15 @@ int main(int argc, char **argv)
 						(unsigned long long)game_frame, fv2_mode_list::name(line));
 					choose_mode(line);
 				}
-				// THE MENU'S TWO HALVES, Sega's own shape: MENU_IN is the list installing itself while the game
-				// finishes what it was doing -- seen by nobody, heard by nobody -- and MENU is the list running
-				// with the game held still. Nothing is waited for by counting frames here: the way out of a match
-				// says when it is done, and that is the transition.
-				if (cplay.ui.at == cstate::MENU_IN && cplay.leaving == console_play::L_OFF)
-					enter(cstate::MENU, "the game is home");
-				// and the curtain comes down when the road it was drawn over is finished
-				if (cplay.ui.at == cstate::GOING && cplay.leaving == console_play::L_OFF)
-					enter(cstate::PLAY, "the select screen is reached");
+				// A STATE THIS LAYER ASKED FOR, entered here because this is the only place that enters one. The
+				// two halves of the menu are the case it was written for: MENU_IN is the list installing itself
+				// while the game finishes what it was doing, and the way out of a match says when that is done
+				// (console_play::arrive). Nothing is waited for by counting frames.
+				if (cplay.want_why) {
+					const char *why = cplay.want_why;
+					cplay.want_why = nullptr;
+					enter(cplay.want_state, why);
+				}
 				if (cplay.want_stage_page) {
 					cplay.want_stage_page = false;
 					if (stages.ready && !stages.shown && !no_stage_page) {
