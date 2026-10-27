@@ -147,6 +147,7 @@
 #include "fv2_pause.h"
 #include "fv2_stage_list.h"
 #include "fv2_training.h"
+#include "fv2_cpu_label.h"
 #include "fv2_curtain.h"
 #include "fv2_fin.h"
 #include "fv2_texte.h"
@@ -2401,6 +2402,36 @@ int main(int argc, char **argv)
 			// Written to spread Fighting Vipers 2's HUD in widescreen -- the life bars and what hangs off them
 			// out to the window's edges, the timer left where it is -- because the rectangles that move have
 			// to be measured on the picture and not guessed from a screenshot's pixels.
+			// VF3_RAM_WATCH=addr:bytes -- WHAT CHANGED IN A RANGE, frame by frame, with the state it changed in.
+			// For finding the byte behind something seen on screen: drive it with a script, read which address
+			// follows it. Written the 2026-10-27 to find where the select screen keeps each cursor, which is
+			// what a CPU label in training has to follow. Addresses are the game's own (the dump's indexing is
+			// elsewhere); the range is read through Model3::fv2_option, a byte at a time.
+			if (static const char *rw = getenv("VF3_RAM_WATCH"); rw) {
+				static uint32_t at = 0;
+				static int len = 0;
+				static std::vector<int> was;
+				if (!len) {
+					at = uint32_t(strtoul(rw, nullptr, 16));
+					const char *c = strchr(rw, ':');
+					len = c ? atoi(c + 1) : 64;
+					was.assign(size_t(len), -1);
+					fprintf(stderr, "ram watch: %08X, %d bytes\n", at, len);
+				}
+				std::string said;
+				for (int i = 0; i < len; i++) {
+					const int v = board.fv2_option(int(at) + i, 1);
+					if (was[size_t(i)] >= 0 && v != was[size_t(i)]) {
+						char t[48];
+						snprintf(t, sizeof t, " %08X %02X->%02X", at + uint32_t(i), was[size_t(i)], v);
+						said += t;
+					}
+					was[size_t(i)] = v;
+				}
+				if (!said.empty())
+					fprintf(stderr, "ram watch frame %llu (mode %d sub %d):%s\n",
+						(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode(), said.c_str());
+			}
 			if (static const char *ha = getenv("VF3_HUD_AUDIT"); ha && game_frame % std::max<uint64_t>(1, strtoull(ha, nullptr, 10)) == 0) {
 				fprintf(stderr, "hud frame %llu (mode %d sub %d)\n", (unsigned long long)game_frame,
 						board.fv2_mode(), board.fv2_submode());
@@ -2869,8 +2900,14 @@ int main(int argc, char **argv)
 		SDL_FRect all, mid;
 		const bool column = cplay.training_on && cplay.train_fighting;
 		const bool veil = cplay.ui.at == cstate::GOING;
-		if (!modes.shown && !options.shown && !pause.shown && !stages.shown && !column && !veil) return;
+		// TRAINING'S SECOND SIDE IS CPU, and it is said where the game says "2P": under its cursor on the
+		// select screen, which moves (fv2_cpu_label.h). Drawn before everything else here, because it
+		// belongs to the game's picture rather than to this port's surfaces -- a menu opened over it wins.
+		const bool cpu = cplay.training_on && (b.fv2_mode() == 4 || b.fv2_mode() == 5);
+		if (!modes.shown && !options.shown && !pause.shown && !stages.shown && !column && !veil && !cpu) return;
 		picture_rect(all, mid);
+		if (cpu)
+			fv2_cpu_label::render(ren, mid, b, game.below.data(), video::W, video::H, &console_font);
 		// THE CURTAIN FIRST, and under everything: it is not a surface the player works, it is what is on
 		// screen while the game is taken from one place to another (fv2_curtain.h).
 		if (veil) curtain.render(ren, all, mid);
