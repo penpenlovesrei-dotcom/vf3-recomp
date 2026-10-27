@@ -418,11 +418,11 @@ fait rien, le jeu l'efface en trois images. Pendant la chute le jeu **aplatit en
 
 ## A faire en reprenant
 
-1. **Charger `WESTERN` avec ses vraies textures.** `VF3_STAGE` charge la fiche, la lumiere et la geometrie
-   d'une arene par le chargeur du jeu, mais **pas sa memoire de textures** : le ring sort habille de celles
-   du barrage et les captures sont illisibles. La piste du saut `+0x66` de `charger_fiche_decor` est
-   ecartee (tenir `0x0058FDA0` au-dessus de 0x81 force le chemin long : image identique au pixel). Il faut
-   trouver ce qui commande le televersement. Sans ca, rien ne peut etre juge a l'oeil.
+1. ~~Charger `WESTERN` avec ses vraies textures~~ — **fait.** Le numero d'arene vient d'une table d'octets
+   a **`0x000B4100`**, lue en `0x0007160C` (`lbzx r30, r11, r9`) et ecrite en `0x000716B8`. Sa premiere
+   entree vaut `09`, d'ou le barrage a tout premier combat. `VF3_STAGE=<0..12>` ecrit cet octet et le jeu
+   charge l'arene entiere, textures comprises. Ni la table des fiches ni `STAGE_TEST__STAGE` ne commandent
+   quoi que ce soit : les 667 televersements de textures sont identiques au bit dans les trois cas.
 2. **Puis le ring out sur `WESTERN`** : ejecter (`VF3_EJECT=3300,6,-0.2`), lire la peinture avec
    **`VF3_GPU_SHOT`** (pas les captures de script, voir ci-dessous), et nommer laquelle des trois regles
    refuse l'ombre a l'ejecte — la couche hors echelle 1, le « rien sous le sol », ou la vue qui ne projette

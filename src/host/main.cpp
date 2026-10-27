@@ -3096,69 +3096,22 @@ int main(int argc, char **argv)
 				// that switch the shadow off are reached without playing to them (docs/fv2-ombres.md).
 				if (const char *fs = getenv("VF3_FORCE_STAGE");
 				    fs && board.ram.size() > 0x58FD9F) board.ram[0x58FD9F ^ 3] = uint8_t(atoi(fs));
-				// VF3_STAGE=<0..26>: the arena the first arcade fight loads, by its own loader.
+				// VF3_STAGE=<0..12>: the arena the first arcade fight is fought in, chosen where the game
+				// chooses it, so that EVERYTHING follows -- record, light, geometry and textures.
 				//
-				// VF3_FORCE_STAGE above writes the stage NUMBER, and the game writes that byte itself, so the
-				// loader does not reliably see ours: measured, forcing 11 still left STAGE_TEST__ROB_LIGHT on the
-				// dam's record. This writes the TABLE instead. charger_fiche_decor takes the record from
-				// ((void **)0x0008D118)[number], and every first arcade fight is number 9 (measured over four
-				// different character picks). Pointing that one entry at another arena's record makes the game
-				// load that arena through its own path, at its own moment -- record, light, geometry and all.
-				// The journal says which arena really came up, so a reading can be kept or thrown away.
-				if (const char *vs = getenv("VF3_STAGE"); vs && board.ram.size() > 0x8D140) {
-					const uint32_t fiche = 0x7516C + uint32_t(atoi(vs)) * 0x70;
-					for (int k = 0; k < 4; k++)
-						board.ram[(0x8D13C + uint32_t(k)) ^ 3] = uint8_t(fiche >> (24 - 8 * k));
-					// What this does NOT bring is the arena's textures: the ring comes out wearing the dam's, and
-					// the picture is no good for judging an arena by eye. The obvious culprit was cleared --
-					// charger_fiche_decor skips its heavy path when the record it had before shares the byte at
-					// +0x66, and that skip is guarded by `previous stage < 0x81`, so holding 0x0058FDA0 above it
-					// takes the long path every time. Tried: the picture came out identical to the pixel. The
-					// texture upload is driven from somewhere else. It leaves the GEOMETRY alone, which is what
-					// the light and the floor are read from, so a reading taken this way stands.
-				}
-				// VF3_RING=<demi-cote>: the ring's half side, held at +0x30 of every stage record (the word
-				// charger_fiche_decor copies into the global it names demi_cote_ring; it is 5.0 on all 27
-				// records). Making it small is how a RING OUT is reached without playing to one: the fighters
-				// start outside a ring that narrow and the game ejects one at once. Written to every record,
-				// every frame, since the loader copies the word when the stage loads and not after.
-				if (const char *rs = getenv("VF3_RING"); rs && board.ram.size() > 0x76000) {
-					const float v = float(atof(rs));
-					uint32_t bits;
-					memcpy(&bits, &v, 4);
-					for (uint32_t f = 0x7516C; f < 0x75F00; f += 0x70)
-						for (int k = 0; k < 4; k++)
-							board.ram[(f + 0x30 + uint32_t(k)) ^ 3] = uint8_t(bits >> (24 - 8 * k));
-					// and the global the loader copies it into: Sega calls it CONFIG__STAGE_X, and
-					// charger_fiche_decor fills it from the record's +0x30 (CONFIG__STAGE_H, the fall
-					// depth, is the word after). Written too, since the copy happens at load and not after.
-					for (int k = 0; k < 4; k++)
-						board.ram[(0x5813F8 + uint32_t(k)) ^ 3] = uint8_t(bits >> (24 - 8 * k));
-				}
-				// VF3_EJECT=<image>[,<x>]: player 1 put outside the ring at that frame, which is how a RING OUT
-				// is reached without playing to one. His block is at 0x00700500 (player 2's at 0x00707500) and
-				// his place is the three floats at +0x10, +0x14, +0x18 -- found by taking RAM at two frames of
-				// the same fight and keeping what moved: x sits within the ring's half side (CONFIG__STAGE_X,
-				// 5.0), y is the height above the floor and is zero standing, z is the depth. Written for a few
-				// frames so the game's own step cannot put it straight back.
-				if (const char *es = getenv("VF3_EJECT"); es && board.ram.size() > 0x700520) {
-					const unsigned long long at = strtoull(es, nullptr, 10);
-					const char *comma = strchr(es, ',');
-					const float x = comma ? float(atof(comma + 1)) : 20.0f;
-					const char *comma2 = comma ? strchr(comma + 1, ',') : nullptr;
-					const float y = comma2 ? float(atof(comma2 + 1)) : 0.0f;
-					if (game_frame >= at && game_frame < at + 4) {
-						uint32_t bits;
-						memcpy(&bits, &x, 4);
-						for (int k = 0; k < 4; k++)
-							board.ram[(0x700510 + uint32_t(k)) ^ 3] = uint8_t(bits >> (24 - 8 * k));
-						if (comma2) {
-							memcpy(&bits, &y, 4);
-							for (int k = 0; k < 4; k++)
-								board.ram[(0x700514 + uint32_t(k)) ^ 3] = uint8_t(bits >> (24 - 8 * k));
-						}
-					}
-				}
+				// FUN_00071300 is what sets the stage. It reads the number out of a byte table, not out of
+				// anything a port can reach: at 0x0007160C it does `lbzx r30, r11, r9` with r11 = 0x000B4100,
+				// and at 0x000716B8 it writes that r30 into STAGE_TEST__STAGE and goes on to take the record
+				// from the table at 0x0008D118 (which it builds four instructions later). The table at
+				// 0x000B4100 holds arena numbers, all within 0..12, and its first entry is 09 -- which is why
+				// every first fight is at the dam, measured over four character picks.
+				//
+				// Writing the number anywhere downstream does not work, and both ways were measured: pointing
+				// the record table (what this knob used to do) brings the arena's geometry but leaves the dam's
+				// textures, and poking STAGE_TEST__STAGE itself leaves the record on the dam, since the game
+				// rewrites that byte from r30 before the loader runs. One byte of this table does all of it.
+				if (const char *vs = getenv("VF3_STAGE"); vs && board.ram.size() > 0xB4104)
+					board.ram[0xB4100 ^ 3] = uint8_t(atoi(vs));
 				// A RING OUT, as the game itself calls it. rob_flag, the status word at the head of each
 				// fighter's block (0x00700500 and 0x00707500), has 32 bits Sega named one by one in the table
 				// of name pointers at 0x0007A1FC, bit 31 first. ring_out is the seventeenth name, so bit 15 --

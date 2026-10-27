@@ -989,6 +989,14 @@ void Model3::r3d_texture_port(unsigned, uint32_t data)
 	}
 	const uint32_t addr = vrom_fifo[0], header = vrom_fifo[1];
 	vrom_fifo_n = 0;
+	// VF3_TEX_LOG: every texture the game sends to the Real3D, to find out what commands the
+	// upload. An arena reached by pointing the record table (VF3_STAGE) comes out wearing the
+	// dam's textures, and the record is not what drives this.
+	static const bool tex_log = getenv("VF3_TEX_LOG") != nullptr;
+	if (tex_log) {
+		static unsigned n = 0;
+		fprintf(stderr, "texture %u : adresse %06X, entete %08X" "\n", ++n, addr, header);
+	}
 	if (addr < 0x100000) {
 		const size_t at = addr & 0xFFFFFF;
 		if (at < poly_ram.size())

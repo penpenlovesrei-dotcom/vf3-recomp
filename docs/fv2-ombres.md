@@ -1226,3 +1226,36 @@ qui relit le rendu du GPU dans `build/gpu_shot.png`.
 
 La leçon tient en une ligne : *une peinture de mise au point qui ne s'est pas appliquée ressemble exactement
 à une image normale*. Avant de compter quoi que ce soit dessus, vérifier qu'elle s'est appliquée.
+
+## Atteindre une arène entière, textures comprises
+
+Le chemin précédent — pointer la table des fiches — apportait la géométrie et la lumière d'une arène mais
+**pas ses textures** : le ring sortait habillé de celles du barrage et aucune capture ne valait pour juger
+quoi que ce soit à l'œil. Le vrai levier est un octet, et il est là où le jeu décide lui-même.
+
+**Ce qui a été écarté d'abord, pour qu'on ne refasse pas le chemin.** `VF3_TEX_LOG` écrit chaque texture que
+le jeu envoie au Real3D : **667** téléversements à une image de combat, et **les mêmes 667** — mêmes
+adresses, mêmes en-têtes, pas une ligne de différence — que l'on pointe la table des fiches ou que l'on écrive
+`STAGE_TEST__STAGE`. Ni l'une ni l'autre ne commande l'arène.
+
+**D'où vient le numéro**, trouvé avec `vf3run` et sans Ghidra :
+
+- `--watch 58FD9C` nomme l'instruction qui l'écrit : **`PC 0x000716B8`**, dans `FUN_00071300`.
+- Décodées depuis un dépôt de RAM, les instructions autour : `0x000716B4` est `mr r0, r30`, `0x000716B8` est
+  `stb r0, −609(r9)` avec `r9 = 0x00590000`, et quatre instructions plus loin la fonction construit
+  elle-même `0x0008D118`, la table des fiches.
+- Donc **le numéro d'arène est dans r30**, et r30 est rempli en `0x0007160C` par `lbzx r30, r11, r9` avec
+  **`r11 = 0x000B4100`**.
+
+Cette table ne contient que des numéros d'arène, tous entre 0 et 12, et **sa première entrée vaut `09`** —
+ce qui explique enfin pourquoi tout premier combat d'arcade se joue au barrage, constaté sur quatre choix de
+personnage différents.
+
+**`VF3_STAGE=<0..12>` écrit donc cet octet-là**, et le jeu fait tout le reste par son chemin : fiche,
+lumière, géométrie **et textures**. Vérifié : le journal écrit `decor 1, nom "WESTERN" (fiche 0751DC)` — le
+décor 1, et non le décor 9 portant la géométrie d'un autre — et le rendu du GPU montre Western avec son
+sable, sa grille verte et son saloon en flammes, les deux combattants portant leur ombre au sol.
+
+**Écrire `STAGE_TEST__STAGE` ne peut pas marcher**, et c'est mesuré : avec l'octet écrit avant chaque image,
+il vaut bien 1 à la fin, et la fiche vaut toujours `07555C`, celle du barrage. Le jeu le réécrit depuis r30
+avant que le chargeur ne tourne.
