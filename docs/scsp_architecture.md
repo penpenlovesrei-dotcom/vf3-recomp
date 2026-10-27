@@ -153,6 +153,12 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
    seconde. La forme décodée de ce dépôt (`Inst`, `Inst::f`) est déjà au-delà de MAME et de Supermodel, qui
    décodent dans la boucle ; la suite naturelle est une forme compilée par programme, pas un interpréteur plus
    serré.
+   **Le seul bloc que `scsp_maison` n'a pas écrit**, et la raison n'est pas le temps : son jeu d'instructions
+   n'existe nulle part écrit. Le contrat n'en donne que la disposition (§6), et `docs/scsp_references.md` est
+   clair — il n'y a ni fiche technique ni spécification indépendante, seulement les implémentations de MAME et
+   de Supermodel, issues du même travail d'ElSemi. Écrire ce bloc demande donc d'abord un **test qui mesure**
+   le comportement instruction par instruction, comme pour les six autres. Tant qu'il n'existe pas, il n'y a
+   rien contre quoi écrire, et le cœur emprunte `scspdsp.{h,cpp}`.
 6. **Timers, interruptions, synchronisation** — A/B/C, `SCIEB`/`SCIPD`/`SCILV`, `MCIEB`/`MCIPD`, le DMA, et la
    cadence des interruptions, dont Mednafen dit qu'elle est ce qui fait dériver le tempo de 2 %
    (`docs/scsp_references.md`).

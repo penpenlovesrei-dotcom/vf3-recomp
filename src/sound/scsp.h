@@ -82,6 +82,13 @@ public:
 	std::function<int(int slot)> group_of;   // or, if set, asked as each voice starts
 	int slot_group(int slot) const { return m_slot_group[slot & 31]; }
 	const SCSPDSP &dsp() const { return m_DSP; }
+	// L'etat vivant d'une fente, en lecture seule, pour comparer ce coeur a un autre : c'est par ces trois
+	// nombres qu'on DATE une divergence au lieu de la constater a la sortie. Ajoute le 2026-10-27 pour
+	// trouver le premier echantillon ou l'adresse de lecture d'une fente s'ecarte entre les deux coeurs --
+	// une derive peut rester inaudible un million d'echantillons, puis sortir d'une unite.
+	u32 slot_cur_addr(int slot) const { return m_Slots[slot & 31].cur_addr; }
+	int slot_eg_state(int slot) const { return m_Slots[slot & 31].EG.state; }
+	s32 slot_eg_volume(int slot) const { return m_Slots[slot & 31].EG.volume; }
 
 private:
 	enum SCSP_STATE { SCSP_ATTACK, SCSP_DECAY1, SCSP_DECAY2, SCSP_RELEASE };

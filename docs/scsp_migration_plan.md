@@ -2,10 +2,18 @@
 
 > Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
 
-**C'est un plan.** Au 2026-10-26, **l'étape 2 est faite en entier** — contrat, tests par bloc, sélecteur et
-rejoueur — ainsi que les étapes 0 et 3. **Les sept blocs ont un test, aucun n'a d'implémentation.** Le cœur du son est toujours celui de MAME, modifié — mais la carte ne lui parle plus que
-par `scsp_core.h`, et le son est identique à l'octet sur trois arènes. Le filet est donc posé : ce qui vient
-ensuite est du code autonome, bloc par bloc, chacun contre son test.
+**C'est un plan.** Au 2026-10-27, les étapes 0, 2 et 3 sont faites. **Le SCSP du projet existe** —
+`src/sound/scsp_maison.{h,cpp}` — et il rend le même son que celui de MAME **à l'octet** sur une scène
+réelle : six blocs sur sept écrits depuis le contrat, le septième (le DSP d'effets) **emprunté** faute de
+spécification à écrire contre.
+
+**Au rejoueur, sur la scène entière de `fv2-fight.txt` (4200 images) : IDENTIQUES.** 3 219 865 échantillons
+par puce, 208 360 interruptions, 69 311 armements de timer, 265 469 lectures de registre — tout concorde,
+échantillon par échantillon, sur les deux puces.
+
+Ce qui reste : **la carte parle toujours au cœur de MAME**. Le cœur du projet est complet et vérifié, mais il
+n'est pas branché — il lui manque les quatre extras que `scsp::core` ne porte pas (gains par groupe, sonde
+d'énergie, miroir MADRS, `MVOL`), et le bloc 5 reste emprunté.
 
 
 ## Pourquoi, et dans quel ordre les quatre objectifs se servent

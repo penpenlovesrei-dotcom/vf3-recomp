@@ -37,16 +37,36 @@
 //     bloc 2  fentes, oscillateur, PCM, bouclage ............... ECRIT, 11 cas
 //     bloc 3  enveloppes ADSR ................................. ECRIT, 10 cas
 //     bloc 4  pitch, LFO, modulation .......................... ECRIT, 11 cas
-//     bloc 5  le DSP d'effets ................................. a venir
+//     bloc 5  le DSP d'effets ................... EMPRUNTE a MAME, et voici pourquoi
 //     bloc 6  timers, interruptions, synchronisation ........... ECRIT, 11 cas
 //     bloc 7  melange et rendu ................................ ECRIT, 9 cas
 //
 // Tant qu'un bloc manque, le coeur rend ce qu'il peut et NON du bruit : sans voix il rend du silence exact,
 // ce que le test du bloc 1 verifie. Un coeur qui rendrait n'importe quoi en attendant serait impossible a
 // brancher pour mesurer.
+//
+// LE BLOC 5 EST A PART, ET IL FAUT DIRE POURQUOI PLUTOT QUE DE FAIRE SEMBLANT. Les six autres ont ete
+// ecrits depuis scsp_contract.h, qui dit ce que la puce DOIT faire. Pour le DSP, le contrat ne decrit que
+// la DISPOSITION -- COEF, MADRS, MPRO, 128 pas de 8 octets (§6) -- et pas la semantique d'une instruction.
+// Et docs/scsp_references.md est clair sur l'etat des sources : le jeu d'instructions du DSP n'existe
+// qu'implementé, chez MAME et chez Supermodel, tous deux issus du meme travail de reverse engineering
+// d'ElSemi. Il n'y a ni fiche technique, ni specification independante.
+//
+// Donc : ecrire le bloc 5 "depuis le contrat" est impossible, et le transcrire depuis scspdsp.cpp
+// n'eliminerait rien -- ce serait une copie de plus, sous la meme BSD-3. Le coeur EMPRUNTE donc le DSP de
+// MAME (src/sound/scspdsp.{h,cpp}, deja dans le depot avec son avis de licence), et cet emprunt est nomme
+// ici pour qu'il ne se fasse pas oublier. Ce qu'il reste a faire pour le finir est du travail de MESURE
+// avant d'etre du code : un test qui pilote le DSP par scsp::core, champ d'instruction par champ
+// d'instruction, et qui en enregistre le comportement -- la meme boucle que pour les six autres. Tant que
+// ce test n'existe pas, il n'y a rien contre quoi ecrire.
+//
+// CE QUE L'EMPRUNT ACHETE QUAND MEME, et c'est pourquoi il vaut mieux que l'attente : le coeur devient
+// COMPLET, donc comparable au coeur de MAME par le rejoueur et par le harnais, sur une vraie scene. C'est
+// la seule epreuve qui juge les six blocs ENSEMBLE, et aucun test unitaire ne la remplace.
 #pragma once
 
 #include "scsp_core.h"
+#include "scspdsp.h"
 
 #include <cstdint>
 
@@ -77,6 +97,12 @@ public:
 	// elle-meme (scsp_contract.h §13 point 7). C'est un trou dans scsp::core, pas une liberte -- un coeur
 	// autonome doit donc rendre la meme chose que l'adaptateur de MAME, par la meme porte.
 	float output_gain() const { return float(m_commun[0] & 0x000F) / 15.0f; }
+
+	// Les trois memes nombres que l'adaptateur de MAME expose, pour DATER une divergence au lieu de la
+	// constater a la sortie (scsp.h, meme ajout du 2026-10-27).
+	u32 slot_cur_addr(int fente) const { return m_vive[fente & 31].cur; }
+	int slot_eg_state(int fente) const { return m_vive[fente & 31].etat; }
+	s32 slot_eg_volume(int fente) const { return m_vive[fente & 31].volume; }
 
 	void set_madrs_mirror(bool on) { m_miroir = on; }
 	bool madrs_mirror() const { return m_miroir; }
@@ -118,6 +144,7 @@ private:
 		Lfo plfo, alfo;
 	};
 	Vive m_vive[FENTES];
+	bool m_dit = false;   // (diagnostic temporaire)
 	u8 m_ptr_anneau = 0;                 // le curseur du tampon de modulation, un cran par fente
 
 	// --- le generateur de bruit, pour SSCTL=1 et la forme de LFO 3.
@@ -129,14 +156,21 @@ private:
 
 	// --- les facteurs du melange, en flottant simple comme l'original
 	//
-	// TROIS PETITES TABLES ET UNE SEULE TRONCATURE, la ou le coeur de MAME garde deux tables de 0x10000
-	// entiers (512 Ko). Le resultat doit etre le MEME entier, et c'est ce qui dicte la forme : l'original
-	// fait `FIX(4.0f * LPAN * TL * fSDL)`, c'est-a-dire UNE troncature du produit. Trois tables d'entiers
-	// multipliees entre elles tronqueraient trois fois et ne rendraient pas les memes valeurs que le test
-	// du bloc 7 a enregistrees. On garde donc les facteurs en flottant et on ne tronque qu'a la fin.
-	float m_f_tl[256] = {};              // TL : 0.4, 0.8, 1.5, 3, 6, 12, 24, 48 dB, un bit chacun
-	float m_f_pan[32] = {};              // DIPAN/EFPAN : 3, 6, 12, 24 dB sur quatre bits
-	float m_f_sdl[8] = {};               // DISDL/EFSDL : SDLT
+	// UNE TABLE D'ENTIERS, PRECALCULEE, ET UNE SEULE POUR LES DEUX CANAUX.
+	//
+	// L'index est le mot d'encodage de l'original : TL sur huit bits, PAN sur cinq, SDL sur trois.
+	//
+	// POURQUOI PRECALCULER, et non garder trois petites tables de flottants multipliees a la volee : parce
+	// que le produit doit tomber sur le MEME entier que l'original, et qu'un produit flottant recalcule a
+	// chaque echantillon ne le garantit pas. Le compilateur est libre d'y fusionner les multiplications
+	// (FMA) ou de garder un intermediaire en precision superieure, et le resultat change d'une unite apres
+	// troncature. Le rejeu d'une scene de 1500 images l'a montre : UN echantillon sur 1 149 952, a -967
+	// contre -968. Calcule UNE FOIS a la construction, le probleme ne peut pas se poser.
+	//
+	// ET UNE SEULE TABLE SUFFIT, ce que l'original ne remarque pas : le canal droit a l'index `pan` vaut le
+	// canal gauche a l'index `pan ^ 0x10`. Le bit 4 de PAN ne choisit que le canal attenue, et les quatre
+	// bits bas -- d'ou vient l'attenuation -- ne changent pas. 256 Ko au lieu de 512.
+	s32 m_gain[0x10000] = {};
 	void construire_facteurs();
 
 	// --- les tables de l'enveloppe (bloc 3)
@@ -186,7 +220,12 @@ private:
 	void executer_dma();
 	// Le gain du melange pour un mot d'encodage, gauche et droite. `pan` est le champ de cinq bits : son
 	// bit 4 choisit QUEL canal est attenue, l'autre restant a plein niveau.
-	void gains(unsigned tl, unsigned pan, unsigned sdl, s32 &g, s32 &d) const;
+	void gains(unsigned tl, unsigned pan, unsigned sdl, s32 &g, s32 &d) const
+	{
+		const unsigned i = (tl & 0xFF) | ((pan & 0x1F) << 8) | ((sdl & 7) << 13);
+		g = m_gain[i];
+		d = m_gain[i ^ (0x10 << 8)];
+	}
 
 	// --- la RAM son, vue comme la puce la voit
 	u8  lire_octet_ram(u32 octet) const;
@@ -200,10 +239,9 @@ private:
 
 	u16 m_commun[COMMUN_MOTS] = {};
 	s32 m_anneau[ANNEAU_MOTS] = {};                  // s32 : le tampon de modulation porte des echantillons
-	u16 m_coef[COEF_MOTS] = {};
-	u16 m_madrs[MADRS_MOTS] = {};
+	// COEF, MADRS et MPRO vivent DANS le DSP : en garder une copie ici serait deux verites pour un registre.
+	SCSPDSP m_dsp;
 	u16 m_madrs_haut[CONTESTE_MOTS] = {};
-	u16 m_mpro[MPRO_MOTS] = {};
 
 	// Les deux registres d'interruption du cote maitre, que la LECTURE recopie depuis ces champs et non
 	// l'inverse (scsp_contract.h §2 et §12).

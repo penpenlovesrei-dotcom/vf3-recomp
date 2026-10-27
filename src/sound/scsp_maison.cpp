@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 
 namespace {
 
@@ -49,10 +50,8 @@ void scsp_maison::reset()
 	for (auto &f : m_fente) for (auto &w : f) w = 0;
 	for (auto &w : m_commun) w = 0;
 	for (auto &w : m_anneau) w = 0;
-	for (auto &w : m_coef) w = 0;
-	for (auto &w : m_madrs) w = 0;
 	for (auto &w : m_madrs_haut) w = 0;
-	for (auto &w : m_mpro) w = 0;
+	// COEF, MADRS et MPRO sont dans le DSP, que Init() remet a zero plus bas.
 	m_mcieb = m_mcipd = 0;
 	m_midi_e = m_midi_l = 0;
 	m_niv_tima = m_niv_timbc = m_niv_midi = m_niv_cpu = m_niv_dma = 0;
@@ -61,6 +60,9 @@ void scsp_maison::reset()
 	for (auto &c : m_compte) c = 0;
 	for (auto &p : m_predivise) p = 1;
 	m_graine = 0x9d14abd7;
+	m_dsp.ram = m_ram;
+	m_dsp.ram_bytes = m_ram_octets;
+	m_dsp.Init();
 	for (auto &v : m_vive) v = Vive();
 	m_now = 0;
 }
@@ -71,11 +73,22 @@ void scsp_maison::reset()
 
 scsp_maison::u16 scsp_maison::etat_fente_surveillee() const
 {
-	// (bloc 1 : il n'y a pas encore de voix, donc l'etat est celui d'une fente au repos. Le test ne verifie
-	// ici que le MASQUE -- qu'aucun bit ecrit ne se relise -- ce qui est vrai quelle que soit la valeur. Les
-	// blocs 2 et 3 rempliront CA et EG ; la FORME du mot, elle, est deja celle du contrat.)
-	const u32 ca = 0, sgc = 3 /* RELEASE */, eg = 0x1F;
-	return u16((ca << 7) | (sgc << 5) | (eg & 0x1F));
+	// L'ETAT VIVANT DE LA FENTE SURVEILLEE, recalcule a chaque lecture : les quatre bits hauts de l'adresse
+	// de lecture, l'etat de l'enveloppe, et le volume renverse.
+	//
+	// CE FUT UN BOUCHON, ET LE REJOUEUR L'A TROUVE. Pendant que seul le bloc 1 existait, cette fonction
+	// rendait une constante -- une fente au repos -- et c'etait defendable : le test du bloc 1 ne verifie
+	// ici que le MASQUE, qu'aucun bit ecrit ne se relise, ce qui est vrai quelle que soit la valeur. Mais
+	// une fois les blocs 2 et 3 ecrits il y avait un vrai etat a rendre, et le bouchon est devenu faux sans
+	// qu'aucun test unitaire ne bouge. C'est le rejeu d'une scene reelle qui l'a dit : "lecture 5292 du mot
+	// 204 : 0040 contre 007f". Le pilote lit ce registre pour trouver une fente libre, donc un bouchon ici
+	// change l'allocation des voix -- et le son, deux secondes plus tard, d'une facon qui ne ressemble plus
+	// a sa cause.
+	const Vive &v = m_vive[m_mslc & (FENTES - 1)];
+	const u32 ca = (v.cur >> (PAS + 12)) & 0xF;
+	const u32 sgc = u32(v.etat) & 3;
+	const u32 eg = u32(0x1F - (v.volume >> (EG_PAS + 5))) & 0x1F;
+	return u16((ca << 7) | (sgc << 5) | eg);
 }
 
 scsp_maison::u16 scsp_maison::lire_octet_adresse(u32 octet)
@@ -118,13 +131,13 @@ scsp_maison::u16 scsp_maison::lire_octet_adresse(u32 octet)
 
 	if (octet < 0x600) return 0;                     // 0x430-0x5FF : rien n'y repond
 	if (octet < 0x700) return u16(m_anneau[(octet - 0x600) / 2]);
-	if (octet < 0x780) return m_coef[(octet - 0x700) / 2];
-	if (octet < 0x7C0) return m_madrs[(octet - 0x780) / 2];
+	if (octet < 0x780) return u16(m_dsp.COEF[(octet - 0x700) / 2]);
+	if (octet < 0x7C0) return m_dsp.MADRS[(octet - 0x780) / 2];
 	if (octet < 0x800) {
 		const u32 i = (octet - 0x7C0) / 2;
-		return m_miroir ? m_madrs[i] : m_madrs_haut[i];
+		return m_miroir ? m_dsp.MADRS[i] : m_madrs_haut[i];
 	}
-	if (octet < 0xC00) return m_mpro[(octet - 0x800) / 2];
+	if (octet < 0xC00) return m_dsp.MPRO[(octet - 0x800) / 2];
 	return 0;
 }
 
@@ -157,17 +170,28 @@ void scsp_maison::ecrire_octet_adresse(u32 octet, u16 data, u16 masque)
 		return;
 	}
 	auto pose = [&](u16 &w) { w = u16((w & ~masque) | (data & masque)); };
-	if (octet < 0x780) { pose(m_coef[(octet - 0x700) / 2]); return; }
-	if (octet < 0x7C0) { pose(m_madrs[(octet - 0x780) / 2]); return; }
+	if (octet < 0x780) {
+		s16 &c = m_dsp.COEF[(octet - 0x700) / 2];
+		c = s16((u16(c) & ~masque) | (data & masque));
+		return;
+	}
+	if (octet < 0x7C0) { pose(m_dsp.MADRS[(octet - 0x780) / 2]); return; }
 	if (octet < 0x800) {
 		// LA PLAGE CONTESTEE. Elle a son propre stockage, et le miroir -- un reglage du jeu et non de la
 		// puce -- la recopie dans MADRS. Mesure dans les deux reglages par le test du bloc 1.
 		const u32 i = (octet - 0x7C0) / 2;
 		pose(m_madrs_haut[i]);
-		if (m_miroir) m_madrs[i] = m_madrs_haut[i];
+		if (m_miroir) m_dsp.MADRS[i] = m_madrs_haut[i];
 		return;
 	}
-	if (octet < 0xC00) { pose(m_mpro[(octet - 0x800) / 2]); return; }
+	if (octet < 0xC00) {
+		pose(m_dsp.MPRO[(octet - 0x800) / 2]);
+		// Le programme est DECODE une fois a l'ecriture et non a chaque echantillon : c'est une avance de ce
+		// depot sur MAME et sur Supermodel, qui le decodent dans la boucle (docs/scsp_references.md).
+		m_dsp.Decode((octet - 0x800) / 8);
+		if (octet == 0xBF0) m_dsp.Start();
+		return;
+	}
 }
 
 scsp_maison::u16 scsp_maison::read_reg(u32 mot)
@@ -217,6 +241,11 @@ void scsp_maison::apres_ecriture_commun(u32 bas)
 		// finit sur la moitie des fentes (le commentaire de scsp.cpp le dit, et c'est une divergence voulue).
 		m_mslc = u8((m_commun[0x08 / 2] >> 11) & 0x1F);
 		break;
+	case 0x02: case 0x03:
+		// La ligne de retard du DSP : sa taille et son origine dans la RAM son.
+		m_dsp.RBL = (8 * 1024) << ((m_commun[0x02 / 2] >> 7) & 3);
+		m_dsp.RBP = m_commun[0x02 / 2] & 0x3F;
+		break;
 	case 0x2A: case 0x2B:
 		m_mcieb = m_commun[0x2A / 2];
 		break;
@@ -258,8 +287,29 @@ void scsp_maison::apres_ecriture_commun(u32 bas)
 
 void scsp_maison::apres_ecriture_fente(u32 fente, u32 mot)
 {
-	// Le mot 8 porte OCT et FNS : le pas se recalcule a l'ecriture, et non seulement au demarrage.
-	if (mot == 8) { calculer_pas(fente); return; }
+	// TROIS MOTS SE RECALCULENT A L'ECRITURE, et pas seulement au demarrage. En oublier un laisse une voix
+	// deja en cours sur des valeurs perimees -- ce qui ne s'entend pas tout de suite, et se voit un million
+	// d'echantillons plus tard.
+	if (mot == 8) { calculer_pas(fente); return; }     // OCT et FNS : le pas de lecture
+	if (mot == 9) { calculer_lfo(fente); return; }     // LFOF, les formes, les profondeurs
+	if (mot == 5) {
+		// LPSLNK/KRS/DL/RR. Et le relachement est recalcule AVEC UN RATE DE BASE NUL, ce qui n'est pas ce
+		// que fait le calcul du demarrage : celui-ci part de `octave + 2*KRS + bit de FNS`. L'incoherence
+		// est dans l'original et elle est OBSERVABLE -- c'est elle que le rejeu a trouvee.
+		//
+		// La trace de la decouverte, parce qu'elle dit comment on trouve ces choses : le rejeu d'une scene
+		// de 1500 images sortait UN echantillon faux sur 1 149 952, a -967 contre -968. Les tables etaient
+		// toutes identiques (65536 entrees de panoramique, 1024 de courbe, 124 de temps : zero ecart). En
+		// rejouant les deux coeurs cote a cote, un echantillon a la fois, l'ecart s'est date : echantillon
+		// 894 568, fente 0, le VOLUME en relachement, l'adresse etant juste. Mon pas valait 353 548 et le
+		// sien 422 293, soit l'index 61 au lieu de 62 -- un cran de rate. Avec RR=0x1F et une octave de -1,
+		// `clamp(-1 + 62)` contre `clamp(0 + 62)` : ce crochet-ci manquait.
+		const u16 *r = m_fente[fente];
+		Vive &v = m_vive[fente];
+		v.rr = m_pas_dr[std::clamp(2 * int(champ(r, "RR")), 0, 63)];
+		v.dl = s32(0x1F - champ(r, "DL"));
+		return;
+	}
 	if (mot != 0) return;
 
 	// KYONEX, LA GACHETTE, ET ELLE EST GLOBALE : elle declenche un balayage des TRENTE-DEUX fentes et non
@@ -659,6 +709,8 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 		}
 	}
 
+	if (m_dit) fprintf(stderr, "  diag.osc fente %2u : brut %7d  etat %d  volume %9d  alfos %u plfos %u cur %u\n",
+	                   i, ech, v.etat, v.volume, champ(r, "ALFOS"), champ(r, "PLFOS"), v.cur);
 	// SDIR SAUTE L'ENVELOPPE ET L'ALFO. C'est la porte par laquelle le bloc 2 se mesure sans le bloc 3, et
 	// c'est aussi ce qui fait que TL est mis a zero plus bas : une fente en SDIR passe a cote de toute
 	// l'attenuation (docs/scsp_audit.md §2, point 6).
@@ -673,7 +725,12 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 		// echantillon de toute voix sort quatre millemes plus bas que le suivant. Mesure, pas du bruit
 		// d'arrondi (scsp_contract.h §10 point 1).
 		if (v.etat == ATTAQUE) ech = (ech * avancer_enveloppe(i)) >> PAS;
-		else ech = (ech * m_courbe_eg[avancer_enveloppe(i) >> (PAS - 10)]) >> PAS;
+		else {
+			const s32 brut = avancer_enveloppe(i);
+			if (m_dit) fprintf(stderr, "  diag.eg  fente %2u : eg %6d -> index %4d -> courbe %6d\n",
+			                   i, brut, brut >> (PAS - 10), m_courbe_eg[brut >> (PAS - 10)]);
+			ech = (ech * m_courbe_eg[brut >> (PAS - 10)]) >> PAS;
+		}
 	}
 
 	// L'anneau de modulation, que la fente alimente sauf si STWINH l'interdit. Le gain applique ici est
@@ -698,43 +755,48 @@ void scsp_maison::construire_facteurs()
 	// puis 1,5 et non 1,6 -- ce qu'une reecriture "propre" arrondit sans le voir. Valeurs du contrat, et
 	// consequences figees en entiers par tools/son/test_scsp_mix.cpp.
 	static const float DB_TL[8] = { 0.4f, 0.8f, 1.5f, 3.0f, 6.0f, 12.0f, 24.0f, 48.0f };
+	static const float DB_PAN[4] = { 3.0f, 6.0f, 12.0f, 24.0f };
+	// L'entree 0 de SDLT est le SILENCE et non un niveau tres faible.
+	static const float DB_SDL[8] = { 0.0f, -36.0f, -30.0f, -24.0f, -18.0f, -12.0f, -6.0f, 0.0f };
+
+	float f_tl[256], f_pan[32], f_sdl[8];
 	for (unsigned i = 0; i < 256; i++) {
 		float db = 0.0f;
 		for (unsigned b = 0; b < 8; b++) if (i & (1u << b)) db -= DB_TL[b];
-		m_f_tl[i] = powf(10.0f, db / 20.0f);
+		f_tl[i] = powf(10.0f, db / 20.0f);
 	}
-	static const float DB_PAN[4] = { 3.0f, 6.0f, 12.0f, 24.0f };
 	for (unsigned i = 0; i < 32; i++) {
 		float db = 0.0f;
 		for (unsigned b = 0; b < 4; b++) if (i & (1u << b)) db -= DB_PAN[b];
 		// 0x0F n'est PAS la somme des quatre bits : c'est une coupure en dur. Un cas particulier au milieu
 		// d'une table par ailleurs additive, et une reecriture qui sommerait laisserait filtrer -45 dB.
-		m_f_pan[i] = (i & 0xF) == 0xF ? 0.0f : powf(10.0f, db / 20.0f);
+		f_pan[i] = (i & 0xF) == 0xF ? 0.0f : powf(10.0f, db / 20.0f);
 	}
-	// SDLT : l'entree 0 est le SILENCE et non un niveau tres faible.
-	static const float DB_SDL[8] = { 0.0f, -36.0f, -30.0f, -24.0f, -18.0f, -12.0f, -6.0f, 0.0f };
-	for (unsigned i = 0; i < 8; i++) m_f_sdl[i] = i ? powf(10.0f, DB_SDL[i] / 20.0f) : 0.0f;
-}
+	for (unsigned i = 0; i < 8; i++) f_sdl[i] = i ? powf(10.0f, DB_SDL[i] / 20.0f) : 0.0f;
 
-void scsp_maison::gains(unsigned tl, unsigned pan, unsigned sdl, s32 &g, s32 &d) const
-{
 	// LE FACTEUR QUATRE EST DANS LA TABLE, et c'est de la qu'il vient : le melange rend quatre fois
 	// l'echantillon a plein niveau au centre. Ni l'adaptateur ni l'etage de sortie n'y sont pour rien.
 	//
-	// UNE SEULE TRONCATURE, du produit entier : c'est ce qui rend les memes entiers que l'original
-	// (23196 a -3 dB, 2066 a -24 dB), la ou trois tables d'entiers multipliees tronqueraient trois fois.
-	const float commun = 4.0f * float(1 << PAS) * m_f_tl[tl & 0xFF] * m_f_sdl[sdl & 7];
-	// Le bit 4 de PAN choisit QUEL canal est attenue, l'autre restant a plein niveau : ce n'est pas une
-	// balance qui glisse.
-	const float p = m_f_pan[pan & 0x1F];
-	if ((pan & 0x10) == 0) { g = s32(commun * p); d = s32(commun); }
-	else                   { g = s32(commun);     d = s32(commun * p); }
+	// UNE SEULE TRONCATURE, du produit entier, et l'echelle EN DERNIER : c'est ce qui rend les memes
+	// entiers que l'original (23196 a -3 dB, 2066 a -24 dB). Trois tables d'entiers multipliees
+	// tronqueraient trois fois, et un ordre different ne tomberait pas toujours sur le meme entier.
+	for (unsigned i = 0; i < 0x10000; i++) {
+		const unsigned tl = i & 0xFF, pan = (i >> 8) & 0x1F, sdl = (i >> 13) & 7;
+		const float p = (pan & 0x10) == 0 ? f_pan[pan] : 1.0f;
+		m_gain[i] = s32(float(1 << PAS) * (4.0f * p * f_tl[tl] * f_sdl[sdl]));
+	}
 }
 
 void scsp_maison::run(u32 n, s32 *out)
 {
+	// (diagnostic temporaire : VF3_MAISON_DIAG=<indice> detaille un echantillon, terme par terme)
+	static const char *diag_s = getenv("VF3_MAISON_DIAG");
+	static const std::uint64_t diag = diag_s ? strtoull(diag_s, nullptr, 10) : ~0ull;
+
 	for (u32 e = 0; e < n; e++) {
 		s32 gauche = 0, droite = 0;
+		const bool dit = (m_now + e) == diag;
+		m_dit = dit;
 		for (unsigned i = 0; i < FENTES; i++) {
 			if (!m_vive[i].active) { m_ptr_anneau = (m_ptr_anneau + 1) & 63; continue; }
 			const s32 ech = une_fente(i);
@@ -744,11 +806,31 @@ void scsp_maison::run(u32 n, s32 *out)
 			// point 6).
 			s32 g, d;
 			gains(champ(r, "SDIR") ? 0 : champ(r, "TL"), champ(r, "DIPAN"), champ(r, "DISDL"), g, d);
+			if (dit) fprintf(stderr, "diag fente %2u : ech %7d  g %6d  apport %7d  (tl %3u pan %2u sdl %u)\n",
+			                 i, ech, g, (ech * g) >> PAS, champ(r, "SDIR") ? 0 : champ(r, "TL"),
+			                 champ(r, "DIPAN"), champ(r, "DISDL"));
 			gauche += (ech * g) >> PAS;
 			droite += (ech * d) >> PAS;
+			// L'envoi au DSP : meme attenuation, mais par IMXL, et deux bits de plus.
+			s32 ig, id;
+			gains(champ(r, "SDIR") ? 0 : champ(r, "TL"), 0, champ(r, "IMXL"), ig, id);
+			m_dsp.SetSample((ech * ig) >> (PAS - 2), s32(champ(r, "ISEL")), s32(champ(r, "IMXL")));
 			m_ptr_anneau = (m_ptr_anneau + 1) & 63;
 		}
-		// (bloc 5 : le DSP d'effets et la sortie EFSDL/EFPAN des seize premieres fentes.)
+		m_dsp.Step();
+
+		// La sortie d'effets : les SEIZE PREMIERES fentes seulement, chacune portant le niveau et le
+		// panoramique de son propre registre (EFSDL/EFPAN).
+		for (unsigned i = 0; i < 16; i++) {
+			const unsigned efsdl = champ(m_fente[i], "EFSDL");
+			if (!efsdl) continue;
+			s32 g, d;
+			gains(0, champ(m_fente[i], "EFPAN"), efsdl, g, d);
+			if (dit) fprintf(stderr, "diag efreg %2u : %6d  g %6d  apport %7d\n",
+			                 i, m_dsp.EFREG[i], g, (s32(m_dsp.EFREG[i]) * g) >> PAS);
+			gauche += (s32(m_dsp.EFREG[i]) * g) >> PAS;
+			droite += (s32(m_dsp.EFREG[i]) * d) >> PAS;
+		}
 
 		// L'etage de sortie. DAC18B ne change pas le GAIN mais la RESOLUTION : sans lui les deux bits bas
 		// de la somme sont jetes, le facteur quatre entre les deux denominateurs annulant le decalage.
@@ -759,6 +841,7 @@ void scsp_maison::run(u32 n, s32 *out)
 		gauche = std::clamp(gauche, -borne, borne - 1);
 		droite = std::clamp(droite, -borne, borne - 1);
 		if (!dac18b) { gauche *= 4; droite *= 4; }
+		if (dit) fprintf(stderr, "diag total gauche %d\n", gauche);
 		if (out) { out[e * 2] = gauche; out[e * 2 + 1] = droite; }
 	}
 	m_now += n;

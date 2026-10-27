@@ -40,6 +40,7 @@ connaissance qu'on ne retrouve pas est perdue. D'où ce fichier.
 | `src/sound/scsp_core.h` | **l'interface neuve** d'un cœur de SCSP : trois méthodes de `sink`, le temps poussé, l'unité l'échantillon |
 | `src/sound/scsp_mame.h`, `.cpp` | **l'adaptateur** qui présente le cœur de MAME à travers elle — l'étape 3 du plan de migration, et les trois endroits où les deux ne coïncident pas y sont nommés |
 | `src/sound/scsp_contract.h` | **le contrat matériel** : 48 champs et les constantes du pilote, chaque nombre avec sa provenance, les écarts assumés marqués `DEVIATION` |
+| `src/sound/scsp_maison.h`, `.cpp` | **le SCSP du projet** : six blocs sur sept écrits depuis le contrat et les tests, le septième (le DSP) emprunté. Rend le même son que celui de MAME **à l'octet** sur 3 219 865 échantillons. L'en-tête dit l'état de chaque bloc, et pourquoi le 5 est à part |
 | `src/sound/scsp_select.h`, `.cpp` | **le sélecteur** : `scsp::make(nom, ...)`, par où un second cœur entrera. `mame` est la seule entrée aujourd'hui, et le fichier le dit |
 | `src/sound/scsp_trace.h`, `.cpp` | **le format de trace, l'enregistreur et le rejoueur** : chaque accès à l'échantillon près, les écritures de RAM comprises. L'enregistrement passe par une seule porte, `SoundBoard::tete[n]`, et non par les huit sites d'appel |
 | `src/sound/sound_prof.h` | le profilage par parties (`VF3_SND_PROF=1`) |
