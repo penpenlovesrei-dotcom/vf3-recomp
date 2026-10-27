@@ -344,6 +344,19 @@ public:
 	// road both, and the host drives it (console_play.h).
 	int fv2_end_match();
 	void fv2_hold_match_over();   // the same bit put back, every frame, until the branch point reads it
+	// VS FINISH, the arcade's own setting, read in the WORKING COPY and written there only. At the end of a
+	// two-player match the game reads it (0x0000DBE8) and, when it is on, asks for mode 18 -- GAME OVER --
+	// instead of handing the winner the ladder. It is the door out of a versus, and it is the game's own.
+	// The STORED setting is not touched: this is a loan for the length of one way out, not a change the
+	// player did not ask for (fv2_set_option writes both, which is what the OPTIONS page wants and not
+	// what this wants).
+	int fv2_vs_finish() const { return fv2_option(0x00120558, 1); }
+	bool fv2_set_vs_finish(int v)
+	{
+		if (set != "fvipers2" || ram.size() <= 0x00120559) return false;
+		ram[0x00120558 ^ 3] = uint8_t(v);
+		return true;
+	}
 	// THE ENDING'S TWO BYTES: where the staff roll is in its list of segments, and which half of the
 	// current one is on screen -- a page of credits or a replay. August measured both; model3.cpp says
 	// what they are. The console's Dreamcast ending hangs its illustrations off them.

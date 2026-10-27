@@ -389,6 +389,8 @@ struct console_play
 	leave_phase leaving = L_OFF;
 	leave_dest leave_for = L_TO_TITLE;
 	int leave_frames = 0, leave_cut = -1, leave_scene = -1;
+	// VS FINISH as the player had it, lent for the length of the way out (model3.h). -1: not borrowed.
+	int leave_vs_finish = -1;
 	static constexpr int LEAVE_GIVE_UP = 3600;   // a minute: a match that will not end is let go of
 
 	void leave_match(leave_dest what)
@@ -399,11 +401,35 @@ struct console_play
 		// match is quitting the training; turning it back on by itself for the next one would be the same
 		// surprise the other way round.
 		training_on = false;
+		// AND THE DOOR OUT OF A TWO-PLAYER MATCH IS OPENED FIRST, because the game only reads it when the
+		// match ends. Read at 0x0000DBD0 the 2026-10-27: when both players are in, the end of a match asks
+		// whether VS FINISH is on and, if it is, asks for mode 18 -- GAME OVER. If it is off, the winner is
+		// handed the ladder and the game goes on, which is what a scripted versus did for four runs while
+		// the way out waited. The setting is put back at the far side (arrive), and only the working copy is
+		// touched, so what the player chose in OPTIONS is not changed.
 		leaving = L_ENDING;
 		leave_for = what;
 		leave_frames = 0;
 		leave_cut = -1;
 		leave_scene = -1;
+	}
+
+	// Borrowed on the way in, given back at the far side. Both say so: a setting left on would change what
+	// the next versus does at its end, which is exactly the surprise this layer is built not to spring.
+	void borrow_vs_finish(m3::Model3 &b)
+	{
+		if (leave_vs_finish >= 0) return;
+		leave_vs_finish = b.fv2_vs_finish();
+		if (leave_vs_finish < 0) return;
+		if (leave_vs_finish == 0) b.fv2_set_vs_finish(1);
+		fprintf(stderr, "the console: VS FINISH was %d, lent as 1 for the way out\n", leave_vs_finish);
+	}
+	void return_vs_finish(m3::Model3 &b)
+	{
+		if (leave_vs_finish < 0) return;
+		b.fv2_set_vs_finish(leave_vs_finish);
+		fprintf(stderr, "the console: VS FINISH given back as %d\n", leave_vs_finish);
+		leave_vs_finish = -1;
 	}
 
 	// The page answered: held at once, because by now the game has left its attract loop. And the game let
@@ -750,17 +776,22 @@ struct console_play
 	void step_leaving(m3::Model3 &b)
 	{
 		if (leaving == L_OFF) return;
+		borrow_vs_finish(b);
 		if (++leave_frames >= LEAVE_GIVE_UP) {
 			fprintf(stderr, "the console: the match would not end in a minute -- the writing stops\n");
+			return_vs_finish(b);
 			leaving = L_OFF;
 			return;
 		}
 		if (leaving == L_ENDING) {
 			// A WAY OUT THAT IS TAKING LONG SAYS SO, and says what the game is doing meanwhile. Without this
 			// a match that will not end is a minute of silence and then one line saying it gave up.
-			if (leave_frames % 60 == 0)
-				fprintf(stderr, "the console: the way out is %d frames old -- mode %d sub %d, the match says %s\n",
-					leave_frames, b.fv2_mode(), b.fv2_submode(), b.fv2_match_over() ? "decided" : "not decided");
+			if (leave_frames % 60 == 0 || (getenv("VF3_LEAVE_TRACE") && leave_frames < 60))
+				fprintf(stderr, "the console: the way out is %d frames old -- mode %d sub %d, the match says %s"
+					" (players %d, out %d, 145C %d, 145F %d)\n",
+					leave_frames, b.fv2_mode(), b.fv2_submode(), b.fv2_match_over() ? "decided" : "not decided",
+					b.fv2_option(0x0058145A, 1), b.fv2_option(0x00581457, 1),
+					b.fv2_option(0x0058145C, 1), b.fv2_option(0x0058145F, 1));
 			if (b.fv2_in_attract()) {
 				fprintf(stderr, "the console: the match is over in %d frames (%.1f s), the end screens next\n",
 						leave_frames, double(leave_frames) / 57.5);
@@ -821,6 +852,7 @@ struct console_play
 	// select screen with it, two players on it, which is the whole point of the line.
 	void arrive(m3::Model3 &b)
 	{
+		return_vs_finish(b);
 		if (leave_for == L_TO_TITLE) {
 			if (!b.fv2_on_title()) b.fv2_attract_to_title();
 			// THE LIST IS ALREADY UP: MAIN MENU put it there on the frame it was chosen, and MENU_IN is the

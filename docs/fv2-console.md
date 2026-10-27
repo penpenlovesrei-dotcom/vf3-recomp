@@ -756,39 +756,58 @@ et son état déclare que le jeu ne tourne pas dessous.
 - les coups de pied et gardes d'un **script** n'étaient pas routés en training, là où ceux d'une main
   l'étaient.
 
-### La porte de sortie d'un VERSUS n'existe pas à ce point de branchement (2026-10-26)
+### La porte de sortie d'un VERSUS : `VS FINISH`, le réglage de la borne (2026-10-27)
 
-`verifier-console.cmd` joue tout le chemin sans les mains et imprime la trace des états. Il va jusqu'au
-bout **en ARCADE** ; **en VERSUS il reste coincé**, et voici pourquoi, lu dans le code plutôt que deviné.
+`verifier-console.cmd` joue tout le chemin sans les mains et imprime la trace des états. Il allait au bout
+**en ARCADE** et **restait coincé en VERSUS** : quatre parties cachées, le jeu rechargeant une manche vingt
+images après `MAIN MENU`, la sonde disant « the match says decided » à chaque image. Voici la lecture qui a
+trouvé la porte, et les deux fausses pistes qu'elle a écartées.
 
-`NEXT_PROG_SEL` (`0x0000DB48`), désassemblé d'un vidage de RAM avec `tools/fv2/desas_ppc.py`, teste **deux
-bits** de `ADV_INFO_STATUS` et rien d'autre :
+#### Ce que le point de branchement fait vraiment
+
+`NEXT_PROG_SEL` (`0x0000DB48`), désassemblé d'un vidage de RAM avec `tools/fv2/desas_ppc.py` :
 
 ```
-0000DB48  lis r10,0x0058 ; lwz r10,5104(r10)      ADV_INFO_STATUS
-0000DB50  rlwinm. r0,r10,28,0,0 ; bne 0x0000DD4C  bit 0x00000008 : l'échelle est finie -> la fin du jeu
-0000DB58  rlwinm. r0,r10,1,0,0  ; beq 0x0000DD28  bit 0x40000000 ABSENT -> une manche de plus
-0000DB60  ...                                     sinon : l'ÉCHELLE (0x0058145A contre 0x00581457 + 1)
+lis r10,0x0058 ; lwz r10,5104(r10)      ADV_INFO_STATUS
+rlwinm. r0,r10,28,0,0 ; bne 0x0000DD4C  bit 0x00000008 : l'échelle est finie -> mode 12, la fin du jeu
+rlwinm. r0,r10,1,0,0  ; beq 0x0000DD28  bit 0x40000000 ABSENT -> une manche de plus
+lbz r3,[0x0058145A]                     combien jouent
+  == 3 -> 0x0000DBD0                    DEUX JOUEURS : la route du versus
+  == 0 -> 0x0000DC9C
+  != [0x00581457] + 1 -> 0x0000DC9C     « tous sauf un sont sortis » ? sinon le dernier continue l'échelle
 ```
 
-Le passage par défaut — celui que `fv2_end_match` arme en posant `0x40000000` — **est l'échelle** : il lit
-le numéro d'adversaire et passe au suivant. « Ce match est décidé » veut donc dire « au suivant » pour
-celui qui l'a gagné, et il n'y a **pas de troisième branche** qui veuille dire « on arrête de jouer ».
+et les quatre modes que ces routes demandent : `8` CONTINUE, `12` ENDING, `18` GAME OVER, `22` RESULT.
 
-Sur la route arcade ça ne se voit pas et la sortie marche : le chrono forcé fait perdre **l'humain**, son
-échelle s'arrête là, et le jeu déroule sa propre route vers `CONTINUE` puis `GAME OVER`. En VERSUS, le
-gagnant **hérite de la partie** — la règle INTRUDE de la borne — donc le jeu charge la manche suivante et
-la sortie attend indéfiniment. Mesuré quatre fois : la sonde dit « the match says decided » à chaque
-image et le jeu est dans `ROUND_MASK` vingt images plus tard.
+#### La route du versus, et la porte
 
-Deux leviers essayés, aucun n'est la porte :
+`0x0000DBD0` est la route des deux joueurs, et sa **première question** est un réglage :
 
-- `fv2_restart_attract()` depuis le combat met bien le jeu en `ADV` (mode 3), mais **la tâche du match
-  reste vivante**, donc `fv2_in_attract()` continue de dire qu'une partie tourne et rien de ce portage
-  n'admet que le jeu est fini ;
-- écrire 0 dans les deux vies **n'est pas un K.O.** : le jeu décide le K.O. dans son propre gestionnaire,
-  en appliquant les dégâts.
+```
+0000DBE0  lis r3,0x0012 ; addi r3,r3,1312      0x00120520, le bloc vivant des réglages
+0000DBE8  lbz r4,56(r3)                        0x00120558 = VS FINISH
+0000DBEC  cmplwi r4,0 ; bne 0x0000DD60         s'il est ON -> mode 18 : GAME OVER
+```
 
-**Ce qui reste à faire** : trouver ce que le jeu fait quand l'échelle du dernier joueur s'arrête (la route
-de la défaite, pas celle du branchement), ou renoncer à la route du jeu pour un VERSUS et arrêter la
-partie comme la borne le ferait — ce qui demande d'abord de savoir quelle tâche tient la partie.
+**`VS FINISH` est la porte**, et c'est la borne qui la fournit : réglage à ON, la fin d'un match à deux
+joueurs **finit la partie** ; à OFF, le gagnant hérite de l'échelle et le jeu continue — exactement ce que
+les quatre parties cachées montraient. Il est déjà dans la page OPTIONS de ce portage (`fv2_options.h`,
+ligne `VS FINISH`).
+
+Le portage l'**emprunte** le temps de la sortie : `borrow_vs_finish` le lit et le pose à 1 quand une sortie
+de match commence, `return_vs_finish` le rend à l'arrivée (et aussi si la sortie abandonne). **Seule la
+copie vivante est touchée** — pas le réglage rangé — donc ce que le joueur a choisi dans OPTIONS n'est pas
+changé.
+
+**Mesuré** sur le chemin complet en versus : `VS FINISH was 0, lent as 1`, le match est fini en **203
+images (3,5 s)**, l'écran titre atteint en **12 images**, `VS FINISH given back as 0`, `MENU_IN -> MENU`.
+C'est le même chiffre que la route arcade, et c'est la même route.
+
+#### Les deux fausses pistes, écartées par la mesure
+
+- **le compte des joueurs sortis** (`0x00581457` posé au nombre de joueurs) et **un point de vie d'écart**
+  pour que le chrono ait un vainqueur : les deux ensemble ne changeaient rien qu'une partie puisse voir.
+  Retirés ; le commentaire de `fv2_end_match` dit qu'ils l'ont été et pourquoi ;
+- `fv2_restart_attract()` depuis le combat met bien le jeu en `ADV`, mais **la tâche du match reste
+  vivante**, donc `fv2_in_attract()` continue de dire qu'une partie tourne ;
+- écrire 0 dans les deux vies **n'est pas un K.O.** : le jeu le décide dans son gestionnaire de dégâts.

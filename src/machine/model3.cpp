@@ -1705,6 +1705,13 @@ constexpr uint32_t FV2_MATCH_OVER = 0x40000000;        // set when the match, no
 // 0 1 2 3 4 and one alone counts 1 2 3 4 5. ROUNDS_LOST_2 lives in the scene block rather than beside it.
 constexpr uint32_t FV2_ROUNDS_LOST_1P = 0x00581455;
 constexpr uint32_t FV2_ROUND_NUMBER = 0x00581456;
+// THE TWO BYTES THE MATCH'S BRANCH POINT COUNTS WITH, read at 0x0000DB60 out of a RAM dump the
+// 2026-10-26 (tools/fv2/desas_ppc.py). HOW MANY ARE PLAYING is already named elsewhere in this file --
+// 0x0000C2EC picks the round's length on it -- and the byte beside it is HOW MANY ARE OUT: the branch
+// point asks whether the players out are one fewer than the players, which is "all but one", and sends
+// the last one on to the next opponent. Anything else and the game is over for everybody.
+constexpr uint32_t FV2_PLAYERS = 0x0058145A;
+constexpr uint32_t FV2_PLAYERS_OUT = 0x00581457;
 constexpr uint32_t FV2_ROUNDS_LOST_2P = 0x0058FDBA;
 // THE TWO FIGHTERS, REACHED THE WAY THE GAME REACHES THEM: through its own two pointers, and not by the
 // addresses they happen to hold. fv2_game_FIGHT_DSP itself reads `lwz r3,[0x0007511C] ; lwz r3,0(r3)`, and
@@ -2026,27 +2033,12 @@ int Model3::fv2_end_match()
 	if ((mode != 6 && mode != 7) || (sub != 11 && sub != 12)) return -1;
 	uint8_t &high = ram[FV2_ADV_INFO_STATUS ^ 3];        // the bit is in the top byte; the rest is left alone
 	high = uint8_t(high | (FV2_MATCH_OVER >> 24));
-	// AND A TIME-OUT DOES NOT ALWAYS GET THE PLAYER OUT, which was measured the 2026-10-26 and is NOT
-	// mended here, because what it wants is not a write but a door the game may not have. Read at
-	// 0x0000DB48 out of a RAM dump (tools/fv2/desas_ppc.py), NEXT_PROG_SEL tests two bits of
-	// ADV_INFO_STATUS and nothing else:
-	//
-	//     rlwinm. r0,r10,28,0,0 ; bne 0x0000DD4C     bit 0x00000008: the ladder is finished -> the ending
-	//     rlwinm. r0,r10,1,0,0  ; beq 0x0000DD28     bit 0x40000000 CLEAR -> another round of this match
-	//
-	// and the fall-through -- the one this function arms -- is the LADDER: it reads 0x0058145A against
-	// 0x00581457 + 1 and walks on to the next opponent. "This match is decided" therefore means "the
-	// next one, please" for whoever won it, and there is no third branch that means "stop playing".
-	//
-	// On the arcade road that is invisible and the exit works: the forced time-out makes the HUMAN lose,
-	// his ladder ends there, and the game walks its own road to CONTINUE and GAME OVER. In a VERSUS the
-	// winner inherits the game -- the board's own INTRUDE rule -- so the game loads the next round and
-	// the way out waits for ever. Measured four times on a scripted versus: the match says decided every
-	// frame and the game is in ROUND_MASK twenty frames later.
-	// Two levers were tried and neither is the door: restart_attract from the fight does put the game in
-	// ADV, but the match's task stays alive, so nothing of this port agrees that a game has ended; and
-	// writing both lives to 0 is not a K.O., the game deciding that in its own handler as it applies
-	// damage.
+	// AND WHAT IT DOES NOT DO, measured the 2026-10-27 after four runs of trying: it does not touch the
+	// branch point's own counts. NEXT_PROG_SEL (0x0000DB48) asks whether the players out are one fewer
+	// than the players playing and hands the last one the ladder, and writing those two bytes -- the
+	// count of players out set to the count of players, a point of life so the time-out has a winner --
+	// changed nothing a run could see. The door out of a two-player match is elsewhere and is the game's
+	// own: VS FINISH, read at 0x0000DBD0 when the match ends (model3.h, console_play.h).
 	for (int i = 0; i < 4; i++) ram[(FV2_GAME_TIMER + uint32_t(i)) ^ 3] = i == 3 ? 1 : 0;
 	return 1;
 }
