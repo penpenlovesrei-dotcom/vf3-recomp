@@ -322,16 +322,13 @@ struct console_play
 		b.fv2_park_stage_select();
 	}
 
-	// WHETHER THIS GAME IS A VERSUS, and it has to be a flag of its own: the trip through the select
-	// screen is over long before anyone pauses, and its two wants are spent. The pause menu asks this to
-	// decide whether CHANGE STAGE commands this match's arena or the next one's.
-	bool is_versus = false;
-	// AND IT IS NOT CLEARED THE MOMENT THE GAME IS IN ITS ATTRACT LOOP, which it still is for a few frames
-	// after the line is chosen -- the injected Start has not been read yet. Cleared that way the flag was
-	// false by the time anyone paused, and the versus lost its CHANGE STAGE line. So the game has to have
-	// been seen RUNNING first, which is the same wait Survival and the stage hold already use.
-	bool versus_ran = false;
-	void choose_arcade() { inject_start = 8; swallow_start = true; is_versus = false; versus_ran = false; }
+	// WHETHER THIS GAME IS A VERSUS IS THE GAME'S TO ANSWER, and it does: Model3::fv2_players, the byte the
+	// match's own branch point asks first, reads 1 for one player and 3 for two (measured on three
+	// scripted roads the 2026-10-27). This layer kept two flags for that question -- one set when V.S.
+	// was chosen, one to put off clearing it, with a paragraph explaining that the first could not be
+	// cleared when the game reached its attract loop because the injected Start had not been read yet.
+	// Both are gone: the pause menu asks the game.
+	void choose_arcade() { inject_start = 8; swallow_start = true; }
 	// (the flag is read HERE, before anything of this port has touched it, and handed to the hold)
 	void choose_survival(m3::Model3 &b) { arm_hold(H_SURVIVAL, b.fv2_survival()); choose_arcade(); }
 	void choose_random() { arm_hold(H_RANDOM); choose_arcade(); }
@@ -460,8 +457,6 @@ struct console_play
 		vs_scene = scene >= 1 && scene <= 14 ? scene : 0;
 		if (vs_scene) arm_hold(H_STAGE); else drop_hold(H_STAGE);
 		choose_arcade();
-		is_versus = true;      // (after choose_arcade, which clears it)
-		versus_ran = false;
 	}
 
 	// ---- what Start does, and it is two jobs told apart by one question ----
@@ -988,13 +983,6 @@ struct console_play
 		}
 	}
 
-	// Whether a game is running, and whether the one that ran was a versus: the pause menu asks it.
-	void note_game_over(m3::Model3 &b)
-	{
-		if (!b.fv2_in_attract()) versus_ran = true;
-		else if (versus_ran) { is_versus = false; versus_ran = false; }   // the game is over, and it ran
-	}
-
 	// The two task registers, read ONLY while the round is actually being fought (GAME's FIGHT_INT and
 	// FIGHT_DSP, sub-states 11 and 12): see task_live above for why no other moment will do.
 	void note_tasks(m3::Model3 &b)
@@ -1053,7 +1041,6 @@ struct console_play
 		if (!on) return;
 		do_asked(b);                                              // what the surfaces asked for
 		if (ui.at == cstate::STAGE) b.fv2_park_stage_select();    // the hold that state wants renewed
-		note_game_over(b);                                        // is a game running, and was it a versus
 		step_leaving(b);                                          // the way out of a match, if one runs
 		step_training(b);                                         // the clock, the lives, the column's reading
 		step_ending(b);                                           // which picture of the Dreamcast's ending

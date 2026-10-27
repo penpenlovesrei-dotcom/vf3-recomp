@@ -350,6 +350,11 @@ public:
 	// The STORED setting is not touched: this is a loan for the length of one way out, not a change the
 	// player did not ask for (fv2_set_option writes both, which is what the OPTIONS page wants and not
 	// what this wants).
+	// HOW MANY ARE PLAYING, the game's own byte and not a flag of this port's: 1 for one player, 3 for two.
+	// It is the first thing the match's branch point asks (0x0000DB60), and this file already names it
+	// elsewhere -- 0x0000C2EC picks the round's length on it. Measured on three scripted roads the
+	// 2026-10-27: 3 through a versus and through a training (which is a versus with a mode on top).
+	int fv2_players() const { return fv2_option(0x0058145A, 1); }
 	int fv2_vs_finish() const { return fv2_option(0x00120558, 1); }
 	bool fv2_set_vs_finish(int v)
 	{

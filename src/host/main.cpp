@@ -4448,15 +4448,18 @@ int main(int argc, char **argv)
 						// so there it would change the NEXT match's and not this one's.
 						uint32_t on = fv2_pause::ALL;
 						if (cplay.training_on) on &= ~(1u << fv2_pause::REMATCH);
-						else if (!cplay.is_versus) on &= ~(1u << fv2_pause::CHANGE_STAGE);
+						// AND THE GAME SAYS HOW MANY ARE PLAYING, rather than this port remembering what was chosen:
+						// 3 is two players (Model3::fv2_players). A versus joined mid-game by the board's INTRUDE
+						// rule is a versus too, and nothing of this port would have known.
+						else if (board.fv2_players() != 3) on &= ~(1u << fv2_pause::CHANGE_STAGE);
 						pause.on = on;
 						// The one surface enter() does not open itself, because which hand pressed Start says which side
 						// the panel stands on. It is opened here and the state entered on the same line: the state is what
 						// freezes the fight behind it (console_state.h).
 						pause.show(!(live.start[0] || script_ctl.start[0]) && (live.start[1] || script_ctl.start[1]) ? 1 : 0);
 						enter(cstate::PAUSE, "Start in a game");
-						fprintf(stderr, "frame %llu: Start in a game (mode %d, sub-state %d): the console's pause menu is up\n",
-								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
+						fprintf(stderr, "frame %llu: Start in a game (mode %d, sub-state %d, %d playing): the console's pause menu is up\n",
+								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode(), board.fv2_players());
 						break;
 					}
 					case console_play::start_for::cut:
