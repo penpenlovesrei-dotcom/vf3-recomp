@@ -1,42 +1,49 @@
 @echo off
-rem Fighting Vipers 2, le chemin complet du menu console, SANS FENETRE et sans les mains.
+rem Fighting Vipers 2 : les deux routes du menu console, SANS FENETRE, sans les mains, et verifiees.
 rem
-rem Il joue tools\scripts\fv2-console-route.txt et imprime la trace des etats. Rien a regarder, rien a
-rem cliquer : la partie tourne cachee et le journal dit ou elle est passee. A relancer apres tout
-rem changement de la couche console (src\host\console_state.h, console_play.h, main.cpp).
+rem Il joue deux parties cachees -- une en VERSUS, une en ARCADE -- et compare la suite des etats
+rem traverses a celle qui est attendue. Il ne demande pas de lire une trace : il dit si elle est bonne.
+rem A relancer apres tout changement de la couche console (console_state.h, console_play.h, main.cpp).
 rem
-rem Ce que la trace DOIT dire, dans cet ordre (docs\fv2-console.md) :
+rem   VERSUS : PLAY MENU PLAY STAGE PLAY PAUSE MENU_IN MENU
+rem   ARCADE : PLAY MENU PLAY       PLAY PAUSE MENU_IN MENU  (sans le carrousel, qui est a la ligne V.S.)
 rem
-rem   PLAY -> MENU      Start sur l'ecran titre
-rem   MENU -> PLAY      V.S. choisi
-rem   PLAY -> STAGE     les combattants choisis, le carrousel s'ouvre
-rem   STAGE -> PLAY     le decor repondu
-rem   PLAY -> PAUSE     Start dans le combat
-rem   PAUSE -> MENU_IN  MAIN MENU : le jeu rentre derriere la liste
-rem   MENU_IN -> MENU   le jeu est rentre
-rem
-rem Une ligne qui manque ou qui arrive dans le desordre est une regression, pas un detail.
+rem Compter une dizaine de minutes : deux parties de sept mille images chacune, sans fenetre.
 setlocal
 set PATH=C:\msys64\mingw64\bin;%PATH%
 set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\fvipers2.zip
-set "VF3_DATA=%~dp0build\console-route"
 cd /d "%~dp0"
 if not exist "build\bin\vf3.exe" (
   echo build\bin\vf3.exe manque : lancer construire-hote.cmd d'abord.
   pause
   exit /b 1
 )
-if not exist "%VF3_DATA%" mkdir "%VF3_DATA%"
 set VF3_HIDDEN=1
+set VF3_CONSOLE_PAUSE=4
+set VF3_QUIT_AFTER=7000
+
+echo ---- la route VERSUS ----
+set "VF3_DATA=%~dp0build\console-route"
+if not exist "%VF3_DATA%" mkdir "%VF3_DATA%"
 set VF3_SCRIPT=%~dp0tools\scripts\fv2-console-route.txt
 set VF3_CONSOLE_MODE=versus
 set VF3_CONSOLE_STAGE=5
-set VF3_CONSOLE_PAUSE=4
-set VF3_QUIT_AFTER=7000
 "build\bin\vf3.exe" "%ROM%" --console
+py -3 "%~dp0tools\fv2\verifier_console.py" "%VF3_DATA%\log.txt" PLAY MENU PLAY STAGE PLAY PAUSE MENU_IN MENU
+set VERSUS=%ERRORLEVEL%
+
 echo.
-echo ---- la trace des etats ----
-findstr /C:"the console: " "%VF3_DATA%\log.txt"
+echo ---- la route ARCADE ----
+set "VF3_DATA=%~dp0build\console-route-arcade"
+if not exist "%VF3_DATA%" mkdir "%VF3_DATA%"
+set VF3_SCRIPT=%~dp0tools\scripts\fv2-console-route-arcade.txt
+set VF3_CONSOLE_MODE=arcade
+set VF3_CONSOLE_STAGE=
+"build\bin\vf3.exe" "%ROM%" --console
+py -3 "%~dp0tools\fv2\verifier_console.py" "%VF3_DATA%\log.txt" PLAY MENU PLAY PAUSE MENU_IN MENU
+set ARCADE=%ERRORLEVEL%
+
 echo.
-echo ---- fini. Le journal entier est dans %VF3_DATA%\log.txt ----
+if "%VERSUS%%ARCADE%"=="00" (echo ---- les deux routes sont bonnes ----) else (echo ---- VERSUS=%VERSUS% ARCADE=%ARCADE% : zero veut dire bon ----)
+echo Les journaux entiers sont dans build\console-route et build\console-route-arcade.
 pause
