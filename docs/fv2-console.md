@@ -756,6 +756,51 @@ et son état déclare que le jeu ne tourne pas dessous.
 - les coups de pied et gardes d'un **script** n'étaient pas routés en training, là où ceux d'une main
   l'étaient.
 
+### Ce que la mise en table a entraîné ensuite (2026-10-27)
+
+**Une machine totale.** `enter()` supposait que la surface nommée par l'état existe. Une image qui n'aurait
+pas chargé aurait laissé l'état du carrousel levé sans carrousel — le jeu garé dans le `STAGE_SEL` vide
+pour toujours. Il demande maintenant d'abord : refus, la raison dans le journal, retour en `PLAY`, et pour
+le carrousel seul l'écran de sélection est lâché (le jeu y a été garé sur le tick même de la demande).
+Mesuré avec `VF3_CONSOLE_STAGE=none` : « *STAGE was asked for (the fighters are chosen) and its page is
+not there -- staying in play* », puis « *the select screen let go of* », et le versus continue.
+
+**Un état se demande, comme une écriture.** `console_play::ask_state()` : la couche dit quel état elle
+veut, l'hôte y entre. C'est ce qui a fait disparaître les deux derniers drapeaux de signal
+(`want_list`, `want_stage_page`) et les deux `if` par lesquels l'hôte redevinait la fin d'une sortie.
+
+**Ce que le jeu sait, on ne le garde plus.** « Est-ce un versus » était deux booléens, dont un dont le
+seul travail était de retarder l'effacement de l'autre. Le jeu le dit dans l'octet que son propre point
+de branchement lit en premier : `Model3::fv2_players`, **1 pour un joueur, 3 pour deux**, mesuré sur les
+trois routes. Cela répond en plus à un cas que ce portage ne pouvait pas connaître : une partie rejointe
+en cours par la règle INTRUDE de la borne est un versus, et rien ici ne l'avait choisi.
+
+**Ce qui est prêté est rendu.** L'état écrit quatre choses qui vivent en dehors de lui — le muet de la
+carte, la voix du logo, celle de l'annonceur, `VS FINISH` — et elles ne sont écrites que tant que la voie
+console est allumée. Changer de style de jeu au mauvais moment les laissait en place : le jeu serait resté
+muet pour le reste de la session. Les quatre sont rendues là où le style change, et `VS FINISH` **avant**
+que l'emprunteur soit remplacé.
+
+### Le filet : `verifier-console.cmd`
+
+Trois routes jouées sans fenêtre et sans les mains, et **comparées par la machine** à la suite d'états
+attendue (`tools/fv2/verifier_console.py`) :
+
+| route | la suite attendue |
+|---|---|
+| VERSUS | `PLAY MENU PLAY STAGE PLAY PAUSE MENU_IN MENU` |
+| ARCADE | `PLAY MENU PLAY PAUSE MENU_IN MENU` |
+| TRAINING | la même qu'ARCADE, plus les lignes de ses leviers |
+
+TRAINING est là parce que c'est la route qui met en marche ce qu'aucune autre ne touche : l'horloge
+arrêtée, les vies tenues, les sept états d'annonce coupés, l'annonceur jeté, et la sortie d'un match à
+deux joueurs. Ses trois lignes sont cherchées dans le journal à côté des états.
+
+Deux pièges, payés et corrigés : la sortie se comptait en **images du jeu**, et la route finit sur `MENU`,
+qui fige le PowerPC — le processus tournait encore vingt-six minutes après avoir fini (il y a une sortie à
+la montre à côté, maintenant) ; et une trace imprimée n'est pas une vérification, parce qu'une ligne
+disparue au milieu ne saute pas aux yeux le lendemain.
+
 ### La porte de sortie d'un VERSUS : `VS FINISH`, le réglage de la borne (2026-10-27)
 
 `verifier-console.cmd` joue tout le chemin sans les mains et imprime la trace des états. Il allait au bout
