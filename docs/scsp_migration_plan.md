@@ -4,17 +4,17 @@
 
 **C'est un plan.** Au 2026-10-27, les étapes 0, 2 et 3 sont faites. **Le SCSP du projet existe** —
 `src/sound/scsp_maison.{h,cpp}` — et il rend le même son que celui de MAME **à l'octet** sur une scène
-réelle : six blocs sur sept écrits depuis le contrat, le septième (le DSP d'effets) **emprunté** — mais sa
-spécification existe maintenant (`tools/son/test_scsp_dsp.cpp`, huit cas mesurés), donc il y a enfin quelque
-chose contre quoi l'écrire.
+réelle. **Les sept blocs sont écrits**, et le dernier — le DSP d'effets — l'a été contre une spécification
+mesurée d'abord (`tools/son/test_scsp_dsp.cpp`), faute de la moindre description de son jeu d'instructions.
+Le cœur du projet ne contient donc **plus une ligne de MAME**.
 
 **Au rejoueur, sur la scène entière de `fv2-fight.txt` (4200 images) : IDENTIQUES.** 3 219 865 échantillons
 par puce, 208 360 interruptions, 69 311 armements de timer, 265 469 lectures de registre — tout concorde,
 échantillon par échantillon, sur les deux puces.
 
 Ce qui reste : **la carte parle toujours au cœur de MAME**. Le cœur du projet est complet et vérifié, mais il
-n'est pas branché — il lui manque les quatre extras que `scsp::core` ne porte pas (gains par groupe, sonde
-d'énergie, miroir MADRS, `MVOL`), et le bloc 5 reste emprunté.
+n'est pas branché — il lui manque les quatre extras que `scsp::core` ne porte pas : gains par groupe, sonde
+d'énergie, miroir MADRS et `MVOL`. C'est la dernière dette, et elle est de la taille de ces quatre-là.
 
 
 ## Pourquoi, et dans quel ordre les quatre objectifs se servent

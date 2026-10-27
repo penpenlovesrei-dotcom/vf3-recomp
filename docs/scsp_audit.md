@@ -311,6 +311,43 @@ machine de cette taille, c'est là et nulle part ailleurs — et la part des voi
 mesure que la musique s'est chargée, ce qui en fait le second poste et non le troisième.
 
 
+## 4 quinquies. Ce que le cœur du projet coûte, comparé à celui de MAME
+
+Mesuré le 2026-10-27 par `tools/son/rejouer`, qui rejoue la **même trace** d'accès dans les deux cœurs : le
+travail est identique a l'accès près, ce qui est la seule façon de les comparer honnêtement. Trois passages
+chacun, sur la trace de la scène entière (3 219 865 échantillons, soit 73 secondes d'audio).
+
+| étape | `maison` | ce qui a changé |
+|---|---|---|
+| première version | 47,80 s | le lecteur de champs cherchait **par comparaison de chaînes** dans la table du contrat, à chaque champ, chaque fente, chaque échantillon |
+| positions résolues une fois | 22,93 s | la table du contrat reste la source unique, lue **une fois** à la construction |
+| mot d'indicateurs | 22,48 s | les champs d'un bit d'un pas de DSP tiennent dans un entier lu une fois, au lieu de quinze booléens |
+| corps spécialisé | **21,88 s** | les quatre contrôles que ce jeu n'emploie jamais sortent des 112 pas par échantillon |
+| | **20,80 s** | le cœur de MAME, pour comparaison |
+
+**Le chiffre qui compte, et ce n'est pas le plus flatteur.** Le temps absolu est dominé par l'analyse de la
+trace — 81 Mo de texte, analysés deux fois dans un passage à deux cœurs — et elle est identique dans les
+deux. L'écart **par cœur** est donc de 0,54 s pour 73 secondes d'audio, soit **0,74 % d'un cœur par puce**.
+Sur les 8,5 % que le son coûte au bureau (§4 ter), le cœur du projet ferait passer le son à environ 10 % :
+**le gain processeur va dans le mauvais sens**, et c'est la priorité absolue du cahier des charges.
+
+Trois choses à en retenir plutôt qu'une :
+
+1. **La justesse n'a jamais été payee par la vitesse.** La première version, 2,27 fois plus lente, était
+   déjà identique à l'octet. Les quatre étapes ci-dessus n'ont rien changé au son — le rejoueur l'a
+   vérifié après chacune.
+2. **La source unique des positions de champs n'a pas été abandonnée pour aller plus vite.** Elle est lue
+   une fois au lieu d'être cherchée un million de fois : un champ faux dans le contrat casse toujours les
+   tests.
+3. **Ce chiffre n'est pas celui de la carte.** Il ne pourra l'être que quand le cœur y sera branché, et
+   `VF3_SND_PROF` le mesurera alors à l'intérieur, part par part. En attendant, 0,74 % par puce est une
+   borne mesurée sur un banc, pas la part du son dans une image.
+
+Et une taille, qui n'est pas une mesure de performance mais qui se dit : 1 759 lignes pour le cœur du projet
+(`scsp_maison` et `dsp_maison`) contre 2 540 pour celui de MAME (`scsp` et `scspdsp`), à comportement
+identique.
+
+
 ## 5. Ce que le programme DSP contient vraiment
 
 Mesuré (`dspprog`, imprimé par `SCSPDSP::Start` sous `VF3_SND_PROF=1`), sur les 112 pas du programme de

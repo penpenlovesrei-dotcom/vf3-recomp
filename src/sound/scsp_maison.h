@@ -30,48 +30,40 @@
 // qu'une reecriture qui les remplacerait par une courbe echouerait la et nulle part ailleurs.
 // -----------------------------------------------------------------------------------------------------
 //
-// OU EN EST CE FICHIER. Un bloc a la fois, dans l'ordre que l'architecture donne -- les blocs verifiables
-// sans le jeu d'abord. L'etat se lit dans `tools/son/test_*` : ce qui passe est fait.
+// OU EN EST CE FICHIER : LES SEPT BLOCS SONT ECRITS, et le coeur rend le meme son que celui de MAME A
+// L'OCTET -- 3 219 865 echantillons par puce sur la scene entiere de fv2-fight.txt, PCM, interruptions,
+// armements de timer et lectures de registre compris (tools/son/rejouer). L'etat de chaque bloc se lit
+// aussi dans tools/son/test_* : ce qui passe est fait.
 //
 //     bloc 1  registres et semantique d'acces .................. ECRIT, 9 cas
 //     bloc 2  fentes, oscillateur, PCM, bouclage ............... ECRIT, 11 cas
 //     bloc 3  enveloppes ADSR ................................. ECRIT, 10 cas
 //     bloc 4  pitch, LFO, modulation .......................... ECRIT, 11 cas
-//     bloc 5  le DSP d'effets ....... EMPRUNTE, mais sa SPECIFICATION existe (8 cas)
+//     bloc 5  le DSP d'effets ................................. ECRIT, 8 cas
 //     bloc 6  timers, interruptions, synchronisation ........... ECRIT, 11 cas
 //     bloc 7  melange et rendu ................................ ECRIT, 9 cas
 //
-// Tant qu'un bloc manque, le coeur rend ce qu'il peut et NON du bruit : sans voix il rend du silence exact,
-// ce que le test du bloc 1 verifie. Un coeur qui rendrait n'importe quoi en attendant serait impossible a
-// brancher pour mesurer.
+// LE BLOC 5 A ETE A PART, ET IL FAUT DIRE EN QUOI. Les six autres ont ete ecrits depuis scsp_contract.h,
+// qui dit ce que la puce DOIT faire. Pour le DSP, le contrat ne decrit que la DISPOSITION -- COEF, MADRS,
+// MPRO, 128 pas de 8 octets (§6) -- et pas la semantique d'une instruction. Et docs/scsp_references.md est
+// clair sur l'etat des sources : le jeu d'instructions du DSP n'existe qu'IMPLEMENTE, chez MAME et chez
+// Supermodel, tous deux issus du meme travail de reverse engineering d'ElSemi. Ni fiche technique, ni
+// specification independante.
 //
-// LE BLOC 5 EST A PART, ET IL FAUT DIRE POURQUOI PLUTOT QUE DE FAIRE SEMBLANT. Les six autres ont ete
-// ecrits depuis scsp_contract.h, qui dit ce que la puce DOIT faire. Pour le DSP, le contrat ne decrit que
-// la DISPOSITION -- COEF, MADRS, MPRO, 128 pas de 8 octets (§6) -- et pas la semantique d'une instruction.
-// Et docs/scsp_references.md est clair sur l'etat des sources : le jeu d'instructions du DSP n'existe
-// qu'implementé, chez MAME et chez Supermodel, tous deux issus du meme travail de reverse engineering
-// d'ElSemi. Il n'y a ni fiche technique, ni specification independante.
+// Ecrire ce bloc "depuis le contrat" etait donc impossible, et le transcrire depuis scspdsp.cpp
+// n'eliminerait rien -- une copie de plus, sous la meme BSD-3. LA SPECIFICATION A DONC ETE ECRITE D'ABORD,
+// le 2026-10-27 : tools/son/test_scsp_dsp.cpp, huit cas qui posent chacun un programme minuscule et
+// ENREGISTRENT ce que le DSP en fait, observes par la fenetre de registres (TEMP, MEMS, MIXS, EFREG) et par
+// la RAM son. Elle a d'ailleurs sorti le fait central du bloc, qu'aucune lecture ne crie : LE SHIFTER EST UN
+// PAS EN RETARD SUR L'ACCUMULATEUR. Puis le bloc contre elle : src/sound/dsp_maison.{h,cpp}, dont l'en-tete
+// nomme les quatre champs que ce jeu n'exerce jamais -- ecrits, mais jamais eprouves.
 //
-// Donc : ecrire le bloc 5 "depuis le contrat" est impossible, et le transcrire depuis scspdsp.cpp
-// n'eliminerait rien -- ce serait une copie de plus, sous la meme BSD-3. Le coeur EMPRUNTE donc le DSP de
-// MAME (src/sound/scspdsp.{h,cpp}, deja dans le depot avec son avis de licence), et cet emprunt est nomme
-// ici pour qu'il ne se fasse pas oublier. Ce qu'il reste a faire pour le finir est du travail de MESURE
-// avant d'etre du code : un test qui pilote le DSP par scsp::core, champ d'instruction par champ
-// d'instruction, et qui en enregistre le comportement -- la meme boucle que pour les six autres. Tant que
-// ce test n'existe pas, il n'y a rien contre quoi ecrire.
-//
-// CE TEST EXISTE DEPUIS LE 2026-10-27 : tools/son/test_scsp_dsp.cpp, huit cas, mesures par la fenetre de
-// registres (TEMP, MEMS, MIXS, EFREG) et par la RAM. Il a d'ailleurs sorti le fait central du bloc, qu'aucune
-// lecture ne crie : LE SHIFTER EST UN PAS EN RETARD SUR L'ACCUMULATEUR -- le pas qui fait un produit ne peut
-// pas en ecrire le resultat. Il y a donc desormais quelque chose contre quoi ecrire ce bloc.
-//
-// CE QUE L'EMPRUNT ACHETE QUAND MEME, et c'est pourquoi il vaut mieux que l'attente : le coeur devient
-// COMPLET, donc comparable au coeur de MAME par le rejoueur et par le harnais, sur une vraie scene. C'est
-// la seule epreuve qui juge les six blocs ENSEMBLE, et aucun test unitaire ne la remplace.
+// ET C'EST LE REJOUEUR QUI JUGE LES SEPT BLOCS ENSEMBLE, sur une vraie scene, a l'octet. Aucun test
+// unitaire ne le remplace : les sept passaient tous quand le rejeu trouvait encore deux divergences.
 #pragma once
 
 #include "scsp_core.h"
-#include "scspdsp.h"
+#include "dsp_maison.h"
 
 #include <cstdint>
 
@@ -245,7 +237,7 @@ private:
 	u16 m_commun[COMMUN_MOTS] = {};
 	s32 m_anneau[ANNEAU_MOTS] = {};                  // s32 : le tampon de modulation porte des echantillons
 	// COEF, MADRS et MPRO vivent DANS le DSP : en garder une copie ici serait deux verites pour un registre.
-	SCSPDSP m_dsp;
+	dsp_maison m_dsp;
 	u16 m_madrs_haut[CONTESTE_MOTS] = {};
 
 	// Les deux registres d'interruption du cote maitre, que la LECTURE recopie depuis ces champs et non
