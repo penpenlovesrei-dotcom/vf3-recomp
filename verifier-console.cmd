@@ -21,6 +21,11 @@ if not exist "build\bin\vf3.exe" (
 set VF3_HIDDEN=1
 set VF3_CONSOLE_PAUSE=4
 set VF3_QUIT_AFTER=7000
+rem ET UNE SORTIE A LA MONTRE AUSSI, parce que celle-la se compte en IMAGES DU JEU : la route finit sur
+rem MENU, qui fige le PowerPC, donc les images restantes ne tournent jamais et la partie ne se termine
+rem pas d'elle-meme. Mesure du 2026-10-27 : la route versus etait finie et juste a l'heure, et le
+rem processus tournait encore vingt-six minutes plus tard. Trois minutes suffisent aux deux routes.
+set VF3_QUIT_AFTER_S=180
 
 echo ---- la route VERSUS ----
 set "VF3_DATA=%~dp0build\console-route"

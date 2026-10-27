@@ -3105,8 +3105,20 @@ int main(int argc, char **argv)
 				i %= n;
 				cfg.arcade = i == 1;
 				cfg.console = i == 2;
+				// AND WHAT WAS BORROWED IS GIVEN BACK BEFORE THE BORROWER IS REPLACED: the way out of a match
+				// lends itself VS FINISH, and the line below forgets which value it was (console_play.h).
+				cplay.return_vs_finish(board);
 				cplay = console_play();   // (a style changed mid-session: nothing of the last one is carried over)
 				cplay.on = cfg.console && console_known;
+				// AND WHAT THE CONSOLE LENT THE BOARD GOES BACK WITH IT. The state is PLAY again by the line
+				// above, but the one thing it had set OUTSIDE itself is the board's own mute, which is written
+				// from the state once a frame and only while the console way is on: dropped here with the way
+				// out of a MENU_IN still set, the game would have stayed silent for the rest of the session.
+				// The two narrower mutes beside it -- the logo's voice, the announcer's -- are written the
+				// same way and are put back for the same reason.
+				board.mute_game_midi = false;
+				game.mute_voices = false;
+				game.mute_fight_voice = false;
 				modes.hide();
 				options.hide();
 				if (cplay.on) {   // (read once: the second call is free)
