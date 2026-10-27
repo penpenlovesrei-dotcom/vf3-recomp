@@ -1166,6 +1166,8 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 		// the cross product of two of its rows, and w.w^T = S.S^T - I + N.N^T is rank one as before.
 		{
 			double acc[3] = { 0, 0, 0 }, resid = 0;
+			int seen_p = 0, good_p = 0;
+			constexpr double PLANE = 0.04;
 			int got = 0;
 			for (int i = 0; i < std::min(pieces[iv], MAXP); i++) {
 				const double *s = psst[iv][i];
@@ -1203,11 +1205,26 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 				// Is this piece's matrix a planar projection at all? Everything above rests on it: only
 				// then is S.S^T equal to I - N.N^T + w.w^T, and only then does d = N + w mean anything. So
 				// the fit is put back together and held against what was measured.
+				double pr = 0;
 				for (int u = 0; u < 3; u++)
 					for (int v = 0; v < 3; v++) {
 						const double back = (u == v ? 1.0 : 0.0) - nn[u] * nn[v] + w2[u] * w2[v];
-						resid = std::max(resid, std::fabs(back - r[u][v]));
+						pr = std::max(pr, std::fabs(back - r[u][v]));
 					}
+				resid = std::max(resid, pr);
+				seen_p++;
+				// PLANE: how far a piece may sit from the planar projection rebuilt out of it and still
+				// count. Measured per piece, not per viewport:
+				//
+				//     Fighting Vipers 2   0.0002 at a quiet picture, 0.031 at the worst of thirteen arenas
+				//     Virtua Fighter 3    0.058 at its lowest, 0.081 at its worst, and not ONE piece below
+				//
+				// 0.04 sits between the two with margin on both sides. The old 0.005 was read off the dam
+				// alone, where every piece is within a millionth; the other twelve arenas are not so clean.
+				if (pr <= PLANE) good_p++;
+				// A piece that is not a planar projection says nothing about the light: it is counted and
+				// left out, instead of poisoning the mean and, through the gate below, the whole picture.
+				if (pr > PLANE) continue;
 				// w's sign is free, so d came out one of two mirror images: take the one leaning the way
 				// the pieces counted so far lean
 				double dd[3] = { nn[0] + w2[0], nn[1] + w2[1], nn[2] + w2[2] };
@@ -1232,8 +1249,35 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 			// out, and with no caster left the game draws its own shadows as it always did. 0.005 is the
 			// one number measurement does not hand over; it sits between a millionth and seven hundredths.
 			// VF3_SHADOW_FORCE: go ahead anyway, to look at what the refusal is turning down
+			// VF3_SHADOW_WHY: how many of this viewport's pieces ARE planar projections. The gate below
+			// is the WORST piece, so one doubtful piece condemns the whole picture -- and Fighting
+			// Vipers 2 has occasional bad pieces where Virtua Fighter 3 has nothing but. The count is
+			// what tells the two apart; the worst no longer does.
+			if (getenv("VF3_SHADOW_WHY")) {
+				static unsigned said = 0;
+				if (++said <= 6 || (said % 300) == 0)
+					fprintf(stderr, "planeite : vp%zu, %d pieces sur %d sont planes, pire %.6f\n",
+						iv, good_p, seen_p, resid);
+			}
 			static const bool forced = getenv("VF3_SHADOW_FORCE") != nullptr;
-			if (resid > 0.005 && !forced) { caster_vp[iv] = false; light_refused = true; why[2]++; continue; }
+			if (good_p * 2 < seen_p && !forced) {
+				// VF3_SHADOW_WHY: by how much, and where. The gate was set from Fighting Vipers 2 showing
+				// 0.000001 and Virtua Fighter 3 0.08; an arena of Fighting Vipers 2 tripping it is new.
+				if (getenv("VF3_SHADOW_WHY")) {
+					static double worst_r = 0;
+					static unsigned n_r = 0;
+					double sum = 0;
+					(void)sum;
+					if (resid > worst_r) worst_r = resid;
+					if (++n_r <= 10 || (n_r % 200) == 0)
+						fprintf(stderr, "vue refusee : vp%zu, %d pieces planes sur %d, pire %.6f (pire vu %.6f, %u fois)\n",
+							iv, good_p, seen_p, resid, worst_r, n_r);
+				}
+				caster_vp[iv] = false;
+				light_refused = true;
+				why[2]++;
+				continue;
+			}
 			if (got && al > 1e-9) {
 				for (int q = 0; q < 3; q++) dirs[iv][q] = float(acc[q] / al);
 				per_piece[iv] = true;
@@ -1353,7 +1397,15 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 	{
 		int left = 0;
 		for (int iv = 0; iv < 64; iv++) if (caster_vp[iv]) left++;
-		if (!left) { why[2]++; return; }
+		if (!left) {
+			if (getenv("VF3_SHADOW_WHY")) {
+				static unsigned said = 0;
+				if (++said <= 4 || (said % 100) == 0)
+					fprintf(stderr, "plus aucun projeteur : %u fois\n", said);
+			}
+			why[2]++;
+			return;
+		}
 	}
 	if (!nmaps) { why[5]++; return; }
 	// VF3_SHADOW_WHY: how steady the direction is. It is read per caster from the game's own shadow
@@ -1468,7 +1520,24 @@ void R3dGpu::fit_light(const video::Scene &scene, const video::Raster &prep)
 				nv++;
 			}
 		}
-		if (nv < 3) { nmaps = 0; why[6]++; return; }
+		if (nv < 3) {
+			// VF3_SHADOW_WHY: say WHICH viewports were looked at and what they held. The light is lost
+			// here on a good half of a fight's pictures at WESTERN, and a counter alone does not say why.
+			if (getenv("VF3_SHADOW_WHY")) {
+				static unsigned said = 0;
+				if (++said <= 20) {
+					fprintf(stderr, "boite vide : groupe %d sur %d, %zu triangles prepares ;", g, nmaps, prep.tris.size());
+					for (size_t iv = 0; iv < scene.viewports.size() && iv < 64; iv++)
+						if (caster_vp[iv])
+							fprintf(stderr, " vp%zu(%d pieces, groupe %d, %zu modeles)", iv, pieces[iv], vp_group[iv],
+								scene.viewports[iv].models.size());
+					fprintf(stderr, "\n");
+				}
+			}
+			nmaps = 0;
+			why[6]++;
+			return;
+		}
 		const float PAD = 0.3f;
 		blo[0] -= PAD; bhi[0] += PAD;
 		blo[2] -= PAD; bhi[2] += PAD;

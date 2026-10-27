@@ -1259,3 +1259,99 @@ sable, sa grille verte et son saloon en flammes, les deux combattants portant le
 **Écrire `STAGE_TEST__STAGE` ne peut pas marcher**, et c'est mesuré : avec l'octet écrit avant chaque image,
 il vaut bien 1 à la fin, et la fiche vaut toujours `07555C`, celle du barrage. Le jeu le réécrit depuis r30
 avant que le chargeur ne tourne.
+
+## La lumière perdue une image sur deux, et la grille qui la perdait
+
+Vu en jouant à Western : les ombres de ce portage s'allument et s'éteignent. Mesuré : sur 1920 images,
+**175** refusées pour `[pas de faces de combattant]` — soit à peu près la moitié des images de combat. Les
+ombres visibles pendant ces images-là sont **celles du jeu**, puisque le port ne les retire que lorsque sa
+propre lumière a été trouvée.
+
+**Ce n'était pas une boîte vide, c'était la grille de planéité.** Le port vérifie que chaque matrice d'ombre
+du jeu est bien une projection plane — c'est ce qui protège Virtua Fighter 3, dont les ombres n'en sont pas —
+et refusait l'image dès que **le pire morceau** d'une vue dépassait 0,005.
+
+**Pourquoi 0,005 était faux.** Ce nombre avait été lu au barrage, où chaque pièce est à un millionième du
+plan. Les douze autres arènes ne sont pas si propres. Le pire écart, arène par arène, le décor chargé
+entier :
+
+| décor | pire écart | décor | pire écart |
+|---|---|---|---|
+| `TEST` | aucun refus | `STORE` | 0,047 |
+| `WESTERN` | 0,015 | `HANGAR` | 0,009 |
+| `AC_CARRIER` | 0,041 | `CAPSULE` | 0,037 |
+| `ROOM_00` | 0,046 | **`DAM`** | **0,059** |
+| `GREAT_BM` | 0,32 | `TOWER` | 0,038 |
+| `FURNACE` | 0,013 | `BUILDING` | 0,049 |
+| | | `MUSEUM` | 0,042 |
+
+Virtua Fighter 3 est à **0,070**. Le barrage à 0,059 : **les deux populations se chevauchent**, et aucun
+seuil sur le pire écart ne peut les séparer. Déplacer le nombre n'aurait pas marché.
+
+**Ce qui les sépare vraiment, c'est le nombre de pièces planes.** Compté par pièce et non par vue :
+
+    Fighting Vipers 2    20 pièces sur 20, pire 0,0002 ; au pire 15 sur 20
+    Virtua Fighter 3     0 sur 3, 0 sur 25, 0 sur 11, 0 sur 22, 0 sur 25 -- pas une seule
+
+Là, la séparation est totale. Virtua Fighter 3 n'a **aucune** pièce plane ; Fighting Vipers 2 en a presque
+toujours toutes, et de temps en temps une poignée se gâte.
+
+**La règle devient donc :**
+
+1. **Par pièce**, le seuil passe de 0,005 à **0,04** — entre les 0,031 au pire de Fighting Vipers 2 et les
+   0,058 au plus bas de Virtua Fighter 3, avec de la marge des deux côtés.
+2. **Une pièce qui n'est pas une projection plane est comptée et laissée de côté** au lieu d'empoisonner la
+   moyenne : elle ne dit rien de la lumière.
+3. **La vue n'est refusée que si moins de la moitié de ses pièces sont planes.** Fighting Vipers 2 n'y tombe
+   jamais, Virtua Fighter 3 y tombe toujours.
+
+**Mesuré après :**
+
+- Western, sur 1920 images : **175 refus → 2**.
+- Virtua Fighter 3 : **toujours refusé**, 3878 fois — il garde ses propres ombres, comme avant.
+- La direction reste aussi stable : 0,17° de dérive moyenne par image sur 360 images.
+
+## Objectif secondaire : ce que fait LostWorldNative, et ce qui est transposable
+
+`github.com/snicolast/LostWorldNative` est un portage natif de *The Lost World: Arcade* — **le même matériel
+que nous, Model 3** — recompilé en C++ avec un rendu **Vulkan**, et il trace ses ombres de soleil au lieu de
+les projeter. Lu le 2026-10-27 ; ce qui suit vient de son code, pas de son README.
+
+**Comment c'est fait** (`src/video/r3d_raytrace.h`, `shaders/raytrace.glsl`, `shaders/r3d.frag`) :
+
+- La structure d'accélération est **reconstruite à chaque image** depuis la soupe de triangles de la scène,
+  *déjà en espace caméra* — « a few thousand triangles: a fraction of a millisecond ». Nous avons exactement
+  cette donnée sous la main : `prep.tris`.
+- **Deux niveaux, deux instances** : ce qui se tient à moins de `max_height` au-dessus du sol (`RT_LOW`, « the
+  only shadow casters, as with the shadow map ») et ce qui est plus haut (`RT_HIGH`), qui ne sert qu'à
+  l'occlusion ambiante. La séparation des couches s'y fait donc **par la hauteur**, là où nous la faisons par
+  l'échelle d'unités mesurée.
+- **Les triangles ajourés sont résolus dans la requête de rayon** : `cutout_blocks()` lit l'alpha de la
+  texture au point traversé et laisse passer le rayon par les trous.
+- **Ombre douce** : N rayons répartis sur le *disque* du soleil, en spirale d'angle d'or, tournés par pixel —
+  net au contact, flou en s'éloignant.
+- La carte d'ombre reste là en repli, et un mode ne trace que la moitié gauche de l'écran pour comparer les
+  deux moitiés dans la même image.
+
+**Ce que ça réglerait chez nous, et c'est précis :**
+
+1. **Le sol grillagé.** Leur rayon traverse les trous parce qu'il lit l'alpha de la texture. Notre règle
+   « rien sous le sol » est une approximation qui fait le même travail de loin.
+2. **Le ring out comme cas particulier.** Notre carte s'étire quand les combattants s'écartent — mesuré à un
+   vrai ring out à Western : demi-étendue **10,08 × 5,10** au lieu de 2,5 × 2,5, soit quatre fois moins de
+   résolution. Un rayon ne connaît pas cette contrainte.
+
+**Ce que ça ne règle pas, et ce que ça coûte :**
+
+- **La lumière.** Ils prennent `vp.sun`, le vecteur soleil que le jeu donne par vue : `vec3 L =
+  normalize(vp.sun.xyz)`. Chez nous ce vecteur est à **42° en moyenne et 78° au pire** de la direction que
+  portent les matrices d'ombre de Fighting Vipers 2 (mesuré sur 1369 relevés). L'adopter est un **choix** —
+  nos ombres quitteraient celles que les artistes ont dessinées — pas un gain gratuit.
+- **L'API.** Ils sont en Vulkan natif avec `VK_KHR_ray_query`. Vérifié : **aucun symbole de ray query dans
+  `SDL3/SDL_gpu.h`**. Notre rendu passant par SDL_GPU, ce chemin demanderait un rendu Vulkan ou Direct3D 12
+  à côté — une seconde implémentation, pas un ajout.
+- Et il reste le **contrôle du démarrage**, qui compare l'image du GPU à celle du processeur : un chemin tracé
+  ne peut pas y être comparé pixel à pixel.
+
+C'est donc un objectif **secondaire** : à garder en vue, à ne pas entreprendre tant que les ombres projetées
+ne sont pas fiables.

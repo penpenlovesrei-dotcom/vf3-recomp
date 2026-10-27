@@ -416,6 +416,25 @@ jeu continue ; descendu a y = -4, il pose `ring_out` tout seul a l'image suivant
 fait rien, le jeu l'efface en trois images. Pendant la chute le jeu **aplatit encore 29 pieces sur 36**.
 `VF3_EJECT=<image>[,x[,y]]`.
 
+**La lumiere etait perdue une image sur deux**, et c'etait la grille de planeite. Le port refusait l'image
+des que le PIRE morceau d'une vue s'ecartait de 0,005 du plan ; 0,005 avait ete lu au barrage, ou tout est a
+un millionieme. Les autres arenes vont jusqu'a 0,047, et le barrage lui-meme a 0,059 — contre 0,070 pour
+Virtua Fighter 3 : **les deux populations se chevauchent**, aucun seuil sur le pire ne les separe. Ce qui les
+separe est le **nombre de pieces planes** : Fighting Vipers 2 en a 20 sur 20 (au pire 15 sur 20), Virtua
+Fighter 3 **aucune** (0 sur 3, 0 sur 25, 0 sur 22). La regle est donc : seuil par piece a **0,04**, les pieces
+non planes comptees et laissees de cote, et la vue refusee seulement si **moins de la moitie** de ses pieces
+sont planes. Mesure : Western passe de **175 refus a 2** sur 1920 images, Virtua Fighter 3 reste refuse
+(3878). Detail dans `docs/fv2-ombres.md`.
+
+**Objectif secondaire : le ray tracing de LostWorldNative.** Un portage natif du meme materiel (Model 3),
+en Vulkan, qui trace ses ombres de soleil : structure d'acceleration reconstruite a chaque image depuis la
+soupe de triangles en espace camera, triangles ajoures resolus en lisant l'alpha dans la requete de rayon,
+ombre douce par N rayons sur le disque du soleil. Reglerait **le sol grillagé** et **l'etirement de notre
+carte au ring out** (demi-etendue 10,08 x 5,10 mesuree au lieu de 2,5 x 2,5). Mais leur lumiere est `vp.sun`,
+a 42° en moyenne de la notre, et **`SDL3/SDL_gpu.h` n'expose aucune ray query** : il faudrait un rendu Vulkan
+ou D3D12 a cote. A garder en vue, pas avant que les ombres projetees soient fiables. Detail dans
+`docs/fv2-ombres.md`.
+
 ## A faire en reprenant
 
 1. ~~Charger `WESTERN` avec ses vraies textures~~ — **fait.** Le numero d'arene vient d'une table d'octets

@@ -3112,6 +3112,50 @@ int main(int argc, char **argv)
 				// rewrites that byte from r30 before the loader runs. One byte of this table does all of it.
 				if (const char *vs = getenv("VF3_STAGE"); vs && board.ram.size() > 0xB4104)
 					board.ram[0xB4100 ^ 3] = uint8_t(atoi(vs));
+				// VF3_EJECT=<image>[,<x>[,<y>]]: player 1 put outside the ring at that frame, which is how a
+				// RING OUT is reached without playing to one. His block is at 0x00700500 (player 2's at
+				// 0x00707500) and his place is the three floats at +0x10, +0x14, +0x18 -- found by taking RAM
+				// at two frames of the same fight and keeping what moved: x sits within the ring's half side
+				// (CONFIG__STAGE_X, 5.0), y is the height above the floor and is zero standing, z is the depth.
+				// Measured at the dam: moved sideways to x = 20 the game plays on, but dropped to y = -4 it
+				// sets ring_out by itself on the next picture. Written for a few frames so the game's own step
+				// cannot put it straight back.
+				if (const char *es = getenv("VF3_EJECT"); es && board.ram.size() > 0x700520) {
+					const unsigned long long at = strtoull(es, nullptr, 10);
+					const char *comma = strchr(es, ',');
+					const float x = comma ? float(atof(comma + 1)) : 20.0f;
+					const char *comma2 = comma ? strchr(comma + 1, ',') : nullptr;
+					const float y = comma2 ? float(atof(comma2 + 1)) : 0.0f;
+					if (game_frame >= at && game_frame < at + 4) {
+						uint32_t bits;
+						memcpy(&bits, &x, 4);
+						for (int k = 0; k < 4; k++)
+							board.ram[(0x700510 + uint32_t(k)) ^ 3] = uint8_t(bits >> (24 - 8 * k));
+						if (comma2) {
+							memcpy(&bits, &y, 4);
+							for (int k = 0; k < 4; k++)
+								board.ram[(0x700514 + uint32_t(k)) ^ 3] = uint8_t(bits >> (24 - 8 * k));
+						}
+					}
+				}
+				// VF3_SHADOW_WHY: where the two fighters are, every 30 frames -- the three floats at +0x10,
+				// +0x14, +0x18 of each block. It is how a teleport is checked to have landed at all.
+				if (getenv("VF3_SHADOW_WHY") && board.ram.size() > 0x707520) {
+					static unsigned tick = 0;
+					if (++tick % 30 == 0) {
+						auto fl = [&](uint32_t ad) {
+							uint32_t v = 0;
+							for (int k = 0; k < 4; k++) v = (v << 8) | board.ram[(ad + uint32_t(k)) ^ 3];
+							float f;
+							memcpy(&f, &v, 4);
+							return f;
+						};
+						fprintf(stderr, "places : j1 [%.3f %.3f %.3f]  j2 [%.3f %.3f %.3f], image %llu\n",
+							double(fl(0x700510)), double(fl(0x700514)), double(fl(0x700518)),
+							double(fl(0x707510)), double(fl(0x707514)), double(fl(0x707518)),
+							(unsigned long long)game_frame);
+					}
+				}
 				// A RING OUT, as the game itself calls it. rob_flag, the status word at the head of each
 				// fighter's block (0x00700500 and 0x00707500), has 32 bits Sega named one by one in the table
 				// of name pointers at 0x0007A1FC, bit 31 first. ring_out is the seventeenth name, so bit 15 --
