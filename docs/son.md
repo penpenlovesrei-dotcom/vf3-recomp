@@ -87,12 +87,13 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 
 ## 5. Les tests
 
-`make test` construit et lance les neuf, et ils ne demandent ni ROM ni fenêtre pour l'essentiel :
+`make test` construit et lance les dix, et ils ne demandent ni ROM ni fenêtre pour l'essentiel :
 
 | | |
 |---|---|
 | `tools/son/rejouer.cpp`, `rejouer.cmd` | **le rejoueur** : une trace d'accès rejouée dans un ou deux cœurs, et la première divergence située à l'échantillon — PCM, interruptions, armements de timer, lectures de registre, MIDI sortant. Le `.cmd` prend la trace et lance les deux contrôles en une commande |
 | `tools/son/banc_scsp.h` | le montage que les tests de bloc partagent : un cœur neuf, sa RAM, le keyage d'une fente par la table du contrat. **Aucune attente** n'y vit — ce qu'on attend d'un bloc appartient au test de ce bloc |
+| `tools/son/test_scsp_dsp.cpp` | **le jeu d'instructions du DSP**, et c'est une **spécification** avant d'être un test : ce jeu d'instructions n'existe nulle part écrit. Huit cas, observés par la fenêtre de registres et par la RAM. Il a sorti le pas de retard du shifter. Bloc 5 |
 | `tools/son/test_scspdsp.cpp` | les deux corps du DSP contre une référence qui décode dans la boucle. 16 cas, dont les quatre contrôles qu'aucun jeu ne pose |
 | `tools/son/test_scsp_core.cpp` | **MAME piloté uniquement par l'interface neuve**, registres écrits par la table du contrat : un champ faux y coupe le son |
 | `tools/son/test_scsp_contract.cpp` | **le contrat contre ce qu'il décrit** : 48 champs contre les macros de `scsp.cpp`, les constantes contre la ROM. 55 contrôles, et **un compte qui doit fermer** pour qu'aucun champ ne soit silencieusement sauté |

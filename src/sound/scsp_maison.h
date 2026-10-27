@@ -37,7 +37,7 @@
 //     bloc 2  fentes, oscillateur, PCM, bouclage ............... ECRIT, 11 cas
 //     bloc 3  enveloppes ADSR ................................. ECRIT, 10 cas
 //     bloc 4  pitch, LFO, modulation .......................... ECRIT, 11 cas
-//     bloc 5  le DSP d'effets ................... EMPRUNTE a MAME, et voici pourquoi
+//     bloc 5  le DSP d'effets ....... EMPRUNTE, mais sa SPECIFICATION existe (8 cas)
 //     bloc 6  timers, interruptions, synchronisation ........... ECRIT, 11 cas
 //     bloc 7  melange et rendu ................................ ECRIT, 9 cas
 //
@@ -59,6 +59,11 @@
 // avant d'etre du code : un test qui pilote le DSP par scsp::core, champ d'instruction par champ
 // d'instruction, et qui en enregistre le comportement -- la meme boucle que pour les six autres. Tant que
 // ce test n'existe pas, il n'y a rien contre quoi ecrire.
+//
+// CE TEST EXISTE DEPUIS LE 2026-10-27 : tools/son/test_scsp_dsp.cpp, huit cas, mesures par la fenetre de
+// registres (TEMP, MEMS, MIXS, EFREG) et par la RAM. Il a d'ailleurs sorti le fait central du bloc, qu'aucune
+// lecture ne crie : LE SHIFTER EST UN PAS EN RETARD SUR L'ACCUMULATEUR -- le pas qui fait un produit ne peut
+// pas en ecrire le resultat. Il y a donc desormais quelque chose contre quoi ecrire ce bloc.
 //
 // CE QUE L'EMPRUNT ACHETE QUAND MEME, et c'est pourquoi il vaut mieux que l'attente : le coeur devient
 // COMPLET, donc comparable au coeur de MAME par le rejoueur et par le harnais, sur une vraie scene. C'est

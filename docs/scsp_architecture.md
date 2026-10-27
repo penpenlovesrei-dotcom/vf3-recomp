@@ -159,6 +159,10 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
    de Supermodel, issues du même travail d'ElSemi. Écrire ce bloc demande donc d'abord un **test qui mesure**
    le comportement instruction par instruction, comme pour les six autres. Tant qu'il n'existe pas, il n'y a
    rien contre quoi écrire, et le cœur emprunte `scspdsp.{h,cpp}`.
+   **La spécification existe depuis le 2026-10-27** : `tools/son/test_scsp_dsp.cpp`, huit cas, mesurés par la
+   fenêtre de registres (TEMP, MEMS, MIXS, EFREG) et par la RAM, sans une note de musique. Elle a sorti le fait
+   central du bloc, qu'aucune lecture ne crie : **le shifter est un pas en retard sur l'accumulateur** — le pas
+   qui fait un produit ne peut pas en écrire le résultat, il faut le suivant.
 6. **Timers, interruptions, synchronisation** — A/B/C, `SCIEB`/`SCIPD`/`SCILV`, `MCIEB`/`MCIPD`, le DMA, et la
    cadence des interruptions, dont Mednafen dit qu'elle est ce qui fait dériver le tempo de 2 %
    (`docs/scsp_references.md`).

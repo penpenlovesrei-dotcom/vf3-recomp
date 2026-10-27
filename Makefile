@@ -134,8 +134,17 @@ $(BIN)/rejouer: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/s
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_fentes $(BIN)/test_scsp_adsr $(BIN)/test_scsp_lfo $(BIN)/test_scsp_irq $(BIN)/test_scsp_mix
+# Le jeu d'instructions du DSP d'effets (tools/son/test_scsp_dsp.cpp) : bloc 5, et c'est une SPECIFICATION
+# avant d'etre un test -- ce jeu d'instructions n'existe nulle part ecrit. Observe par la fenetre de
+# registres (TEMP, MEMS, MIXS, EFREG) et par la RAM, sans une note de musique.
+$(BIN)/test_scsp_dsp: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_dsp.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+test: $(BIN)/test_scsp_dsp $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_fentes $(BIN)/test_scsp_adsr $(BIN)/test_scsp_lfo $(BIN)/test_scsp_irq $(BIN)/test_scsp_mix
 	$(BIN)/test_scspdsp
+	$(BIN)/test_scsp_dsp mame
+	$(BIN)/test_scsp_dsp maison
 	$(BIN)/test_scsp_contract
 	$(BIN)/test_scsp_core
 	$(BIN)/test_scsp_regs mame

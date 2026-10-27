@@ -4,8 +4,9 @@
 
 **C'est un plan.** Au 2026-10-27, les étapes 0, 2 et 3 sont faites. **Le SCSP du projet existe** —
 `src/sound/scsp_maison.{h,cpp}` — et il rend le même son que celui de MAME **à l'octet** sur une scène
-réelle : six blocs sur sept écrits depuis le contrat, le septième (le DSP d'effets) **emprunté** faute de
-spécification à écrire contre.
+réelle : six blocs sur sept écrits depuis le contrat, le septième (le DSP d'effets) **emprunté** — mais sa
+spécification existe maintenant (`tools/son/test_scsp_dsp.cpp`, huit cas mesurés), donc il y a enfin quelque
+chose contre quoi l'écrire.
 
 **Au rejoueur, sur la scène entière de `fv2-fight.txt` (4200 images) : IDENTIQUES.** 3 219 865 échantillons
 par puce, 208 360 interruptions, 69 311 armements de timer, 265 469 lectures de registre — tout concorde,

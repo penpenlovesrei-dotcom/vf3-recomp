@@ -138,6 +138,28 @@ scsp_maison::u16 scsp_maison::lire_octet_adresse(u32 octet)
 		return m_miroir ? m_dsp.MADRS[i] : m_madrs_haut[i];
 	}
 	if (octet < 0xC00) return m_dsp.MPRO[(octet - 0x800) / 2];
+
+	// L'ETAT DU DSP SE RELIT, et c'est par la qu'on peut le specifier. TEMP, MEMS, MIXS et EFREG sont tous
+	// exposes dans la fenetre de registres -- en lecture seule, l'ecriture au-dela de 0xC00 n'allant nulle
+	// part. Les trois premiers portent plus de seize bits, donc chacun occupe DEUX mots : le bit 1 de
+	// l'adresse choisit la moitie, le haut d'abord.
+	//
+	// Ce bout de carte manquait au bloc 1, et son test ne pouvait pas le dire : son balayage s'arrete a
+	// 0x42F. C'est en cherchant par ou observer le DSP qu'il a fallu le completer.
+	if (octet < 0xE00) {   // TEMP, 128 mots de 24 bits
+		const s32 v = m_dsp.TEMP[(octet >> 2) & 0x7F];
+		return u16((octet & 2) ? (u32(v) & 0xFFFF) : (u32(v) >> 16));
+	}
+	if (octet < 0xE80) {   // MEMS, 32 mots de 24 bits
+		const s32 v = m_dsp.MEMS[(octet >> 2) & 0x1F];
+		return u16((octet & 2) ? (u32(v) & 0xFFFF) : (u32(v) >> 16));
+	}
+	if (octet < 0xEC0) {   // MIXS, 16 mots de 20 bits
+		const s32 v = m_dsp.MIXS[(octet >> 2) & 0xF];
+		return u16((octet & 2) ? (u32(v) & 0xFFFF) : (u32(v) >> 16));
+	}
+	if (octet < 0xEE0) return u16(m_dsp.EFREG[(octet - 0xEC0) / 2]);
+	if (octet < 0xEE4) return u16(m_dsp.EXTS[(octet - 0xEE0) / 2]);
 	return 0;
 }
 
