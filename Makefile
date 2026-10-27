@@ -118,7 +118,7 @@ $(BIN)/test_scsp_lfo: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/s
 
 # Les timers, les cinq lignes d'interruption et le DMA (tools/son/test_scsp_irq.cpp) : bloc 6. Mesure par le
 # PUITS et non par le son, et fixe le "+1" de timer_samples, troisieme divergence voulue du portage.
-$(BIN)/test_scsp_irq: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_irq.cpp)
+$(BIN)/test_scsp_irq: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_irq.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
@@ -142,10 +142,14 @@ test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)
 	$(BIN)/test_scsp_regs maison
 	$(BIN)/test_scsp_fentes mame
 	$(BIN)/test_scsp_fentes maison
-	$(BIN)/test_scsp_adsr
-	$(BIN)/test_scsp_lfo
-	$(BIN)/test_scsp_irq
-	$(BIN)/test_scsp_mix
+	$(BIN)/test_scsp_adsr mame
+	$(BIN)/test_scsp_adsr maison
+	$(BIN)/test_scsp_lfo mame
+	$(BIN)/test_scsp_lfo maison
+	$(BIN)/test_scsp_irq mame
+	$(BIN)/test_scsp_irq maison
+	$(BIN)/test_scsp_mix mame
+	$(BIN)/test_scsp_mix maison
 
 clean:
 	rm -rf build

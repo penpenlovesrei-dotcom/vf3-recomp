@@ -39,6 +39,8 @@ scsp_maison::scsp_maison(u32 horloge, u16 *ram, u32 ram_octets, scsp::sink &puit
 	: m_horloge(horloge), m_ram(ram), m_ram_octets(ram_octets), m_puits(puits)
 {
 	construire_facteurs();
+	construire_enveloppe();
+	construire_lfo();
 	reset();
 }
 
@@ -56,6 +58,8 @@ void scsp_maison::reset()
 	m_niv_tima = m_niv_timbc = m_niv_midi = m_niv_cpu = m_niv_dma = 0;
 	m_mslc = 0;
 	m_ptr_anneau = 0;
+	for (auto &c : m_compte) c = 0;
+	for (auto &p : m_predivise) p = 1;
 	m_graine = 0x9d14abd7;
 	for (auto &v : m_vive) v = Vive();
 	m_now = 0;
@@ -229,10 +233,25 @@ void scsp_maison::apres_ecriture_commun(u32 bas)
 	case 0x24: case 0x25: case 0x26: case 0x27: case 0x28: case 0x29:
 		niveaux_depuis_scilv();
 		break;
+	case 0x16: case 0x17:
+		if (m_commun[0x16 / 2] & 0x1000) executer_dma();   // DEXE
+		break;
+	case 0x18: case 0x19: arme_timer(TIMER_A); break;
+	case 0x1A: case 0x1B: arme_timer(TIMER_B); break;
+	case 0x1C: case 0x1D: arme_timer(TIMER_C); break;
+	case 0x1E: case 0x1F:
+		verifier_attente();
+		break;
+	case 0x20: case 0x21:
+		// SCIPD : seule une demande du CPU deja armee relance l'examen. L'ecriture elle-meme est un OU du
+		// bit 5, faite plus haut.
+		if (m_commun[0x1E / 2] & m_commun[0x20 / 2] & 0x20) verifier_attente();
+		break;
+	case 0x22: case 0x23:
+		m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] & ~m_commun[0x22 / 2]);
+		acquitter_interruptions();
+		break;
 	default:
-		// Les timers (0x418-0x41C), SCIEB, SCIPD, SCIRE et le DMA (0x412-0x416) sont le bloc 6 : ils
-		// s'ecrivent et se relisent deja, mais rien ne s'arme encore. Le test du bloc 1 ne demande que la
-		// relecture ; celui du bloc 6 demandera le reste, et il echouera jusque-la.
 		break;
 	}
 }
@@ -276,6 +295,205 @@ void scsp_maison::apres_ecriture_fente(u32 fente, u32 mot)
 //   lu, et une reecriture qui n'appliquerait le bouclage qu'a `cur` decalerait les quatre modes.
 // -----------------------------------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------------------------------
+// BLOC 3 -- l'enveloppe.
+// -----------------------------------------------------------------------------------------------------
+
+void scsp_maison::construire_enveloppe()
+{
+	// LES DEUX TABLES DE TEMPS, en millisecondes, relevees sur materiel. Les deux premieres entrees sont
+	// un temps infini (la note ne monte ni ne descend jamais), et la table d'attaque finit par deux zeros
+	// qui veulent dire "immediat" -- un cas particulier, pas une limite de la courbe.
+	static const double MS_AR[64] = {
+		100000, 100000, 8100, 6900, 6000, 4800, 4000, 3400, 3000, 2400, 2000, 1700, 1500,
+		1200, 1000, 860, 760, 600, 500, 430, 380, 300, 250, 220, 190, 150, 130, 110, 95,
+		76, 63, 55, 47, 38, 31, 27, 24, 19, 15, 13, 12, 9.4, 7.9, 6.8, 6.0, 4.7, 3.8, 3.4, 3.0, 2.4,
+		2.0, 1.8, 1.6, 1.3, 1.1, 0.93, 0.85, 0.65, 0.53, 0.44, 0.40, 0.35, 0.0, 0.0 };
+	static const double MS_DR[64] = {
+		100000, 100000, 118200, 101300, 88600, 70900, 59100, 50700, 44300, 35500, 29600, 25300, 22200, 17700,
+		14800, 12700, 11100, 8900, 7400, 6300, 5500, 4400, 3700, 3200, 2800, 2200, 1800, 1600, 1400, 1100,
+		920, 790, 690, 550, 460, 390, 340, 270, 230, 200, 170, 140, 110, 98, 85, 68, 57, 49, 43, 34,
+		28, 25, 22, 18, 14, 12, 11, 8.5, 7.1, 6.1, 5.4, 4.3, 3.6, 3.1 };
+
+	m_pas_ar[0] = m_pas_dr[0] = m_pas_ar[1] = m_pas_dr[1] = 0;   // temps infini
+	for (unsigned i = 2; i < 64; i++) {
+		const double echelle = double(1 << EG_PAS);
+		m_pas_ar[i] = MS_AR[i] != 0.0 ? s32((1023 * 1000.0) / (44100.0 * MS_AR[i]) * echelle)
+		                              : s32(1024 << EG_PAS);
+		m_pas_dr[i] = s32((1023 * 1000.0) / (44100.0 * MS_DR[i]) * echelle);
+	}
+
+	// LA COURBE D'ATTENUATION : 3/32 dB par pas, 95,9 dB de bout en bout. C'est elle que tous les etats
+	// sauf l'attaque traversent.
+	for (unsigned i = 0; i < 0x400; i++) {
+		const float db = float(3 * (int(i) - 0x3FF)) / 32.0f;
+		m_courbe_eg[i] = s32(powf(10.0f, db / 20.0f) * float(1 << PAS));
+	}
+}
+
+// -----------------------------------------------------------------------------------------------------
+// BLOC 4 -- les deux LFO.
+// -----------------------------------------------------------------------------------------------------
+
+void scsp_maison::construire_lfo()
+{
+	// LES QUATRE FORMES, et ce ne sont pas quatre variantes d'une meme chose : la dent de scie est
+	// monotone, le carre n'a que deux valeurs, le triangle monte et descend, le bruit est tire d'un
+	// generateur congruentiel A L'INITIALISATION -- donc fixe pour la vie du peripherique, et non retire a
+	// chaque tour.
+	for (int i = 0; i < 256; i++) {
+		m_lfo_scie_a[i] = 255 - i;
+		m_lfo_scie_p[i] = i < 128 ? i : i - 256;
+
+		m_lfo_carre_a[i] = i < 128 ? 255 : 0;
+		m_lfo_carre_p[i] = i < 128 ? 127 : -128;
+
+		m_lfo_tri_a[i] = i < 128 ? 255 - (i * 2) : (i * 2) - 256;
+		m_lfo_tri_p[i] = i < 64 ? i * 2 : (i < 128 ? 255 - i * 2 : (i < 192 ? 256 - i * 2 : i * 2 - 511));
+
+		const int bruit = int(tirage() & 0xFF);
+		m_lfo_bruit_a[i] = bruit;
+		m_lfo_bruit_p[i] = 128 - bruit;
+	}
+
+	// LES DEUX ECHELLES DE PROFONDEUR, relevees elles aussi : le vibrato en CENTS, le tremolo en DECIBELS.
+	static const float CENTS[8] = { 0.0f, 7.0f, 13.5f, 27.0f, 55.0f, 112.0f, 230.0f, 494.0f };
+	static const float DECIBELS[8] = { 0.0f, 0.4f, 0.8f, 1.5f, 3.0f, 6.0f, 12.0f, 24.0f };
+	for (int s = 0; s < 8; s++) {
+		for (int i = -128; i < 128; i++)
+			m_echelle_p[s][i + 128] = int(256.0f * powf(2.0f, ((CENTS[s] * float(i)) / 128.0f) / 1200.0f));
+		for (int i = 0; i < 256; i++)
+			m_echelle_a[s][i] = int(256.0f * powf(10.0f, ((-DECIBELS[s] * float(i)) / 256.0f) / 20.0f));
+	}
+}
+
+void scsp_maison::calculer_lfo(unsigned i)
+{
+	const u16 *r = m_fente[i];
+	Vive &v = m_vive[i];
+
+	// LES TRENTE-DEUX CADENCES, en hertz -- et HUIT D'ENTRE ELLES NE FONT RIEN. Le pas de phase est
+	// `(u32)(256 * f * 256 / 44100)`, et la conversion TRONQUE : il faut f >= 44100/65536 = 0,673 Hz pour
+	// que le pas vaille au moins un. Les huit premieres entrees sont en dessous, donc leur phase ne bouge
+	// jamais. Une reecriture qui garderait une phase en flottant, ou qui arrondirait, ferait vibrer huit
+	// cadences que ce portage laisse immobiles (scsp_contract.h §11 point 2).
+	static const float HZ[32] = {
+		0.17f, 0.19f, 0.23f, 0.27f, 0.34f, 0.39f, 0.45f, 0.55f, 0.68f, 0.78f, 0.92f, 1.10f,
+		1.39f, 1.60f, 1.87f, 2.27f, 2.87f, 3.31f, 3.92f, 4.79f, 6.15f, 7.18f, 8.60f, 10.8f,
+		14.4f, 17.2f, 21.5f, 28.7f, 43.1f, 57.4f, 86.1f, 172.3f };
+	const unsigned lfof = champ(r, "LFOF");
+	const u32 pas = u32(float(1 << 8) * (HZ[lfof & 31] * 256.0f / 44100.0f));
+
+	const unsigned plfos = champ(r, "PLFOS"), alfos = champ(r, "ALFOS");
+	if (plfos != 0) {
+		const int *tables[4] = { m_lfo_scie_p, m_lfo_carre_p, m_lfo_tri_p, m_lfo_bruit_p };
+		v.plfo.pas = pas;
+		v.plfo.table = tables[champ(r, "PLFOWS") & 3];
+		v.plfo.echelle = m_echelle_p[plfos & 7];
+	}
+	if (alfos != 0) {
+		const int *tables[4] = { m_lfo_scie_a, m_lfo_carre_a, m_lfo_tri_a, m_lfo_bruit_a };
+		v.alfo.pas = pas;
+		v.alfo.table = tables[champ(r, "ALFOWS") & 3];
+		v.alfo.echelle = m_echelle_a[alfos & 7];
+	}
+}
+
+scsp_maison::s32 scsp_maison::pas_lfo(Lfo &l)
+{
+	l.phase = u16(l.phase + l.pas);          // u16 : le type replie la phase
+	const int p = l.table[l.phase >> 8];
+	return s32(l.echelle[p + 128]) << (PAS - 8);
+}
+
+scsp_maison::s32 scsp_maison::gain_lfo(Lfo &l)
+{
+	l.phase = u16(l.phase + l.pas);
+	const int p = l.table[l.phase >> 8];
+	return s32(l.echelle[p]) << (PAS - 8);
+}
+
+void scsp_maison::calculer_enveloppe(unsigned i)
+{
+	const u16 *r = m_fente[i];
+	Vive &v = m_vive[i];
+
+	// KRS=0xF VEUT DIRE ZERO, et non "ignorer KRS" : ni l'octave, ni le bit de FNS ne passent. Mesure a
+	// OCT=2 : KRS=0 sature en 56 echantillons, KRS=0xF en 83 -- exactement le chiffre d'OCT=0, donc
+	// l'octave est bien jetee et non reduite (scsp_contract.h §10 point 9).
+	const unsigned krs = champ(r, "KRS");
+	const int octave = (int(champ(r, "OCT")) ^ 8) - 8;
+	const int rate = krs != 0xF ? octave + 2 * int(krs) + int((champ(r, "FNS") >> 9) & 1) : 0;
+	auto pas_ar = [&](unsigned champ_valeur) {
+		return m_pas_ar[std::clamp(rate + 2 * int(champ_valeur), 0, 63)];
+	};
+	auto pas_dr = [&](unsigned champ_valeur) {
+		return m_pas_dr[std::clamp(rate + 2 * int(champ_valeur), 0, 63)];
+	};
+
+	// UNE VOIX NE PART PAS DU SILENCE : 0x17F sur 1023, soit 37 % du chemin. Avec AR=0 l'attaque est
+	// infinie et le multiplicateur reste a 383 << 2 = 1532, ce qui est la facon dont le test relit cette
+	// constante (scsp_contract.h §10 point 2).
+	v.volume = 0x17F << EG_PAS;
+	v.ar  = pas_ar(champ(r, "AR"));
+	v.d1r = pas_dr(champ(r, "D1R"));
+	v.d2r = pas_dr(champ(r, "D2R"));
+	v.rr  = pas_dr(champ(r, "RR"));
+	v.dl  = s32(0x1F - champ(r, "DL"));   // INVERSE
+	v.eghold = champ(r, "EGHOLD") != 0;
+}
+
+scsp_maison::s32 scsp_maison::avancer_enveloppe(unsigned i)
+{
+	Vive &v = m_vive[i];
+	const u16 *r = m_fente[i];
+
+	switch (v.etat) {
+	case ATTAQUE:
+		v.volume += v.ar;
+		if (v.volume >= (0x3FF << EG_PAS)) {
+			// LPSLNK ENFERME CETTE TRANSITION : avec lui l'etat ne change pas a la saturation, il reste
+			// ATTAQUE et n'en sort que par l'oscillateur, au passage de LSA (bloc 2).
+			if (!champ(r, "LPSLNK")) {
+				v.etat = CHUTE1;
+				// Un D1R assez grand saute CHUTE1 entierement.
+				if (v.d1r >= (1024 << EG_PAS)) v.etat = CHUTE2;
+			}
+			v.volume = 0x3FF << EG_PAS;
+		}
+		// EGHOLD TIENT LA SORTIE, PAS LE VOLUME : le volume monte toujours en interne, mais la sortie est a
+		// fond des le premier echantillon. Une attaque lente ne sert alors qu'a retarder CHUTE1.
+		if (v.eghold) return 0x3FF << (PAS - 10);
+		break;
+	case CHUTE1:
+		// LE TEST DE SORTIE PASSE APRES LA DECREMENTATION, donc CHUTE1 decremente TOUJOURS une fois, meme
+		// quand DL=0 le fait ceder au premier tic : le palier vaut alors 4052 et non 4096. Une reecriture
+		// qui testerait avant de decrementer passerait tous les autres cas (scsp_contract.h §10 point 4).
+		v.volume -= v.d1r;
+		if (v.volume <= 0) v.volume = 0;
+		if ((v.volume >> (EG_PAS + 5)) <= v.dl) v.etat = CHUTE2;
+		break;
+	case CHUTE2:
+		// C'EST LE REGISTRE QUI EST CONSULTE, pas le pas calcule : un D2R non nul peut donner un pas nul a
+		// bas rate, et la sortie ne se figerait alors PAS, elle descendrait de zero par echantillon. Meme
+		// resultat a l'oreille, pas le meme etat (scsp_contract.h §10 point 6).
+		if (champ(r, "D2R") == 0) return (v.volume >> EG_PAS) << (PAS - 10);
+		v.volume -= v.d2r;
+		if (v.volume <= 0) v.volume = 0;
+		break;
+	case RELACHE:
+		v.volume -= v.rr;
+		if (v.volume <= 0) {
+			v.volume = 0;
+			arreter(i, false);   // sans keyoff : la fente devient inactive pour de bon
+		}
+		break;
+	default:
+		return 1 << PAS;
+	}
+	return (v.volume >> EG_PAS) << (PAS - 10);
+}
+
 void scsp_maison::demarrer(unsigned i)
 {
 	Vive &v = m_vive[i];
@@ -284,11 +502,9 @@ void scsp_maison::demarrer(unsigned i)
 	v.nxt = 1u << PAS;
 	v.arriere = false;
 	calculer_pas(i);
-	// L'enveloppe est le bloc 3. Ce qu'on en sait deja et qui se mesure : une voix NE PART PAS DU SILENCE,
-	// son volume commence a 0x17F sur 1023 (scsp_contract.h §10 point 2). Tant que le bloc 3 n'est pas
-	// ecrit, l'etat passe en ATTAQUE pour que la fente joue, et le gain vaut un.
+	calculer_enveloppe(i);
+	calculer_lfo(i);
 	v.etat = ATTAQUE;
-	v.volume = 0x17F << EG_PAS;
 }
 
 void scsp_maison::arreter(unsigned i, bool keyoff)
@@ -339,6 +555,13 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 	if (ssctl == 3) return 0;
 
 	u32 pas = v.pas;
+	// LE PLFO MODULE LE PAS, et son champ PLFOS perd son bit bas -- divergence deliberee reprise de
+	// Supermodel et reglee a l'oreille pour VF3 : les champs vont par paires, 0 avec 1, 2 avec 3, 4 avec 5,
+	// 6 avec 7 (docs/scsp_audit.md §2 et scsp_contract.h §11 point 5). Le garde est `!= 0` sur le champ
+	// DEJA masque, donc PLFOS=1 ne module pas du tout.
+	if (champ(r, "PLFOS") != 0) {
+		pas = u32((std::uint64_t(pas) * u32(pas_lfo(v.plfo))) >> PAS);
+	}
 
 	const bool pcm8 = champ(r, "PCM8B") != 0;
 	u32 a1, a2;
@@ -436,10 +659,21 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 		}
 	}
 
-	// SDIR saute l'enveloppe ET l'ALFO (les deux sont le bloc 3 et le bloc 4). Sans SDIR et sans enveloppe
-	// ecrite, le gain vaut un : c'est ce qui permet de mesurer le bloc 2 avant le bloc 3.
+	// SDIR SAUTE L'ENVELOPPE ET L'ALFO. C'est la porte par laquelle le bloc 2 se mesure sans le bloc 3, et
+	// c'est aussi ce qui fait que TL est mis a zero plus bas : une fente en SDIR passe a cote de toute
+	// l'attenuation (docs/scsp_audit.md §2, point 6).
 	if (!champ(r, "SDIR")) {
-		// (bloc 3 : l'enveloppe. bloc 4 : l'ALFO.)
+		// L'ALFO ATTENUE AVANT L'ENVELOPPE, et son garde empeche aussi la phase d'avancer : avec ALFOS=0 la
+		// fonction n'est pas appelee du tout.
+		if (champ(r, "ALFOS") != 0) ech = (ech * gain_lfo(v.alfo)) >> PAS;
+		//
+		// DEUX ARITHMETIQUES, ET C'EST LE FAIT CENTRAL DU BLOC 3. L'etat ATTAQUE multiplie par le VOLUME
+		// BRUT -- lineairement -- quand tout le reste passe par la courbe en decibels. Les deux se
+		// rejoignent presque : a saturation l'une rend 4092 et l'autre 4096, si bien que le premier
+		// echantillon de toute voix sort quatre millemes plus bas que le suivant. Mesure, pas du bruit
+		// d'arrondi (scsp_contract.h §10 point 1).
+		if (v.etat == ATTAQUE) ech = (ech * avancer_enveloppe(i)) >> PAS;
+		else ech = (ech * m_courbe_eg[avancer_enveloppe(i) >> (PAS - 10)]) >> PAS;
 	}
 
 	// L'anneau de modulation, que la fente alimente sauf si STWINH l'interdit. Le gain applique ici est
@@ -530,9 +764,130 @@ void scsp_maison::run(u32 n, s32 *out)
 	m_now += n;
 }
 
-void scsp_maison::timer_fired(int)
+// -----------------------------------------------------------------------------------------------------
+// BLOC 6 -- les timers, les cinq lignes d'interruption et le DMA.
+// -----------------------------------------------------------------------------------------------------
+
+scsp_maison::u32 scsp_maison::duree_timer(u16 reg)
 {
-	// Bloc 6.
+	// LE "+1" EST UNE DIVERGENCE DELIBEREE, et la troisieme du portage apres PLFOS et MDL : MAME ecrit la
+	// meme chose SANS lui. C'est ce +1 qui a remis le tic de VF3 (timer A a 0xCE) a 882 Hz au lieu de 900,
+	// corrigeant une musique 0,8 % trop vite contre Supermodel (scsp_contract.h §12 point 1).
+	return (u32(255 - (reg & 0xFF)) << ((reg >> 8) & 7)) + 1;
+}
+
+void scsp_maison::arme_timer(int lequel)
+{
+	static const u32 OCTET[3] = { 0x18, 0x1A, 0x1C };
+	const u16 reg = m_commun[OCTET[lequel] / 2];
+	m_predivise[lequel] = 1u << ((reg >> 8) & 7);
+	m_compte[lequel] = u16((reg & 0xFF) << 8);
+	// UN COMPTE DE 255 N'ARME PAS. Ce n'est pas une duree nulle, c'est une absence d'armement : le puits ne
+	// recoit rien du tout, et pas un timer(..., 1, 0).
+	if ((reg & 0xFF) != 255) m_puits.timer(lequel, duree_timer(reg), 0);
+}
+
+void scsp_maison::verifier_attente()
+{
+	u16 attente = m_commun[0x20 / 2];
+	const u16 armes = m_commun[0x1E / 2];
+	if (m_midi_l != m_midi_e) {               // un octet attend dans la file : le bit 3 se pose
+		m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | 8);
+		attente = u16(attente | 8);
+	}
+	// SORTIE PREMATUREE : avec rien en attente, AUCUNE ligne n'est touchee. C'est ce qui distingue "rien ne
+	// pend" de "quelque chose pend que rien n'arme" -- seul le second fait retomber la ligne 0, et la
+	// premiere version du test du bloc 6 affirmait le contraire (scsp_contract.h §12 point 5).
+	if (!attente) return;
+
+	// UNE SEULE LIGNE A LA FOIS, dans un ordre fixe, et on SORT a la premiere qui pend et qui est armee.
+	// Si A et B pendent tous deux, c'est le niveau de A qui monte et celui de B qu'on ne voit jamais.
+	if (attente & armes & 0x20) { m_puits.irq(m_niv_cpu, true); return; }
+	if ((attente & 0x40) && (armes & 0x40)) { m_puits.irq(m_niv_tima, true); return; }
+	if ((attente & 0x80) && (armes & 0x80)) { m_puits.irq(m_niv_timbc, true); return; }
+	if ((attente & 0x100) && (armes & 0x100)) { m_puits.irq(m_niv_timbc, true); return; }
+	if ((attente & 0x8) && (armes & 0x8)) { m_puits.irq(m_niv_midi, true); return; }
+
+	// LA CINQUIEME LIGNE. Ce n'est aucune des quatre sources, et c'est elle qui a fait redessiner
+	// l'interface : scsp_core.h porte un niveau ET un etat parce que la puce lache quatre lignes
+	// independamment, plus celle-ci.
+	m_puits.irq(0, false);
+}
+
+void scsp_maison::acquitter_interruptions()
+{
+	const u16 remise = m_commun[0x22 / 2];
+	if (remise & 0x40) m_puits.irq(m_niv_tima, false);
+	if (remise & 0x180) m_puits.irq(m_niv_timbc, false);
+	if (remise & 0x20) {
+		m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] & ~0x20);
+		m_puits.irq(m_niv_cpu, false);
+	}
+	if (remise & 0x8) m_puits.irq(m_niv_midi, false);
+	verifier_attente();
+
+	// UN TIMER DEJA ECHU SE REMET AUSSITOT EN ATTENTE, son compteur etant reste a 0xFFFF. Le commentaire de
+	// l'original l'attribue au materiel reel et note dans la meme phrase qu'un autre jeu n'est pas d'accord
+	// -- c'est donc un CHOIX, enregistre comme tel (scsp_contract.h §12 point 6).
+	if (m_compte[0] == 0xFFFF) m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | 0x40);
+	if (m_compte[1] == 0xFFFF) m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | 0x80);
+	if (m_compte[2] == 0xFFFF) m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | 0x100);
+}
+
+void scsp_maison::executer_dma()
+{
+	// DMEA : vingt bits, les seize bas depuis 0x412 et les quatre hauts depuis les bits 15-12 de 0x414.
+	// DRGA : douze bits dans la fenetre de registres. DTLG : la longueur en OCTETS.
+	u32 dmea = u32(m_commun[0x12 / 2] & 0xFFFE) | (u32(m_commun[0x14 / 2] & 0xF000) << 4);
+	u32 drga = u32(m_commun[0x14 / 2] & 0x0FFE);
+	const u32 dtlg = u32(m_commun[0x16 / 2] & 0x0FFE);
+	const bool vers_la_ram = (m_commun[0x16 / 2] & 0x2000) != 0;   // DDIR
+	const bool zeros = (m_commun[0x16 / 2] & 0x4000) != 0;         // DGATE
+
+	// UN DMA NE PEUT PAS ECRASER SES PROPRES PARAMETRES, et seulement dans un sens : on les sauve quand la
+	// destination est la fenetre de registres, puisqu'elle pourrait contenir ces registres-la.
+	const bool proteger = !vers_la_ram;
+	const u16 sauve[3] = { m_commun[0x12 / 2], m_commun[0x14 / 2], m_commun[0x16 / 2] };
+
+	for (u32 k = 0; k < dtlg; k += 2) {
+		if (vers_la_ram) {
+			const u16 v = zeros ? u16(0) : lire_octet_adresse(drga);
+			const u32 a = dmea & 0xFFFFE;
+			if (a < m_ram_octets) m_ram[a >> 1] = v;
+			dmea += 2;
+			if (!zeros) drga += 2;
+		} else {
+			const u16 v = zeros ? u16(0) : lire_mot_ram(dmea);
+			ecrire_octet_adresse(drga, v, 0xFFFF);
+			drga += 2;
+			if (!zeros) dmea += 2;
+		}
+	}
+
+	if (proteger) {
+		m_commun[0x12 / 2] = sauve[0];
+		m_commun[0x14 / 2] = sauve[1];
+		m_commun[0x16 / 2] = sauve[2];
+	}
+	m_commun[0x16 / 2] = u16(m_commun[0x16 / 2] & ~0x1000);   // DEXE se rebaisse tout seul
+	if (m_commun[0x1E / 2] & 0x10) m_puits.irq(m_niv_dma, true);
+}
+
+void scsp_maison::timer_fired(int lequel)
+{
+	static const u32 OCTET[3] = { 0x18, 0x1A, 0x1C };
+	static const u16 BIT[3] = { 0x40, 0x80, 0x100 };
+	if (lequel < 0 || lequel > 2) return;
+
+	m_compte[lequel] = 0xFFFF;
+	m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | BIT[lequel]);
+	// Le compteur recharge se relit : l'octet bas du registre du timer passe a 0xFF.
+	m_commun[OCTET[lequel] / 2] = u16((m_commun[OCTET[lequel] / 2] & 0xFF00) | (m_compte[lequel] >> 8));
+
+	verifier_attente();
+	// LE TIMER A PEND AUSSI DU COTE MAITRE, B ET C NON. Rien dans VF3 ne lit MCIPD, mais uniformiser
+	// changerait un etat observable pour rien (scsp_contract.h §12 point 7).
+	if (lequel == TIMER_A) maitre_attente(0x40);
 }
 
 void scsp_maison::midi_in(u8 octet)
@@ -542,4 +897,5 @@ void scsp_maison::midi_in(u8 octet)
 	m_midi[m_midi_e] = octet;
 	m_midi_e = (m_midi_e + 1) & (MIDI_PROFONDEUR - 1);
 	m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | 0x8);
+	verifier_attente();
 }

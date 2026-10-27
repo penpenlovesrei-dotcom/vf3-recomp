@@ -14,6 +14,8 @@
 // puits bavard, la ou le banc en pose un muet.
 #include "banc_scsp.h"
 
+#include "../../src/sound/scsp_select.h"
+
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -60,10 +62,13 @@ struct Mouchard final : scsp::sink {
 struct Banc6 {
 	std::vector<std::uint16_t> ram = std::vector<std::uint16_t>(banc::RAM_OCTETS / 2, 0);
 	Mouchard m;
-	scsp_mame coeur{ 45158400 / 2, ram.data(), banc::RAM_OCTETS, m };
+	std::unique_ptr<scsp::core> tenu =
+		scsp::make(banc::nom_du_coeur(), 45158400 / 2, ram.data(), banc::RAM_OCTETS, m);
+	scsp::core &coeur = *tenu;
 
 	Banc6()
 	{
+		if (!tenu) { fprintf(stderr, "test_scsp_irq: coeur inconnu\n"); std::exit(2); }
 		coeur.reset();
 		coeur.write_reg(0x400 / 2, 0x0300 | 0x000F, 0xFFFF);
 	}
@@ -82,8 +87,9 @@ struct Banc6 {
 
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+	if (argc > 1) banc::nom_du_coeur() = argv[1];
 	printf("test_scsp_irq : timers, interruptions et DMA, par scsp::core\n\n");
 
 	// ---- 1. LA DUREE D'UN TIMER, ET LE "+1" QUI EST UNE DIVERGENCE VOULUE
@@ -112,7 +118,7 @@ int main()
 			b.ecrire(scsp_contract::TIMA, c.reg);
 			std::uint32_t vu = 0;
 			for (const Mouchard::Arme &a : b.m.armes)
-				if (a.lequel == scsp_device::TIMER_A) vu = a.echantillons;
+				if (a.lequel == 0) vu = a.echantillons;
 			char t[48];
 			snprintf(t, sizeof t, "%s%04x->%u", lignes.empty() ? "" : " ", c.reg, vu);
 			lignes += t;
@@ -132,7 +138,7 @@ int main()
 		b.m.vide();
 		b.ecrire(scsp_contract::TIMA, 0x00FF);
 		unsigned pour_a = 0;
-		for (const Mouchard::Arme &a : b.m.armes) if (a.lequel == scsp_device::TIMER_A) pour_a++;
+		for (const Mouchard::Arme &a : b.m.armes) if (a.lequel == 0) pour_a++;
 		(pour_a == 0) ? ok("compte 255 : le timer n'est pas arme", "le puits ne recoit rien pour A")
 		              : rate("compte 255 : le timer n'est pas arme",
 		                     std::to_string(pour_a) + " armement(s) recu(s), attendu aucun");
@@ -151,8 +157,8 @@ int main()
 		bool juste = true;
 		struct Cas { int timer; int niveau; const char *nom; };
 		const Cas cas[] = {
-			{ scsp_device::TIMER_A, 2, "timer A" },
-			{ scsp_device::TIMER_B, 1, "timer B" },
+			{ 0, 2, "timer A" },
+			{ 1, 1, "timer B" },
 		};
 		for (const Cas &c : cas) {
 			Banc6 b;
@@ -186,7 +192,7 @@ int main()
 		Banc6 b;
 		b.table_du_pilote();
 		b.m.vide();
-		b.coeur.timer_fired(scsp_device::TIMER_C);
+		b.coeur.timer_fired(2);
 		const int n = b.m.dernier_leve();
 		const std::uint16_t scipd = b.lire(scsp_contract::SCIPD);
 		char t[96];
@@ -206,9 +212,9 @@ int main()
 	{
 		Banc6 b;
 		b.table_du_pilote();
-		b.coeur.timer_fired(scsp_device::TIMER_B);   // B en attente d'abord
+		b.coeur.timer_fired(1);   // B en attente d'abord
 		b.m.vide();
-		b.coeur.timer_fired(scsp_device::TIMER_A);   // puis A
+		b.coeur.timer_fired(0);   // puis A
 		const int n = b.m.dernier_leve();
 		const std::uint16_t scipd = b.lire(scsp_contract::SCIPD);
 		char t[112];
@@ -238,7 +244,7 @@ int main()
 		Banc6 b;
 		b.table_du_pilote();
 		b.m.vide();
-		b.coeur.timer_fired(scsp_device::TIMER_C);   // bit 8, absent de SCIEB = 0x00C8
+		b.coeur.timer_fired(2);   // bit 8, absent de SCIEB = 0x00C8
 		bool zero_retombe = false;
 		for (const Mouchard::Ligne &l : b.m.lignes) if (l.niveau == 0 && !l.etat) zero_retombe = true;
 
@@ -264,7 +270,7 @@ int main()
 	{
 		Banc6 b;
 		b.table_du_pilote();
-		b.coeur.timer_fired(scsp_device::TIMER_A);
+		b.coeur.timer_fired(0);
 		const std::uint16_t avant = b.lire(scsp_contract::SCIPD);
 		b.ecrire(scsp_contract::SCIRE, 0x0040);
 		const std::uint16_t apres = b.lire(scsp_contract::SCIPD);
@@ -285,9 +291,9 @@ int main()
 		bool juste = true;
 		struct Cas { int timer; std::uint16_t attendu; const char *nom; };
 		const Cas cas[] = {
-			{ scsp_device::TIMER_A, 0x0040, "A" },
-			{ scsp_device::TIMER_B, 0x0000, "B" },
-			{ scsp_device::TIMER_C, 0x0000, "C" },
+			{ 0, 0x0040, "A" },
+			{ 1, 0x0000, "B" },
+			{ 2, 0x0000, "C" },
 		};
 		for (const Cas &c : cas) {
 			Banc6 b;

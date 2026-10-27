@@ -33,13 +33,13 @@
 // OU EN EST CE FICHIER. Un bloc a la fois, dans l'ordre que l'architecture donne -- les blocs verifiables
 // sans le jeu d'abord. L'etat se lit dans `tools/son/test_*` : ce qui passe est fait.
 //
-//     bloc 1  registres et semantique d'acces .................. ECRIT
-//     bloc 2  fentes, oscillateur, PCM, bouclage ............... a venir
-//     bloc 3  enveloppes ADSR ................................. a venir
-//     bloc 4  pitch, LFO, modulation .......................... a venir
+//     bloc 1  registres et semantique d'acces .................. ECRIT, 9 cas
+//     bloc 2  fentes, oscillateur, PCM, bouclage ............... ECRIT, 11 cas
+//     bloc 3  enveloppes ADSR ................................. ECRIT, 10 cas
+//     bloc 4  pitch, LFO, modulation .......................... ECRIT, 11 cas
 //     bloc 5  le DSP d'effets ................................. a venir
-//     bloc 6  timers, interruptions, synchronisation ........... a venir
-//     bloc 7  melange et rendu ................................ a venir
+//     bloc 6  timers, interruptions, synchronisation ........... ECRIT, 11 cas
+//     bloc 7  melange et rendu ................................ ECRIT, 9 cas
 //
 // Tant qu'un bloc manque, le coeur rend ce qu'il peut et NON du bruit : sans voix il rend du silence exact,
 // ce que le test du bloc 1 verifie. Un coeur qui rendrait n'importe quoi en attendant serait impossible a
@@ -97,6 +97,12 @@ private:
 	static constexpr int PAS = 12;       // la virgule de l'adresse de lecture
 	static constexpr int EG_PAS = 16;    // celle du volume d'enveloppe
 	enum Etat { ATTAQUE, CHUTE1, CHUTE2, RELACHE };
+	struct Lfo {
+		u16 phase = 0;
+		u32 pas = 0;
+		const int *table = nullptr;
+		const int *echelle = nullptr;
+	};
 	struct Vive {
 		u32 cur = 0, nxt = 1u << PAS;    // l'adresse de lecture et la suivante, en virgule fixe
 		u32 pas = 0;                     // le pas, calcule depuis OCT et FNS
@@ -104,6 +110,12 @@ private:
 		bool arriere = false;            // les bouclages 2 et 3 lisent a reculons
 		int  etat = RELACHE;
 		s32  volume = 0;
+		// L'enveloppe, calculee AU DEMARRAGE depuis les champs et le rate de la note : ce sont des pas par
+		// echantillon, pas les champs du registre.
+		s32  ar = 0, d1r = 0, d2r = 0, rr = 0;
+		s32  dl = 0;                     // 0x1F - DL : le champ est INVERSE
+		bool eghold = false;
+		Lfo plfo, alfo;
 	};
 	Vive m_vive[FENTES];
 	u8 m_ptr_anneau = 0;                 // le curseur du tampon de modulation, un cran par fente
@@ -126,6 +138,52 @@ private:
 	float m_f_pan[32] = {};              // DIPAN/EFPAN : 3, 6, 12, 24 dB sur quatre bits
 	float m_f_sdl[8] = {};               // DISDL/EFSDL : SDLT
 	void construire_facteurs();
+
+	// --- les tables de l'enveloppe (bloc 3)
+	//
+	// DES CONSTANTES RELEVEES SUR MATERIEL, PAS UNE FORMULE, et c'est le point que
+	// docs/scsp_architecture.md §3 demande d'assumer explicitement : "les tables ARTimes/DRTimes de MAME
+	// sont des constantes mesurees, pas une formule ; les reprendre est un choix de fidelite a assumer."
+	// Elles sont reprises. Le test du bloc 3 fige leurs consequences en ECHANTILLONS -- 1297, 332, 83, 24, 1
+	// pour AR de 0x10 a 0x1F -- si bien qu'une reecriture qui leur substituerait une exponentielle echoue la
+	// et nulle part ailleurs.
+	s32 m_pas_ar[64] = {}, m_pas_dr[64] = {};
+	s32 m_courbe_eg[0x400] = {};     // 3/32 dB par pas, 95,9 dB en tout
+	void construire_enveloppe();
+	void calculer_enveloppe(unsigned i);
+	s32  avancer_enveloppe(unsigned i);
+
+	// --- les deux LFO (bloc 4)
+	//
+	// UN LFO EST UNE PHASE SUR SEIZE BITS ET UN PAS, et c'est le type qui la replie : `u16` suffit, et c'est
+	// pour cela que l'original n'a pas besoin de masque explicite. La phase est incrementee AVANT la lecture
+	// de table, si bien que le premier echantillon lit l'index 1 et non 0 (scsp_contract.h §11 point 3).
+	int m_lfo_scie_p[256] = {}, m_lfo_carre_p[256] = {}, m_lfo_tri_p[256] = {}, m_lfo_bruit_p[256] = {};
+	int m_lfo_scie_a[256] = {}, m_lfo_carre_a[256] = {}, m_lfo_tri_a[256] = {}, m_lfo_bruit_a[256] = {};
+	// DES ENTIERS A L'ECHELLE 256, et non des flottants a l'echelle 4096 : l'original tronque le facteur a
+	// 256 puis decale de quatre, ce qui n'est PAS la meme chose que tronquer a 4096. Pour un facteur de
+	// 1,001 la premiere forme rend 4096 et la seconde 4100 -- et le son cesse d'etre identique a l'octet.
+	// La profondeur du vibrato est en cents, celle du tremolo en decibels.
+	int m_echelle_p[8][256] = {};
+	int m_echelle_a[8][256] = {};
+	void construire_lfo();
+	void calculer_lfo(unsigned i);
+	s32  pas_lfo(Lfo &l);             // le facteur de pitch, 1.0 = 1 << PAS
+	s32  gain_lfo(Lfo &l);            // le facteur d'amplitude, 1.0 = 1 << PAS
+
+	// --- les timers et les interruptions (bloc 6)
+	//
+	// Les cinq numeros de timer sont ceux du contrat et de la carte : A, B, C, puis les deux horloges du
+	// MIDI serie. Seuls les trois premiers sont de ce bloc.
+	enum { TIMER_A, TIMER_B, TIMER_C, N_TIMERS };
+	u16 m_compte[3] = {};            // le compteur de chaque timer, 0xFFFF quand il vient d'echoir
+	u32 m_predivise[3] = { 1, 1, 1 };
+	static u32 duree_timer(u16 reg);
+	void arme_timer(int lequel);
+	void verifier_attente();         // CheckPendingIRQ : UNE ligne, dans un ordre fixe
+	void acquitter_interruptions();  // ResetInterrupts, et la repose d'un timer deja echu
+	void maitre_attente(u16 source) { m_mcipd = u16(m_mcipd | source); }
+	void executer_dma();
 	// Le gain du melange pour un mot d'encodage, gauche et droite. `pan` est le champ de cinq bits : son
 	// bit 4 choisit QUEL canal est attenue, l'autre restant a plein niveau.
 	void gains(unsigned tl, unsigned pan, unsigned sdl, s32 &g, s32 &d) const;
