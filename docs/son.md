@@ -93,6 +93,7 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 | | |
 |---|---|
 | `tools/son/rejouer.cpp`, `rejouer.cmd` | **le rejoueur** : une trace d'accès rejouée dans un ou deux cœurs, et la première divergence située à l'échantillon — PCM, interruptions, armements de timer, lectures de registre, MIDI sortant. Le `.cmd` prend la trace et lance les deux contrôles en une commande |
+| `tools/son/mesurer-coeur.cpp` | **ce qu'un cœur coûte, par poste** : à vide, les fentes seules, le DSP seul, les deux. Le rejoueur compare à l'octet mais son temps est dominé par l'analyse de trace — celui-ci ne chronomètre que `run()`. C'est lui qui a dit que le coût était dans **les fentes et non le DSP** |
 | `tools/son/banc_scsp.h` | le montage que les tests de bloc partagent : un cœur neuf, sa RAM, le keyage d'une fente par la table du contrat. **Aucune attente** n'y vit — ce qu'on attend d'un bloc appartient au test de ce bloc |
 | `tools/son/test_scsp_dsp.cpp` | **le jeu d'instructions du DSP**, et c'est une **spécification** avant d'être un test : ce jeu d'instructions n'existe nulle part écrit. Huit cas, observés par la fenêtre de registres et par la RAM. Il a sorti le pas de retard du shifter. Bloc 5 |
 | `tools/son/test_scspdsp.cpp` | les deux corps du DSP contre une référence qui décode dans la boucle. 16 cas, dont les quatre contrôles qu'aucun jeu ne pose |

@@ -141,6 +141,12 @@ $(BIN)/test_scsp_dsp: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/s
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+# Ce qu'un coeur de SCSP coute, par partie (tools/son/mesurer-coeur.cpp). Le rejoueur compare a l'octet mais
+# son temps est domine par l'analyse de trace ; ce banc ne chronometre que run(), et separe les postes.
+$(BIN)/mesurer-coeur: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp src/core/mame_shim.cpp tools/son/mesurer-coeur.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 test: $(BIN)/test_scsp_dsp $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_fentes $(BIN)/test_scsp_adsr $(BIN)/test_scsp_lfo $(BIN)/test_scsp_irq $(BIN)/test_scsp_mix
 	$(BIN)/test_scspdsp
 	$(BIN)/test_scsp_dsp mame

@@ -29,100 +29,57 @@ struct Position {
 	bool bit_en_place = false;
 };
 
-struct Positions {
-	Position alfos;
-	Position alfows;
-	Position ar;
-	Position d1r;
-	Position d2r;
-	Position dipan;
-	Position disdl;
-	Position dl;
-	Position efpan;
-	Position efsdl;
-	Position eghold;
-	Position fns;
-	Position imxl;
-	Position isel;
-	Position krs;
-	Position kyonb;
-	Position lea;
-	Position lfof;
-	Position lpctl;
-	Position lpslnk;
-	Position lsa;
-	Position mdl;
-	Position mdxsl;
-	Position mdysl;
-	Position oct;
-	Position pcm8b;
-	Position plfos;
-	Position plfows;
-	Position rr;
-	Position sa_hi;
-	Position sa_lo;
-	Position sbctl;
-	Position sdir;
-	Position ssctl;
-	Position stwinh;
-	Position tl;
-
-	Positions()
-	{
-		auto depuis = [](const char *nom) {
-			Position p;
-			const scsp_contract::Champ *c = scsp_contract::champ_fente(nom);
-			if (!c) return p;
-			p.mot = c->mot;
-			p.decalage = c->decalage;
-			p.masque = c->masque;
-			p.bit_en_place = c->decalage == 0 && (c->masque & (c->masque + 1)) != 0;
-			return p;
-		};
-		alfos = depuis("ALFOS");
-		alfows = depuis("ALFOWS");
-		ar = depuis("AR");
-		d1r = depuis("D1R");
-		d2r = depuis("D2R");
-		dipan = depuis("DIPAN");
-		disdl = depuis("DISDL");
-		dl = depuis("DL");
-		efpan = depuis("EFPAN");
-		efsdl = depuis("EFSDL");
-		eghold = depuis("EGHOLD");
-		fns = depuis("FNS");
-		imxl = depuis("IMXL");
-		isel = depuis("ISEL");
-		krs = depuis("KRS");
-		kyonb = depuis("KYONB");
-		lea = depuis("LEA");
-		lfof = depuis("LFOF");
-		lpctl = depuis("LPCTL");
-		lpslnk = depuis("LPSLNK");
-		lsa = depuis("LSA");
-		mdl = depuis("MDL");
-		mdxsl = depuis("MDXSL");
-		mdysl = depuis("MDYSL");
-		oct = depuis("OCT");
-		pcm8b = depuis("PCM8B");
-		plfos = depuis("PLFOS");
-		plfows = depuis("PLFOWS");
-		rr = depuis("RR");
-		sa_hi = depuis("SA_HI");
-		sa_lo = depuis("SA_LO");
-		sbctl = depuis("SBCTL");
-		sdir = depuis("SDIR");
-		ssctl = depuis("SSCTL");
-		stwinh = depuis("STWINH");
-		tl = depuis("TL");
-	}
-};
-
-const Positions &P()
+// Une position, resolue A LA COMPILATION depuis la table du contrat. `champ_fente` etant constexpr, un nom
+// litteral donne ici un decalage et un masque connus du compilateur : la boucle chaude ne fait plus qu'un
+// chargement, un decalage et un masque, et le test `bit_en_place` se replie.
+constexpr Position position(const char *nom)
 {
-	static const Positions p;
+	Position p;
+	const scsp_contract::Champ *c = scsp_contract::champ_fente(nom);
+	if (!c) return p;
+	p.mot = c->mot;
+	p.decalage = c->decalage;
+	p.masque = c->masque;
+	p.bit_en_place = c->decalage == 0 && (c->masque & (c->masque + 1)) != 0;
 	return p;
 }
+
+constexpr Position C_ALFOS = position("ALFOS");
+constexpr Position C_ALFOWS = position("ALFOWS");
+constexpr Position C_AR = position("AR");
+constexpr Position C_D1R = position("D1R");
+constexpr Position C_D2R = position("D2R");
+constexpr Position C_DIPAN = position("DIPAN");
+constexpr Position C_DISDL = position("DISDL");
+constexpr Position C_DL = position("DL");
+constexpr Position C_EFPAN = position("EFPAN");
+constexpr Position C_EFSDL = position("EFSDL");
+constexpr Position C_EGHOLD = position("EGHOLD");
+constexpr Position C_FNS = position("FNS");
+constexpr Position C_IMXL = position("IMXL");
+constexpr Position C_ISEL = position("ISEL");
+constexpr Position C_KRS = position("KRS");
+constexpr Position C_KYONB = position("KYONB");
+constexpr Position C_LEA = position("LEA");
+constexpr Position C_LFOF = position("LFOF");
+constexpr Position C_LPCTL = position("LPCTL");
+constexpr Position C_LPSLNK = position("LPSLNK");
+constexpr Position C_LSA = position("LSA");
+constexpr Position C_MDL = position("MDL");
+constexpr Position C_MDXSL = position("MDXSL");
+constexpr Position C_MDYSL = position("MDYSL");
+constexpr Position C_OCT = position("OCT");
+constexpr Position C_PCM8B = position("PCM8B");
+constexpr Position C_PLFOS = position("PLFOS");
+constexpr Position C_PLFOWS = position("PLFOWS");
+constexpr Position C_RR = position("RR");
+constexpr Position C_SA_HI = position("SA_HI");
+constexpr Position C_SA_LO = position("SA_LO");
+constexpr Position C_SBCTL = position("SBCTL");
+constexpr Position C_SDIR = position("SDIR");
+constexpr Position C_SSCTL = position("SSCTL");
+constexpr Position C_STWINH = position("STWINH");
+constexpr Position C_TL = position("TL");
 
 inline unsigned champ(const scsp::u16 mot[16], const Position &p)
 {
@@ -439,8 +396,8 @@ void scsp_maison::apres_ecriture_fente(u32 fente, u32 mot)
 		// `clamp(-1 + 62)` contre `clamp(0 + 62)` : ce crochet-ci manquait.
 		const u16 *r = m_fente[fente];
 		Vive &v = m_vive[fente];
-		v.rr = m_pas_dr[std::clamp(2 * int(champ(r, P().rr)), 0, 63)];
-		v.dl = s32(0x1F - champ(r, P().dl));
+		v.rr = m_pas_dr[std::clamp(2 * int(champ(r, C_RR)), 0, 63)];
+		v.dl = s32(0x1F - champ(r, C_DL));
 		return;
 	}
 	if (mot != 0) return;
@@ -456,7 +413,7 @@ void scsp_maison::apres_ecriture_fente(u32 fente, u32 mot)
 	if (!kyonex || !(m_fente[fente][0] & kyonex->masque)) return;
 
 	for (unsigned i = 0; i < FENTES; i++) {
-		const bool kyonb = champ(m_fente[i], P().kyonb) != 0;
+		const bool kyonb = champ(m_fente[i], C_KYONB) != 0;
 		if (kyonb && m_vive[i].etat == RELACHE) demarrer(i);
 		else if (!kyonb) arreter(i, true);
 	}
@@ -564,20 +521,20 @@ void scsp_maison::calculer_lfo(unsigned i)
 		0.17f, 0.19f, 0.23f, 0.27f, 0.34f, 0.39f, 0.45f, 0.55f, 0.68f, 0.78f, 0.92f, 1.10f,
 		1.39f, 1.60f, 1.87f, 2.27f, 2.87f, 3.31f, 3.92f, 4.79f, 6.15f, 7.18f, 8.60f, 10.8f,
 		14.4f, 17.2f, 21.5f, 28.7f, 43.1f, 57.4f, 86.1f, 172.3f };
-	const unsigned lfof = champ(r, P().lfof);
+	const unsigned lfof = champ(r, C_LFOF);
 	const u32 pas = u32(float(1 << 8) * (HZ[lfof & 31] * 256.0f / 44100.0f));
 
-	const unsigned plfos = champ(r, P().plfos), alfos = champ(r, P().alfos);
+	const unsigned plfos = champ(r, C_PLFOS), alfos = champ(r, C_ALFOS);
 	if (plfos != 0) {
 		const int *tables[4] = { m_lfo_scie_p, m_lfo_carre_p, m_lfo_tri_p, m_lfo_bruit_p };
 		v.plfo.pas = pas;
-		v.plfo.table = tables[champ(r, P().plfows) & 3];
+		v.plfo.table = tables[champ(r, C_PLFOWS) & 3];
 		v.plfo.echelle = m_echelle_p[plfos & 7];
 	}
 	if (alfos != 0) {
 		const int *tables[4] = { m_lfo_scie_a, m_lfo_carre_a, m_lfo_tri_a, m_lfo_bruit_a };
 		v.alfo.pas = pas;
-		v.alfo.table = tables[champ(r, P().alfows) & 3];
+		v.alfo.table = tables[champ(r, C_ALFOWS) & 3];
 		v.alfo.echelle = m_echelle_a[alfos & 7];
 	}
 }
@@ -604,9 +561,9 @@ void scsp_maison::calculer_enveloppe(unsigned i)
 	// KRS=0xF VEUT DIRE ZERO, et non "ignorer KRS" : ni l'octave, ni le bit de FNS ne passent. Mesure a
 	// OCT=2 : KRS=0 sature en 56 echantillons, KRS=0xF en 83 -- exactement le chiffre d'OCT=0, donc
 	// l'octave est bien jetee et non reduite (scsp_contract.h §10 point 9).
-	const unsigned krs = champ(r, P().krs);
-	const int octave = (int(champ(r, P().oct)) ^ 8) - 8;
-	const int rate = krs != 0xF ? octave + 2 * int(krs) + int((champ(r, P().fns) >> 9) & 1) : 0;
+	const unsigned krs = champ(r, C_KRS);
+	const int octave = (int(champ(r, C_OCT)) ^ 8) - 8;
+	const int rate = krs != 0xF ? octave + 2 * int(krs) + int((champ(r, C_FNS) >> 9) & 1) : 0;
 	auto pas_ar = [&](unsigned champ_valeur) {
 		return m_pas_ar[std::clamp(rate + 2 * int(champ_valeur), 0, 63)];
 	};
@@ -618,12 +575,12 @@ void scsp_maison::calculer_enveloppe(unsigned i)
 	// infinie et le multiplicateur reste a 383 << 2 = 1532, ce qui est la facon dont le test relit cette
 	// constante (scsp_contract.h §10 point 2).
 	v.volume = 0x17F << EG_PAS;
-	v.ar  = pas_ar(champ(r, P().ar));
-	v.d1r = pas_dr(champ(r, P().d1r));
-	v.d2r = pas_dr(champ(r, P().d2r));
-	v.rr  = pas_dr(champ(r, P().rr));
-	v.dl  = s32(0x1F - champ(r, P().dl));   // INVERSE
-	v.eghold = champ(r, P().eghold) != 0;
+	v.ar  = pas_ar(champ(r, C_AR));
+	v.d1r = pas_dr(champ(r, C_D1R));
+	v.d2r = pas_dr(champ(r, C_D2R));
+	v.rr  = pas_dr(champ(r, C_RR));
+	v.dl  = s32(0x1F - champ(r, C_DL));   // INVERSE
+	v.eghold = champ(r, C_EGHOLD) != 0;
 }
 
 scsp_maison::s32 scsp_maison::avancer_enveloppe(unsigned i)
@@ -637,7 +594,7 @@ scsp_maison::s32 scsp_maison::avancer_enveloppe(unsigned i)
 		if (v.volume >= (0x3FF << EG_PAS)) {
 			// LPSLNK ENFERME CETTE TRANSITION : avec lui l'etat ne change pas a la saturation, il reste
 			// ATTAQUE et n'en sort que par l'oscillateur, au passage de LSA (bloc 2).
-			if (!champ(r, P().lpslnk)) {
+			if (!champ(r, C_LPSLNK)) {
 				v.etat = CHUTE1;
 				// Un D1R assez grand saute CHUTE1 entierement.
 				if (v.d1r >= (1024 << EG_PAS)) v.etat = CHUTE2;
@@ -660,7 +617,7 @@ scsp_maison::s32 scsp_maison::avancer_enveloppe(unsigned i)
 		// C'EST LE REGISTRE QUI EST CONSULTE, pas le pas calcule : un D2R non nul peut donner un pas nul a
 		// bas rate, et la sortie ne se figerait alors PAS, elle descendrait de zero par echantillon. Meme
 		// resultat a l'oreille, pas le meme etat (scsp_contract.h §10 point 6).
-		if (champ(r, P().d2r) == 0) return (v.volume >> EG_PAS) << (PAS - 10);
+		if (champ(r, C_D2R) == 0) return (v.volume >> EG_PAS) << (PAS - 10);
 		v.volume -= v.d2r;
 		if (v.volume <= 0) v.volume = 0;
 		break;
@@ -705,8 +662,8 @@ void scsp_maison::calculer_pas(unsigned i)
 	// donc le champ 0xF vaut -1 et le champ 0x8 vaut -8. Une implementation qui le lirait comme un non signe
 	// jouerait huit octaves trop haut sur la moitie des notes (scsp_contract.h §11 point 1).
 	const u16 *r = m_fente[i];
-	const int octave = (int(champ(r, P().oct)) ^ 8) - 8 + PAS - 10;
-	u32 fn = champ(r, P().fns) + (1u << 10);
+	const int octave = (int(champ(r, C_OCT)) ^ 8) - 8 + PAS - 10;
+	u32 fn = champ(r, C_FNS) + (1u << 10);
 	m_vive[i].pas = octave >= 0 ? (fn << octave) : (fn >> -octave);
 }
 
@@ -732,7 +689,7 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 	Vive &v = m_vive[i];
 	const u16 *r = m_fente[i];
 
-	const unsigned ssctl = champ(r, P().ssctl);
+	const unsigned ssctl = champ(r, C_SSCTL);
 	// SSCTL=3 SORT AVANT TOUT, et n'avance donc meme pas la tete de lecture -- contrairement a SSCTL=2, qui
 	// rend aussi du silence mais parcourt la source. La difference ne se voit qu'apres (bloc 2, cas 8).
 	if (ssctl == 3) return 0;
@@ -742,18 +699,18 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 	// Supermodel et reglee a l'oreille pour VF3 : les champs vont par paires, 0 avec 1, 2 avec 3, 4 avec 5,
 	// 6 avec 7 (docs/scsp_audit.md §2 et scsp_contract.h §11 point 5). Le garde est `!= 0` sur le champ
 	// DEJA masque, donc PLFOS=1 ne module pas du tout.
-	if (champ(r, P().plfos) != 0) {
+	if (champ(r, C_PLFOS) != 0) {
 		pas = u32((std::uint64_t(pas) * u32(pas_lfo(v.plfo))) >> PAS);
 	}
 
-	const bool pcm8 = champ(r, P().pcm8b) != 0;
+	const bool pcm8 = champ(r, C_PCM8B) != 0;
 	u32 a1, a2;
 	if (pcm8) { a1 = v.cur >> PAS; a2 = v.nxt >> PAS; }
 	else      { a1 = (v.cur >> (PAS - 1)) & ~1u; a2 = (v.nxt >> (PAS - 1)) & ~1u; }
 
 	// La modulation par anneau est le bloc 4 ; son GARDE porte sur trois champs et non sur MDL seul, donc il
 	// est deja ecrit ici pour que le bloc 2 ne le contredise pas.
-	const unsigned mdl = champ(r, P().mdl), mdxsl = champ(r, P().mdxsl), mdysl = champ(r, P().mdysl);
+	const unsigned mdl = champ(r, C_MDL), mdxsl = champ(r, C_MDXSL), mdysl = champ(r, C_MDYSL);
 	if (mdl != 0 || mdxsl != 0 || mdysl != 0) {
 		s32 smp = (m_anneau[(m_ptr_anneau + mdxsl) & 63] + m_anneau[(m_ptr_anneau + mdysl) & 63]) / 2;
 		smp <<= 0xA;
@@ -766,7 +723,7 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 
 	s32 ech = 0;
 	if (ssctl == 0) {
-		const u32 sa = (champ(r, P().sa_hi) << 16) | champ(r, P().sa_lo);
+		const u32 sa = (champ(r, C_SA_HI) << 16) | champ(r, C_SA_LO);
 		const s32 frac = s32(v.cur & ((1u << PAS) - 1)), plein = 1 << PAS;
 		if (pcm8) {
 			// Un octet par echantillon, place dans les huit bits HAUTS : il n'est pas etire sur seize.
@@ -785,7 +742,7 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 	// SBCTL : DEUX INVERSIONS QUI NE SE RESSEMBLENT PAS. Le bit 0 est un OU exclusif sur l'entier, SANS
 	// troncature ; le bit 1 tronque a seize bits. Les deux ensemble donnent l'oppose a un pres : 1000 sort
 	// a -1001, ce que le bloc 2 mesure.
-	const unsigned sbctl = champ(r, P().sbctl);
+	const unsigned sbctl = champ(r, C_SBCTL);
 	if (sbctl & 1) ech ^= 0x7FFF;
 	if (sbctl & 2) ech = s32(s16(u16(ech) ^ 0x8000));
 
@@ -796,11 +753,11 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 	a1 = v.cur >> PAS;
 	a2 = v.nxt >> PAS;
 
-	const u32 lsa = champ(r, P().lsa), lea = champ(r, P().lea);
-	const unsigned lpctl = champ(r, P().lpctl);
+	const u32 lsa = champ(r, C_LSA), lea = champ(r, C_LEA);
+	const unsigned lpctl = champ(r, C_LPCTL);
 
 	// LPSLNK : l'attaque ne finit pas a la saturation du volume mais au passage de LSA (bloc 3).
-	if (a1 >= lsa && !v.arriere && champ(r, P().lpslnk) && v.etat == ATTAQUE) v.etat = CHUTE1;
+	if (a1 >= lsa && !v.arriere && champ(r, C_LPSLNK) && v.etat == ATTAQUE) v.etat = CHUTE1;
 
 	// LE BOUCLAGE, SUR LES DEUX ADRESSES. Voir l'en-tete du bloc : la passe `nxt` ecrit dans le vide, mais
 	// ses effets de bord sont ceux qui decalent les quatre modes d'un echantillon.
@@ -843,14 +800,14 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 	}
 
 	if (m_dit) fprintf(stderr, "  diag.osc fente %2u : brut %7d  etat %d  volume %9d  alfos %u plfos %u cur %u\n",
-	                   i, ech, v.etat, v.volume, champ(r, P().alfos), champ(r, P().plfos), v.cur);
+	                   i, ech, v.etat, v.volume, champ(r, C_ALFOS), champ(r, C_PLFOS), v.cur);
 	// SDIR SAUTE L'ENVELOPPE ET L'ALFO. C'est la porte par laquelle le bloc 2 se mesure sans le bloc 3, et
 	// c'est aussi ce qui fait que TL est mis a zero plus bas : une fente en SDIR passe a cote de toute
 	// l'attenuation (docs/scsp_audit.md §2, point 6).
-	if (!champ(r, P().sdir)) {
+	if (!champ(r, C_SDIR)) {
 		// L'ALFO ATTENUE AVANT L'ENVELOPPE, et son garde empeche aussi la phase d'avancer : avec ALFOS=0 la
 		// fonction n'est pas appelee du tout.
-		if (champ(r, P().alfos) != 0) ech = (ech * gain_lfo(v.alfo)) >> PAS;
+		if (champ(r, C_ALFOS) != 0) ech = (ech * gain_lfo(v.alfo)) >> PAS;
 		//
 		// DEUX ARITHMETIQUES, ET C'EST LE FAIT CENTRAL DU BLOC 3. L'etat ATTAQUE multiplie par le VOLUME
 		// BRUT -- lineairement -- quand tout le reste passe par la courbe en decibels. Les deux se
@@ -868,9 +825,9 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 
 	// L'anneau de modulation, que la fente alimente sauf si STWINH l'interdit. Le gain applique ici est
 	// celui de TL a plein niveau de sortie, ou zero quand SDIR met TL de cote.
-	if (!champ(r, P().stwinh)) {
+	if (!champ(r, C_STWINH)) {
 		s32 g, d;
-		gains(champ(r, P().sdir) ? 0 : champ(r, P().tl), 0, 7, g, d);
+		gains(champ(r, C_SDIR) ? 0 : champ(r, C_TL), 0, 7, g, d);
 		m_anneau[m_ptr_anneau] = s32(s16((ech * g) >> (PAS + 1)));
 	}
 
@@ -941,16 +898,16 @@ void scsp_maison::run(u32 n, s32 *out)
 			// programmee avec SDIR et un grand TL serait autrement muette a tort (docs/scsp_audit.md §2,
 			// point 6).
 			s32 g, d;
-			gains(champ(r, P().sdir) ? 0 : champ(r, P().tl), champ(r, P().dipan), champ(r, P().disdl), g, d);
+			gains(champ(r, C_SDIR) ? 0 : champ(r, C_TL), champ(r, C_DIPAN), champ(r, C_DISDL), g, d);
 			if (dit) fprintf(stderr, "diag fente %2u : ech %7d  g %6d  apport %7d  (tl %3u pan %2u sdl %u)\n",
-			                 i, ech, g, (ech * g) >> PAS, champ(r, P().sdir) ? 0 : champ(r, P().tl),
-			                 champ(r, P().dipan), champ(r, P().disdl));
+			                 i, ech, g, (ech * g) >> PAS, champ(r, C_SDIR) ? 0 : champ(r, C_TL),
+			                 champ(r, C_DIPAN), champ(r, C_DISDL));
 			gauche += (ech * g) >> PAS;
 			droite += (ech * d) >> PAS;
 			// L'envoi au DSP : meme attenuation, mais par IMXL, et deux bits de plus.
 			s32 ig, id;
-			gains(champ(r, P().sdir) ? 0 : champ(r, P().tl), 0, champ(r, P().imxl), ig, id);
-			m_dsp.SetSample((ech * ig) >> (PAS - 2), s32(champ(r, P().isel)), s32(champ(r, P().imxl)));
+			gains(champ(r, C_SDIR) ? 0 : champ(r, C_TL), 0, champ(r, C_IMXL), ig, id);
+			m_dsp.SetSample((ech * ig) >> (PAS - 2), s32(champ(r, C_ISEL)), s32(champ(r, C_IMXL)));
 			m_ptr_anneau = (m_ptr_anneau + 1) & 63;
 		}
 		m_dsp.Step();
@@ -958,10 +915,10 @@ void scsp_maison::run(u32 n, s32 *out)
 		// La sortie d'effets : les SEIZE PREMIERES fentes seulement, chacune portant le niveau et le
 		// panoramique de son propre registre (EFSDL/EFPAN).
 		for (unsigned i = 0; i < 16; i++) {
-			const unsigned efsdl = champ(m_fente[i], P().efsdl);
+			const unsigned efsdl = champ(m_fente[i], C_EFSDL);
 			if (!efsdl) continue;
 			s32 g, d;
-			gains(0, champ(m_fente[i], P().efpan), efsdl, g, d);
+			gains(0, champ(m_fente[i], C_EFPAN), efsdl, g, d);
 			if (dit) fprintf(stderr, "diag efreg %2u : %6d  g %6d  apport %7d\n",
 			                 i, m_dsp.EFREG[i], g, (s32(m_dsp.EFREG[i]) * g) >> PAS);
 			gauche += (s32(m_dsp.EFREG[i]) * g) >> PAS;

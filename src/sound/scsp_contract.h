@@ -315,7 +315,13 @@ inline constexpr unsigned REGISTRE_BANQUE = 0x400001;
 // test_scsp_core.cpp alone, and it shifted blindly: KYONB went out as zero, the voice stayed silent, and
 // the failure message accused the contract.
 // ---------------------------------------------------------------------------------------------------
-inline const Champ *cherche(const Champ *table, std::size_t n, const char *nom)
+// CONSTEXPR, et ce n'est pas une coquetterie : appelee avec un nom litteral, la recherche se fait a la
+// COMPILATION et le champ devient un decalage et un masque connus. Sans cela, un coeur qui lit ses champs
+// par cette table paie une recherche -- ou, a peine mieux, un controle d'initialisation de statique -- a
+// chaque lecture, vingt fois par fente, trente-deux fentes, quarante-quatre mille fois par seconde. La
+// mesure a donne le prix de cette version-la : la boucle de fentes deux fois plus lente que celle de MAME
+// (docs/scsp_audit.md §4 quinquies).
+constexpr const Champ *cherche(const Champ *table, std::size_t n, const char *nom)
 {
 	for (std::size_t i = 0; i < n; i++) {
 		const char *a = table[i].nom, *b = nom;
@@ -327,7 +333,7 @@ inline const Champ *cherche(const Champ *table, std::size_t n, const char *nom)
 
 // A slot's field, by name, or nullptr. The caller decides what a missing name means: a test should die,
 // since a name that is not in the table is a typo and not a condition.
-inline const Champ *champ_fente(const char *nom)
+constexpr const Champ *champ_fente(const char *nom)
 {
 	return cherche(FENTE, sizeof FENTE / sizeof *FENTE, nom);
 }
@@ -345,7 +351,7 @@ inline const Champ *champ_fente(const char *nom)
 // a bit in place, and this function then OR-ed 0x0006 into word 9 WITH NO SHIFT -- straight onto ALFOWS
 // (bits 4-3) and ALFOS (bits 2-0). A helper that silently writes the wrong field is worse than one that
 // refuses, and only the LFO test's measurement showed it.
-inline bool pose(std::uint16_t mot[16], const char *nom, unsigned valeur)
+constexpr bool pose(std::uint16_t mot[16], const char *nom, unsigned valeur)
 {
 	const Champ *c = champ_fente(nom);
 	if (!c) return false;

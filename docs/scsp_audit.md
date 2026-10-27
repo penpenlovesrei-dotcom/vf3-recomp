@@ -311,41 +311,66 @@ machine de cette taille, c'est là et nulle part ailleurs — et la part des voi
 mesure que la musique s'est chargée, ce qui en fait le second poste et non le troisième.
 
 
-## 4 quinquies. Ce que le cœur du projet coûte, comparé à celui de MAME
+## 4 quinquies. Ce que le cœur du projet coûte, et où
 
-Mesuré le 2026-10-27 par `tools/son/rejouer`, qui rejoue la **même trace** d'accès dans les deux cœurs : le
-travail est identique a l'accès près, ce qui est la seule façon de les comparer honnêtement. Trois passages
-chacun, sur la trace de la scène entière (3 219 865 échantillons, soit 73 secondes d'audio).
+Mesuré le 2026-10-27. **Deux instruments, et le second a été écrit parce que le premier ne pouvait pas
+répondre à la question** :
 
-| étape | `maison` | ce qui a changé |
-|---|---|---|
-| première version | 47,80 s | le lecteur de champs cherchait **par comparaison de chaînes** dans la table du contrat, à chaque champ, chaque fente, chaque échantillon |
-| positions résolues une fois | 22,93 s | la table du contrat reste la source unique, lue **une fois** à la construction |
-| mot d'indicateurs | 22,48 s | les champs d'un bit d'un pas de DSP tiennent dans un entier lu une fois, au lieu de quinze booléens |
-| corps spécialisé | **21,88 s** | les quatre contrôles que ce jeu n'emploie jamais sortent des 112 pas par échantillon |
-| | **20,80 s** | le cœur de MAME, pour comparaison |
+| | |
+|---|---|
+| `tools/son/rejouer` | compare les deux cœurs **à l'octet** sur la même trace. Son temps est dominé par l'analyse de 81 Mo de texte, identique dans les deux et comptée deux fois : il donne un écart juste et une **part fausse** |
+| `tools/son/mesurer-coeur` | ne chronomètre que `run()`, et **sépare les postes** : à vide, les fentes seules, le DSP seul, les deux. C'est lui qui dit où aller |
 
-**Le chiffre qui compte, et ce n'est pas le plus flatteur.** Le temps absolu est dominé par l'analyse de la
-trace — 81 Mo de texte, analysés deux fois dans un passage à deux cœurs — et elle est identique dans les
-deux. L'écart **par cœur** est donc de 0,54 s pour 73 secondes d'audio, soit **0,74 % d'un cœur par puce**.
-Sur les 8,5 % que le son coûte au bureau (§4 ter), le cœur du projet ferait passer le son à environ 10 % :
-**le gain processeur va dans le mauvais sens**, et c'est la priorité absolue du cahier des charges.
+### Par poste, 32 voix et un programme de 112 pas
+
+En pourcentage d'un cœur, 400 000 échantillons par cas :
+
+| poste | `mame` | `maison`, première version | `maison`, après mesure |
+|---|---|---|---|
+| à vide | 0,15 | 0,21 | 0,13 |
+| **les fentes** | **2,10** | **4,44** | **2,48** |
+| le DSP | 2,10 | 2,45 | 2,53 |
+| les deux | 4,13 | 6,75 | **4,67** (4,55 à 4,74) |
+
+**C'était la boucle de fentes, et non le DSP**, ce que le chiffre global ne pouvait pas dire : le DSP du
+projet n'a jamais été qu'à 17 % au-dessus, quand les fentes étaient à **111 %**.
+
+### La cause, et elle est de moi
+
+Les positions de champs venaient de la table du contrat — bonne chose, c'est la source unique — mais par un
+**statique de fonction**. En C++, chaque lecture d'un tel statique paie un **contrôle d'initialisation
+atomique** : vingt par fente, trente-deux fentes, quarante-quatre mille fois par seconde. Rendre
+`scsp_contract::champ_fente` **`constexpr`** résout chaque position à la compilation : la boucle ne fait plus
+qu'un chargement, un décalage et un masque, et la source unique est intacte.
+
+Le chemin complet, par le rejoueur (3 219 865 échantillons, deux analyses de trace comprises) :
+
+| étape | |
+|---|---|
+| recherche par chaîne dans la boucle | 47,80 s |
+| positions résolues une fois, par un statique | 22,93 s |
+| mot d'indicateurs pour les champs d'un bit du DSP | 22,48 s |
+| corps de DSP spécialisé sur ce que le programme emploie | 21,88 s |
+| **positions résolues à la compilation** | — et le banc par poste prend le relais |
+| | **20,80 s** pour le cœur de MAME |
+
+### Où ça en est, sans arrondir en ma faveur
+
+Le cœur du projet reste **11 à 14 % plus cher** que celui de MAME sur le même travail, soit **+0,5 point d'un
+cœur** dans le cas à 32 voix et DSP. Sur les 8,5 % que le son coûte au bureau (§4 ter), le son passerait à
+environ 9,5 %. C'est 63 % de mieux que la première version, et ce n'est pas zéro.
 
 Trois choses à en retenir plutôt qu'une :
 
-1. **La justesse n'a jamais été payee par la vitesse.** La première version, 2,27 fois plus lente, était
-   déjà identique à l'octet. Les quatre étapes ci-dessus n'ont rien changé au son — le rejoueur l'a
-   vérifié après chacune.
-2. **La source unique des positions de champs n'a pas été abandonnée pour aller plus vite.** Elle est lue
-   une fois au lieu d'être cherchée un million de fois : un champ faux dans le contrat casse toujours les
-   tests.
-3. **Ce chiffre n'est pas celui de la carte.** Il ne pourra l'être que quand le cœur y sera branché, et
-   `VF3_SND_PROF` le mesurera alors à l'intérieur, part par part. En attendant, 0,74 % par puce est une
-   borne mesurée sur un banc, pas la part du son dans une image.
+1. **La justesse n'a jamais été payée par la vitesse.** La première version, 63 % plus lente, était
+   **déjà identique à l'octet** ; le rejoueur l'a vérifié après chacune des cinq étapes.
+2. **Aucune optimisation n'a sacrifié la source unique.** Le contrat reste le seul endroit où vit la
+   position d'un champ ; elle y est lue à la compilation au lieu d'être cherchée un million de fois.
+3. **Ce chiffre n'est pas la part du son dans une image.** C'est un banc. La part réelle demande que le
+   cœur soit branché sur la carte, et `VF3_SND_PROF` la mesurera alors part par part.
 
-Et une taille, qui n'est pas une mesure de performance mais qui se dit : 1 759 lignes pour le cœur du projet
-(`scsp_maison` et `dsp_maison`) contre 2 540 pour celui de MAME (`scsp` et `scspdsp`), à comportement
-identique.
+Et une taille, qui n'est pas une performance mais qui se dit : 1 759 lignes pour le cœur du projet contre
+2 540 pour celui de MAME, à comportement identique.
 
 
 ## 5. Ce que le programme DSP contient vraiment
