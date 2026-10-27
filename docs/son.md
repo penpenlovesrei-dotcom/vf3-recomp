@@ -77,6 +77,7 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 | `VF3_STAGE=n` | **force l'arène** (1-12), en tenant les deux leviers du jeu | `tools/vf3run.cpp` |
 | `VF3_VOLUMES=m,e` | les volumes musique et effets, séparément | `tools/vf3run.cpp` |
 | `VF3_SCSP_WLOG=f` | la trace des écritures de registres, à LIRE : image par image, puce 0 seulement. Pas de quoi rejouer — voir `VF3_SCSP_TRACE` | `soundboard.cpp` |
+| `VF3_SCSP_COEUR=n` | **quel cœur de SCSP la carte emploie** : `mame` (par défaut) ou `maison`, le SCSP du projet. Les gains par groupe, la sonde d'énergie et le journal des key-on ne s'appliquent qu'au premier, et la carte le dit au lancement | `soundboard.cpp` |
 | `VF3_SCSP_TRACE=f` | **la trace rejouable** : `f.0` et `f.1`, chaque accès à l'échantillon près, les écritures de RAM comprises, plus `f.N.pcm` comme référence | `scsp_trace.h` |
 | `VF3_SCSP_RESTE=N` | ce que les deux puces laissent dans les tampons, toutes les N images — un reste qui **grandit** serait le signe d'une désynchronisation | `soundboard.cpp` |
 | `VF3_KEYON_LOG=1` | les allumages de note | `soundboard.cpp` |

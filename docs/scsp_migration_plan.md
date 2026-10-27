@@ -12,9 +12,21 @@ Le cœur du projet ne contient donc **plus une ligne de MAME**.
 par puce, 208 360 interruptions, 69 311 armements de timer, 265 469 lectures de registre — tout concorde,
 échantillon par échantillon, sur les deux puces.
 
-Ce qui reste : **la carte parle toujours au cœur de MAME**. Le cœur du projet est complet et vérifié, mais il
-n'est pas branché — il lui manque les quatre extras que `scsp::core` ne porte pas : gains par groupe, sonde
-d'énergie, miroir MADRS et `MVOL`. C'est la dernière dette, et elle est de la taille de ces quatre-là.
+**ET DE BOUT EN BOUT, LE JEU ENTIER : MÊME EMPREINTE.** `vf3run` sur les 4200 images, une fois avec chaque
+cœur, donne le même WAV — `9A2310F8AF000E09EB18BD114852B003`, qui est **exactement la référence prise
+avant tout ce travail** (commit de l'étape 3). Le rejoueur jugeait la puce sur une séquence figée ; ceci la
+juge en place, avec le 68000 qui lui répond et le mélangeur de la carte derrière.
+
+**La carte peut désormais tourner sur l'un ou l'autre** : `VF3_SCSP_COEUR=mame` (par défaut) ou `maison`.
+Deux des quatre extras ont disparu en chemin — `MVOL` se **lit dans le registre**, la puce ne l'appliquant
+pas elle-même, et `reg_word` n'était qu'un `read_reg` déguisé. Le **miroir MADRS** est porté par les deux
+cœurs, chacun sur sa classe concrète, parce qu'il appartient au jeu et non à la puce.
+
+Ce qui reste dû, et c'est nommé dans `soundboard.h` : **les gains par groupe** (le partage musique/effets du
+menu), **la sonde d'énergie** et **le journal des key-on** ne vivent que dans le cœur de MAME. Les deux
+derniers sont des diagnostics ; le premier compte pour le joueur, mais il est **inerte tant que les deux
+volumes valent 1**. C'est pourquoi le cœur du projet est utilisable sans eux, et pourquoi le défaut reste
+`mame` : rien ne change sans qu'on le demande.
 
 
 ## Pourquoi, et dans quel ordre les quatre objectifs se servent

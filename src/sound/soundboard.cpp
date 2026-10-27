@@ -149,7 +149,20 @@ void SoundBoard::reset()
 		pcm[n].clear();
 		sinks[n].b = this;
 		sinks[n].n = n;
-		scsp[n] = std::make_unique<scsp_mame>(45158400 / 2, ram[n].data(), uint32_t(ram[n].size() * 2), sinks[n]);
+		// LE COEUR SE CHOISIT. Par defaut celui de MAME, pour que rien ne change sans qu'on le demande ;
+		// VF3_SCSP_COEUR=maison prend celui du projet (src/sound/scsp_maison.h), identique a l'octet au
+		// rejoueur mais sans les trois extras ci-dessous.
+		static const char *nom = []() {
+			const char *e = getenv("VF3_SCSP_COEUR");
+			return e && *e ? e : "mame";
+		}();
+		scsp[n] = scsp::make(nom, 45158400 / 2, ram[n].data(), uint32_t(ram[n].size() * 2), sinks[n]);
+		if (!scsp[n]) { fprintf(stderr, "soundboard: coeur \"%s\" inconnu ; connus : %s\n",
+		                        nom, scsp::noms_connus()); std::exit(2); }
+		extras[n] = dynamic_cast<scsp_mame *>(scsp[n].get());
+		if (!extras[n] && n == 0)
+			fprintf(stderr, "son: coeur \"%s\" -- les gains par groupe, la sonde d'energie et le journal"
+			                " des key-on ne s'appliquent pas (soundboard.h)\n", nom);
 		// VF3_SCSP_TRACE=f : la trace d'acces, un fichier par puce (f.0 et f.1), pour tools/son/rejouer.
 		// Elle commence ICI, a la remise a zero, parce que la RAM y est connue -- huit mots, les vecteurs du
 		// 68000 que la carte vient d'y copier. L'enregistreur le verifie au lieu de le supposer.
@@ -161,16 +174,22 @@ void SoundBoard::reset()
 			                                             ram[n].data(), uint32_t(ram[n].size() * 2));
 			if (e->bon()) { tete[n] = e.get(); trace[n] = std::move(e); }
 		}
-		scsp[n]->device().group_of = [this, n](int slot) { return group_of(n, slot); };
+		if (extras[n]) extras[n]->device().group_of = [this, n](int slot) { return group_of(n, slot); };
 		// the MADRS mirror, per game (soundboard.h), unless one of the two variables says otherwise
 		{
 			const char *sep = getenv("VF3_SCSP_MADRS_SEPARATE"), *mir = getenv("VF3_SCSP_MADRS_MIRROR");
-			scsp[n]->device().set_madrs_mirror((sep && *sep == '1') ? false : (mir && *mir == '1') ? true : madrs_mirror);
+			const bool on = (sep && *sep == '1') ? false : (mir && *mir == '1') ? true : madrs_mirror;
+			// LE MIROIR EST LE SEUL DES QUATRE QUI CHANGE LE SON, et par jeu : vrai pour Virtua Fighter 3,
+			// FAUX pour Fighting Vipers 2, ou il replie les lignes de retard du DSP sur une adresse
+			// (docs/scsp_audit.md §2). Les deux coeurs le portent donc, chacun sur sa classe concrete --
+			// l'interface ne le porte pas, parce que ce n'est pas l'affaire de la puce mais du jeu.
+			if (auto *m = dynamic_cast<scsp_mame *>(scsp[n].get())) m->device().set_madrs_mirror(on);
+			else if (auto *j = dynamic_cast<scsp_maison *>(scsp[n].get())) j->set_madrs_mirror(on);
 		}
-		for (int g = 0; g < 2; g++) scsp[n]->device().set_group_gain(g, volume[g]);
+		if (extras[n]) for (int g = 0; g < 2; g++) extras[n]->device().set_group_gain(g, volume[g]);
 		if (getenv("VF3_KEYON_LOG")) {   // (tests: each voice started, with the 68000's state then)
 			static FILE *kl = fopen(getenv("VF3_KEYON_LOG"), "w");
-			scsp[n]->device().on_key_on = [this, n](const scsp_device::key_on &k) {
+			if (extras[n]) extras[n]->device().on_key_on = [this, n](const scsp_device::key_on &k) {
 				if (!kl) return;
 				auto w = [&](uint32_t a) {
 					a &= 0xFFFFFF;
@@ -216,28 +235,28 @@ void SoundBoard::set_volumes(float music, float effects)
 {
 	volume[0] = music;
 	volume[1] = effects;
-	for (auto &s : scsp)
-		if (s) for (int g = 0; g < 2; g++) s->device().set_group_gain(g, volume[g]);
+	for (int n = 0; n < 2; n++)
+		if (extras[n]) for (int g = 0; g < 2; g++) extras[n]->device().set_group_gain(g, volume[g]);
 }
 
 uint16_t SoundBoard::reg_word(int n, uint32_t i)
 {
 	sync_sound(n);
-	return scsp[n]->device().read(i);
+	return tete[n]->read_reg(i);   // (c'etait un ->device().read : l'interface suffit)
 }
 
 void SoundBoard::energy_on(bool on)
 {
-	for (auto &s : scsp)
-		if (s) s->device().m_probe = on;
+	for (auto *e : extras)
+		if (e) e->device().m_probe = on;
 }
 
 void SoundBoard::energy_take(double e[2][32])
 {
 	for (int n = 0; n < 2; n++)
 		for (int sl = 0; sl < 32; sl++) {
-			e[n][sl] = scsp[n] ? scsp[n]->device().m_probe_direct[sl] : 0.0;
-			if (scsp[n]) scsp[n]->device().m_probe_direct[sl] = 0.0;
+			e[n][sl] = extras[n] ? extras[n]->device().m_probe_direct[sl] : 0.0;
+			if (extras[n]) extras[n]->device().m_probe_direct[sl] = 0.0;
 		}
 }
 
@@ -345,7 +364,11 @@ void SoundBoard::run(double seconds, std::vector<int16_t> &out)
 	std::vector<std::int32_t> &a = pcm[0], &b = pcm[1];
 	const size_t n = std::min(a.size(), b.size());
 	constexpr double ECHELLE = 1.0 / scsp_mame::PLEINE_ECHELLE;
-	float ga = scsp[0]->device().output_gain(), gb = scsp[1]->device().output_gain();
+	// MVOL, LE VOLUME MAITRE, SE LIT DANS LE REGISTRE : la puce ne l'applique pas elle-meme, elle l'expose
+	// seulement (scsp_contract.h §13 point 7), et un registre se lit par l'interface. Ce ->device()-la etait
+	// donc une dette gratuite.
+	auto mvol = [&](int n) { return float(tete[n]->read_reg(0x400 / 2) & 0x000F) / 15.0f; };
+	float ga = mvol(0), gb = mvol(1);
 	static const int solo = getenv("VF3_SCSP_SOLO") ? atoi(getenv("VF3_SCSP_SOLO")) : -1;   // (tests: one SCSP alone)
 	if (solo == 0) gb = 0;
 	if (solo == 1) ga = 0;

@@ -79,6 +79,9 @@
 //   VF3_WINDOW=WxH       the window's size in points
 //   VF3_DATA=dir         the data folder
 //   VF3_PACE_LOG=1       the pacing and the pictures' times every 2 s
+//   VF3_SCSP_COEUR=n     which SCSP core the board uses: `mame` (the default) or `maison`, the project's
+//                        own (src/sound/scsp_maison.h). The per-group gains, the energy probe and the
+//                        key-on log apply to the first only, and the board says so at start-up
 //   VF3_SND_OFF=1        (measurement) the sound board is not run at all, the MIDI dropped. Valid as a
 //                        control BECAUSE the traffic is one-way -- the game writes MIDI and reads nothing
 //                        back -- so its execution is bit-identical. The gap against a normal run is the

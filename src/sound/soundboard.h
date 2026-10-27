@@ -10,7 +10,9 @@
 // 44.1 kHz.
 #pragma once
 #include "scsp.h"
+#include "scsp_maison.h"
 #include "scsp_mame.h"
+#include "scsp_select.h"
 #include "scsp_trace.h"
 #include "../../third_party/mame/m68000/m68000.h"
 #include <cstdint>
@@ -78,12 +80,20 @@ private:
 	struct Bus;
 	std::unique_ptr<Bus> bus;
 	std::unique_ptr<m68000_device> cpu;
-	// Les deux puces, derriere l'interface neuve (src/sound/scsp_core.h). La carte ne leur parle plus que
-	// par elle -- registres, temps, timers, MIDI -- et n'atteint l'ancienne classe, par `->device()`, que
-	// pour ce qui n'est pas l'affaire de la puce : les gains par groupe du partage musique/effets, la sonde
-	// d'energie, le miroir MADRS. C'est l'etape 3 de docs/scsp_migration_plan.md, et ces `device()`-la sont
-	// ce qui doit partir en dernier.
-	std::unique_ptr<scsp_mame> scsp[2];
+	// LES DEUX PUCES, PAR LEUR INTERFACE SEULE (src/sound/scsp_core.h), et le coeur se choisit :
+	// VF3_SCSP_COEUR=mame (par defaut) ou maison, le SCSP du projet (src/sound/scsp_maison.h).
+	std::unique_ptr<scsp::core> scsp[2];
+
+	// CE QUE LA CARTE DEMANDE AU-DELA DE LA PUCE, et qui n'est pas dans l'interface parce que ce n'est pas
+	// l'affaire d'un SCSP : les gains par groupe du partage musique/effets, la sonde d'energie, le journal
+	// des key-on. `scsp_core.h` dit pourquoi ils n'y sont pas.
+	//
+	// ILS NE SONT POUR L'INSTANT QUE DANS LE COEUR DE MAME, et ce pointeur -- non proprietaire, nul quand
+	// l'autre coeur tourne -- est la MESURE de ce qui reste a faire. Les gains par groupe sont le seul des
+	// trois qui compte pour le joueur, et ils sont INERTES tant que les deux volumes valent 1
+	// (scsp_device::set_group_gain) : c'est pourquoi le coeur du projet est utilisable sans eux, et pourquoi
+	// la carte le dit au lieu de les laisser tomber en silence.
+	scsp_mame *extras[2] = { nullptr, nullptr };
 	// LA TETE PAR LAQUELLE LA CARTE PARLE A LA PUCE, et c'est `tete[n]` et non `scsp[n]` qu'il faut appeler.
 	//
 	// Sans VF3_SCSP_TRACE elle vaut scsp[n].get() et ne coute rien. Avec, c'est un scsp::enregistreur qui
