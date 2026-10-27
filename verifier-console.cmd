@@ -7,8 +7,10 @@ rem A relancer apres tout changement de la couche console (console_state.h, cons
 rem
 rem   VERSUS : PLAY MENU PLAY STAGE PLAY PAUSE MENU_IN MENU
 rem   ARCADE : PLAY MENU PLAY       PLAY PAUSE MENU_IN MENU  (sans le carrousel, qui est a la ligne V.S.)
+rem   TRAINING : la meme suite qu-ARCADE, mais elle met en marche l-horloge arretee, les vies tenues,
+rem              les sept etats d-annonce coupes, l-annonceur jete et la sortie d-un match a deux.
 rem
-rem Compter une dizaine de minutes : deux parties de sept mille images chacune, sans fenetre.
+rem Compter un quart d-heure : trois parties de sept mille images chacune, sans fenetre.
 setlocal
 set PATH=C:\msys64\mingw64\bin;%PATH%
 set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\fvipers2.zip
@@ -49,6 +51,18 @@ py -3 "%~dp0tools\fv2\verifier_console.py" "%VF3_DATA%\log.txt" PLAY MENU PLAY P
 set ARCADE=%ERRORLEVEL%
 
 echo.
-if "%VERSUS%%ARCADE%"=="00" (echo ---- les deux routes sont bonnes ----) else (echo ---- VERSUS=%VERSUS% ARCADE=%ARCADE% : zero veut dire bon ----)
-echo Les journaux entiers sont dans build\console-route et build\console-route-arcade.
+echo ---- la route TRAINING ----
+set "VF3_DATA=%~dp0build\console-route-training"
+if not exist "%VF3_DATA%" mkdir "%VF3_DATA%"
+set VF3_SCRIPT=%~dp0tools\scripts\fv2-console-route-training.txt
+set VF3_CONSOLE_MODE=training
+"build\bin\vf3.exe" "%ROM%" --console
+py -3 "%~dp0tools\fv2\verifier_console.py" "%VF3_DATA%\log.txt" PLAY MENU PLAY PAUSE MENU_IN MENU
+set TRAINING=%ERRORLEVEL%
+rem et les trois lignes que cette route doit dire en plus (fv2-console-route-training.txt)
+findstr /C:"is held, the game having started" /C:"the announcer dropped" "%VF3_DATA%\log.txt"
+
+echo.
+if "%VERSUS%%ARCADE%%TRAINING%"=="000" (echo ---- les trois routes sont bonnes ----) else (echo ---- VERSUS=%VERSUS% ARCADE=%ARCADE% TRAINING=%TRAINING% : zero veut dire bon ----)
+echo Les journaux entiers sont dans build\console-route, -arcade et -training.
 pause

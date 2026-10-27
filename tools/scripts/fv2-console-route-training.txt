@@ -1,0 +1,22 @@
+# Fighting Vipers 2, la route console en TRAINING : celle qui a le plus de leviers a la fois.
+#
+# Elle ne passe pas par le carrousel -- le decor du training est tenu a MARBLE ARENA, pas choisi -- mais
+# elle met en marche ce qu'aucune des deux autres ne touche : l'horloge arretee, les vies tenues, la
+# colonne des entrees, les sept etats d'annonce coupes, l'annonceur jete, et la sortie d'un match a DEUX
+# joueurs, qui est celle qui demande VS FINISH.
+#
+#   1300  Start sur l'ecran titre     -> la liste des modes       (PLAY -> MENU)
+#         VF3_CONSOLE_MODE=training    -> TRAINING choisi          (MENU -> PLAY)
+#   4200  Start dans le combat        -> le menu pause            (PLAY -> PAUSE)
+#         VF3_CONSOLE_PAUSE=4          -> MAIN MENU               (PAUSE -> MENU_IN -> MENU)
+#
+# La suite attendue : PLAY MENU PLAY PAUSE MENU_IN MENU
+#
+# Et dans le journal, ce que cette route doit dire en plus des etats :
+#   the console: TRAINING is held, the game having started
+#   the console: the arena is held, the game having started    (la scene 3, Marble Arena)
+#   training: the announcer dropped -- A0 2B ..                (trois fois, au debut de la manche)
+1300 press p1.start 8
+3000 random p1 7
+3000 random p2 11
+4200 press p1.start 8
