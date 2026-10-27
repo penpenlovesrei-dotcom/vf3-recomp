@@ -317,8 +317,10 @@ struct console_play
 		sel_at = SEL_DONE;
 		if (!sel_wants_page) return;
 		sel_wants_page = false;   // (spent: a later game asks for it again by choosing V.S. again)
-		want_stage_page = true;
-		// parked on this very tick, which is the whole of the paragraph above
+		// THE CAROUSEL IS ASKED FOR AS ANY STATE IS (console_state.h): the host enters it, and refuses it
+		// if the page is not there -- in which case it lets the select screen go again, since the game is
+		// parked on this very tick, which is the whole of the paragraph above.
+		ask_state(cstate::STAGE, "the fighters are chosen");
 		b.fv2_park_stage_select();
 	}
 
@@ -356,7 +358,6 @@ struct console_play
 	// STAGE_SEL_DSP, DECIDE_INT, DECIDE_DSP, and the board steps SELECT (1) straight to DECIDE_INT (4) --
 	// its two STAGE_SEL states are an empty stub. So the page opens on DECIDE_INT, the game frozen under
 	// it, and the stage is held before the match reads it ten frames later at ROUND_MASK_INT.
-	bool want_stage_page = false;
 
 	// THE TWO TASK REGISTERS AS THEY READ WHILE A FIGHT IS RUNNING, kept so the pause menu's REMATCH can
 	// hand back whichever of them the game has stopped. The versus is player 2 stepping into player 1's

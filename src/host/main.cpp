@@ -2903,6 +2903,12 @@ int main(int argc, char **argv)
 		options.load(ren, find_assets(), &console_font, stderr);
 		pause.load(ren, find_assets(), &console_font, stderr);
 		stages.load(ren, find_assets(), &console_font, stderr);
+		// VF3_CONSOLE_STAGE=none takes the carousel away, and it is worth its keep for ONE measurement:
+		// it is the only way to put a fight that went through the page beside a fight that did not, on
+		// the same build, the same script and the same machine. Taken away here rather than stepped
+		// around where the page would open, so the state machine sees exactly what a missing picture
+		// looks like (enter refuses the state and lets the select screen go).
+		if (const char *cs = getenv("VF3_CONSOLE_STAGE"); cs && !strcmp(cs, "none")) stages.ready = false;
 		train.load(ren, find_assets(), &console_font, stderr);
 		curtain.load(ren, find_assets(), stderr);
 		fin.find(find_assets(), stderr);
@@ -3374,6 +3380,19 @@ int main(int argc, char **argv)
 	// Nothing else in this file calls show() or hide() on the list, the OPTIONS tree, the pause menu or
 	// the carousel. A place that wants one of them says which STATE it wants to be in.
 	auto enter = [&](cstate s, const char *why) {
+		// A STATE WHOSE SURFACE IS NOT THERE IS NOT ENTERED, and the state machine stays total rather
+		// than hanging: a picture that failed to load would otherwise leave the game held, or parked,
+		// under nothing at all. The carousel's refusal has one thing more to do -- the game was parked in
+		// Sega's empty STAGE_SEL on the tick the page was asked for, and something has to let it go.
+		const bool have = (s != cstate::MENU && s != cstate::MENU_IN ? true : modes.ready)
+			&& (s != cstate::OPTIONS ? true : options.ready)
+			&& (s != cstate::STAGE && s != cstate::STAGE_HELD ? true : stages.ready);
+		if (!have) {
+			fprintf(stderr, "the console: %s was asked for (%s) and its page is not there -- staying in play\n",
+				crules(s).name, why ? why : "");
+			if (s == cstate::STAGE || s == cstate::STAGE_HELD) cplay.ask_for(console_play::ask::stage_free);
+			s = cstate::PLAY;
+		}
 		cplay.ui.set(s, why);
 		const bool want_modes = s == cstate::MENU || s == cstate::MENU_IN;
 		const bool want_opts  = s == cstate::OPTIONS;
@@ -3582,7 +3601,7 @@ int main(int argc, char **argv)
 		// here to do nothing at all (console_play.h, model3.cpp).
 		else if (line == fv2_mode_list::RANDOM) cplay.choose_random();
 		// VERSUS starts as it always did. The stage is NOT asked for here: the summer's ROM put that choice
-		// AFTER the fighters are picked, and so does this port -- console_play raises want_stage_page when
+		// AFTER the fighters are picked, and so does this port -- console_play asks for the STAGE state when
 		// the game leaves SELECT for DECIDE_INT, and the page opens there (fv2_stage_list.h).
 		else if (line == fv2_mode_list::VERSUS) cplay.choose_versus();
 		// TRAINING is not a mode this board has -- Sega's twenty-four hold none -- so it is one this port
@@ -4491,14 +4510,6 @@ int main(int argc, char **argv)
 				// NOT frozen under it -- console_play parks it in that empty sub-state and it goes on running
 				// (model3.cpp) -- and the arena it holds is read ten frames later, at ROUND_MASK_INT.
 				//
-				// VF3_CONSOLE_STAGE=none: the page never opens and the versus starts as it did before there
-				// was one. It is here for ONE measurement and it is worth its keep -- it is the only way to
-				// put a fight that went through the page beside a fight that did not, on the same build, the
-				// same script and the same machine.
-				static const bool no_stage_page = [] {
-					const char *s = getenv("VF3_CONSOLE_STAGE");
-					return s && !strcmp(s, "none");
-				}();
 				// MAIN MENU has got the game back to its title screen: the console's list goes up over it, which
 				// is where that line said it was going.
 				// THE LINE HELD WHILE THE MATCH WAS ENDING, acted on the moment it is over.
@@ -4518,18 +4529,10 @@ int main(int argc, char **argv)
 					cplay.want_why = nullptr;
 					enter(cplay.want_state, why);
 				}
-				if (cplay.want_stage_page) {
-					cplay.want_stage_page = false;
-					if (stages.ready && !stages.shown && !no_stage_page) {
-						enter(cstate::STAGE, "the fighters are chosen");
-						fprintf(stderr, "frame %llu: the fighters are chosen -- the console's stage select is up\n",
-								(unsigned long long)game_frame);
-					} else {
-						// console_play parked the game on the tick it asked for the page; no page, so it is
-						// let go again at once and the game walks into DECIDE_INT as it always did.
-						cplay.ask_for(console_play::ask::stage_free);
-					}
-				}
+				// (the carousel is asked for by console_play itself, where the fighters being chosen is seen:
+				// it asks for the STAGE state like any other, and enter() above refuses it if the page is not
+				// there. VF3_CONSOLE_STAGE=none takes the page away for one measurement, which is the only
+				// way to put a fight that went through it beside a fight that did not.)
 				// TRAINING'S COLUMN, fed with the PLAYER'S own controls and not with the game's memory --
 				// which is the point of it: it has to show what was done, including what the game ignored.
 				// Player 1's, and the damage it reads is what player 2 has just had taken off him.
