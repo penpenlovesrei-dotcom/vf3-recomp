@@ -94,8 +94,9 @@ unsigned duree_attaque(Banc &b, unsigned plafond)
 
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+	if (argc > 1) banc::nom_du_coeur() = argv[1];
 	printf("test_scsp_adsr : l'enveloppe, par scsp::core\n\n");
 
 	// ---- 1. LE DEPART N'EST PAS ZERO, et la premiere marche n'est pas la meme que les suivantes

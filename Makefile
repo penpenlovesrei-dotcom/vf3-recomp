@@ -42,7 +42,7 @@ CORE = src/ppc/ppc.cpp src/machine/model3.cpp src/machine/romset.cpp src/machine
 	src/rec/ppc_rec.cpp src/rec/vf3_map.cpp src/rec/fv2_map.cpp src/video/tilegen.cpp src/video/r3d_scene.cpp src/video/r3d_raster.cpp \
 	src/video/tex3d_hd.cpp src/video/tilehd.cpp \
 	src/sound/soundboard.cpp src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp \
-	src/sound/scsp_trace.cpp src/sound/scsp_select.cpp src/core/mame_shim.cpp \
+	src/sound/scsp_trace.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/core/mame_shim.cpp \
 	third_party/mame/m68000/m68000.cpp third_party/mame/m68000/m68000-decode.cpp \
 	third_party/mame/m68000/m68000-sdf.cpp third_party/mame/m68000/m68000-sdp.cpp \
 	third_party/mame/315-5881/crypt_315_5881.cpp
@@ -94,25 +94,25 @@ $(BIN)/test_scsp_core: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/
 
 # What a register write reads back (tools/son/test_scsp_regs.cpp): block 1 of the architecture's order,
 # and the plan wants these written BEFORE the blocks they test. No ROM, no sound: write, read back.
-$(BIN)/test_scsp_regs: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_regs.cpp)
+$(BIN)/test_scsp_regs: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_regs.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 # L'oscillateur, l'adressage PCM et les quatre bouclages (tools/son/test_scsp_fentes.cpp) : bloc 2 de
 # l'architecture. Mesure la suite exacte des indices d'echantillon, SDIR mettant l'enveloppe de cote.
-$(BIN)/test_scsp_fentes: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_fentes.cpp)
+$(BIN)/test_scsp_fentes: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_fentes.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 # L'enveloppe ADSR (tools/son/test_scsp_adsr.cpp) : bloc 3 de l'architecture. Une onde continue fait que la
 # sortie EST l'enveloppe, et les durees d'attaque en echantillons encodent les tables de temps de MAME.
-$(BIN)/test_scsp_adsr: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_adsr.cpp)
+$(BIN)/test_scsp_adsr: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_adsr.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 # Le pas, les deux LFO et la modulation par anneau (tools/son/test_scsp_lfo.cpp) : bloc 4 de l'architecture.
 # Lit l'accumulateur de phase par une rampe, et fixe les deux divergences deliberees du portage (PLFOS, MDL).
-$(BIN)/test_scsp_lfo: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_lfo.cpp)
+$(BIN)/test_scsp_lfo: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_lfo.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
@@ -124,13 +124,13 @@ $(BIN)/test_scsp_irq: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/s
 
 # Le melange et le rendu (tools/son/test_scsp_mix.cpp) : bloc 7, le dernier. Lit les trois tables de
 # decibels a la Sega (TL, DIPAN, SDLT) dans leur entier, et les DEUX canaux.
-$(BIN)/test_scsp_mix: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_mix.cpp)
+$(BIN)/test_scsp_mix: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_mix.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 # Le rejoueur (tools/son/rejouer.cpp) : point 2 de l'etape 2 du plan de migration. Rejoue une trace d'acces
 # dans un ou deux coeurs et compare le PCM, les interruptions, les armements, les lectures et le MIDI.
-$(BIN)/rejouer: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_trace.cpp src/sound/scsp_select.cpp src/core/mame_shim.cpp tools/son/rejouer.cpp)
+$(BIN)/rejouer: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_trace.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/core/mame_shim.cpp tools/son/rejouer.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
@@ -138,8 +138,10 @@ test: $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)
 	$(BIN)/test_scspdsp
 	$(BIN)/test_scsp_contract
 	$(BIN)/test_scsp_core
-	$(BIN)/test_scsp_regs
-	$(BIN)/test_scsp_fentes
+	$(BIN)/test_scsp_regs mame
+	$(BIN)/test_scsp_regs maison
+	$(BIN)/test_scsp_fentes mame
+	$(BIN)/test_scsp_fentes maison
 	$(BIN)/test_scsp_adsr
 	$(BIN)/test_scsp_lfo
 	$(BIN)/test_scsp_irq

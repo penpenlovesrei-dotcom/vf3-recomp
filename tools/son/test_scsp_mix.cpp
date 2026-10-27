@@ -85,8 +85,9 @@ std::pair<std::int32_t, std::int32_t> gain(unsigned disdl, unsigned dipan, unsig
 
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+	if (argc > 1) banc::nom_du_coeur() = argv[1];
 	printf("test_scsp_mix : le melange et le rendu, par scsp::core\n\n");
 
 	// ---- 1. L'ECHELLE, ET LE FACTEUR QUATRE QUI VIENT DE LA TABLE
@@ -268,7 +269,7 @@ int main()
 		b.keye(0, mot);
 		const auto [muet_g, muet_d] = b.stereo(4);
 		(void) muet_d;
-		const float expose = b.coeur.device().output_gain();
+		const float expose = banc::gain_expose(b.coeur);
 		char t[144];
 		snprintf(t, sizeof t, "MVOL=0 : la puce rend toujours %d (contre %d a MVOL=15), et expose un gain de %.3f",
 		         muet_g, plein, double(expose));

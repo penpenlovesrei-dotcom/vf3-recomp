@@ -11,10 +11,13 @@
 #pragma once
 
 #include "../../src/sound/scsp_contract.h"
+#include "../../src/sound/scsp_maison.h"
 #include "../../src/sound/scsp_mame.h"
+#include "../../src/sound/scsp_select.h"
 
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,14 +39,25 @@ inline constexpr std::uint32_t RAM_OCTETS = 0x100000;   // 1 Mo, comme une puce 
 // key-off ne fait que passer l'enveloppe en RELEASE (StopSlot), et SDIR saute l'enveloppe -- la fente
 // continuerait de sonner dans les cas suivants. Construire un coeur par cas coute une page de memoire et
 // garantit qu'aucun cas ne depend de l'etat laisse par le precedent.
+// LE NOM DU COEUR QUE LES BANCS CONSTRUISENT. Un seul endroit, pose par le main() de chaque test depuis
+// son premier argument : c'est ce qui permet au meme test de juger le coeur de MAME et celui du projet. Par
+// defaut "mame", pour qu'un test lance sans argument mesure la reference.
+inline const char *&nom_du_coeur()
+{
+	static const char *n = "mame";
+	return n;
+}
+
 struct Banc {
 	// Parentheses et non accolades : `{n, 0}` construirait un vecteur de DEUX elements.
 	std::vector<std::uint16_t> ram = std::vector<std::uint16_t>(RAM_OCTETS / 2, 0);
 	Muet muet;
-	scsp_mame coeur{ 45158400 / 2, ram.data(), RAM_OCTETS, muet };
+	std::unique_ptr<scsp::core> tenu = scsp::make(nom_du_coeur(), 45158400 / 2, ram.data(), RAM_OCTETS, muet);
+	scsp::core &coeur = *tenu;
 
 	Banc()
 	{
+		if (!tenu) { fprintf(stderr, "banc_scsp: coeur inconnu\n"); std::exit(2); }
 		coeur.reset();
 		// 0x400 comme le pilote l'ecrit au demarrage (MEM4MB, DAC18B), MVOL a fond. MEM4B n'a aucun effet
 		// sur ce coeur -- read_byte/read_word masquent a 0xFFFFF en dur, sans le consulter -- mais on l'ecrit
@@ -123,6 +137,24 @@ inline std::string suite(const std::vector<std::int32_t> &v, int diviseur)
 		else s += "?" + std::to_string(v[i]);
 	}
 	return s;
+}
+
+// LES DEUX CHOSES QUI NE SONT PAS DANS scsp::core, et que les tests doivent pourtant atteindre : le miroir
+// MADRS et le volume maitre. scsp_core.h dit pourquoi elles n'y sont pas -- elles appartiennent au portage
+// et non a la puce -- et ces deux aiguilleurs sont la MESURE de ce qui manque encore a l'interface. Le jour
+// ou ils disparaissent, la dette est payee.
+inline bool pose_miroir(scsp::core &c, bool on)
+{
+	if (auto *m = dynamic_cast<scsp_mame *>(&c)) { m->device().set_madrs_mirror(on); return true; }
+	if (auto *n = dynamic_cast<scsp_maison *>(&c)) { n->set_madrs_mirror(on); return true; }
+	return false;
+}
+
+inline float gain_expose(scsp::core &c)
+{
+	if (auto *m = dynamic_cast<scsp_mame *>(&c)) return m->device().output_gain();
+	if (auto *n = dynamic_cast<scsp_maison *>(&c)) return n->output_gain();
+	return -1.0f;
 }
 
 } // namespace banc

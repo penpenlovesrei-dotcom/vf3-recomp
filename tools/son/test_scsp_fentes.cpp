@@ -51,8 +51,9 @@ int FACTEUR = 0;   // mesure par le cas 1 : sortie gauche / echantillon brut
 
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+	if (argc > 1) banc::nom_du_coeur() = argv[1];
 	printf("test_scsp_fentes : l'oscillateur et les bouclages, par scsp::core\n\n");
 
 	// ---- 1. LE FACTEUR, mesure et non suppose

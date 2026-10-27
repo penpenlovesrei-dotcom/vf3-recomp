@@ -103,8 +103,9 @@ std::vector<int> gains(Banc &b, unsigned n)
 
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+	if (argc > 1) banc::nom_du_coeur() = argv[1];
 	printf("test_scsp_lfo : le pas, les LFO et la modulation, par scsp::core\n\n");
 
 	// ---- 1. LE PAS, par OCT et FNS, lu et non compte

@@ -79,6 +79,12 @@
 //   VF3_WINDOW=WxH       the window's size in points
 //   VF3_DATA=dir         the data folder
 //   VF3_PACE_LOG=1       the pacing and the pictures' times every 2 s
+//   VF3_SND_OFF=1        (measurement) the sound board is not run at all, the MIDI dropped. Valid as a
+//                        control BECAUSE the traffic is one-way -- the game writes MIDI and reads nothing
+//                        back -- so its execution is bit-identical. The gap against a normal run is the
+//                        sound thread's CONTENTION cost, which a blocking wait cannot show
+//   VF3_SND_SYNC=1       (measurement) the sound is done IN the frame instead of on its own thread. Same
+//                        work, different moment: says whether the thread earns its keep on two cores
 //   VF3_SND_HOST=N       every N frames, what the sound costs THE HOST: the sound thread's own work in
 //                        ms, and -- the figure that matters -- how long the game blocks waiting for it.
 //                        Not the same thing as vf3run's number, where the board is inside the frame
@@ -1016,11 +1022,50 @@ struct Game
 	std::atomic<double> sound_ms{ 0.0 };
 	void sound_wait()
 	{
+		if (!sound_thread.joinable()) return;   // (mesure : VF3_SND_OFF ou VF3_SND_SYNC, pas de fil)
 		std::unique_lock<std::mutex> lk(sound_m);
 		sound_cv.wait(lk, [this] { return !sound_busy; });
 	}
+	// LES DEUX INTERRUPTEURS DE LA MESURE DE CONCURRENCE, et ce qui les rend valables.
+	//
+	// La question que le §4 quater de docs/scsp_audit.md laisse ouverte : sur une machine a deux coeurs, le
+	// jeu n'attend jamais le son (0,00 % de l'image, mesure) -- mais le fil du son prend quand meme 17 % d'un
+	// coeur, et ce qu'il coute au fil PRINCIPAL par le cache, l'ordonnanceur et la frequence ne se voit pas
+	// dans une attente bloquante. Il faut donc comparer des passages.
+	//
+	// CE QUI PERMET UN CONTROLE PROPRE : le trafic vers la carte son est A SENS UNIQUE. Le jeu y pousse du
+	// MIDI (board.midi -> sound.midi_in) et NE LIT RIEN en retour -- verifie le 2026-10-27. Supprimer le
+	// travail du son ne change donc pas d'un bit l'execution du jeu, et les deux passages sont comparables.
+	// Si le jeu lisait un etat de la carte, aucun de ces deux interrupteurs ne vaudrait rien, et c'est pour
+	// cela que ce paragraphe existe : la validite de la mesure tient a ce fait-la.
+	//
+	//   VF3_SND_OFF=1    la carte son n'est pas tournee du tout (le MIDI est jete). Le jeu et l'image font
+	//                    exactement le meme travail, sans rien a cote : c'est le plafond. L'ecart avec un
+	//                    passage normal EST le cout de concurrence.
+	//   VF3_SND_SYNC=1   le son est fait DANS l'image, sur le fil principal, au lieu d'etre sur le sien. Le
+	//                    travail est identique, seul le moment change : l'ecart dit ce que le recouvrement
+	//                    achete, c'est-a-dire si le fil vaut son prix sur deux coeurs.
+	//
+	// Les deux ne servent qu'a mesurer : sans eux rien ne change, et aucun n'est lu ailleurs qu'ici.
+	const bool snd_off = [] { const char *e = getenv("VF3_SND_OFF"); return e && *e == '1'; }();
+	const bool snd_sync = [] { const char *e = getenv("VF3_SND_SYNC"); return e && *e == '1'; }();
+
+	// Le travail du son, la ou il se fait : sur le fil, ou dans l'image quand VF3_SND_SYNC le demande.
+	void sound_job()
+	{
+		const auto t0 = std::chrono::steady_clock::now();
+		for (uint8_t b : sound_midi) sound.midi_in(b);
+		sound_out.clear();
+		sound.run(1.0 / FRAME_HZ, sound_out);
+		sound_ms.store(sound_ms.load(std::memory_order_relaxed)
+		               + std::chrono::duration<double, std::milli>(
+		                     std::chrono::steady_clock::now() - t0).count(),
+		               std::memory_order_relaxed);
+		if (!sound_job_on) sound_out.clear();
+	}
 	void sound_start()
 	{
+		if (snd_off || snd_sync) return;   // (mesure : pas de fil du tout)
 		sound_thread = std::thread([this] {
 			fast_thread();
 			std::unique_lock<std::mutex> lk(sound_m);
@@ -1028,15 +1073,7 @@ struct Game
 				sound_cv.wait(lk, [this] { return sound_busy || sound_quit; });
 				if (sound_quit) return;
 				lk.unlock();
-				const auto snd_t0 = std::chrono::steady_clock::now();
-				for (uint8_t b : sound_midi) sound.midi_in(b);
-				sound_out.clear();
-				sound.run(1.0 / FRAME_HZ, sound_out);
-				sound_ms.store(sound_ms.load(std::memory_order_relaxed)
-				               + std::chrono::duration<double, std::milli>(
-				                     std::chrono::steady_clock::now() - snd_t0).count(),
-				               std::memory_order_relaxed);
-				if (!sound_job_on) sound_out.clear();
+				sound_job();
 				lk.lock();
 				sound_busy = false;
 				sound_cv.notify_all();
@@ -1102,7 +1139,9 @@ struct Game
 			sound_job_on = true;
 			sound_busy = true;
 		}
-		sound_cv.notify_all();
+		if (snd_off) { sound_busy = false; sound_midi.clear(); }   // (mesure : le MIDI est jete)
+		else if (snd_sync) { sound_busy = false; sound_job(); }    // (mesure : dans l'image)
+		else sound_cv.notify_all();
 	}
 	// A note handed to the sound board as if the game had written it: A0 <bank> <index>, the shape established
 	// by the owner by sending them and listening. Bank 0x2E is the effects', bank 0x10 the music's.
@@ -1249,7 +1288,9 @@ struct Game
 			sound_job_on = sound_on;
 			sound_busy = true;
 		}
-		sound_cv.notify_all();
+		if (snd_off) { sound_busy = false; sound_midi.clear(); }   // (mesure : le MIDI est jete)
+		else if (snd_sync) { sound_busy = false; sound_job(); }    // (mesure : dans l'image)
+		else sound_cv.notify_all();
 		frame++;
 		if (!picture) { have_prev = false; sky.reset(); return; }
 		newest ^= 1;

@@ -21,10 +21,13 @@
 // prouve qu'ils n'ont pas change. C'est exactement ce qu'on veut d'un filet avant de reecrire un bloc, et
 // ce n'est pas plus que ca.
 #include "../../src/sound/scsp_contract.h"
+#include "../../src/sound/scsp_maison.h"
 #include "../../src/sound/scsp_mame.h"
+#include "../../src/sound/scsp_select.h"
 
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -52,15 +55,28 @@ bool intouchable(std::uint32_t octet, const char *&pourquoi)
 	return false;
 }
 
+// Le reglage du miroir MADRS n'est PAS dans scsp::core, et scsp_core.h dit pourquoi : il appartient au
+// portage et non a la puce. Il se pose donc par la classe concrete -- seul endroit de ce fichier ou le nom du
+// coeur compte, et c'est aussi la mesure de ce qui manque encore a l'interface.
+bool pose_miroir(scsp::core &c, bool on)
+{
+	if (auto *m = dynamic_cast<scsp_mame *>(&c)) { m->device().set_madrs_mirror(on); return true; }
+	if (auto *n = dynamic_cast<scsp_maison *>(&c)) { n->set_madrs_mirror(on); return true; }
+	return false;
+}
+
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
-	printf("test_scsp_regs : ce qu'une ecriture se relit, par scsp::core\n\n");
+	const char *nom = argc > 1 ? argv[1] : "mame";
+	printf("test_scsp_regs : ce qu'une ecriture se relit, par scsp::core -- coeur \"%s\"\n\n", nom);
 
 	std::vector<std::uint16_t> ram(RAM_OCTETS / 2, 0);
 	Muet muet;
-	scsp_mame coeur(45158400 / 2, ram.data(), RAM_OCTETS, muet);
+	std::unique_ptr<scsp::core> p = scsp::make(nom, 45158400 / 2, ram.data(), RAM_OCTETS, muet);
+	if (!p) return 2;
+	scsp::core &coeur = *p;
 	coeur.reset();
 
 	// ---- 1. le masque utile de chaque mot, mesure
@@ -194,7 +210,7 @@ int main()
 		std::string lignes;
 		bool juste = true;
 		for (bool miroir : { false, true }) {
-			coeur.device().set_madrs_mirror(miroir);
+			pose_miroir(coeur, miroir);
 			coeur.write_reg(0x7C0 / 2, 0x1234, 0xFFFF);
 			coeur.write_reg(0x780 / 2, 0x5678, 0xFFFF);   // MADRS[0] par la voie basse, apres
 			const std::uint16_t haut = coeur.read_reg(0x7C0 / 2);
@@ -207,7 +223,7 @@ int main()
 			// Miroir allume : les deux sont le meme mot, donc la seconde ecriture gagne les deux fois.
 			juste = juste && (miroir ? (haut == 0x5678 && bas == 0x5678) : (haut == 0x1234 && bas == 0x5678));
 		}
-		coeur.device().set_madrs_mirror(true);   // on rend le coeur dans l'etat ou on l'a pris
+		pose_miroir(coeur, true);   // on rend le coeur dans l'etat ou on l'a pris
 		juste ? ok("0x7C0-0x7FF : ce que ce coeur en fait", lignes)
 		      : rate("0x7C0-0x7FF : ce que ce coeur en fait", lignes + " -- pas ce qui etait enregistre");
 	}
