@@ -493,6 +493,120 @@ et c'est ce qui compte.
    arènes chargent le leur (§5). Un programme plus long déplacerait la part du DSP, donc le surcoût.
 
 
+## 4 septies. Le DSP par caractéristique : ce n'est aucune instruction, c'est le socle
+
+§4 sexies laissait le DSP à **+19,8 % par pas** et disait qu'un cran plus fin demandait « un profilage à
+l'instruction que ce poste n'a pas ». **Écrit le 2026-10-28** : `tools/son/mesurer-coeur --dsp`, et il n'a
+pas fallu de profileur.
+
+### L'instrument
+
+Le poste « DSP » de §4 quinquies est **un seul nombre pour un jeu d'instructions entier**. Donc un cran plus
+fin, et de la même façon : des programmes de **112 pas où tous les pas ne font qu'une chose**, chronométrés
+sur les deux cœurs. La différence entre le socle et le socle + une caractéristique **est** le coût de cette
+caractéristique, par pas. Trois passages, médiane.
+
+Et la colonne qui compte est le **coût propre** — la valeur moins le socle. Le temps brut ne dit rien :
+le socle est dans chaque ligne, et il porte déjà un écart.
+
+```bash
+build/bin/mesurer-coeur --dsp 600000
+```
+
+### Ce que ça donne
+
+600 000 échantillons par cas, 112 pas par programme, ns par pas de DSP :
+
+| caractéristique | `mame` | `maison` | écart | **propre `mame`** | **propre `maison`** | **écart propre** |
+|---|---|---|---|---|---|---|
+| **socle** (112 pas qui ne font rien) | **2,722** | **3,242** | **+0,520** | — | — | — |
+| IRA → MEMS | 2,642 | 3,238 | +0,596 | −0,079 | −0,004 | +0,075 |
+| COEF | 3,021 | 3,332 | +0,311 | 0,299 | 0,090 | **−0,209** |
+| le produit | 3,021 | 3,453 | +0,432 | 0,300 | 0,211 | −0,088 |
+| TWT | 2,636 | 3,318 | +0,682 | −0,086 | 0,076 | +0,162 |
+| IWT | 3,196 | 3,522 | +0,326 | 0,474 | 0,280 | **−0,194** |
+| **MRD** | 4,141 | 5,384 | +1,242 | 1,420 | 2,142 | **+0,722** |
+| MRD + UNPACK | 4,351 | 5,704 | +1,353 | 1,630 | 2,462 | **+0,832** |
+| **MWT** | 4,223 | 5,476 | +1,253 | 1,501 | 2,234 | **+0,733** |
+| MWT + PACK | 6,387 | 7,796 | +1,409 | 3,665 | 4,554 | **+0,888** |
+| ADREB + NXADR | 4,136 | 5,019 | +0,883 | 1,414 | 1,777 | +0,363 |
+| EWT | 2,856 | 3,515 | +0,659 | 0,135 | 0,273 | +0,139 |
+| SHIFT 1 (écrête) | 3,124 | 3,150 | +0,026 | 0,402 | −0,092 | **−0,494** |
+| SHIFT 3 (reboucle) | 2,827 | 3,881 | +1,055 | 0,105 | 0,640 | **+0,534** |
+| FRCL | 3,678 | 3,599 | −0,078 | 0,956 | 0,357 | **−0,599** |
+| ADRL | 3,687 | 3,734 | +0,046 | 0,966 | 0,492 | −0,474 |
+| YRL | 3,608 | 3,597 | −0,011 | 0,886 | 0,355 | −0,532 |
+| NEGB | 3,479 | 3,666 | +0,187 | 0,757 | 0,424 | −0,334 |
+| les quatre rares ensemble | 3,800 | 3,667 | −0,133 | 1,078 | 0,425 | **−0,653** |
+| | | | | | | |
+| **la forme du jeu** — le témoin | **4,312** | **4,941** | **+0,629** | 1,590 | 1,699 | **+0,108** |
+
+### Les trois choses que ça établit, et la première renverse ce qu'on croyait
+
+1. **CE N'EST AUCUNE INSTRUCTION. C'EST LE SOCLE.** 112 pas qui ne font rien coûtent **+0,520 ns par pas**
+   au cœur du projet, soit **+19 %** — et le témoin, le programme de la forme du jeu, a un **coût propre
+   quasi nul entre les deux cœurs** (+0,108 ns, et −0,245 à un second passage : zéro à la précision de ce
+   banc). Autrement dit : **une fois le socle retiré, les deux DSP exécutent le mélange d'instructions du
+   jeu au même prix.** Tout le +19,8 % mesuré dans le jeu est le chemin inévitable d'un pas — la sélection
+   de l'entrée, l'extension de signe, la lecture de TEMP, les deux `switch`, le shifter — et pas une
+   instruction en particulier.
+
+2. **LE CŒUR DU PROJET EST MEILLEUR SUR LA MOITIÉ DES CARACTÉRISTIQUES**, et il faut le dire aussi : COEF
+   (−0,209), IWT (−0,194), le produit, `SHIFT 1` (−0,494), et **les quatre champs rares** (−0,33 à −0,65).
+   Ces derniers s'expliquent : les poser fait basculer les deux cœurs vers leur second corps, et celui de
+   `dsp_maison` est moins cher que `Run<USES_ALL>`. **C'est le seul endroit du dépôt où le coût de ces
+   quatre-là se lit**, puisque le jeu ne les pose jamais (§5).
+
+3. **LE SEUL POSTE OÙ IL EST VRAIMENT MOINS BON EST L'ACCÈS MÉMOIRE** : `MRD` **+0,72**, `MWT` **+0,73**,
+   et l'empaquetage par-dessus (`UNPACK` +0,83, `PACK` +0,89), plus `SHIFT 3` (+0,53). Dans le jeu cela
+   pèse 33 pas sur 112 (23 lectures, 10 écritures, §5), soit environ **+0,21 ns par pas** — à peu près
+   **40 % de l'écart du socle**, et donc le second endroit où aller.
+
+### Par pas ou par échantillon ? Tranché, et avec son contrôle
+
+Un coût par échantillon — la remise à zéro d'EFREG, le branchement vers l'un des deux corps, ce que `Start`
+laisse derrière lui — se divise par le nombre de pas et **se déguise en coût par pas**. Le banc mesure donc
+le socle à trois longueurs de programme : la **pente** est le coût d'un pas, l'**ordonnée à l'origine** ce
+que l'échantillon coûte avant son premier pas.
+
+| | 16 pas | 48 pas | 112 pas | → ns par pas | → ns par échantillon |
+|---|---|---|---|---|---|
+| `mame` | 72,6 | 159,2 | 303,2 | **2,402** | 34,2 |
+| `maison` | 86,3 | 188,2 | 365,0 | **2,903** | 39,8 |
+
+**L'écart est par pas : +0,50 ns (+21 %)**, et il l'est aux deux passages (+0,50 et +0,65). Sur un programme
+de 112 pas, la part par échantillon ne pèse que **±0,05 ns par pas, moins de 10 % de l'écart du socle** :
+réparer hors de la boucle de pas ne rendrait presque rien.
+
+**Et l'ordonnée à l'origine, elle, n'est PAS résolue — le banc le dit lui-même.** Les deux passages lui
+donnent des signes opposés (−6,1 puis +5,7 ns) et le contrôle de linéarité a refusé la droite de `mame` au
+second. C'est la même maladie que le témoin « 68000 » de §4 sexies : une différence de grands nombres. Le
+contrôle est dans l'outil pour que personne ne lise ces deux nombres-là comme une mesure ; **seule la pente
+est publiable.**
+
+### Ce qu'il reste à faire, et dans cet ordre
+
+1. **Lire l'assembleur engendré** des deux boucles de pas — `g++ -S -O2` sur `dsp_maison::boucle<false>`
+   contre `SCSPDSP::Run<0>` — **sur le chemin inévitable seulement**, maintenant que le banc dit lequel.
+   C'était inutile avant : on aurait comparé deux pages en cherchant quoi.
+2. **Deux hypothèses structurelles sont déjà mortes**, et par inspection, pas par raisonnement : le cœur du
+   projet a bien ses **deux corps** (`template <bool RARES> void boucle()`), et son pas décodé est **plus
+   petit** que celui de MAME — 16 octets contre 28 (`dsp_maison::Pas` contre `SCSPDSP::Inst`). Ce n'est donc
+   ni la spécialisation qui manque, ni l'empreinte du programme en cache.
+3. **Puis l'accès mémoire**, le second poste, avec le même banc pour juger.
+
+La barre est posée d'avance, comme pour les trois lots du §7 : **WAV identique à l'octet**, empreinte
+`9A2310F8AF000E09EB18BD114852B003` inchangée.
+
+### Ce que ce banc ne peut pas dire
+
+Un programme où les 112 pas font la même chose n'a **ni les défauts de cache ni les dépendances entre pas**
+du vrai programme. Il **situe** un coût, il ne le prédit pas — et le témoin le montre : son écart total
+(+0,629 ns par pas, soit +15 %) est en dessous du **+19,8 %** mesuré dans le jeu (§4 sexies). Le banc
+sous-estime. C'est pour cela que le témoin est dans la sortie : si son écart n'était pas du même ordre que
+ceux de la table, c'est le banc qu'il faudrait croire le moins.
+
+
 ## 5. Ce que le programme DSP contient vraiment
 
 Mesuré (`dspprog`, imprimé par `SCSPDSP::Start` sous `VF3_SND_PROF=1`), sur les 112 pas du programme de
