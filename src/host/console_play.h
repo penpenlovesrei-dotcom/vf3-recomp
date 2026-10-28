@@ -795,7 +795,17 @@ struct console_play
 					leave_frames, b.fv2_mode(), b.fv2_submode(), b.fv2_match_over() ? "decided" : "not decided",
 					b.fv2_option(0x0058145A, 1), b.fv2_option(0x00581457, 1),
 					b.fv2_option(0x0058145C, 1), b.fv2_option(0x0058145F, 1));
-			if (b.fv2_in_attract()) {
+			// THE MATCH IS OVER WHEN THE GAME SAYS SO, and it says it in TWO ways. The attract loop coming
+			// back is one. The other is a mode of its own: CONTINUE (8, 9), RANKING (16, 17), OVER (18, 19),
+			// RESULT (22, 23) -- the end-of-game screens, which the game walks to with its tasks still
+			// running, so fv2_in_attract goes on saying a game is on. Measured the 2026-10-28 on a SURVIVAL
+			// exit, which is where it bites: MAIN MENU left the game sitting in mode 23, its score screen,
+			// and the way out waited there until it gave up. Survival's own byte sends it to RESULT where an
+			// arcade game goes to CONTINUE ([0x0058145F] reads 1 there and 0 in arcade), so the two roads
+			// part at exactly the place this was blind to.
+			const int m = b.fv2_mode();
+			const bool end_screen = m == 8 || m == 9 || m == 16 || m == 17 || m == 18 || m == 19 || m == 22 || m == 23;
+			if (b.fv2_in_attract() || end_screen) {
 				fprintf(stderr, "the console: the match is over in %d frames (%.1f s), the end screens next\n",
 						leave_frames, double(leave_frames) / 57.5);
 				leave_scene = b.fv2_scene_index();

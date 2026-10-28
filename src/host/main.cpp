@@ -2051,6 +2051,13 @@ int main(int argc, char **argv)
 	};
 	HudCut hud_top, hud_foot;
 	bool hud_hide_mid = false;   // training: the stopped clock is left undrawn (see where it is set)
+	// THE ROUND'S ANNOUNCEMENT BELONGS TO THE PICTURE, NOT TO THE 4:3 FRAME. Frederic, the 2026-10-28, on
+	// a photograph of his own: the HUD is spread to the window's edges and ROUND 1 is still the size it is
+	// on a 4:3 screen, sitting in the middle of a picture half as wide again -- "le texte Round X n'est pas
+	// recale pour le mode widescreen", and when asked what widescreen meant here: "widescreen = 16/9".
+	// So it is drawn across the picture the player is looking at, at the picture's own scale, on its own
+	// middle. Only in the states that announce a round (GAME's 4 to 10), which is where that art lives.
+	bool hud_wide_mid = false;
 	// HOW DEEP THE TOP BAND GOES, and it is measured, not rounded. At 100 it cut a drawing in half:
 	// under the right-hand bar there is a mark that comes and goes during a fight -- Frederic calls it
 	// the joystick's animation -- and the audit of a training fight has it at rows 93..108, columns
@@ -2397,6 +2404,8 @@ int main(int argc, char **argv)
 				// the middle slice of the top band, which is the timer's own field and nothing else, is simply
 				// not drawn. Only during a fight, or the select screen would lose a strip of itself.
 				hud_hide_mid = mine && cplay.training_on;
+				const int gsub = board.fv2_submode();
+				hud_wide_mid = mine && gsub >= 4 && gsub <= 10;
 			}
 			// VF3_HUD_AUDIT=1: WHERE THE 2D ACTUALLY IS, row band by row band and column run by column run.
 			// Written to spread Fighting Vipers 2's HUD in widescreen -- the life bars and what hangs off them
@@ -2756,6 +2765,18 @@ int main(int argc, char **argv)
 			// l'ecran et le timer". Hard against the window's edge they left the whole of the widening on
 			// one side of each block, which reads as two things that fell off. The foot has nothing in its
 			// middle to measure against, and he passed it as it was, so it still goes hard against the edges.
+			// The rows between the two bands, drawn across the WHOLE picture and at its scale rather than the
+			// 4:3 frame's: the round's announcement (hud_wide_mid above). Its middle stays where it is, so the
+			// art grows about its own centre; what is transparent in those rows stays transparent, which is
+			// everything but the announcement itself.
+			auto band_wide = [&](int y0, int y1) {
+				const float k2 = all.w / float(video::W);   // the window's own pixels to the layer's
+				const SDL_FRect src = { 0, y0 * ts, video::W * ts, (y1 - y0) * ts };
+				const float h2 = float(y1 - y0) * k2;
+				const float cy = mid.y + float(y0 + y1) * 0.5f * ks;
+				const SDL_FRect dst = { all.x, cy - h2 * 0.5f, all.w, h2 };
+				SDL_RenderTexture(ren, tex_above, &src, &dst);
+			};
 			auto band = [&](const HudCut &c, int y0, int y1, bool even, bool no_mid) {
 				if (!c.left) {
 					if (!no_mid) { slice(0, video::W, y0, y1, 0); return; }
@@ -2777,7 +2798,8 @@ int main(int argc, char **argv)
 			};
 			if (dl > 0.5f && (hud_top.left || hud_foot.left)) {
 				band(hud_top, 0, HUD_TOP_ROWS, true, hud_hide_mid);
-				slice(0, video::W, HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS, 0);
+				if (hud_wide_mid) band_wide(HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS);
+				else slice(0, video::W, HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS, 0);
 				band(hud_foot, video::H - HUD_FOOT_ROWS, video::H, false, false);
 			} else if (hud_hide_mid) {
 				// in 4:3 there is nothing to spread, but the clock still goes
