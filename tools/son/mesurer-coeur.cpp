@@ -28,6 +28,8 @@
 //                                                       une reference et une variante du meme fichier
 //   tools/son/mesurer-coeur --socle <coeur> [n]         UN seul coeur, et le processus ne fait que ca :
 //                                                       de quoi qu'un compteur materiel l'attribue
+//   tools/son/mesurer-coeur --jeu <coeur> [n]           le meme, sur le programme de la FORME DU JEU --
+//                                                       le socle est artificiel, celui-ci est ce qui compte
 #include "../../src/sound/scsp_contract.h"
 #include "../../src/sound/scsp_select.h"
 
@@ -343,6 +345,30 @@ void socle_par_longueur(unsigned n, volatile std::int64_t &puits)
 //
 //   mesurer-coeur --socle [echantillons]            les deux coeurs, pour lire l'ecart tout de suite
 //   mesurer-coeur --socle <coeur> [echantillons]    un seul, pour qu'un compteur externe l'attribue
+// `--jeu <coeur> [n]` : LE PROGRAMME DE LA FORME DU JEU, un seul coeur, aucune voix. C'est `--socle` pour
+// le programme qui compte, et il a fallu une mesure pour qu'il existe : le 2026-10-28, la combinaison des
+// quatre variantes gagnait **29,3 %** sur le socle et **rien de mesurable** sur celui-ci
+// (docs/scsp_audit.md §4 nonies). Le socle est un programme ou les 112 pas font tous la meme chose ; il
+// situe un cout, il ne dit pas ce qu'une modification rend dans le jeu.
+//
+// Un seul coeur par processus, pour la meme raison que `--socle <coeur>` : un compteur materiel totalise
+// par processus, et nos binaires MinGW ne lui donnent aucun nom de fonction.
+int banc_jeu(const char *coeur, unsigned n)
+{
+	volatile std::int64_t puits = 0;
+	double v[7];
+	for (int essai = 0; essai < 7; essai++) {
+		Banc b(coeur);
+		b.programme_dsp();
+		v[essai] = chronometre(*b.c, n, puits) * 1e9 / (double(n) * PAS_PAR_PROGRAMME);
+	}
+	std::sort(v, v + 7);
+	printf("jeu %u, coeur \"%s\" SEUL : %.3f ns/pas [%.3f-%.3f] ; %llu pas de DSP executes  (puits %lld)\n",
+	       n, coeur, v[3], v[0], v[6],
+	       (unsigned long long)(7ull * n * PAS_PAR_PROGRAMME), (long long) puits);
+	return 0;
+}
+
 int banc_socle(unsigned n, const char *seul)
 {
 	volatile std::int64_t puits = 0;
@@ -425,6 +451,8 @@ int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--dsp"))
 		return banc_dsp(argc > 2 ? unsigned(strtoul(argv[2], nullptr, 10)) : 400000);
+	if (argc > 2 && !strcmp(argv[1], "--jeu"))
+		return banc_jeu(argv[2], argc > 3 ? unsigned(strtoul(argv[3], nullptr, 10)) : 400000);
 	if (argc > 1 && !strcmp(argv[1], "--socle")) {
 		// `--socle [n]` ou `--socle <coeur> [n]` : un argument qui n'est pas un nombre est un nom de coeur.
 		const bool nomme = argc > 2 && !isdigit((unsigned char)argv[2][0]);

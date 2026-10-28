@@ -13,7 +13,7 @@ rem verifies par les dix tests : python tools\son\batir-variantes.py les fabriqu
 rem
 rem   Win+X, "Terminal (administrateur)", puis :
 rem     cd /d C:\Users\frede\Desktop\fv2-recomp
-rem     tools\son\mesurer-variantes.cmd
+rem     tools\son\mesurer-variantes.cmd jeu       (ou `socle`, qui est le defaut)
 rem
 rem Ferme le jeu avant : une capture a deja ete perdue parce que vf3.exe prenait les cycles.
 rem
@@ -23,8 +23,21 @@ setlocal enabledelayedexpansion
 set XPERF=C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\xperf.exe
 set VAR=%~dp0..\..\build\bin\variantes
 set OUT=C:\Temp\instr
-set ECHANT=2000000
+rem LE MODE : `socle` (defaut) ou `jeu`. Le socle est un programme ou les 112 pas font tous la meme
+rem chose : il situe un cout. Le programme de la forme du jeu est ce qui compte, et le 2026-10-28 une
+rem combinaison de variantes a gagne 29 pour cent sur le premier et rien sur le second.
+set MODE=%1
+if "%MODE%"=="" set MODE=socle
+if "%MODE%"=="socle" (set ECHANT=2000000) else (set ECHANT=600000)
+if not "%MODE%"=="socle" if not "%MODE%"=="jeu" (
+  echo Mode inconnu : %MODE%. Les deux sont `socle` et `jeu`.
+  goto :fin
+)
 cd /d "%~dp0..\.."
+rem LES DLL DE MinGW SONT DANS build\bin ET LES EXES DANS build\bin\variantes : sans cette ligne,
+rem Windows ne trouve ni libstdc++-6.dll ni libgcc_s_seh-1.dll et sort une boite par variante. Une
+rem fenetre administrateur n'a pas MSYS2 dans son PATH, et elle n'a pas a l'avoir.
+set PATH=%~dp0..\..\build\bin;%PATH%
 
 if not exist "%XPERF%" (
   echo Le Windows Performance Toolkit n'est pas la : "%XPERF%"
@@ -36,6 +49,10 @@ if not exist "%VAR%" (
   goto :fin
 )
 if not exist "%OUT%" mkdir "%OUT%" 2> nul
+
+rem UN ARRET DEFENSIF D'ABORD : si une capture precedente a ete interrompue, le traceur noyau tourne
+rem encore et le -on suivant echouerait sur "already started". Sans objet le reste du temps.
+"%XPERF%" -stop > nul 2>&1
 
 rem Le compteur est-il programmable ? Un essai franc avant la boucle, pour ne pas decouvrir au troisieme
 rem tour qu'on n'est pas administrateur.
@@ -53,9 +70,9 @@ for %%E in ("%VAR%\mc-*.exe") do (
   echo.
   echo ---- !NOM! ----
   "%XPERF%" -on PROC_THREAD+LOADER+PMC_PROFILE -PmcProfile InstructionRetired
-  "%%~fE" --socle maison %ECHANT%
-  "%XPERF%" -stop -d "%OUT%\!NOM!.etl" > nul
-  echo     trace : %OUT%\!NOM!.etl
+  "%%~fE" --%MODE% maison %ECHANT%
+  "%XPERF%" -stop -d "%OUT%\!NOM!-%MODE%.etl" > nul
+  echo     trace : %OUT%\!NOM!-%MODE%.etl
 )
 
 echo.

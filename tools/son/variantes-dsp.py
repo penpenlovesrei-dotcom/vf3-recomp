@@ -116,4 +116,16 @@ VARIANTES = [
 		else if (I.ysel == 0) y = m_frc_reg;
 		else if (I.ysel == 2) y = (m_y_reg >> 11) & 0x1FFF;
 		else                  y = (m_y_reg >> 4) & 0x0FFF;""")]),
+
 ]
+
+# LES QUATRE ENSEMBLE, et il faut la construire APRES la liste et non dedans. Elles touchent des regions
+# disjointes du pas -- l'entree, le choix de Y, le decalage, les sorties -- donc rien n'empeche de les
+# porter toutes. Mesure du 2026-10-28 : -15,00 %, -6,02 %, -3,03 % et -1,55 % d'instructions retirees
+# chacune, contre le temoin.
+#
+# ECRITE D'ABORD DANS LE LITTERAL, par `VARIANTES[1:]`, elle etait VIDE : le nom n'est pas encore lie a cet
+# endroit, et les scripts qui lisent ce fichier par `exec` le pre-definissent a []. La variante passait donc
+# les dix tests et mesurait exactement comme le temoin, ce qui ressemblait a un resultat.
+VARIANTES.append(("tout", "les quatre gagnantes ensemble",
+                  [p for _, _, patches in VARIANTES[1:] for p in patches]))
