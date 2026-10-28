@@ -221,9 +221,14 @@ fichiers déplacés sous `scsp/` par `git mv`, le Makefile et les inclusions sui
 documents réécrits, et les trois contrôles repassés après le déplacement. Le dépôt autonome est en ligne et
 un clone neuf s'y construit.
 
-Deux choses sont en anglais dans le sous-arbre, et ce sont les deux premières qu'un lecteur extérieur
-ouvre : `scsp_contract.h` et `scsp_core.h`, les deux plus anciens fichiers du cœur neuf, écrits avant que
-tout passe au français. Les 30 autres fichiers sont en français, et 36 des 41 messages de commit.
+**One thing is open, and it is not technical: the language.** The rule for this repository is **English**,
+settled on 2026-10-29. Everything written during the sound work went the other way -- 30 of the 32 files
+under `scsp/` are in French, and so are 36 of the 41 commit messages. Only `scsp_contract.h` and
+`scsp_core.h` are in English, and they are the two a stranger opens first.
+
+What to translate, and how far, is **not decided**: the whole repository, or only the published subtree?
+Measuring it was stopped before it finished, so the figure above is the only one there is. Everything new
+is written in English from here, this paragraph included; the French around it waits for that decision.
 
 Les six points de la liste du matin sont fermés, et ce que j'ai pu nommer en chemin — le pic
 d'attente isolé à 7,4 ms, les cycles de `maison`, l'assembleur sous la fonction — a été **mesuré et écarté**,
