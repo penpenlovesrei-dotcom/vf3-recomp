@@ -389,15 +389,22 @@ struct console_play
 	int leave_frames = 0, leave_cut = -1, leave_scene = -1;
 	// VS FINISH as the player had it, lent for the length of the way out (model3.h). -1: not borrowed.
 	int leave_vs_finish = -1;
+	// whether the training is to be put back at the far side (see leave_match)
+	bool leave_training = false;
 	static constexpr int LEAVE_GIVE_UP = 3600;   // a minute: a match that will not end is let go of
 
 	void leave_match(leave_dest what)
 	{
-		// LEAVING A MATCH TURNS THE TRAINING OFF, and not merely suspends its holding. The two are each
-		// right on their own and were measured holding each other in August's fork: the way out finishes
-		// the match, the training fills the lives every frame, and the player is locked in. Quitting the
-		// match is quitting the training; turning it back on by itself for the next one would be the same
-		// surprise the other way round.
+		// LEAVING A MATCH TURNS THE TRAINING OFF, and not merely suspends its holding: the way out finishes
+		// the match, and a training that went on filling the lives every frame would lock the player in --
+		// measured in August's fork, where the two held each other.
+		//
+		// EXCEPT WHERE THE WAY OUT LEADS BACK INTO A FIGHT, which is Frederic's of the 2026-10-28: CHANGE
+		// YOUR VIPER in training was taking the training with it -- the clock ran, the lives fell, the
+		// column was gone -- and a player who asked to change his fighter did not ask to leave the mode.
+		// So that road REMEMBERS, and arrive() starts another training rather than a versus. MAIN MENU
+		// still turns it off: the menu is where a mode is chosen, and choosing one is how it comes back.
+		leave_training = training_on && what == L_TO_SELECT;
 		training_on = false;
 		// AND THE DOOR OUT OF A TWO-PLAYER MATCH IS OPENED FIRST, because the game only reads it when the
 		// match ends. Read at 0x0000DBD0 the 2026-10-27: when both players are in, the end of a match asks
@@ -857,10 +864,13 @@ struct console_play
 			if (ui.at == cstate::MENU_IN) ask_state(cstate::MENU, "the game is home");
 			fprintf(stderr, "the console: back at the title screen\n");
 		} else {
-			choose_versus();
+			// the mode comes back with the match, where the match is what was being changed (leave_match)
+			if (leave_training) { leave_training = false; choose_training(); }
+			else choose_versus();
 			// and the curtain comes down: the select screen is the game's own again
 			if (ui.at == cstate::GOING) ask_state(cstate::PLAY, "the select screen is reached");
-			fprintf(stderr, "the console: back to the select screen, two players\n");
+			fprintf(stderr, "the console: back to the select screen, %s\n",
+				training_on ? "another training" : "two players");
 		}
 	}
 

@@ -2671,6 +2671,17 @@ int main(int argc, char **argv)
 		}
 		return crt_tex;
 	};
+	// WHAT GOES ON THE PICTURE BEFORE THE MONITOR DOES ITS WORK: the console's own surfaces. Frederic,
+	// the 2026-10-28: "les options graphiques, comme les scanlines, ne s'appliquent pas sur les menus des
+	// options". They did not, because they were drawn after compose had finished -- after the CRT colours
+	// and after the filter. The arcade's monitor does not stop at the game's picture: the menu is on the
+	// same glass. So compose calls this where the game's own picture ends, and the colours and the lines
+	// are laid over both. (This port's own menu under Escape is drawn later still and keeps its own
+	// crispness, which is right: that one is not on the arcade's screen.)
+	//
+	// A std::function and not a call, because draw_console is written below this and wants the surfaces,
+	// the fonts and the state that are written below it in turn.
+	std::function<void()> draw_over;
 	auto compose = [&](bool filter = true) {
 		SDL_Texture *crt = crt_target();
 		if (crt) SDL_SetRenderTarget(ren, crt);
@@ -2685,6 +2696,7 @@ int main(int argc, char **argv)
 		// screen, and it is why nothing of the end of a game can show through any more. The window was
 		// cleared to black above; the console's own surfaces are drawn by the caller, as they always are.
 		if (cplay.ui.port_screen()) {
+			if (draw_over) draw_over();
 			if (crt) {
 				SDL_SetRenderTarget(ren, nullptr);
 				SDL_SetGPURenderState(ren, crt_state);
@@ -2775,6 +2787,7 @@ int main(int argc, char **argv)
 				SDL_RenderTexture(ren, tex_above, nullptr, &mid);
 			}
 		}
+		if (draw_over) draw_over();
 		if (crt) {
 			SDL_SetRenderTarget(ren, nullptr);
 			SDL_SetGPURenderState(ren, crt_state);
@@ -2922,6 +2935,9 @@ int main(int argc, char **argv)
 		if (pause.shown) pause.render(ren, all, mid);
 		if (stages.shown) stages.render(ren, all, mid);
 	};
+	// AND FROM HERE ON THE PICTURE CARRIES THEM: compose calls this where the game's own picture ends,
+	// so the CRT colours and the screen filter are laid over the console's surfaces as over the game.
+	draw_over = [&] { draw_console(board); };
 	// What was playing under the console's surface, and whether a mode was chosen on the way out (above).
 	int music_held = -1;
 	bool music_mode_chosen = false;
@@ -4200,7 +4216,6 @@ int main(int argc, char **argv)
 					picture_rect(all, mid);
 					const SDL_Rect area = { int(std::lround(all.x)), int(std::lround(all.y)), int(std::lround(all.w)), int(std::lround(all.h)) };
 					compose(false);
-					draw_console(board);
 					read_window(dir + name, &area);
 					fprintf(stderr, "screenshot %s\n", (dir + name).c_str());
 					break;
@@ -4638,12 +4653,24 @@ int main(int argc, char **argv)
 						// round restarts of itself and the lives are held. CHANGE STAGE is out of the
 						// modes that follow the arcade's fixed road -- the arena is drawn once a match,
 						// so there it would change the NEXT match's and not this one's.
-						uint32_t on = fv2_pause::ALL;
-						if (cplay.training_on) on &= ~(1u << fv2_pause::REMATCH);
-						// AND THE GAME SAYS HOW MANY ARE PLAYING, rather than this port remembering what was chosen:
-						// 3 is two players (Model3::fv2_players). A versus joined mid-game by the board's INTRUDE
-						// rule is a versus too, and nothing of this port would have known.
-						else if (board.fv2_players() != 3) on &= ~(1u << fv2_pause::CHANGE_STAGE);
+						// WHICH LINES THIS MODE SHOWS, and Frederic settled it the 2026-10-28, mode by mode. The rule
+						// underneath is what a line COMMANDS: a line that would change the next match rather than this
+						// one is worse than no line.
+						//
+						//   the arcade's fixed road (ARCADE, RANDOM, SURVIVAL)   RESUME and MAIN MENU, and nothing else:
+						//       its opponents and its arenas are the ladder's, so a rematch or another arena would be
+						//       the ladder's business and not the player's;
+						//   VERSUS      all of them: the two fighters and the arena are the players' own choice, so all
+						//       four lines command this match;
+						//   TRAINING    all but REMATCH -- the round restarts of itself there and the lives are held, so
+						//       the line would do nothing a player could see.
+						//
+						// And the game says how many are playing rather than this port remembering what was chosen: 3 is
+						// two players (Model3::fv2_players), which also catches a game joined by the board's INTRUDE rule.
+						uint32_t on;
+						if (cplay.training_on) on = fv2_pause::ALL & ~(1u << fv2_pause::REMATCH);
+						else if (board.fv2_players() == 3) on = fv2_pause::ALL;
+						else on = (1u << fv2_pause::RESUME) | (1u << fv2_pause::MAIN_MENU);
 						pause.on = on;
 						// The one surface enter() does not open itself, because which hand pressed Start says which side
 						// the panel stands on. It is opened here and the state entered on the same line: the state is what
@@ -4968,7 +4995,6 @@ int main(int argc, char **argv)
 			}
 		}
 		compose();
-		draw_console(board);
 		// the frame rate: the pictures shown a second, over the game (not the menu or a pause, where no new
 		// pictures are made: hidden there, as VF1's and VF2's)
 		const bool fps_shown = cfg.show_fps && !stopped;
