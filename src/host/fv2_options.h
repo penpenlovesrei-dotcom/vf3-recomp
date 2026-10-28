@@ -887,6 +887,18 @@ private:
 	// drawn once, between them.
 	static constexpr int CTL_PAD = 10, CTL_DEFAULTS = 11, CTL_SWAP = 12;
 	static constexpr int CTL_ROWS = 13;
+	// THE BAND THIS GRID LIVES IN, and the blank each line wants before it. The pitch was a figure --
+	// 0.058, the disc's own -- and with ten rows it fitted. With thirteen it does not: the last line
+	// lands at 0.921 of the page and the footer is at 0.902, so SWAP PADS would have been written over
+	// "A : SET   B : BACK". Computed rather than seen, the evening the three lines were added.
+	//
+	// So the band is the room available and the pitch is as much of it as the lines want, never past the
+	// disc's -- which is word for word what render_lines does, and for the same reason.
+	static constexpr float CTL_TOP = 0.225f, CTL_BOTTOM = 0.88f, CTL_PITCH = 0.058f;
+	static float ctl_gap(int r)
+	{
+		return r == CTL_TEST ? 0.35f : r == CTL_PAD ? 0.30f : r == CTL_SWAP ? 0.18f : 0.0f;
+	}
 
 	// What a cell says: the key, then the pad button when one is bound.
 	std::string binding_text(int player, int action) const
@@ -1084,7 +1096,11 @@ private:
 		if (ctl_testing >= 0) { render_mirror(ren, mid); return; }
 		const float cap = ROW_CAP * mid.h * 0.78f;
 		const float h = cap / fv2_texte::CAP;
-		const float top = 0.225f * mid.h, pitch = 0.058f * mid.h;
+		float slots = 0;
+		for (int r = 0; r < CTL_ROWS; r++) slots += (r ? 1.0f : 0.0f) + ctl_gap(r);
+		const float band = (CTL_BOTTOM - CTL_TOP) * mid.h;
+		const float pitch = std::min(CTL_PITCH * mid.h, band / (slots > 0 ? slots : 1.0f));
+		const float top = CTL_TOP * mid.h;
 		const float icon_x = mid.x + 0.205f * mid.w, name_x = mid.x + 0.265f * mid.w;
 		const float col_x[2] = { mid.x + 0.545f * mid.w, mid.x + 0.745f * mid.w };
 		const float ih = pitch * 0.72f;
@@ -1092,34 +1108,35 @@ private:
 		font->draw_mid(ren, "1P", col_x[0], mid.y + top - pitch, h, ctl_col == 0 ? CHOSEN : MUTED);
 		font->draw_mid(ren, "2P", col_x[1], mid.y + top - pitch, h, ctl_col == 1 ? CHOSEN : MUTED);
 
+		// The blank each line wants is part of the pitch now (ctl_gap), so a line is where the ones above
+		// it put it -- the same walk render_lines makes, and the reason the grid fits its band again.
+		float ink = mid.y + top;
 		for (int r = 0; r < CTL_ROWS; r++) {
-			const float y = mid.y + top + float(r) * pitch;
-			// The TEST line binds nothing: it carries no name of its own and says TEST under each column.
-			// The rule the settings page uses, under the chosen line, across this grid's own width.
-			const float ty = r == CTL_TEST ? y + pitch * 0.35f : y;
+			ink += (r ? pitch : 0.0f) + ctl_gap(r) * pitch;
+			const float y = ink;
 			if (r == ctl_row)
-				rule(ren, mid, ty + h * ((16.0f + 31.0f) / fv2_texte::CELL + 0.12f), h, 0.145f, 0.805f);
+				rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_texte::CELL + 0.12f), h, 0.145f, 0.805f);
+			// The TEST line binds nothing: it carries no name of its own and says TEST under each column.
 			if (r == CTL_TEST) {
 				for (int c = 0; c < 2; c++)
-					font->draw_mid(ren, "TEST", col_x[size_t(c)], ty, h,
+					font->draw_mid(ren, "TEST", col_x[size_t(c)], y, h,
 								   r == ctl_row && c == ctl_col ? CHOSEN : PLAIN);
 				continue;
 			}
 			// The three that bind nothing: the pad under each column, that column's controls put back, and
 			// the swap, which belongs to neither column and is drawn between them.
 			if (r == CTL_PAD || r == CTL_DEFAULTS || r == CTL_SWAP) {
-				const float yy = y + pitch * 0.18f;
 				if (r == CTL_SWAP) {
-					font->draw_mid(ren, "SWAP PADS", (col_x[0] + col_x[1]) * 0.5f, yy, h,
+					font->draw_mid(ren, "SWAP PADS", (col_x[0] + col_x[1]) * 0.5f, y, h,
 								   r == ctl_row ? CHOSEN : PLAIN);
 					continue;
 				}
-				font->draw(ren, r == CTL_PAD ? "PAD" : "DEFAULTS", name_x, yy, h, r == ctl_row ? CHOSEN : PLAIN);
+				font->draw(ren, r == CTL_PAD ? "PAD" : "DEFAULTS", name_x, y, h, r == ctl_row ? CHOSEN : PLAIN);
 				for (int c = 0; c < 2; c++) {
 					const bool here = r == ctl_row && c == ctl_col;
 					const std::string t = r == CTL_DEFAULTS ? std::string("PUT BACK")
 										: pad_text ? pad_text(c) : std::string("-");
-					font->draw_mid(ren, t.c_str(), col_x[size_t(c)], yy, h, here ? CHOSEN : PLAIN);
+					font->draw_mid(ren, t.c_str(), col_x[size_t(c)], y, h, here ? CHOSEN : PLAIN);
 				}
 				continue;
 			}
