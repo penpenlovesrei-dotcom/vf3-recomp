@@ -26,10 +26,13 @@
 //   tools/son/mesurer-coeur --dsp [echantillons]        le DSP par caracteristique, les deux coeurs
 //   tools/son/mesurer-coeur --socle [echantillons]      le socle seul, sept passages : de quoi entrelacer
 //                                                       une reference et une variante du meme fichier
+//   tools/son/mesurer-coeur --socle <coeur> [n]         UN seul coeur, et le processus ne fait que ca :
+//                                                       de quoi qu'un compteur materiel l'attribue
 #include "../../src/sound/scsp_contract.h"
 #include "../../src/sound/scsp_select.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -331,12 +334,23 @@ void socle_par_longueur(unsigned n, volatile std::int64_t &puits)
 // differentes du meme fichier, donc d'entrelacer reference et variante. La table complete coute trop cher
 // pour ca ; celle-ci tient en deux secondes, et elle fait SEPT passages au lieu de trois parce que c'est un
 // ecart de 20 % sur deux nanosecondes qu'on lui demande de tenir.
-int banc_socle(unsigned n)
+// UN SEUL COEUR, ET LE PROCESSUS NE FAIT QUE CA. C'est ce que demande un compteur materiel : `xperf`
+// totalise ses compteurs PAR PROCESSUS, donc deux coeurs dans le meme binaire ne se separent pas sans
+// symboles -- et nos binaires sont construits par MinGW, en DWARF et sans PDB, que `xperf` ne lit pas.
+// Deux captures d'un processus chacune contournent le probleme entierement : les instructions retirees,
+// les branchements mal predits et les cycles du processus SONT ceux du socle de ce coeur-la, a la mise en
+// route pres, qui est la meme des deux cotes.
+//
+//   mesurer-coeur --socle [echantillons]            les deux coeurs, pour lire l'ecart tout de suite
+//   mesurer-coeur --socle <coeur> [echantillons]    un seul, pour qu'un compteur externe l'attribue
+int banc_socle(unsigned n, const char *seul)
 {
 	volatile std::int64_t puits = 0;
 	double v[2][7];
 	const char *coeurs[2] = { "mame", "maison" };
-	for (int ic = 0; ic < 2; ic++)
+	const int de = seul ? (strcmp(seul, "maison") == 0 ? 1 : 0) : 0;
+	const int a_ = seul ? de : 0, b_ = seul ? de + 1 : 2;
+	for (int ic = a_; ic < b_; ic++)
 		for (int essai = 0; essai < 7; essai++) {
 			Banc b(coeurs[ic]);
 			std::vector<Pas> pas(PAS_PAR_PROGRAMME);
@@ -344,7 +358,17 @@ int banc_socle(unsigned n)
 			b.programme(pas);
 			v[ic][essai] = chronometre(*b.c, n, puits) * 1e9 / (double(n) * PAS_PAR_PROGRAMME);
 		}
-	for (int ic = 0; ic < 2; ic++) std::sort(v[ic], v[ic] + 7);
+	for (int ic = a_; ic < b_; ic++) std::sort(v[ic], v[ic] + 7);
+	if (seul) {
+		// Le nombre de PAS de DSP que ce processus vient d'executer : c'est le denominateur par lequel un
+		// compteur externe divisera ses totaux. 7 passages, n echantillons, 112 pas.
+		const double ns = v[de][3];
+		printf("socle %u, coeur \"%s\" SEUL : %.3f ns/pas [%.3f-%.3f] ; %llu pas de DSP executes"
+		       "  (puits %lld)\n",
+		       n, coeurs[de], ns, v[de][0], v[de][6],
+		       (unsigned long long)(7ull * n * PAS_PAR_PROGRAMME), (long long) puits);
+		return 0;
+	}
 	const double a = v[0][3], b = v[1][3];
 	printf("socle %u : mame %.3f [%.3f-%.3f]  maison %.3f [%.3f-%.3f]  ecart %+.3f  rapport %.3f"
 	       "  (puits %lld)\n",
@@ -401,8 +425,13 @@ int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--dsp"))
 		return banc_dsp(argc > 2 ? unsigned(strtoul(argv[2], nullptr, 10)) : 400000);
-	if (argc > 1 && !strcmp(argv[1], "--socle"))
-		return banc_socle(argc > 2 ? unsigned(strtoul(argv[2], nullptr, 10)) : 600000);
+	if (argc > 1 && !strcmp(argv[1], "--socle")) {
+		// `--socle [n]` ou `--socle <coeur> [n]` : un argument qui n'est pas un nombre est un nom de coeur.
+		const bool nomme = argc > 2 && !isdigit((unsigned char)argv[2][0]);
+		const char *seul = nomme ? argv[2] : nullptr;
+		const int in = nomme ? 3 : 2;
+		return banc_socle(argc > in ? unsigned(strtoul(argv[in], nullptr, 10)) : 600000, seul);
+	}
 
 	const char *nom = argc > 1 ? argv[1] : "mame";
 	const unsigned n = argc > 2 ? unsigned(strtoul(argv[2], nullptr, 10)) : 2000000;
