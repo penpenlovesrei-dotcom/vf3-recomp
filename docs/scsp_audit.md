@@ -297,6 +297,9 @@ principal se disputent la machine : cache, ordonnanceur, fréquence. Ce coût-l�
 même scène **son coupé** et comparer les cadences ; cette mesure n'a pas été faite. On ne peut donc pas dire
 "le son est gratuit sur deux cœurs" — seulement que **le jeu ne l'attend pas**.
 
+> **Faite le 2026-10-28 : §4 quater bis.** Son coupé contre son sur son fil contre son dans l'image, et les
+> deux cœurs. Le mot « gratuit » peut maintenant être pesé, et il l'est — **+0,12 ms par image**.
+
 Deux autres réserves : le démarrage est lent sur cette machine (960 images en 81 s) et la première fenêtre,
 à l'image 499, montre une attente maximale de 69,975 ms — c'est la recompilation, pas l'état stable. Et la
 file audio ne s'accumule jamais : 0 octet partout, sauf 1 304 une fois.
@@ -314,6 +317,54 @@ file audio ne s'accumule jamais : 0 octet partout, sauf 1 304 une fois.
 Le DSP reste la moitié, comme sous `--rec` et comme dans l'hôte. Si le son doit un jour coûter moins sur une
 machine de cette taille, c'est là et nulle part ailleurs — et la part des voix a doublé (6,4 → 15,0 %) à
 mesure que la musique s'est chargée, ce qui en fait le second poste et non le troisième.
+
+
+## 4 quater bis. Son coupé, et les deux cœurs : ce que la concurrence coûte vraiment
+
+§4 quater finissait sur une réserve nommée : la sonde mesure l'attente bloquante et non la concurrence,
+et pour l'isoler **il faudrait la même scène son coupé**. Mesuré le 2026-10-28 sur le même portable —
+**AMD A9-9425, deux cœurs, deux processeurs logiques**, pas de SMT — par `tools/son/mesurer-concurrence.cmd`,
+qui a gagné ce jour-là une seconde dimension : **le cœur**.
+
+Cinq passages de 4 000 images, même scène, avec fenêtre. Médianes sur 70 à 76 relevés par cas :
+
+| | une image | le fil du son | le jeu l'attend |
+|---|---|---|---|
+| `off` — pas de son du tout | **12,21 ms** | 0 | 0,001 |
+| `mame-normal` — sur son fil | **12,34** | 6,10 | 0,003 |
+| `maison-normal` — sur son fil | **12,38** | 6,46 | 0,003 |
+| `mame-sync` — dans l'image | **16,03** | 4,67 | 0,000 |
+| `maison-sync` — dans l'image | **15,95** | 4,64 | 0,000 |
+
+### Trois choses, et la troisième n'était pas la question
+
+1. **LE SON SUR SON FIL COÛTE +0,12 ms PAR IMAGE**, et c'est enfin un chiffre et non une absence de preuve.
+   Contre `off` : +0,12 ms pour le cœur de MAME, +0,16 pour celui du projet, soit **environ 1 % d'une image
+   de 12,2 ms**. Le mot « gratuit » que §4 quater refusait d'écrire est donc presque juste — presque, et
+   maintenant on sait de combien.
+
+2. **LES 8 % DU CŒUR DU PROJET NE SE VOIENT PAS, MÊME SUR DEUX CŒURS.** À l'image, +0,04 ms contre le cœur de
+   MAME (12,38 contre 12,34) : 0,3 % d'une image, et **très au-dessous de la dispersion** (l'étendue va de
+   1,86 à 52,65 ms sur cette machine). Ce n'est pas un résultat nul mesuré, c'est un résultat **non
+   résolu**, et il faut le dire ainsi. Au fil du son, en revanche, le surcoût est bien là : **+5,8 %**
+   (6,46 contre 6,10 ms), ce qui recoupe proprement le +8,1 % mesuré sans fenêtre en §4 sexies. **Il reste
+   sur le fil, et le fil a le temps.**
+
+3. **ET LE RECOUVREMENT ACHÈTE 3,7 ms PAR IMAGE.** C'est le chiffre le plus utile de la mesure, et ce n'était
+   pas ce qu'on venait chercher : faire le même travail **dans** l'image coûte 16,0 ms contre 12,3 ms sur un
+   fil séparé — +3,69 ms pour MAME, +3,57 pour le projet. Le fil du son n'est donc pas une commodité
+   d'architecture : sur une machine à deux cœurs il vaut **trente pour cent de la durée d'une image**, et
+   c'est la première fois que ce nombre existe.
+
+### Ce que ça ne dit toujours pas
+
+Le pic isolé : une attente maximale de **7,4 ms** apparaît une fois côté `maison-normal`, contre 3,7 côté
+`mame`. Sur 72 relevés dont la médiane est à 0,003 ms, c'est un accident isolé et non une tendance — mais
+il n'est pas explique, et un seul passage ne permet pas de dire s'il revient.
+
+Et la comparaison des **cadences** avec `off` reste interdite, pour la raison que le LISEZ-MOI du dossier
+donne : couper le son coupe aussi le cadencement par l'audio. Ce sont les **durées de travail** qui se
+comparent, et ce sont elles qui sont au tableau.
 
 
 ## 4 quinquies. Ce que le cœur du projet coûte, et où

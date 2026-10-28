@@ -1,7 +1,7 @@
 @echo off
 rem mesurer-variantes.cmd : compte les INSTRUCTIONS RETIREES de chaque variante du DSP, au compteur materiel.
 rem
-rem POURQUOI PAS UN CHRONOMETRE. docs/scsp_audit.md §4 octies et §4 nonies racontent les deux fois ou le temps
+rem POURQUOI PAS UN CHRONOMETRE. docs/scsp_audit.md S4 octies et S4 nonies racontent les deux fois ou le temps
 rem a menti : le socle de `mame` a derive de 2,70 a 3,21 ns pendant une seance d'essais, et un biais d'ordre a
 rem failli faire garder un gain de 6,9 pour cent qui n'existait pas. Le compteur d'instructions retirees, lui,
 rem ne derive pas avec la temperature et ne depend pas de l'ordre des mesures. Une capture par variante, un
