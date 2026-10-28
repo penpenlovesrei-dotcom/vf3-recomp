@@ -24,6 +24,8 @@
 //
 //   tools/son/mesurer-coeur [coeur] [echantillons]      les quatre postes
 //   tools/son/mesurer-coeur --dsp [echantillons]        le DSP par caracteristique, les deux coeurs
+//   tools/son/mesurer-coeur --socle [echantillons]      le socle seul, sept passages : de quoi entrelacer
+//                                                       une reference et une variante du meme fichier
 #include "../../src/sound/scsp_contract.h"
 #include "../../src/sound/scsp_select.h"
 
@@ -324,6 +326,32 @@ void socle_par_longueur(unsigned n, volatile std::int64_t &puits)
 	       "  separent rien et il faut plus de longueurs.)\n");
 }
 
+// `--socle` : le socle seul, et rien d'autre. Il existe pour une raison precise -- le socle porte TOUT
+// l'ecart du DSP (docs/scsp_audit.md §4 septies), et le chercher demande de comparer des CONSTRUCTIONS
+// differentes du meme fichier, donc d'entrelacer reference et variante. La table complete coute trop cher
+// pour ca ; celle-ci tient en deux secondes, et elle fait SEPT passages au lieu de trois parce que c'est un
+// ecart de 20 % sur deux nanosecondes qu'on lui demande de tenir.
+int banc_socle(unsigned n)
+{
+	volatile std::int64_t puits = 0;
+	double v[2][7];
+	const char *coeurs[2] = { "mame", "maison" };
+	for (int ic = 0; ic < 2; ic++)
+		for (int essai = 0; essai < 7; essai++) {
+			Banc b(coeurs[ic]);
+			std::vector<Pas> pas(PAS_PAR_PROGRAMME);
+			for (unsigned i = 0; i < PAS_PAR_PROGRAMME; i++) socle(pas[i], i);
+			b.programme(pas);
+			v[ic][essai] = chronometre(*b.c, n, puits) * 1e9 / (double(n) * PAS_PAR_PROGRAMME);
+		}
+	for (int ic = 0; ic < 2; ic++) std::sort(v[ic], v[ic] + 7);
+	const double a = v[0][3], b = v[1][3];
+	printf("socle %u : mame %.3f [%.3f-%.3f]  maison %.3f [%.3f-%.3f]  ecart %+.3f  rapport %.3f"
+	       "  (puits %lld)\n",
+	       n, a, v[0][0], v[0][6], b, v[1][0], v[1][6], b - a, a > 0 ? b / a : 0.0, (long long) puits);
+	return 0;
+}
+
 int banc_dsp(unsigned n)
 {
 	printf("mesurer-coeur --dsp : le DSP par caracteristique, %u echantillons par cas,\n"
@@ -373,6 +401,8 @@ int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--dsp"))
 		return banc_dsp(argc > 2 ? unsigned(strtoul(argv[2], nullptr, 10)) : 400000);
+	if (argc > 1 && !strcmp(argv[1], "--socle"))
+		return banc_socle(argc > 2 ? unsigned(strtoul(argv[2], nullptr, 10)) : 600000);
 
 	const char *nom = argc > 1 ? argv[1] : "mame";
 	const unsigned n = argc > 2 ? unsigned(strtoul(argv[2], nullptr, 10)) : 2000000;

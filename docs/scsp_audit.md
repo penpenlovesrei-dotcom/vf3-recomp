@@ -598,6 +598,78 @@ est publiable.**
 La barre est posée d'avance, comme pour les trois lots du §7 : **WAV identique à l'octet**, empreinte
 `9A2310F8AF000E09EB18BD114852B003` inchangée.
 
+### Puis l'assembleur, et il fallait d'abord resserrer la question
+
+Lu le 2026-10-28, `g++ -S -O2` sur les deux boucles de pas — `dsp_maison::boucle<false>` contre
+`SCSPDSP::Run<0>` — **et seulement apres que le banc ait dit que c'etait le socle**. Lu avant, on aurait
+compare deux pages de cent quarante instructions en cherchant quoi.
+
+**Cinq hypotheses sont mortes, et aucune par raisonnement :**
+
+| hypothese | ce qui l'a tuee |
+|---|---|
+| il manque la specialisation des deux corps | `dsp_maison` les a : `template <bool RARES> void boucle()` |
+| le pas decode est plus gros, donc plus de cache | il est **plus petit** : 16 octets contre 28 (`Pas` contre `Inst`) |
+| un `switch` compile en table de saut, donc un branchement indirect | **zero** saut indirect des deux cotes |
+| une division, ou une multiplication lente | aucune des deux n'en a |
+| le produit 64 bits est une divergence de ce portage | **MAME ecrit la meme ligne** : `s64 const v = (s64(X) * s64(Y)) >> 12` |
+| `std::clamp` compile en branchements d'un cote et en `cmov` de l'autre | les deux emploient `cmov` : 25 contre 22 |
+
+**Et ce qui reste se compte.** La boucle de pas, epilogue exclu :
+
+| | instructions | **branchements** | mouvements |
+|---|---|---|---|
+| `SCSPDSP::Run<0>` | 108 | **16** | 37 |
+| `dsp_maison::boucle<false>` | **145** | **31** | 36 |
+
+**+34 % d'instructions et presque DEUX FOIS les branchements, pour le meme algorithme.** Voila le cout, et
+il est la : le chemin inevitable d'un pas est plus branchu chez le coeur du projet. Les `cmpb` le disent
+(9 contre 0) — ce sont les comparaisons d'octets de la chaine `IRA` et des deux `switch`.
+
+### La mesure par retrait, et ce qu'elle vaut
+
+Pour confirmer, une experience **jetable** : enlever une piece du chemin inevitable, mesurer le socle,
+remettre. Chaque variante rend le DSP faux, donc rien n'en est garde — seul le chiffre l'est. Et chaque
+variante est **encadree par une mesure de la reference**, parce qu'un premier essai a vu l'ecart de
+reference bouger de +0,41 a +0,98 selon le moment : c'est pour ca que `--socle` existe, assez rapide pour
+entrelacer.
+
+600 000 echantillons, sept passages par mesure. « referme » est la part de l'ecart de reference qui
+disparait :
+
+| ce qu'on enleve | ecart | referme |
+|---|---|---|
+| la chaine d'entree `IRA` reduite a MEMS | +0,831 | −14 % |
+| l'extension de signe de TEMP | +1,090 | −101 % |
+| **le `switch` YSEL reduit a son cas 0** | **−0,014** | **103 %** |
+| **le `switch` SHIFT reduit a son cas 0** | **−0,038** | **106 %** |
+| le produit 64 bits ramene a 32 | +0,482 | 17 % |
+
+Les deux `switch` du chemin inevitable **referment l'ecart a eux seuls**, chacun entierement — ce qui est
+coherent avec les 31 branchements.
+
+**MAIS IL FAUT DIRE CE QUE CETTE EXPERIENCE NE PEUT PAS FAIRE, et c'est important :** un retrait n'enleve
+pas que du travail, il **expose de l'invariant**. Dans le socle, `YSEL` vaut zero a tous les pas, donc `y`
+est `m_frc_reg`, donc une constante de boucle : en retirant le `switch`, on autorise le compilateur a la
+hisser hors de la boucle, et peut-etre a simplifier le produit avec elle. Le retrait **situe la region, il
+ne la chiffre pas** — « 103 % » n'est pas le cout du `switch`, c'est le cout du `switch` plus ce que son
+absence permet. Les deux colonnes se lisent ensemble ou pas du tout.
+
+### Ce qu'il reste a faire, et c'est maintenant precis
+
+**La direction est nommee : resoudre a la DECODE ce qui se rebranche a chaque pas de chaque echantillon.**
+`Decode` construit deja le `Pas` une fois par ecriture de programme ; la chaine `IRA` (trois comparaisons
+d'octets et un `return`) et les deux `switch` a quatre cas s'y resoudraient une fois pour toutes — un
+pointeur ou un index pour la source d'entree, un code deja reduit pour le decalage. 44 100 fois par seconde
+par puce, c'est la que vont les branchements.
+
+Et la barre ne change pas : **WAV identique a l'octet**, empreinte `9A2310F8AF000E09EB18BD114852B003`.
+
+**Ce qui reste hors de portee**, et il vaut mieux l'ecrire : pourquoi 145 instructions au lieu de 108 pour
+le meme algorithme ecrit de la meme facon, un compteur materiel le dirait en un passage — instructions
+retirees, branchements mal predits, cycles. Ce poste n'en a pas. La question est maintenant assez etroite
+pour qu'un profileur y reponde d'un coup, ce qui n'etait pas vrai ce matin.
+
 ### Ce que ce banc ne peut pas dire
 
 Un programme où les 112 pas font la même chose n'a **ni les défauts de cache ni les dépendances entre pas**
