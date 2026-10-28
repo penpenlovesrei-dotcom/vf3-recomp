@@ -261,6 +261,12 @@ int main(int argc, char **argv)
 	int flicker_saved = 0;
 	static SoundBoard sound;
 	static std::vector<int16_t> audio;
+	// The sound board only runs when --wav asked for the sound (every site below is behind that test),
+	// so VF3_SND_PROF=1 without --wav counts nothing at all. Said here, before the run, rather than left
+	// to be guessed from a report full of zeros.
+	if (sndprof::on && wav_path.empty())
+		fprintf(stderr, "vf3run: VF3_SND_PROF=1 but no --wav: the sound board does not run, so the probe"
+		                " will have nothing to count\n");
 	if (!wav_path.empty()) {
 		sound.attach(&board.sound_rom, &board.samples);
 		// the music/effects split reads Virtua Fighter 3's sound driver (soundboard.h)
@@ -481,11 +487,15 @@ int main(int argc, char **argv)
 			t_scene += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - a).count();
 			if (f % 500 == 499) {
 				printf("prof %llu: board %.2f ms (tile layers %.2f of it), sound %.2f, scene build %.2f a frame\n", (unsigned long long)f + 1, t_board / 500, tile_ms / 500, t_sound / 500, t_scene / 500);
-				// where the sound's share goes, when VF3_SND_PROF=1 asked for it (src/sound/sound_prof.h)
-				sndprof::report((std::string("frames ") + std::to_string(f + 1 - 500) + "-" + std::to_string(f + 1)).c_str(), 500);
 				t_board = t_sound = t_scene = tile_ms = 0;
 			}
 		}
+		// Where the sound's share goes, when VF3_SND_PROF=1 asked for it (src/sound/sound_prof.h). OUTSIDE
+		// `prof`: this call used to sit inside it, so a run with VF3_SND_PROF=1 alone printed nothing at all
+		// and said nothing about why -- the probe looked broken. It is its own switch now, and it writes on
+		// the same stream as the `prof` line above, so one redirection cannot keep one and lose the other.
+		if (sndprof::on && f % 500 == 499)
+			sndprof::report((std::string("frames ") + std::to_string(f + 1 - 500) + "-" + std::to_string(f + 1)).c_str(), 500, stdout);
 		auto ts0 = std::chrono::steady_clock::now();
 		struct SoundTime { std::chrono::steady_clock::time_point t; double &acc; ~SoundTime() { acc += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count(); } } sound_time{ ts0, t_sound };
 		// VF3_MIDI_SEND=BYTES@FRAME,...: bytes handed to the sound board as if the game had written them,
@@ -1254,6 +1264,10 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
+	// The frames left over: a run that is not a multiple of 500 used to lose its tail, and a run shorter
+	// than 500 frames reported nothing whatever -- the two ways a measurement comes back empty.
+	if (sndprof::on && f % 500)
+		sndprof::report((std::string("frames ") + std::to_string(f - f % 500) + "-" + std::to_string(f)).c_str(), int(f % 500), stdout);
 	if (state)
 		fclose(state);
 	if (!wav_path.empty()) {

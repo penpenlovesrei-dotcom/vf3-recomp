@@ -20,7 +20,7 @@
 // LE FORMAT, du texte, une ligne par evenement, pour qu'il se lise et se diffe comme les autres journaux du
 // projet. Les evenements sont dans l'ordre ou la carte les a faits, ce qui est tout l'interet :
 //
-//     # scsp-trace 1 puce=N horloge=H ram=B
+//     # scsp-trace 2 puce=N horloge=H ram=B miroir=0|1
 //     d <mot> <data> <masque>   une ecriture dans la RAM son (mot = index de MOT dans la RAM)
 //     w <mot> <data> <masque>   write_reg
 //     r <mot>                   read_reg (une lecture a des effets de bord, et sa valeur se compare)
@@ -33,6 +33,21 @@
 // la trace et retrouver le meme PCM a l'octet, c'est etablir qu'aucun etat n'entre par une porte que la trace
 // ne note pas. Sans ce controle, un rejeu qui diverge laisse deux explications -- le coeur est different, ou
 // la trace est incomplete -- et on ne peut pas choisir.
+//
+// `miroir` EST ARRIVE APRES, ET IL FAUT DIRE POURQUOI, parce que c'est le genre de chose qu'on ne devine
+// pas deux fois. Le miroir MADRS n'est pas un ACCES : il se pose une fois, avant que la trace commence, il
+// ne passe pas par scsp::core (c'est l'affaire du jeu et non de la puce), et IL CHANGE LE SON -- vrai pour
+// Virtua Fighter 3, faux pour Fighting Vipers 2. Donc une trace qui ne le dit pas ne porte PAS tout ce dont
+// la puce depend, et le controle ci-dessous passait quand meme : sur 300 images, parce que la premiere
+// ecriture qui le distingue arrive plus tard. Mesure le 2026-10-28, sur la scene entiere : le rejeu
+// divergeait a l'echantillon 772 067, et la meme scene enregistree avec le miroir force se rejouait
+// identique a l'octet (docs/scsp_validation.md §3 c). L'enregistreur le RELIT de la puce, le rejeu le POSE,
+// par la porte unique de scsp_select.h -- et une trace de version 1 est REFUSEE au lieu d'etre devinee.
+//
+// LA LECON, pour la prochaine fois : un etat qui n'arrive pas par un appel n'entre pas dans une trace
+// d'appels. Les trois autres extras du portage (gains par groupe, sonde d'energie, journal des key-on) ne
+// changent pas le son au reglage par defaut, et c'est la seule raison pour laquelle ils ne sont pas dans
+// l'en-tete ; si l'un d'eux se mettait a compter, il faudrait l'y mettre aussi.
 //
 // UNE TRACE COMMENCE A LA REMISE A ZERO, et l'enregistreur le verifie plutot que de le supposer : au
 // demarrage il balaie la RAM et ecrit un `d` par mot non nul. Apres un reset il y en a huit -- les vecteurs

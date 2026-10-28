@@ -53,6 +53,9 @@ public:
 
 	// The old class, for the port's extras during the changeover. Nothing in scsp_core.h needs it.
 	scsp_device &device() { return *m_dev; }
+	// Et en lecture seule, pour qui ne fait que RELIRE un de ces extras -- la trace relit le miroir MADRS
+	// pour l'ecrire dans son en-tete (scsp_select.h).
+	const scsp_device &device_const() const { return *m_dev; }
 
 	// How many MIDI-out BITS the old core emitted that this adapter could not turn into bytes. Read it
 	// rather than assume the link is unused: see note 3 above.

@@ -1,5 +1,7 @@
 #include "scsp_trace.h"
 
+#include "scsp_select.h"
+
 #include <cinttypes>
 #include <cstring>
 
@@ -34,7 +36,17 @@ enregistreur::enregistreur(core &dessous, const char *fichier, unsigned puce, u3
 		m_f = nullptr;
 		return;
 	}
-	fprintf(m_f, "# scsp-trace 1 puce=%u horloge=%u ram=%u\n", puce, horloge, ram_octets);
+	// LE MIROIR MADRS DANS L'EN-TETE, et c'est le seul etat de la puce qui n'arrive pas par un appel : il
+	// se pose avant que la trace commence, il CHANGE LE SON, et un rejeu qui le supposait divergeait de la
+	// carte sans qu'on puisse l'attribuer (scsp_select.h). Il est RELU de la puce et non recu en parametre :
+	// ainsi il n'y a rien a penser a dire a l'enregistreur, et c'est le point de l'affaire.
+	bool porte = false;
+	const bool miroir = miroir_madrs(m_dessous, &porte);
+	if (!porte)
+		fprintf(stderr, "scsp_trace: ce coeur ne porte pas le miroir MADRS ; la trace note le defaut (vrai),"
+		                " que le rejeu posera donc aussi\n");
+	fprintf(m_f, "# scsp-trace 2 puce=%u horloge=%u ram=%u miroir=%u\n", puce, horloge, ram_octets,
+	        unsigned(miroir));
 	for (u32 i = 0; i < mots; i++)
 		if (ram[i]) fprintf(m_f, "d %x %x ffff\n", i, ram[i]);
 
@@ -105,11 +117,26 @@ bool rejoue(const char *fichier, core &c, std::vector<u16> &ram, sortie &s, std:
 
 	char ligne[256];
 	if (!fgets(ligne, sizeof ligne, f)) { fclose(f); return dis("trace vide"); }
-	unsigned puce = 0, horloge = 0, ram_octets = 0, version = 0;
-	if (sscanf(ligne, "# scsp-trace %u puce=%u horloge=%u ram=%u",
-	           &version, &puce, &horloge, &ram_octets) != 4 || version != 1) {
+	unsigned puce = 0, horloge = 0, ram_octets = 0, version = 0, miroir = 1;
+	const int champs = sscanf(ligne, "# scsp-trace %u puce=%u horloge=%u ram=%u miroir=%u",
+	                          &version, &puce, &horloge, &ram_octets, &miroir);
+	if (champs == 4 && version == 1) {
+		fclose(f);
+		// REFUSEE, ET NON DEVINEE : une trace de version 1 ne dit pas le miroir MADRS, qui change le son.
+		// Le supposer est precisement ce qui a fait diverger un rejeu sans qu'on puisse dire si c'etait le
+		// coeur ou la trace. Un echec clair vaut mieux qu'une mesure fausse.
+		return dis("trace de version 1 : elle ne dit pas le miroir MADRS, qui change le son (scsp_select.h)."
+		           " Reenregistre-la avec VF3_SCSP_TRACE ; la version 2 le porte.");
+	}
+	if (champs != 5 || version != 2) {
 		fclose(f);
 		return dis("en-tete inconnu : " + std::string(ligne));
+	}
+	// Le miroir AVANT la premiere ligne : les mots 0x7C0-0x7FF ne vont pas au meme endroit selon lui, et la
+	// premiere de ces ecritures arrive tot dans la scene (echantillon 29 211, mesure le 2026-10-28).
+	if (!regle_miroir_madrs(c, miroir != 0)) {
+		fclose(f);
+		return dis("ce coeur ne porte pas le miroir MADRS, que la trace demande (scsp_select.h)");
 	}
 	if (ram_octets / 2 != ram.size())
 		return dis("la trace dit " + std::to_string(ram_octets) + " octets de RAM, le rejeu en a "

@@ -1,6 +1,7 @@
 #include "scsp_maison.h"
 
 #include "scsp_contract.h"
+#include "sound_prof.h"
 
 #include <algorithm>
 #include <cmath>
@@ -879,6 +880,13 @@ void scsp_maison::construire_facteurs()
 
 void scsp_maison::run(u32 n, s32 *out)
 {
+	// LES DEUX PORTEES DE sound_prof.h, aux memes endroits qu'au coeur de MAME : celle-ci repond a
+	// DoMasterSamples (scsp.cpp), celle du DSP plus bas a m_DSP.Step(). Sans elles le rapport de
+	// VF3_SND_PROF ne portait ces parts que pour le coeur de MAME, et sur celui-ci il donnait 97 % au
+	// 68000, zero aux voix et zero au DSP -- non pas un trou, mais un chiffre FAUX, puisque la part
+	// imbriquee que la formule retire du 68000 valait alors zero. Mesure le 2026-10-28.
+	sndprof::Scope prof_scsp(sndprof::SCSP);
+
 	// VF3_MAISON_DIAG=<indice> : un echantillon detaille terme par terme -- chaque fente, son echantillon
 	// brut, son gain, son apport, puis les retours d'effets et le total. Ce n'est pas un reste de chantier :
 	// c'est la sonde qui a trouve le decalage du relachement, et elle resservira. Les deux tests `m_dit` de
@@ -910,7 +918,10 @@ void scsp_maison::run(u32 n, s32 *out)
 			m_dsp.SetSample((ech * ig) >> (PAS - 2), s32(champ(r, C_ISEL)), s32(champ(r, C_IMXL)));
 			m_ptr_anneau = (m_ptr_anneau + 1) & 63;
 		}
-		m_dsp.Step();
+		{
+			sndprof::Scope prof_dsp(sndprof::DSP);
+			m_dsp.Step();
+		}
 
 		// La sortie d'effets : les SEIZE PREMIERES fentes seulement, chacune portant le niveau et le
 		// panoramique de son propre registre (EFSDL/EFPAN).

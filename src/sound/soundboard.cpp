@@ -163,6 +163,21 @@ void SoundBoard::reset()
 		if (!extras[n] && n == 0)
 			fprintf(stderr, "son: coeur \"%s\" -- les gains par groupe, la sonde d'energie et le journal"
 			                " des key-on ne s'appliquent pas (soundboard.h)\n", nom);
+		// LE MIROIR MADRS SE POSE AVANT LA TRACE, et l'ordre est la lecon d'une divergence : c'est le seul
+		// des quatre extras qui change le son, il change par jeu (soundboard.h) et il ne passe pas par
+		// scsp::core. Pose APRES l'enregistreur -- comme il l'etait -- il n'entrait pas dans l'en-tete de la
+		// trace, un rejeu le supposait `true`, et sur Fighting Vipers 2 ou il vaut faux le rejeu divergeait
+		// de la carte a l'echantillon 772 067 (docs/scsp_validation.md §3 c). Pose ici, l'enregistreur le
+		// RELIT de la puce : il n'y a plus rien a penser a lui dire.
+		{
+			const char *sep = getenv("VF3_SCSP_MADRS_SEPARATE"), *mir = getenv("VF3_SCSP_MADRS_MIRROR");
+			const bool on = (sep && *sep == '1') ? false : (mir && *mir == '1') ? true : madrs_mirror;
+			// Les deux coeurs le portent, chacun sur sa classe concrete, par la porte unique de
+			// scsp_select.h -- l'interface ne le porte pas, parce que ce n'est pas l'affaire de la puce
+			// mais du jeu (scsp_core.h).
+			if (!scsp::regle_miroir_madrs(*scsp[n], on) && n == 0)
+				fprintf(stderr, "son: coeur \"%s\" -- le miroir MADRS ne s'y pose pas (scsp_select.h)\n", nom);
+		}
 		// VF3_SCSP_TRACE=f : la trace d'acces, un fichier par puce (f.0 et f.1), pour tools/son/rejouer.
 		// Elle commence ICI, a la remise a zero, parce que la RAM y est connue -- huit mots, les vecteurs du
 		// 68000 que la carte vient d'y copier. L'enregistreur le verifie au lieu de le supposer.
@@ -175,17 +190,6 @@ void SoundBoard::reset()
 			if (e->bon()) { tete[n] = e.get(); trace[n] = std::move(e); }
 		}
 		if (extras[n]) extras[n]->device().group_of = [this, n](int slot) { return group_of(n, slot); };
-		// the MADRS mirror, per game (soundboard.h), unless one of the two variables says otherwise
-		{
-			const char *sep = getenv("VF3_SCSP_MADRS_SEPARATE"), *mir = getenv("VF3_SCSP_MADRS_MIRROR");
-			const bool on = (sep && *sep == '1') ? false : (mir && *mir == '1') ? true : madrs_mirror;
-			// LE MIROIR EST LE SEUL DES QUATRE QUI CHANGE LE SON, et par jeu : vrai pour Virtua Fighter 3,
-			// FAUX pour Fighting Vipers 2, ou il replie les lignes de retard du DSP sur une adresse
-			// (docs/scsp_audit.md §2). Les deux coeurs le portent donc, chacun sur sa classe concrete --
-			// l'interface ne le porte pas, parce que ce n'est pas l'affaire de la puce mais du jeu.
-			if (auto *m = dynamic_cast<scsp_mame *>(scsp[n].get())) m->device().set_madrs_mirror(on);
-			else if (auto *j = dynamic_cast<scsp_maison *>(scsp[n].get())) j->set_madrs_mirror(on);
-		}
 		if (extras[n]) for (int g = 0; g < 2; g++) extras[n]->device().set_group_gain(g, volume[g]);
 		if (getenv("VF3_KEYON_LOG")) {   // (tests: each voice started, with the 68000's state then)
 			static FILE *kl = fopen(getenv("VF3_KEYON_LOG"), "w");

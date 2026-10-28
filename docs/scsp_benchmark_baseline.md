@@ -20,13 +20,18 @@ VF3_PROF=1 build/bin/vf3run.exe "$ROMS/fvipers2.zip" \
 # et, dedans, ou va le temps de la carte son
 VF3_PROF=1 VF3_SND_PROF=1 build/bin/vf3run.exe ... --wav son.wav --quiet
 
+# le meme, coeur par coeur : trois passages alternes par coeur, fenetres 1500-4200 (audit S4 sexies)
+VF3_PROF=1 VF3_SND_PROF=1 VF3_SCSP_COEUR=mame|maison build/bin/vf3run.exe ... --rec --wav son.wav --quiet
+
 # et : le son n'a pas bouge (contre un commit de reference, octet par octet)
 tools\son\comparer-son.cmd fvipers2 tools\scripts\fv2-fight.txt 4200
 ```
 
 `$ROMS` = `C:\Users\frede\Documents\SEGA Model 3\ROMs`. `VF3_PROF=1` imprime une ligne toutes les 500 images ;
 `VF3_SND_PROF=1` ajoute la répartition dans la carte son (`src/sound/sound_prof.h`) et la composition du
-programme DSP (`dspprog`, une ligne par écriture de programme).
+programme DSP (`dspprog`, une ligne par écriture de programme). **`--wav` est obligatoire dans ces trois
+commandes** : sans lui `vf3run` ne fait pas tourner la carte son, et les deux sondes n'ont rien à compter —
+l'outil le dit maintenant au lieu de rendre une ligne de zéros (`docs/scsp_audit.md` §4 sexies).
 
 **Les scènes.** Une seule a servi jusqu'ici, et il faut le dire :
 

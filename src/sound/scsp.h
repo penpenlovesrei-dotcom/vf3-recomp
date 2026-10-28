@@ -71,6 +71,9 @@ public:
 	// The DSP's MADRS mirror, which belongs to the game and not to the chip: see m_madrs_mirror below, and
 	// SoundBoard::madrs_mirror, which sets it from the set once the chip is made.
 	void set_madrs_mirror(bool on) { m_madrs_mirror = on; }
+	// Et il se RELIT, parce qu'une trace doit pouvoir le noter : il change le son, et un rejeu qui le
+	// supposait divergeait sans qu'on puisse dire si c'etait le coeur ou la trace (scsp_select.h).
+	bool madrs_mirror() const { return m_madrs_mirror; }
 
 	// Separate volumes for groups of voices (not the chip's: a host's mixer). The board says
 	// which group a slot's next voice belongs to (set_next_group); each slot's output is scaled

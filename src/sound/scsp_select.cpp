@@ -24,4 +24,20 @@ std::unique_ptr<core> make(const char *nom, u32 horloge, u16 *ram, u32 ram_octet
 	return nullptr;
 }
 
+bool regle_miroir_madrs(core &c, bool on)
+{
+	if (auto *m = dynamic_cast<scsp_mame *>(&c)) { m->device().set_madrs_mirror(on); return true; }
+	if (auto *j = dynamic_cast<scsp_maison *>(&c)) { j->set_madrs_mirror(on); return true; }
+	return false;
+}
+
+bool miroir_madrs(const core &c, bool *trouve)
+{
+	if (trouve) *trouve = true;
+	if (auto *m = dynamic_cast<const scsp_mame *>(&c)) return m->device_const().madrs_mirror();
+	if (auto *j = dynamic_cast<const scsp_maison *>(&c)) return j->madrs_mirror();
+	if (trouve) *trouve = false;
+	return true;   // le defaut des deux coeurs, et de la puce
+}
+
 } // namespace scsp

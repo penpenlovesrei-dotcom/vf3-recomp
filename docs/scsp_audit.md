@@ -106,6 +106,11 @@ qu'un test de booléen.
 VF3_PROF=1 VF3_SND_PROF=1 build/bin/vf3run.exe ... --wav son.wav --quiet
 ```
 
+**`--wav` n'est pas décoratif dans cette commande : sans lui `vf3run` ne fait pas tourner la carte son du
+tout**, et la sonde n'a rien à compter. Elle le dit maintenant, au lieu de sortir une ligne de zéros ; les
+trois autres manières dont ce branchement se taisait sont en §4 sexies. Les deux portées `SCSP` et `DSP`
+vivent des deux côtés depuis le 2026-10-28, donc le rapport vaut pour `VF3_SCSP_COEUR=maison` aussi.
+
 **L'instrumentation a été vérifiée, comme le demande toute mesure qui se respecte** : sur la même scène de 4200
 images, sondes éteintes puis allumées, le temps de la carte son est le même à ~0,5 % près (1,60/1,75/1,83/1,83/1,85/1,89/2,03/2,02
 contre 1,61/1,77/1,81/1,89/1,85/1,92/1,99/1,98 ms), et le WAV produit est **identique à l'octet**. Le rapport
@@ -366,11 +371,126 @@ Trois choses à en retenir plutôt qu'une :
    **déjà identique à l'octet** ; le rejoueur l'a vérifié après chacune des cinq étapes.
 2. **Aucune optimisation n'a sacrifié la source unique.** Le contrat reste le seul endroit où vit la
    position d'un champ ; elle y est lue à la compilation au lieu d'être cherchée un million de fois.
-3. **Ce chiffre n'est pas la part du son dans une image.** C'est un banc. La part réelle demande que le
-   cœur soit branché sur la carte, et `VF3_SND_PROF` la mesurera alors part par part.
+3. **Ce chiffre n'est pas la part du son dans une image.** C'est un banc. La part réelle demandait que le
+   cœur soit branché sur la carte, et que `VF3_SND_PROF` la mesure part par part : **c'est fait, §4 sexies**
+   — +8,1 % sur toute la carte son, +0,09 ms par image, et le « 11 à 14 % » de ce banc retrouvé dans le jeu.
 
 Et une taille, qui n'est pas une performance mais qui se dit : 1 759 lignes pour le cœur du projet contre
 2 540 pour celui de MAME, à comportement identique.
+
+
+## 4 sexies. La part réelle, avec chaque cœur — et la sonde qui ne sortait rien
+
+§4 quinquies finissait sur une dette : « Ce chiffre n'est pas la part du son dans une image. C'est un banc.
+La part réelle demande que le cœur soit branché sur la carte, et `VF3_SND_PROF` la mesurera alors part par
+part. » **Mesuré le 2026-10-28**, et la dette est payée — après avoir réparé l'instrument, qui ne sortait rien.
+
+### Trois raisons de ne rien sortir, et chacune se taisait
+
+La sonde était juste ; c'est son branchement qui ne l'était pas. Les trois pièges sont notés parce que
+chacun rend une mesure **vide ou fausse sans le dire**, ce qui est pire qu'une erreur bruyante :
+
+| | ce qui se passait | fermé par |
+|---|---|---|
+| 1 | l'appel à `sndprof::report` vivait **dans le bloc `if (prof)`** : `VF3_SND_PROF=1` sans `VF3_PROF=1` n'imprimait rien du tout | la sonde a son propre test dans `tools/vf3run.cpp`, et elle écrit sur **la même sortie** que la ligne `prof` (stdout) — avant, l'une était sur stdout et l'autre sur stderr, et une redirection gardait l'une en perdant l'autre |
+| 2 | **`vf3run` ne fait tourner la carte son qu'avec `--wav`** (tous les sites d'appel sont derrière ce test) : sans lui, le rapport sortait une ligne de **zéros**, qui se lit comme une mesure | `vf3run` le dit au lancement, et le rapport dit « rien mesuré » au lieu d'afficher des zéros |
+| 3 | le rapport n'arrivait qu'aux multiples de 500 images : un run plus court n'en voyait **aucun**, et un run de 4 200 perdait sa queue | un rapport final sur les images restantes (`frames 4000-4200` ci-dessous) |
+
+Et un quatrième, qui n'était pas un trou mais **un chiffre faux** : les deux portées `SCSP` et `DSP` ne
+vivaient que dans `src/sound/scsp.cpp` et `scspdsp.cpp`, donc dans le cœur de MAME seul. Sur
+`VF3_SCSP_COEUR=maison`, le rapport donnait **97 % au 68000, zéro aux voix et zéro au DSP** — non pas des
+cases vides, mais une attribution fausse, puisque la part imbriquée que la formule retire du 68000 valait
+alors zéro. Les deux portées sont maintenant dans `scsp_maison::run` **aux endroits qui répondent** à
+`DoMasterSamples` et à `m_DSP.Step()`. Le témoin que les deux mesures sont comparables : les deux cœurs
+comptent désormais **2 886 portées par image, et ~58 kcycles de `rdtsc`** chacun — le surcoût de la sonde
+s'annule dans la comparaison au lieu de la biaiser.
+
+### Le protocole, parce qu'un seul passage ne concluait pas
+
+Un passage par cœur donnait entre +3 % et +5 % selon la fenêtre, avec une fenêtre **sous** 1 — c'est-à-dire
+rien. Donc : **trois passages par cœur, alternés** (`mame`, `maison`, `mame`, … pour que la dérive thermique
+ne porte pas la conclusion), fenêtres **1500-4200** seulement — `--rec` n'est chaud qu'après le second
+passage du recompilateur, vers l'image 1000 — soit **18 mesures de 500 images par cœur**, et la médiane.
+
+```bash
+VF3_PROF=1 VF3_SND_PROF=1 VF3_SCSP_COEUR=mame|maison build/bin/vf3run.exe "<ROMs>/fvipers2.zip" \
+    --script tools/scripts/fv2-fight.txt --frames 4200 --rec --wav son.wav --quiet
+```
+
+**Le témoin d'abord : les six WAV sont identiques à l'octet**, md5 `9A2310F8AF000E09EB18BD114852B003` —
+l'empreinte d'avant tout ce travail. Les deux cœurs mesurés rendent donc exactement le même son, et la
+comparaison porte bien sur le même travail.
+
+### Où va le surcoût : dans le DSP, et nulle part ailleurs de lisible
+
+Coût propre de chaque pièce, en **kcycles par image**, médiane des 18 mesures (l'étendue entre crochets) :
+
+| pièce | `mame` | `maison` | écart |
+|---|---|---|---|
+| boucle+timers | 46 [44-48] | 45 [43-46] | −2 kc (−3,8 %) |
+| 68000 | 1 015 [959-1047] | 947 [896-1045] | **−68 kc (−6,7 %)** |
+| voix (la boucle de fentes) | 443 [285-565] | 484 [312-646] | +41 kc (+9,3 %) |
+| **le DSP** | **1 737 [1654-1818]** | **2 039 [1937-2172]** | **+302 kc (+17,4 %)** |
+| mélange | 45 [34-48] | 46 [34-49] | +1 kc (+2,1 %) |
+| **toute la carte son** | **3 284** | **3 550** | **+266 kc (+8,1 %)** |
+
+**Le 68000 est le témoin, et il faut le lire avant le reste** : c'est le *même* code des deux côtés — un
+68000 interprété, que le choix du cœur ne touche pas — et il bouge de −68 kc. C'est le **jeu de la mesure**,
+et il a une cause nommable : la formule de `sound_prof.h` retire le temps imbriqué
+(`68000 = M68K − (SCSP − FLUSH)`), donc une différence de grands nombres. **Aucun écart par pièce plus petit
+que 68 kc ne se lit ici.** Le DSP à +302 kc le dépasse d'un facteur quatre ; les voix à +41 kc sont dessous.
+
+Et le DSP **sans aucun dénominateur**, parce que les deux cœurs font tourner le même programme sur les mêmes
+images — 180 463 pas par image de part et d'autre :
+
+| | cycles par pas de DSP |
+|---|---|
+| `mame` | **9,60** [9,1-10,7] |
+| `maison` | **11,50** [11,0-12,4] |
+| écart | **+19,8 %** |
+
+**+19,8 % contre le +20 % que `tools/son/mesurer-coeur` donne hors du jeu.** Deux instruments qui ne
+partagent rien — un banc de 400 000 échantillons sans carte ni 68000 d'un côté, le jeu entier de l'autre —
+tombent sur le même nombre. C'est le meilleur contrôle qu'on puisse avoir des deux.
+
+### Trois lectures du même surcoût, et il faut les trois
+
+Le même +266 kc par image, selon ce à quoi on le rapporte :
+
+| rapporté à | `mame` | `maison` | |
+|---|---|---|---|
+| **la puce seule** (la carte son moins le 68000) | 2 269 kc | 2 535 kc | **+11,7 %** — et c'est exactement le « 11 à 14 % » du banc de §4 quinquies, retrouvé dans le jeu |
+| **toute la carte son** (le 68000 compris) | 3 284 kc | 3 550 kc | **+8,1 %** — le 68000 interprété pèse 31 % de la carte et **dilue** le surcoût |
+| **l'image sous `--rec`** | 1,46 ms de son sur 4,75 ms | 1,55 ms sur 4,90 ms | **+0,09 ms**, soit **0,5 % du budget de 17,4 ms** ; la part du son passe de **30,7 % à 31,6 %** |
+
+**C'est la troisième qui décide**, parce que c'est elle qui est dans le budget d'une image : brancher la carte
+sur le cœur du projet coûte **un demi-point du budget d'image**, dans le cas le plus défavorable qu'on sache
+mesurer (`--rec`, où la carte Model 3 est 4,3 fois plus rapide et où la part du son est donc à son maximum).
+Sur l'interpréteur, les mêmes 0,09 ms se diluent dans 15 ms et ne se voient pas.
+
+Le bruit de la mesure en millisecondes se lit au même endroit : la carte Model 3, qui ne dépend pas du cœur
+sonore, donne 3,29 contre 3,35 ms — **1,8 %**. Les 0,09 ms du son, soit 6 % de 1,46, sont donc au-dessus, mais
+pas de beaucoup : c'est pourquoi la conclusion est portée par les kcycles et non par les millisecondes.
+
+La première ligne porte une hypothèse qu'il faut dire : **le 68000 y est tenu constant à 1 015 kc**, parce que
+c'est le même code des deux côtés et que son −68 kc mesuré est du jeu, non un gain — tout le +266 kc est donc
+mis au compte de la puce. Pris brut, sans cette hypothèse, le même calcul donnerait 2 269 contre 2 603 kc, soit
+**+14,7 %** : le haut de la fourchette du banc plutôt que le bas. Les deux lectures restent dans « 11 à 14 % »,
+et c'est ce qui compte.
+
+### Ce que cette mesure n'établit pas
+
+1. **Rien sur la boucle de fentes.** Le banc de §4 quinquies la donne à **+18 %** ; ici elle fait +9,3 %,
+   **sous le jeu de 68 kc**. +18 % sur 443 kc vaudrait +80 kc : la mesure est donc compatible avec tout
+   entre zéro et le chiffre du banc, et elle ne tranche pas. Il faudrait un profilage à l'instruction, que
+   `VF3_SND_PROF` ne fait pas — ses portées sont trop grosses pour une boucle de 32 fentes.
+2. **Rien sur l'hôte**, où le son est sur son propre fil (§4 ter) : `VF3_SND_HOST` et
+   `tools/son/mesurer-hote.cmd` sont les instruments de cette question, et ils n'ont pas été relancés sur le
+   cœur du projet.
+3. **Rien sur une autre machine.** Un seul processeur de bureau, une seule scène. La mesure sur le portable
+   deux cœurs (§4 quater) n'a pas été refaite avec les deux cœurs.
+4. **Rien sur les autres arènes.** `fv2-fight.txt` fait tourner **un** programme DSP de 112 pas ; trois
+   arènes chargent le leur (§5). Un programme plus long déplacerait la part du DSP, donc le surcoût.
 
 
 ## 5. Ce que le programme DSP contient vraiment

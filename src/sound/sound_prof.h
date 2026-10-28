@@ -27,7 +27,14 @@ namespace sndprof {
 
 enum Part { RUN, M68K, SCSP, DSP, MIX, FLUSH, N_PARTS };
 
-inline const bool on = [] { const char *e = getenv("VF3_SND_PROF"); return e && *e == '1'; }();
+// La sonde ne s'allume que sur `1` exactement, et elle le DIT quand la variable est posee autrement :
+// une sonde qui ne sort rien sans dire pourquoi coute une demi-journee a qui la cherche.
+inline const bool on = [] {
+	const char *e = getenv("VF3_SND_PROF");
+	if (e && *e && !(e[0] == '1' && !e[1]))
+		fprintf(stderr, "sndprof: VF3_SND_PROF=\"%s\" n'allume rien -- la sonde ne connait que \"1\"\n", e);
+	return e && e[0] == '1' && !e[1];
+}();
 inline uint64_t acc[N_PARTS] = {};
 inline uint64_t hits[N_PARTS] = {};
 // steps the effects DSP actually ran (its program's length, per sample per chip): what the dsp
@@ -53,9 +60,23 @@ struct Scope
 	Scope &operator=(const Scope &) = delete;
 };
 
-inline void report(const char *what, int frames)
+// `out` dit sur quelle sortie le rapport tombe, parce que ce n'est pas la meme des deux cotes : l'hote
+// envoie tout sur stderr (log.txt, et tools/son/mesurer-hote.cmd y cherche la ligne), tandis que vf3run
+// imprime sa ligne `prof` sur stdout -- et une redirection qui garde l'une en perdant l'autre a deja fait
+// croire que la sonde ne sortait rien.
+inline void report(const char *what, int frames, FILE *out = stderr)
 {
 	if (!on || frames <= 0) return;
+	// Rien compte du tout : la carte son n'a pas tourne une seule fois sur ces images. Le dire, parce
+	// qu'une ligne de zeros se lit comme une mesure et n'en est pas une -- et que c'est le cas normal
+	// de vf3run sans --wav, qui n'appelle alors jamais SoundBoard::run().
+	if (!hits[RUN]) {
+		fprintf(out, "sndprof %s: rien mesure -- la carte son n'a pas tourne sur ces %d images"
+		             " (vf3run ne la fait tourner qu'avec --wav)\n", what, frames);
+		for (int i = 0; i < N_PARTS; i++) acc[i] = hits[i] = 0;
+		dsp_steps = 0;
+		return;
+	}
 	const double r = double(acc[RUN]);
 	const int64_t own[5] = {
 		int64_t(acc[RUN]) - int64_t(acc[M68K]) - int64_t(acc[MIX]) - int64_t(acc[FLUSH]),
@@ -67,10 +88,10 @@ inline void report(const char *what, int frames)
 	static const char *const own_names[5] = { "loop+timers", "68000", "voices", "dsp", "mix" };
 	uint64_t n_scopes = 0;
 	for (int i = 0; i < N_PARTS; i++) n_scopes += hits[i];
-	fprintf(stderr, "sndprof %s: %.0f kcycles a frame, own shares:", what, r / frames / 1000.0);
+	fprintf(out, "sndprof %s: %.0f kcycles a frame, own shares:", what, r / frames / 1000.0);
 	for (int i = 0; i < 5; i++)
-		fprintf(stderr, " %s %.1f%%", own_names[i], r > 0 ? 100.0 * double(own[i]) / r : 0.0);
-	fprintf(stderr, " (%llu scopes a frame, about %.0f kcycles of rdtsc in them; %llu dsp steps a frame, %.1f cycles each)\n",
+		fprintf(out, " %s %.1f%%", own_names[i], r > 0 ? 100.0 * double(own[i]) / r : 0.0);
+	fprintf(out, " (%llu scopes a frame, about %.0f kcycles of rdtsc in them; %llu dsp steps a frame, %.1f cycles each)\n",
 	        (unsigned long long)(n_scopes / unsigned(frames)), 20.0 * double(n_scopes) / frames / 1000.0,
 	        (unsigned long long)(dsp_steps / unsigned(frames)), dsp_steps ? double(acc[DSP]) / double(dsp_steps) : 0.0);
 	for (int i = 0; i < N_PARTS; i++) acc[i] = hits[i] = 0;

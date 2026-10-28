@@ -5,16 +5,19 @@ et rien ne les nommait ensemble ; il a fallu, le 2026-10-25, mesurer l'empreinte
 
 | | lignes | |
 |---|---|---|
-| `src/sound/` | 3 284 | dont **2 103 sont celles de MAME** (`scsp.cpp`, `scsp.h`) |
-| `tools/son/` et `tools/ghidra/FV2Son*` | 2 572 | l'outillage de mesure et de lecture |
-| les neuf documents ci-dessous | 4 955 | **plus gros que tout le code** |
-| **en tout** | **10 811** | 1,8 % du dépôt, mais **11,2 %** hors `third_party/` |
+| `src/sound/` | 6 239 | dont **2 110 sont celles de MAME** (`scsp.cpp`, `scsp.h`), soit un tiers |
+| `tools/son/` et `tools/ghidra/FV2Son*` | 5 963 | l'outillage de mesure et de lecture — les dix tests en sont |
+| les neuf documents ci-dessous | 5 459 | **du même ordre que tout le code** |
+| **en tout** | **17 661** | 3,0 % du dépôt, mais **18,7 %** hors `third_party/` |
 
-(Comptés le 2026-10-25, et recomptés après l'écriture de ce fichier : la première version de ce tableau
-donnait 3 130 lignes d'outillage parce qu'elle comptait tout `tools/ghidra/`, scripts du PowerPC compris.)
+(Recomptés le **2026-10-28**. Le tableau du 2026-10-25 donnait 10 811 lignes en tout : il a été écrit avant
+le cœur du projet, son DSP, les sept tests de bloc et le rejoueur, qui sont l'essentiel de l'écart. Et avant
+lui une première version donnait 3 130 lignes d'outillage parce qu'elle comptait tout `tools/ghidra/`,
+scripts du PowerPC compris. Les chiffres de ce tableau vieillissent vite : la commande qui les refait est
+`grep -c '' src/sound/* tools/son/* tools/ghidra/FV2Son*.java docs/*.md`.)
 
-La documentation étant plus grosse que le code, l'essentiel de ce travail est de la **connaissance**, et une
-connaissance qu'on ne retrouve pas est perdue. D'où ce fichier.
+La documentation a longtemps été plus grosse que le code, et elle en reste du même ordre : l'essentiel de ce
+travail est de la **connaissance**, et une connaissance qu'on ne retrouve pas est perdue. D'où ce fichier.
 
 ---
 
@@ -22,7 +25,7 @@ connaissance qu'on ne retrouve pas est perdue. D'où ce fichier.
 
 | je veux… | lire d'abord |
 |---|---|
-| comprendre ce que le son coûte et où | `scsp_audit.md` §4 et §4 bis |
+| comprendre ce que le son coûte et où | `scsp_audit.md` §4 et §4 bis ; et ce que **le cœur du projet** coûte en plus, §4 quinquies (au banc) puis §4 sexies (dans le jeu) |
 | savoir ce que le pilote attend de la puce | **`src/sound/scsp_contract.h`** — le contrat matériel, vérifié par un test |
 | savoir comment une implémentation se branche | `scsp_architecture.md` — l'interface C++ |
 | remplacer le SCSP de MAME | `scsp_migration_plan.md`, qui énumère les préalables et dit lesquels existent |
@@ -44,7 +47,7 @@ connaissance qu'on ne retrouve pas est perdue. D'où ce fichier.
 | `src/sound/dsp_maison.h`, `.cpp` | **le DSP d'effets du projet** : bloc 5, écrit contre la spécification mesurée parce que son jeu d'instructions n'existe nulle part écrit. Son en-tête nomme les **quatre champs que le jeu n'exerce jamais**, donc jamais éprouvés |
 | `src/sound/scsp_select.h`, `.cpp` | **le sélecteur** : `scsp::make(nom, ...)`, par où un second cœur entrera. `mame` est la seule entrée aujourd'hui, et le fichier le dit |
 | `src/sound/scsp_trace.h`, `.cpp` | **le format de trace, l'enregistreur et le rejoueur** : chaque accès à l'échantillon près, les écritures de RAM comprises. L'enregistrement passe par une seule porte, `SoundBoard::tete[n]`, et non par les huit sites d'appel |
-| `src/sound/sound_prof.h` | le profilage par parties (`VF3_SND_PROF=1`) |
+| `src/sound/sound_prof.h` | le profilage par parties (`VF3_SND_PROF=1`). Les portées sont dans `soundboard.cpp`, `scsp.cpp` **et** `scsp_maison.cpp` : les quatre manières dont ce branchement se taisait sont en `scsp_audit.md` §4 sexies |
 
 ## 3. Les outils
 
@@ -69,7 +72,7 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 
 | sonde | ce qu'elle donne | dans |
 |---|---|---|
-| `VF3_SND_PROF=1` | le coût du son par parties : boucle, 68000, voix, DSP, mélange | `sound_prof.h` |
+| `VF3_SND_PROF=1` | le coût du son par parties : boucle, 68000, voix, DSP, mélange — et pour **les deux cœurs** depuis le 2026-10-28. Sous `vf3run` il faut **`--wav`**, sans quoi la carte son ne tourne pas et la sonde ne compte rien ; elle le dit. `VF3_PROF` n'est plus requis | `sound_prof.h` |
 | `VF3_PROF=1` | le coût par carte, toutes les 500 images (`prof …: board … sound …`) | `tools/vf3run.cpp` |
 | `VF3_SND_HOST=N` | **ce que le son coûte à l'hôte** : le travail du fil, et surtout **l'attente du jeu** — ce n'est pas le chiffre de `vf3run` | `src/host/main.cpp` |
 | `VF3_SCSP_DSPLOG=f` | **chaque écriture** dans les registres du DSP, du tampon FM, du mot `0x6` et des mots `SA` d'une fente | `soundboard.cpp` |
@@ -114,15 +117,15 @@ n'est pas là — elle vient d'une ROM que le dépôt ne porte pas.
 
 | | lignes | |
 |---|---|---|
-| `scsp_audit.md` | 330 | ce qu'il y a, ce que ça coûte, et où va le temps |
-| `scsp_benchmark_baseline.md` | 174 | la ligne de base, et chaque lot mesuré contre elle |
-| `scsp_architecture.md` | 174 | l'interface C++ d'un cœur autonome |
-| `scsp_migration_plan.md` | 124 | le plan pour sortir du SCSP de MAME, et ce qui est fait |
-| `scsp_validation.md` | 167 | ce qui valide quoi, et ce qui manque |
+| `scsp_audit.md` | 628 | ce qu'il y a, ce que ça coûte, et où va le temps |
+| `scsp_benchmark_baseline.md` | 175 | la ligne de base, et chaque lot mesuré contre elle |
+| `scsp_architecture.md` | 215 | l'interface C++ d'un cœur autonome |
+| `scsp_migration_plan.md` | 231 | le plan pour sortir du SCSP de MAME, et ce qui est fait |
+| `scsp_validation.md` | 199 | ce qui valide quoi, et ce qui manque — dont **jusqu'où la trace est complète** |
 | `scsp_references.md` | 162 | les sources lues, et la règle : **jamais le consensus entre émulateurs comme preuve** |
 | `fv2-son-programme.md` | 3 062 | le programme 68000, lu — les 168 fonctions, la carte de la RAM, les erreurs gardées |
 | `fv2-console-son.md` | 643 | le son de la liste des modes |
-| `son.md` | 119 | ce fichier |
+| `son.md` | 144 | ce fichier |
 
 ## 7. Pourquoi ce n'est pas un dépôt à part
 

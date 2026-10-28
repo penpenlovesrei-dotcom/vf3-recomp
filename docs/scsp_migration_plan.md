@@ -132,7 +132,7 @@ Rien ne s'écrit avant ces trois-là, et c'est le gros du travail :
    **Ce qui a été vérifié**, et dans cet ordre, parce qu'un contrôle ne vaut rien sans celui d'avant :
    | | |
    |---|---|
-   | la trace est **complète** | le rejeu retrouve le PCM que la carte a produit, **identique à l'octet sur 229 991 échantillons**, pour les deux puces. C'est ce qui établit qu'aucun état n'entre par une porte que la trace ne note pas |
+   | la trace est **complète, sur la scène entière** | le rejeu retrouve le PCM que la carte a produit, **identique à l'octet sur 3 219 865 échantillons par puce** (4 200 images), pour les deux puces. C'est ce qui établit qu'aucun état n'entre par une porte que la trace ne note pas. **Établi d'abord sur 300 images seulement, et c'était trop court** : sur la scène entière ce contrôle échouait (échantillons 772 067 et 1 149 006), parce que le **miroir MADRS** se posait hors de l'interface et n'entrait donc pas dans la trace. Trouvé, nommé et refermé le 2026-10-28 — en-tête de trace version 2, porte unique dans `scsp_select.h` ; `docs/scsp_validation.md` §3 c porte toute la mesure |
    | le comparateur **sait échouer** | un seul échantillon modifié dans la référence, et il le nomme : « échantillon 100000 droite » |
    | `mame` contre `mame` | identiques sur les cinq flux |
    | la carte n'a **pas changé** | `vf3run` 1200 images contre la construction de `9753fde` : **même empreinte MD5**. Le détour par `tete[n]` ne coûte rien au son |
