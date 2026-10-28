@@ -20,10 +20,22 @@
 //   puce sur la scene entiere de fv2-fight.txt. C'est la vraie epreuve, et elle vaut mieux que n'importe
 //   quel nombre de cas unitaires -- mais elle ne couvre que ce que les programmes de VF3 emploient.
 //
-//   QUATRE CHAMPS NE SONT VALIDES PAR AUCUNE MESURE, et c'est une mesure qui le dit : AUCUN des jeux que ce
+//   QUATRE CHAMPS NE SONT EPROUVES PAR AUCUN JEU, et c'est une mesure qui le dit : AUCUN des jeux que ce
 //   portage sert ne pose FRCL, ADRL, YRL ni NEGB -- 152 ecritures de programme, cinq formes distinctes,
 //   trois jeux dont Sega Rally 2 qui a un tout autre programme (docs/scsp_audit.md §5, le 2026-10-28).
-//   Il n'y a donc pas de programme a aller chercher qui en ferait le rejoueur juge. Le compte vient de la sonde
+//   Il n'y a donc pas de programme a aller chercher qui en ferait le rejoueur juge.
+//
+//   ILS SONT DEPUIS EPROUVES CONTRE LA CIBLE, et il faut lire les deux phrases ensemble :
+//   tools/son/test_scsp_dsp.cpp cas 9 a 13, ecrits le 2026-10-28, les mesurent un par un -- NEGB par le
+//   signe de B, FRCL et YRL en relisant les registres par YSEL (leur seul chemin de lecture), ADRL par
+//   l'adresse que ADREB decale. Ce coeur rend les memes nombres que celui de MAME sur les cinq, du premier
+//   coup, et quatre fautes injectees dans ce fichier sont attrapees chacune par son cas.
+//
+//   CE QUE CELA NE DIT PAS : que MAME ait raison. Personne n'a mesure ces quatre-la sur du materiel, et
+//   docs/scsp_references.md refuse le consensus entre emulateurs comme preuve. Le comportement VISE par ce
+//   portage est celui de MAME (voir scsp_maison.h) ; ces cas etablissent que ce DSP l'atteint, et rien de
+//   plus. Le cas 13 ajoute ce qu'aucun jeu ne donnait non plus : que le second corps, celui que les quatre
+//   declenchent, s'accorde avec le premier. Le compte vient de la sonde
 //   `dspprog`, et il porte son temoin dans la meme ligne -- `frcl 0 adrl 0 yrl 0 negb 0` a cote de
 //   `iwt 23 twt 39 mrd 23 mwt 10 ewt 5`, comptes par le meme code au meme moment
 //   (docs/fv2-son-programme.md §4). Ces quatre-la sont donc ECRITS mais jamais EPROUVES : un autre jeu, ou

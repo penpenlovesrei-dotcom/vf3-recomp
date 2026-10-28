@@ -85,6 +85,41 @@ Ce que ce test ne dit pas : il ne redérive pas le comportement du chip depuis u
 veut dire « le portage calcule toujours ce que la boucle simple calcule », qui est la question posée, et pas
 « le matériel fait ça ».
 
+### Le même trou, de l'autre côté — et bouché le 2026-10-28
+
+Tout ce qui précède porte sur le DSP de MAME et sur ses **deux corps**. Le DSP du projet,
+`src/sound/dsp_maison`, avait exactement le même trou, au même endroit, et pour la même raison : il porte
+`FRCL`, `ADRL`, `YRL` et `NEGB` **écrits**, son second corps ne tourne que quand l'un des quatre est posé,
+et **aucun jeu ne les pose**. Mesuré ce jour sur tous les sets que le portage connaît : 152 écritures de
+programme, cinq formes distinctes, trois jeux dont Sega Rally 2 avec un tout autre programme, et pas un pas
+(`docs/scsp_audit.md` §5). Il n'y avait donc rien à aller chercher : le rejoueur ne pouvait pas en être juge.
+
+**`tools/son/test_scsp_dsp.cpp` cas 9 à 13** les mesurent, et chacun par le seul chemin de lecture qui
+existe — ces registres n'ont pas de fenêtre :
+
+| cas | ce qui le rend observable | relevé |
+|---|---|---|
+| `NEGB` | le signe de B sur un pas de maintien, le même programme des deux côtés | `+2330` / `−2330` |
+| `FRCL` | `FRC_REG` relu **comme Y** (`YSEL=0`), remultiplié par le même X | `331` à `SHIFT=0`, `2912` à `SHIFT=3` |
+| `YRL` | `Y_REG` relu par `YSEL=2` puis `YSEL=3` : deux fenêtres du même registre | `662` / `946` |
+| `ADRL` | l'adresse que `ADREB` décale : un témoin différent au mot `0x12` de la ligne de retard | `MEMS[1] = 0x567800` |
+| les deux corps | la chaîne du cas 4 inchangée, plus un `FRCL` nul qui force le corps complet | `EFREG[0] = 2330` |
+
+**Le cœur du projet rend les cinq du premier coup**, identiques à ceux du cœur de MAME. C'est une
+confirmation et non une correction : ce code était juste, il n'avait simplement aucun témoin.
+
+**Et ces cas savent échouer**, par la même méthode qu'au-dessus — quatre fautes injectées dans
+`dsp_maison.cpp`, une à la fois, **chacune attrapée par son propre cas** : `NEGB` qui ne nie plus, `FRCL`
+qui prend l'autre tranche, `YRL` qui retient l'entrée décalée d'un bit, `ADRL` qui décale de huit au lieu de
+seize. Une cinquième tentative, `YRL` retenant `SHIFTED`, **ne compile pas** — et c'est en soi un fait du
+bloc : à cet endroit du pas, `shifted` n'existe pas encore, parce que le shifter est un pas en retard.
+
+Ce que ça ne dit pas, et c'est la même limite qu'au-dessus : **que MAME ait raison.** Personne n'a mesuré ces
+quatre champs sur du matériel, et `scsp_references.md` refuse le consensus entre émulateurs comme preuve. Le
+comportement visé par ce portage est celui de MAME ; ces cas établissent que son DSP l'atteint, et rien de
+plus. La différence avec les huit premiers cas est réelle et vaut d'être dite : ceux-là sont recoupés par le
+jeu à chaque rejeu, ces cinq-là par rien d'autre qu'eux-mêmes.
+
 ### Le reste de la carte, déjà en place avant ce travail
 
 | | ce que ça compare |

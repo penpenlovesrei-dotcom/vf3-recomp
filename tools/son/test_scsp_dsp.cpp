@@ -12,9 +12,15 @@
 // pour les six autres blocs -- ecrire le test, puis le bloc -- a ceci pres que la cible du test est ici une
 // machine et non un comportement de sortie.
 //
-// IL NE DISTINGUE PAS ENCORE LES DEUX COEURS, et il faut le dire : tant que `maison` emprunte le DSP de
-// MAME, les deux rendent les memes nombres par construction. Sa valeur est d'etre une CIBLE. Le jour ou un
-// DSP du projet existe, ce fichier dira s'il tombe juste, cas par cas, sans qu'on ait a comparer des WAV.
+// IL DISTINGUE LES DEUX COEURS DEPUIS LE 2026-10-27, et c'etait tout son objet : `src/sound/dsp_maison`
+// existe, il ne partage pas une ligne avec celui de MAME, et ce fichier dit cas par cas s'il tombe juste --
+// sans qu'on ait a comparer des WAV. `make test` le lance avec les deux noms de coeur.
+//
+// ET LES CINQ DERNIERS CAS SONT CE POUR QUOI IL EXISTE. Les huit premiers mesurent des champs que le jeu
+// exerce, donc que le rejoueur recoupe a l'octet a chaque scene : ce fichier y est une commodite. Les cas 9
+// a 13 mesurent FRCL, ADRL, YRL et NEGB, qu'AUCUN jeu servi par ce portage ne pose -- 152 ecritures de
+// programme, cinq formes distinctes, trois jeux (docs/scsp_audit.md §5). Pour ces quatre-la, ce fichier est
+// le SEUL juge qui existe, et les quatre fautes injectees le 2026-10-28 disent qu'il sait echouer.
 //
 // -----------------------------------------------------------------------------------------------------
 // PAR OU ON OBSERVE, et c'est ce qui rend le bloc mesurable : TOUT L'ETAT DU DSP SE RELIT par la fenetre de
@@ -415,6 +421,186 @@ int main(int argc, char **argv)
 		}
 		juste ? ok("PACK/UNPACK : l'aller-retour de la ligne de retard", lignes)
 		      : rate("PACK/UNPACK : l'aller-retour de la ligne de retard", lignes + " ; un zero inattendu");
+	}
+
+
+	// =====================================================================================================
+	// LES QUATRE CONTROLES QU'AUCUN JEU NE POSE : FRCL, ADRL, YRL et NEGB.
+	//
+	// Mesure du 2026-10-28, et c'est elle qui rend ces cas necessaires : `dspprog` lu sur TOUS les jeux que
+	// ce portage sert -- 152 ecritures de programme, cinq formes distinctes, trois jeux dont Sega Rally 2
+	// qui a un tout autre programme -- ne trouve pas UN pas qui pose l'un des quatre
+	// (docs/scsp_audit.md §5). Il n'y a donc pas de jeu a aller chercher qui ferait du rejoueur leur juge a
+	// l'octet, et sans ces cas-ci le DSP du projet les porte ECRITS et JAMAIS EPROUVES.
+	//
+	// CE QUE CES CINQ CAS ACHETENT, ET CE QU'ILS N'ACHETENT PAS. Ils achetent que `dsp_maison` fait sur ces
+	// champs ce que fait le DSP de MAME, qui est le comportement VISE par ce portage. Ils n'achetent pas que
+	// MAME ait raison : personne n'a mesure ces quatre-la sur du materiel, et docs/scsp_references.md
+	// refuse le consensus entre emulateurs comme preuve. Les nombres ci-dessous sont donc une CIBLE
+	// enregistree, au meme titre que les huit cas precedents -- a ceci pres que les huit autres, eux, sont
+	// recoupes par le jeu a chaque rejeu.
+	//
+	// TOUS PARTENT DE LA CHAINE DU CAS 4, la seule qui pose un X connu sans voix : RAM -> MRD (pas impair)
+	// -> IWT -> MEMS -> produit. Avec ram[0] = 0x1234 et COEF[0] = 0x4000, elle donne MEMS[0] = 0x00123400
+	// et ACC = 0x0091A00 au pas 3.
+	// =====================================================================================================
+
+	// ---- 9. NEGB : B change de signe, et rien d'autre
+	// NEGB ne touche QUE B, apres que BSEL l'ait choisi. Donc un pas de maintien (B = ACC) avec NEGB rend
+	// ACC = -ACC. On le mesure des deux cotes du meme programme : sans, puis avec.
+	{
+		std::string lignes;
+		std::int16_t vu[2] = {};
+		for (int neg = 0; neg < 2; neg++) {
+			BancDsp d;
+			d.b.ram[0] = 0x1234;
+			d.madrs(0, 0);
+			Pas p0;
+			Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
+			Pas p2; p2.iwt = 1; p2.iwa = 0;
+			Pas p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
+			Pas p4 = maintien(); p4.negb = unsigned(neg);   // B = ACC, nie si NEGB
+			Pas p5 = maintien(); p5.shift = 0; p5.ewt = 1; p5.ewa = 0;
+			d.coef(0, 0x4000);
+			d.programme({ p0, p1, p2, p3, p4, p5 });
+			d.un_pas();
+			vu[neg] = d.efreg(0);
+			char t[48];
+			snprintf(t, sizeof t, "%snegb %d -> %d", neg ? " | " : "", neg, vu[neg]);
+			lignes += t;
+		}
+		(vu[0] == 2330 && vu[1] == -2330)
+			? ok("NEGB : B change de signe", lignes)
+			: rate("NEGB : B change de signe", lignes + " ; attendu 2330 et -2330");
+	}
+
+	// ---- 10. FRCL : SHIFTED est retenu, et YSEL=0 le relit
+	// FRC_REG n'a pas de fenetre : le SEUL moyen de le lire est de s'en servir comme Y (YSEL=0). Le cas
+	// ecrit donc FRC_REG depuis un SHIFTED connu, puis le remultiplie par le meme X et sort le produit.
+	// FRCL prend (SHIFTED >> 11) & 0x1FFF -- sauf a SHIFT=3, ou il prend SHIFTED & 0x0FFF. Les deux sont
+	// mesures, parce que c'est la seule asymetrie du champ.
+	{
+		std::string lignes;
+		std::int16_t vu[2] = {};
+		int i = 0;
+		for (unsigned sh : { 0u, 3u }) {
+			BancDsp d;
+			d.b.ram[0] = 0x1234;
+			d.madrs(0, 0);
+			Pas p0;
+			Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
+			Pas p2; p2.iwt = 1; p2.iwa = 0;
+			Pas p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
+			Pas p4 = maintien(); p4.shift = sh; p4.frcl = 1;     // FRC_REG <- SHIFTED, selon SHIFT
+			Pas p5; p5.xsel = 1; p5.ira = 0; p5.ysel = 0; p5.zero = 1;   // Y = FRC_REG
+			Pas p6 = maintien(); p6.shift = 0; p6.ewt = 1; p6.ewa = 0;
+			d.coef(0, 0x4000);
+			d.programme({ p0, p1, p2, p3, p4, p5, p6 });
+			d.un_pas();
+			vu[i] = d.efreg(0);
+			char t[64];
+			snprintf(t, sizeof t, "%sshift %u -> %d", i ? " | " : "", sh, vu[i]);
+			lignes += t;
+			i++;
+		}
+		// RELEVES, et non calcules. A SHIFT=0, FRC_REG prend (SHIFTED >> 11) & 0x1FFF ; a SHIFT=3 il prend
+		// SHIFTED & 0x0FFF, une tranche basse et bien plus grande -- d'ou le produit six fois plus gros.
+		// C'est la seule asymetrie du champ, et elle se lit ici.
+		(vu[0] == 331 && vu[1] == 2912)
+			? ok("FRCL : SHIFTED retenu, relu par YSEL=0", lignes)
+			: rate("FRCL : SHIFTED retenu, relu par YSEL=0", lignes + " ; attendu 331 et 2912");
+	}
+
+	// ---- 11. YRL : l'ENTREE est retenue, et YSEL 2 et 3 en prennent deux tranches differentes
+	// YRL range `entree` -- et non SHIFTED -- dans Y_REG. YSEL=2 en prend les bits 23-11, YSEL=3 les bits
+	// 15-4 : deux fenetres differentes sur le meme registre, et c'est tout l'interet de les mesurer les
+	// deux.
+	{
+		std::string lignes;
+		std::int16_t vu[2] = {};
+		int i = 0;
+		for (unsigned ys : { 2u, 3u }) {
+			BancDsp d;
+			d.b.ram[0] = 0x1234;
+			d.madrs(0, 0);
+			Pas p0;
+			Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
+			Pas p2; p2.iwt = 1; p2.iwa = 0;
+			Pas p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
+			p3.yrl = 1;                                          // Y_REG <- entree = MEMS[0]
+			Pas p4; p4.xsel = 1; p4.ira = 0; p4.ysel = ys; p4.zero = 1;   // Y = une tranche de Y_REG
+			Pas p5 = maintien(); p5.shift = 0; p5.ewt = 1; p5.ewa = 0;
+			d.coef(0, 0x4000);
+			d.programme({ p0, p1, p2, p3, p4, p5 });
+			d.un_pas();
+			vu[i] = d.efreg(0);
+			char t[64];
+			snprintf(t, sizeof t, "%sysel %u -> %d", i ? " | " : "", ys, vu[i]);
+			lignes += t;
+			i++;
+		}
+		// RELEVES. Les deux tranches de Y_REG ne donnent pas le meme Y, donc pas le meme produit : c'est
+		// ce qui prouve que YSEL=2 et YSEL=3 lisent bien DEUX fenetres differentes du meme registre, et
+		// non la meme par deux chemins.
+		(vu[0] == 662 && vu[1] == 946)
+			? ok("YRL : l'entree retenue, relue par YSEL 2 et 3", lignes)
+			: rate("YRL : l'entree retenue, relue par YSEL 2 et 3", lignes + " ; attendu 662 et 946");
+	}
+
+	// ---- 12. ADRL : l'adresse memoire est decalee, et ADREB s'en sert
+	// ADRS_REG n'a pas de fenetre non plus. Il se lit par son EFFET : avec ADREB, la ligne de retard est
+	// adressee a MADRS[masa] + ADRS_REG. On met donc une valeur DIFFERENTE a l'adresse decalee, et c'est
+	// celle-la qui doit remonter dans MEMS.
+	//
+	// Hors SHIFT=3, ADRL prend `entree >> 16` -- ici 0x00123400 >> 16 = 0x12, et l'on place donc le temoin
+	// au mot 0x12 de la ligne de retard.
+	{
+		BancDsp d;
+		d.b.ram[0] = 0x1234;
+		d.b.ram[0x12] = 0x5678;        // le temoin, a l'adresse que ADRS_REG doit ajouter
+		d.madrs(0, 0);
+		Pas p0;
+		Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
+		Pas p2; p2.iwt = 1; p2.iwa = 0;
+		Pas p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
+		p3.adrl = 1;                   // ADRS_REG <- entree >> 16
+		Pas p4;
+		Pas p5; p5.mrd = 1; p5.table = 1; p5.masa = 0; p5.nofl = 1; p5.adreb = 1;   // pas impair
+		Pas p6; p6.iwt = 1; p6.iwa = 1;
+		d.coef(0, 0x4000);
+		d.programme({ p0, p1, p2, p3, p4, p5, p6 });
+		d.un_pas();
+		const std::int32_t m0 = d.mems(0), m1 = d.mems(1);
+		char t[128];
+		snprintf(t, sizeof t, "MEMS[0] = %s (sans ADREB), MEMS[1] = %s (avec)", hex(m0).c_str(), hex(m1).c_str());
+		(m0 == 0x123400 && m1 == 0x567800)
+			? ok("ADRL : l'adresse decalee par ADRS_REG", t)
+			: rate("ADRL : l'adresse decalee par ADRS_REG", t);
+	}
+
+	// ---- 13. LES DEUX CORPS S'ACCORDENT : un rare inoffensif ne change rien
+	// `dsp_maison` a deux corps -- `template <bool RARES>` -- et un seul tourne sur les programmes des
+	// jeux, puisqu'aucun ne pose les quatre. Le corps complet n'etait donc exerce par RIEN. Ce cas le
+	// force : la chaine du cas 4, inchangee, plus un FRCL sur un pas ou SHIFTED vaut zero -- ce qui ecrit
+	// zero dans FRC_REG, sa valeur de depart, et ne change donc rien. Le resultat DOIT rester 0x091A.
+	// Quatre fautes injectees dans le corps complet seraient autrement passees inapercues.
+	{
+		BancDsp d;
+		d.b.ram[0] = 0x1234;
+		d.madrs(0, 0);
+		Pas p0; p0.frcl = 1;           // SHIFTED vaut zero ici : FRC_REG <- 0, sans effet
+		Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
+		Pas p2; p2.iwt = 1; p2.iwa = 0;
+		Pas p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
+		Pas p4 = maintien(); p4.shift = 0; p4.ewt = 1; p4.ewa = 0;
+		d.coef(0, 0x4000);
+		d.programme({ p0, p1, p2, p3, p4 });
+		d.un_pas();
+		const std::int16_t e = d.efreg(0);
+		char t[96];
+		snprintf(t, sizeof t, "EFREG[0] = %d, le corps complet force par un FRCL nul", e);
+		(e == 0x091A) ? ok("les deux corps s'accordent", t)
+		              : rate("les deux corps s'accordent", std::string(t) + " ; attendu 2330");
 	}
 
 	printf("\n");
