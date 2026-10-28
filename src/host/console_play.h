@@ -576,7 +576,25 @@ struct console_play
 			//
 			// EXCEPT IN THE FIGHT'S PRESENTATION AND THE REPLAY, where Frederic asks for the original's
 			// behaviour: not the menu, but the state cut short (cut_states above).
-			if (!b.fv2_in_attract()) {
+			// WHERE THIS LAYER MAY TAKE THE BUTTON AT ALL, and it is a MODE, not a task.
+			//
+			// This used to ask fv2_in_attract -- whether the entry1 task is stopped -- and that is NOT the same
+			// question. On CONTINUE, on the rankings, on GAME OVER and on the result screen THE TASK IS ALREADY
+			// STOPPED while the game goes on drawing screens of its own. So a press there was read as "bring the
+			// title screen back", and the attract sequencer was restarted from the middle of a screen the game
+			// had not finished: the title came back SHREDDED -- the tile layers torn across each other, the
+			// roster's names printed through the logo, the whole picture in stripes.
+			//
+			// Frederic photographed it the 2026-10-28 and found it twice in one sitting: Start during the LAST
+			// round's replay, where the match is already decided so the task is already down, and Start on the
+			// CONTINUE screen -- where that button is the one that CONTINUES THE GAME, which is why he reported
+			// it as "pas de continue". Both are the same mistake and both gave the same torn title.
+			//
+			// Sega's own answer is the mode: ADV, 2 and 3, IS the attract loop and nothing else is
+			// (docs/fv2-etats.md). Everywhere else the game is showing something of its own and the button is
+			// its own, exactly as it already was for the judgement, the replay and the select screen.
+			const int now_mode = b.fv2_mode();
+			if (now_mode != 2 && now_mode != 3) {
 				// In the fight's presentation and in the replay the press CUTS the state instead of opening the
 				// menu. Measured first: letting the press through to the game does nothing at all -- a real Start
 				// at image 2360 of the bench road left ROUND_MASK_DSP running to 2450 exactly as without it, so
@@ -604,8 +622,10 @@ struct console_play
 				// 0), and the restart is where the game clears the tasks that draw, two sub-states later. Then
 				// the title screen is asked for as soon as that housekeeping is done -- the SEGA logo -- so
 				// the player does not have to sit through it.
-				if (b.fv2_in_attract()) { b.fv2_restart_attract(); skip_logo = SKIP_GIVE_UP; }
-				else b.fv2_request_title();
+				// (ADV and nothing else by now, so there IS a sequencer with a list to walk off: the mode
+				// request, which does not stop what was drawing, is no longer reached from here at all)
+				b.fv2_restart_attract();
+				skip_logo = SKIP_GIVE_UP;
 			}
 			swallow_start = true;
 		}
