@@ -914,6 +914,31 @@ saurait s'il y a, en plus des 14,4 % d'instructions, une perte d'IPC — le quot
 d'instructions en plus devraient donner 3,107 ns par pas, et le banc en mesure environ 3,35. Il resterait
 donc **environ 8 % a expliquer autrement** que par le nombre d'instructions. La commande est dans la reprise.
 
+### Les cinq variantes sont pretes, et attendent une fenetre administrateur
+
+Preparees le 2026-10-28. Chacune est une transformation **equivalente au comportement pres** de
+`src/sound/dsp_maison.cpp` qui attaque le NOMBRE D'INSTRUCTIONS du chemin inevitable, la ou va l'ecart :
+
+| variante | ce qu'elle attaque |
+|---|---|
+| `temoin` | le code tel qu'il est, pour que les quatre autres se comparent a quelque chose mesure le meme jour sur la meme machine |
+| `sortie_groupee` | un pas du socle ne fait aucune des quatre sorties et les teste pourtant une par une : un seul masque les ecarte toutes |
+| `entree_paresseuse` | `entree` est calculee a chaque pas et **jetee** dans le socle -- XSEL nul, IWT nul, lecteurs rares hors du corps maigre. Trois comparaisons, une charge et une extension de signe pour rien. **MAME ne fait pas ca non plus** |
+| `shift_deux_bits` | le `switch` a quatre cas pose deux questions independantes ; deux bits du mot d'indicateurs les posent une fois, **sans grossir le pas decode** -- c'est ce qui avait coule le lot B |
+| `ysel_coef_premier` | MAME teste `YSEL == 1` en premier, et pour sa raison : 87 des 112 pas du jeu le prennent (§5). Sans effet sur le socle ; c'est le programme du jeu que ca viserait |
+
+**Les exes sont construits et deja verifies** -- `python tools/son/batir-variantes.py` les fabrique un par un,
+lance **les dix tests** a chaque fois, et ne garde que celles dont les 24 fichiers sont au vert. La fenetre
+administrateur n'a donc rien a compiler : `tools/son/mesurer-variantes.cmd` enchaine capture, exe, arret,
+une fois par variante, et verifie d'abord que les compteurs sont programmables pour ne pas faire decouvrir
+au troisieme tour que la fenetre n'etait pas elevee.
+
+**ET UNE DES CINQ A ETE REFUSEE AU PREMIER TOUR, PAR LES CAS 9 A 13.** `sortie_groupee` groupait les quatre
+tests de sortie dans un masque qui englobait au passage les ecritures de `FRCL` et d'`ADRL` -- elles vivent
+ENTRE celle de `TWT` et celle d'`EWT`. Un pas qui ne pose que `FRCL` les sautait donc. Elle passait **tous**
+les autres tests, aurait passe le rejoueur et rendu le WAV identique a l'octet, parce qu'aucun jeu ne pose
+ces deux champs. Voir §5 : c'est ce que ces cas achetent vraiment, et ce n'est pas ce que j'avais annonce.
+
 **ET LA LECON DE METHODE, qui vaut plus que la mesure :** j'ai ecrit deux fois « ce poste n'a pas de compteur
 materiel » sans lancer une seule commande pour le verifier, et les deux sections se sont arretees sur cette
 phrase. Un instrument declare absent ferme une piste aussi surement qu'une mesure fausse.
@@ -970,6 +995,15 @@ Trois choses à en tirer :
    `tools/son/test_scspdsp.cpp` porte déjà les cas équivalents pour le DSP de MAME. Avec ce que ça achète
    et ce que ça n'achète pas : la cohérence avec la cible déclarée, et non la preuve que MAME a raison
    (`docs/scsp_references.md` : jamais le consensus entre émulateurs comme preuve).
+
+**ET CE QU'ILS ACHÈTENT VRAIMENT N'EST PAS CE QUE J'AVAIS ANNONCÉ.** J'avais écrit que ces cinq cas
+achètent la cohérence avec la cible déclarée, et pas la preuve que MAME a raison — ce qui est vrai et reste
+vrai. Mais **quatre heures après les avoir écrits, ils ont arrêté une optimisation** : la variante
+`sortie_groupee` de §4 nonies groupait les tests de sortie d'un pas dans un masque qui englobait les
+écritures de `FRCL` et d'`ADRL`. Elle passait tous les autres tests, aurait passé le rejoueur et rendu le
+WAV identique à l'octet — **parce qu'aucun jeu ne pose ces deux champs**, et que rien d'autre ne les
+regarde. **Ces cas protègent les quatre champs contre nos propres optimisations**, et c'est à ce titre
+qu'ils valent le plus : le jour où ce dépôt servira un jeu qui les pose, ce sera grâce à eux.
 
 Et un chiffre que §4 septies a produit au passage : ces quatre-là, **quand on les pose**, coûtent
 **+1,078 ns par pas** au cœur de MAME et **+0,425** à celui du projet — le seul endroit du dépôt où leur

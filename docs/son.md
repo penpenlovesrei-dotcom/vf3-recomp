@@ -61,6 +61,8 @@ travail est de la **connaissance**, et une connaissance qu'on ne retrouve pas es
 | `tools/ghidra/FV2SonSautsIndirects.java` | résout les cinq derniers `jmp (An)` |
 | `tools/ghidra/FV2SonDonnees.java` | déclare les données, et **recompte** ce qui reste dehors |
 | `tools/ghidra/FV2SonListe.java` | sort les fonctions et leurs plages, sans rien changer — le témoin des trois précédents |
+| `tools/son/variantes-dsp.py`, `batir-variantes.py` | **les variantes du DSP à juger**, et un exe par variante : chacune appliquée, construite, passée aux dix tests, gardée seulement si les 24 fichiers sont au vert. Une variante non vérifiée qui gagne est pire qu'une qui perd |
+| `tools/son/mesurer-variantes.cmd` | **le jugement au compteur matériel** : une capture d'instructions retirées par variante. Demande une fenêtre **administrateur**, et le vérifie avant d'entrer dans la boucle |
 | `tools/son/comparer-son.cmd` | **le harnais différentiel** : deux WAV, même scène, comparaison à l'octet |
 | `tools/son/audibilite.py` | si deux WAV diffèrent, **est-ce audible** : bandes de Bark, masquage, seuil absolu, plancher ambiant |
 | `tools/son/comparer-madrs.cmd`, `mesurer-madrs.py` | le cas particulier du miroir MADRS |
