@@ -805,6 +805,52 @@ cotes. C'est tout ce dont la question avait besoin.
    que personne n'avait mesure. Le travail suivant est donc arithmetique : trouver, dans le chemin
    inevitable d'un pas, les instructions que MAME n'execute pas.
 
+### La chasse aux huit instructions, premiere piste : le pointeur restreint
+
++14,4 % d'instructions par pas, c'est **environ huit instructions** a trouver dans le chemin inevitable.
+Et la premiere piste ne vient pas des corps de boucle -- ils sont presque identiques, ligne pour ligne --
+mais de leurs **en-tetes**. Celui de MAME porte ceci, que celui du projet n'avait pas :
+
+```c++
+u16 *const __restrict rp = ram;
+```
+
+Son commentaire dit exactement pourquoi, et c'est une vraie promesse : la RAM son est celle du 68000, une
+allocation a part, et rien d'autre dans la fonction ne l'atteint. Sans `restrict`, le compilateur n'a aucun
+moyen de savoir qu'elle n'est pas **dans** cet objet -- donc un pas qui ecrit la ligne de retard pourrait,
+pour ce qu'il en sait, changer `dec`, `rbl`, `rbp`, ou n'importe quel mot de `TEMP` et de `MEMS`. Il doit
+tout relire apres chaque ecriture possible, c'est-a-dire a chaque pas, l'ecriture etant derriere un test.
+C'etait une explication complete, elegante, et attribuable a une ligne manquante.
+
+**Elle ne gagne rien. Defaite.**
+
+| | `maison`, ns par echantillon | |
+|---|---|---|
+| socle, A/B encadre | rapport 1,2180 → 1,2170 | **−0,08 %**, et les trois rapports se chevauchent |
+| forme du jeu (33 pas sur 112 font un acces) | 593,4 → 595,4 | plat |
+
+**ET IL FAUT DIRE COMMENT J'AI FAILLI LA GARDER.** Sur le programme du jeu, le RAPPORT `maison`/`mame`
+tombait de 1,161 a 1,081 -- un gain de 6,9 %, net sur trois tours. Il etait faux : `mame` y passait de
+~515 a ~551 ns **alors que seul `dsp_maison.cpp` avait change.** Mon pilote lancait toujours « sans » puis
+« avec », donc la machine chauffait et gonflait le denominateur du second. Le gain etait la derive, en
+entier. Le rapport, qui protegeait des deux lots du §4 octies, devient un piege des que **un seul des deux
+cotes** change : c'est alors l'ABSOLU du cote modifie qu'il faut lire, et lui ne bougeait pas.
+
+### Ce qu'il faudrait pour trouver ces huit instructions
+
+Le compteur sait les compter, il ne sait pas encore **ou** elles sont : `xperf` attribue par module, et nos
+binaires MinGW ne lui donnent aucun nom. Deux chemins, et aucun n'est long :
+
+1. **Faire la correspondance a la main.** Les echantillons `PmcInterrupt` portent une adresse ; `nm` ou
+   `objdump` donne les plages de chaque fonction de l'exe. Rien n'empeche de convertir les unes en les
+   autres hors ligne, et l'attribution devient alors par fonction, voire par ligne avec les tables DWARF.
+2. **Construire ce banc avec un compilateur qui emet un PDB** (clang-cl, ou `-gcodeview`), pour ce banc
+   seulement. `xperf` nommerait tout, et le reste du depot ne changerait pas.
+
+Le premier ne demande rien d'autre que du travail ; le second demande de verifier que le code mesure est
+bien le meme. Et la question, elle, est maintenant posee proprement : **ou sont les huit instructions que
+MAME n'execute pas ?**
+
 ### Ce qui manque encore, et c'est une seule chose
 
 **Le rapport des CYCLES.** La capture de `mame` est faite ; celle de `maison` ne l'est pas. Avec les deux on
