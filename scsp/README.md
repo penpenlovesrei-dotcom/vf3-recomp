@@ -28,7 +28,19 @@ recontroler ces nombres. Pour cela, c'est `fv2-recomp`.
 Ce qu'il peut faire seul, et c'est deja beaucoup : se construire sans une ligne de MAME, et passer ses sept
 tests de bloc.
 
-## D'ou il vient
+## D'ou il vient, et comment il y retourne
 
-Sorti de `fv2-recomp` par `tools/son/exporter-scsp.py`. Les chemins sont les memes des deux cotes, donc un
-`diff` entre les deux reste lisible.
+Ce depot est un `git subtree` de `fv2-recomp`, sous le prefixe `scsp/`. Les chemins sont les memes des
+deux cotes : `src/sound/scsp_maison.cpp` ici est `scsp/src/sound/scsp_maison.cpp` la-bas, donc un `diff`
+entre les deux se lit sans traduction. Depuis le portage, dans les deux sens :
+
+    git subtree push --prefix=scsp scsp main      ce qui a change ici part la-bas
+    git subtree pull --prefix=scsp scsp main      et ce qui a change la-bas revient
+
+Rien ne recopie, rien ne s'exporte : chaque commit de `main` est celui du portage, avec son message et son
+auteur. Ce n'est pas la meme chose qu'une archive deposee, et c'est tout le point.
+
+**L'histoire commence au jour ou le sous-systeme a pris son prefixe**, pas a sa premiere ligne. Les
+quarante commits qui l'ont fait -- le contrat, les sept tests de bloc, le DSP, chaque mesure -- sont dans
+`fv2-recomp`, ou `git log --follow scsp/src/sound/scsp_maison.cpp` les remonte tous. Un `subtree split` ne
+peut pas les faire traverser : avant le deplacement, le prefixe `scsp/` n'existait pas.
