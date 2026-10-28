@@ -1,6 +1,7 @@
 #include "scsp_maison.h"
 
 #include "scsp_contract.h"
+#include "scsp_select.h"
 #include "sound_prof.h"
 
 #include <algorithm>
@@ -1086,3 +1087,39 @@ void scsp_maison::midi_in(u8 octet)
 	m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | 0x8);
 	verifier_attente();
 }
+
+// -----------------------------------------------------------------------------------------------------
+// L'INSCRIPTION AU SELECTEUR, ici et non dans scsp_select.cpp : c'est ce qui fait que le selecteur ne
+// connait aucune classe concrete, donc qu'un binaire lie sans MAME n'a pas MAME (scsp_select.h). Les trois
+// derniers rendent faux quand le coeur passe n'est pas celui-ci -- le dynamic_cast vit dans le seul fichier
+// qui connait le type.
+// -----------------------------------------------------------------------------------------------------
+namespace {
+
+std::unique_ptr<scsp::core> fabrique(scsp::u32 horloge, scsp::u16 *ram, scsp::u32 ram_octets, scsp::sink &puits)
+{
+	return std::make_unique<scsp_maison>(horloge, ram, ram_octets, puits);
+}
+
+bool pose_miroir(scsp::core &c, bool on)
+{
+	if (auto *x = dynamic_cast<scsp_maison *>(&c)) { x->set_madrs_mirror(on); return true; }
+	return false;
+}
+
+bool lit_miroir(const scsp::core &c, bool &out)
+{
+	if (auto *x = dynamic_cast<const scsp_maison *>(&c)) { out = x->madrs_mirror(); return true; }
+	return false;
+}
+
+bool lit_gain(const scsp::core &c, float &out)
+{
+	if (auto *x = dynamic_cast<const scsp_maison *>(&c)) { out = x->output_gain(); return true; }
+	return false;
+}
+
+const scsp::inscription INSCRIPTION = { "maison", fabrique, pose_miroir, lit_miroir, lit_gain };
+const scsp::inscrit INSCRIT{ INSCRIPTION };
+
+} // namespace

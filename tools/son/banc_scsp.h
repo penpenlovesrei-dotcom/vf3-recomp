@@ -10,9 +10,11 @@
 // sur la puce est ecrite.
 #pragma once
 
+// AUCUNE CLASSE CONCRETE ICI, et c'est le point : le contrat, l'interface et le selecteur suffisent.
+// Ce fichier incluait scsp_maison.h ET scsp_mame.h pour les deux aiguillages du bas, si bien que les
+// huit tests de bloc liaient le coeur de MAME par lui -- sans aucune raison de fond, leurs references
+// etant des nombres geles. Coupe le 2026-10-28 ; `make test-sans-mame` est la mesure que c'est fini.
 #include "../../src/sound/scsp_contract.h"
-#include "../../src/sound/scsp_maison.h"
-#include "../../src/sound/scsp_mame.h"
 #include "../../src/sound/scsp_select.h"
 
 #include <cstdio>
@@ -143,18 +145,11 @@ inline std::string suite(const std::vector<std::int32_t> &v, int diviseur)
 // MADRS et le volume maitre. scsp_core.h dit pourquoi elles n'y sont pas -- elles appartiennent au portage
 // et non a la puce -- et ces deux aiguilleurs sont la MESURE de ce qui manque encore a l'interface. Le jour
 // ou ils disparaissent, la dette est payee.
-inline bool pose_miroir(scsp::core &c, bool on)
-{
-	if (auto *m = dynamic_cast<scsp_mame *>(&c)) { m->device().set_madrs_mirror(on); return true; }
-	if (auto *n = dynamic_cast<scsp_maison *>(&c)) { n->set_madrs_mirror(on); return true; }
-	return false;
-}
-
-inline float gain_expose(scsp::core &c)
-{
-	if (auto *m = dynamic_cast<scsp_mame *>(&c)) return m->device().output_gain();
-	if (auto *n = dynamic_cast<scsp_maison *>(&c)) return n->output_gain();
-	return -1.0f;
-}
+//
+// ILS NE SONT PLUS ECRITS ICI. Les voici passes a scsp_select.h, qui les fait repondre par le COEUR INSCRIT
+// et non par un dynamic_cast ecrit sur place : c'est ce qui permet a ce banc de ne nommer aucune classe
+// concrete. Les deux noms restent, parce que les tests les emploient et que ce fichier est leur vocabulaire.
+inline bool pose_miroir(scsp::core &c, bool on) { return scsp::regle_miroir_madrs(c, on); }
+inline float gain_expose(const scsp::core &c) { return scsp::gain_expose(c); }
 
 } // namespace banc

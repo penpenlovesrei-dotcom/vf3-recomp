@@ -224,7 +224,7 @@ Repris du cahier des charges, et rendus vérifiables ici :
 | 5 | le coût processeur est mesuré contre la ligne de base | `VF3_PROF=1`, même scène, même machine, et la répartition avec `VF3_SND_PROF=1` |
 | 6 | aucun gain annoncé sans chiffres refaisables | les commandes sont dans `docs/scsp_benchmark_baseline.md` |
 | 7 | les dépendances et les licences sont documentées | `docs/scsp_audit.md` §2, `docs/scsp_references.md`, `third_party/README.md` |
-| 8 | le repli reste utilisable pendant la validation | le sélecteur de l'étape 2, et l'ancien cœur derrière |
+| 8 | le repli reste utilisable pendant la validation | le sélecteur de l'étape 2, et l'ancien cœur derrière. Depuis le 2026-10-28 **chaque cœur s'inscrit dans son propre `.cpp`** : le sélecteur ne nomme plus aucune classe concrète, donc ce qui est lié décide ce qui existe, et `make test-sans-mame` construit les sept tests de bloc **sans une ligne du cœur de MAME** — le dernier préalable d'un dépôt séparé |
 
 **État au 2026-10-24 :** 1 ✔, 2 non revérifié depuis les lots (les lots ne touchent pas le PowerPC, et
 `verifier-vf3.cmd` ne regarde pas le son — à lancer quand même), 3 ✔ sur les deux jeux, 4 ✔ (aucun écart),

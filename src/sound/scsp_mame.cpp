@@ -1,5 +1,7 @@
 #include "scsp_mame.h"
 
+#include "scsp_select.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -95,3 +97,37 @@ void scsp_mame::midi_in(std::uint8_t byte)
 {
 	m_dev->midi_in_byte(byte);
 }
+
+// -----------------------------------------------------------------------------------------------------
+// L'INSCRIPTION AU SELECTEUR, ici et non dans scsp_select.cpp (scsp_select.h dit pourquoi) : un binaire
+// qui ne lie pas ce fichier n'a pas de coeur "mame", et son selecteur le dit.
+// -----------------------------------------------------------------------------------------------------
+namespace {
+
+std::unique_ptr<scsp::core> fabrique_mame(scsp::u32 horloge, scsp::u16 *ram, scsp::u32 ram_octets, scsp::sink &puits)
+{
+	return std::make_unique<scsp_mame>(horloge, ram, ram_octets, puits);
+}
+
+bool pose_miroir_mame(scsp::core &c, bool on)
+{
+	if (auto *x = dynamic_cast<scsp_mame *>(&c)) { x->device().set_madrs_mirror(on); return true; }
+	return false;
+}
+
+bool lit_miroir_mame(const scsp::core &c, bool &out)
+{
+	if (auto *x = dynamic_cast<const scsp_mame *>(&c)) { out = x->device_const().madrs_mirror(); return true; }
+	return false;
+}
+
+bool lit_gain_mame(const scsp::core &c, float &out)
+{
+	if (auto *x = dynamic_cast<const scsp_mame *>(&c)) { out = x->device_const().output_gain(); return true; }
+	return false;
+}
+
+const scsp::inscription INSCRIPTION_MAME = { "mame", fabrique_mame, pose_miroir_mame, lit_miroir_mame, lit_gain_mame };
+const scsp::inscrit INSCRIT_MAME{ INSCRIPTION_MAME };
+
+} // namespace

@@ -98,7 +98,7 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 |---|---|
 | `tools/son/rejouer.cpp`, `rejouer.cmd` | **le rejoueur** : une trace d'accès rejouée dans un ou deux cœurs, et la première divergence située à l'échantillon — PCM, interruptions, armements de timer, lectures de registre, MIDI sortant. Le `.cmd` prend la trace et lance les deux contrôles en une commande |
 | `tools/son/mesurer-coeur.cpp` | **ce qu'un cœur coûte, par poste** : à vide, les fentes seules, le DSP seul, les deux. Le rejoueur compare à l'octet mais son temps est dominé par l'analyse de trace — celui-ci ne chronomètre que `run()`. C'est lui qui a dit que le coût était dans **les fentes et non le DSP** |
-| `tools/son/banc_scsp.h` | le montage que les tests de bloc partagent : un cœur neuf, sa RAM, le keyage d'une fente par la table du contrat. **Aucune attente** n'y vit — ce qu'on attend d'un bloc appartient au test de ce bloc |
+| `tools/son/banc_scsp.h` | le montage que les tests de bloc partagent : un cœur neuf, sa RAM, le keyage d'une fente par la table du contrat. **Aucune attente** n'y vit — ce qu'on attend d'un bloc appartient au test de ce bloc. Et **aucune classe concrète** depuis le 2026-10-28 : il liait le cœur de MAME à sept tests pour deux aiguillages, passés à `scsp_select.h` (`make test-sans-mame`) |
 | `tools/son/test_scsp_dsp.cpp` | **le jeu d'instructions du DSP**, et c'est une **spécification** avant d'être un test : ce jeu d'instructions n'existe nulle part écrit. Huit cas, observés par la fenêtre de registres et par la RAM. Il a sorti le pas de retard du shifter. Bloc 5 |
 | `tools/son/test_scspdsp.cpp` | les deux corps du DSP contre une référence qui décode dans la boucle. 16 cas, dont les quatre contrôles qu'aucun jeu ne pose |
 | `tools/son/test_scsp_core.cpp` | **MAME piloté uniquement par l'interface neuve**, registres écrits par la table du contrat : un champ faux y coupe le son |
@@ -141,3 +141,15 @@ Et il n'y a encore rien d'autonome à extraire : la puce est toujours celle de M
 
 **Le moment de séparer est nommé** : quand le cœur autonome existera et passera le harnais différentiel.
 Alors il ne dépendra plus du jeu, la frontière de licence sera propre, et la séparation ne coûtera rien.
+
+**Où en est ce moment, au 2026-10-28.** Le cœur existe et passe le harnais — à l'octet sur la scène entière, et
+de bout en bout dans le jeu. Et le dernier préalable est tombé le même jour : les sept tests de bloc
+liaient les 2 110 lignes du cœur de MAME **par `tools/son/banc_scsp.h`**, pour deux aiguillages de trois lignes.
+Chaque cœur s'inscrit maintenant dans son propre `.cpp` (`src/sound/scsp_select.h`), donc **ce qui est lié
+décide ce qui existe**, et `make test-sans-mame` construit ces sept tests avec le seul cœur du projet —
+`scsp_select.o`, `scsp_maison.o`, `dsp_maison.o`, rien d'autre. Ce n'est plus une intention : c'est une cible,
+que `make test` refait à chaque fois.
+
+Ce qui reste avant de séparer n'est donc plus technique : **la preuve vit toujours dans le jeu**, et c'est
+l'argument de cette section. Trois tests ne partiraient pas — `test_scsp_core`, `test_scspdsp` et
+`test_scsp_contract` ont le cœur de MAME pour sujet — et le contrat se vérifie contre la ROM du pilote.

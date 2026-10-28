@@ -88,7 +88,9 @@ $(BIN)/test_scsp_contract: $(call objs,tools/son/test_scsp_contract.cpp)
 # MAME's SCSP driven ONLY through the new interface (tools/son/test_scsp_core.cpp): step 3 of the migration
 # plan, the one that decides whether the contract holds. Writes its registers through scsp_contract.h's own
 # field table, so a wrong field there stops the sound here instead of in a game.
-$(BIN)/test_scsp_core: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/core/mame_shim.cpp tools/son/test_scsp_core.cpp)
+# (scsp_select.cpp est la depuis que chaque coeur S'INSCRIT dans son propre .cpp : lier un coeur demande de
+# lier le registre. Ce test n'emploie pas le selecteur -- il construit scsp_mame directement, c'est son sujet.)
+$(BIN)/test_scsp_core: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/core/mame_shim.cpp tools/son/test_scsp_core.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
@@ -147,6 +149,29 @@ $(BIN)/mesurer-coeur: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/s
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+# LA PREUVE QUE LA DEPENDANCE AU COEUR DE MAME EST COUPEE, et c'est une cible et non une phrase.
+#
+# Les sept tests ci-dessous ne parlent que de scsp::core, du contrat et du selecteur ; ils liaient pourtant
+# les 2 110 lignes du coeur de MAME, par les deux aiguillages de tools/son/banc_scsp.h et par un troisieme
+# dans test_scsp_regs.cpp -- sans aucune raison de fond, leurs references etant des nombres geles. Depuis que
+# chaque coeur s'inscrit dans son propre .cpp (src/sound/scsp_select.h), CE QUI EST LIE DECIDE CE QUI EXISTE,
+# et ces memes tests se construisent avec le seul coeur du projet. C'est le dernier prealable d'un depot
+# separe (docs/scsp_migration_plan.md), et `make test` le refait a chaque fois pour que ca ne rouille pas.
+#
+# Les trois autres tests ne sont pas ici, et pour une bonne raison chacun : test_scsp_core pilote MAME par
+# l'interface neuve, test_scspdsp mesure les deux corps du DSP de MAME, test_scsp_contract lit les macros de
+# scsp.cpp. Leur sujet EST le coeur de MAME.
+MAISON_SEUL = src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp
+SANS_MAME = test_scsp_regs test_scsp_fentes test_scsp_adsr test_scsp_lfo test_scsp_irq test_scsp_mix test_scsp_dsp
+
+$(BIN)/sans-mame/%: $(call objs,$(MAISON_SEUL)) $(OBJ)/tools/son/%.o
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+test-sans-mame: $(addprefix $(BIN)/sans-mame/,$(SANS_MAME))
+	@echo "---- les memes tests, lies SANS une ligne du coeur de MAME ----"
+	@for t in $(SANS_MAME); do $(BIN)/sans-mame/$$t maison || exit 1; done
+
 test: $(BIN)/test_scsp_dsp $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_fentes $(BIN)/test_scsp_adsr $(BIN)/test_scsp_lfo $(BIN)/test_scsp_irq $(BIN)/test_scsp_mix
 	$(BIN)/test_scspdsp
 	$(BIN)/test_scsp_dsp mame
@@ -165,9 +190,10 @@ test: $(BIN)/test_scsp_dsp $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/
 	$(BIN)/test_scsp_irq maison
 	$(BIN)/test_scsp_mix mame
 	$(BIN)/test_scsp_mix maison
+	@$(MAKE) --no-print-directory test-sans-mame
 
 clean:
 	rm -rf build
 
-.PHONY: all clean test FORCE
+.PHONY: all clean test test-sans-mame FORCE
 -include $(shell find $(OBJ) -name '*.d' 2>/dev/null)

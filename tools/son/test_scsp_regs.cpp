@@ -21,8 +21,6 @@
 // prouve qu'ils n'ont pas change. C'est exactement ce qu'on veut d'un filet avant de reecrire un bloc, et
 // ce n'est pas plus que ca.
 #include "../../src/sound/scsp_contract.h"
-#include "../../src/sound/scsp_maison.h"
-#include "../../src/sound/scsp_mame.h"
 #include "../../src/sound/scsp_select.h"
 
 #include <cstdio>
@@ -56,14 +54,9 @@ bool intouchable(std::uint32_t octet, const char *&pourquoi)
 }
 
 // Le reglage du miroir MADRS n'est PAS dans scsp::core, et scsp_core.h dit pourquoi : il appartient au
-// portage et non a la puce. Il se pose donc par la classe concrete -- seul endroit de ce fichier ou le nom du
-// coeur compte, et c'est aussi la mesure de ce qui manque encore a l'interface.
-bool pose_miroir(scsp::core &c, bool on)
-{
-	if (auto *m = dynamic_cast<scsp_mame *>(&c)) { m->device().set_madrs_mirror(on); return true; }
-	if (auto *n = dynamic_cast<scsp_maison *>(&c)) { n->set_madrs_mirror(on); return true; }
-	return false;
-}
+// portage et non a la puce. Il passe donc par scsp_select.h, qui le fait repondre par le coeur INSCRIT --
+// c'etait la troisieme copie du meme dynamic_cast dans ce depot, et elle liait MAME a ce test pour rien.
+bool pose_miroir(scsp::core &c, bool on) { return scsp::regle_miroir_madrs(c, on); }
 
 } // namespace
 

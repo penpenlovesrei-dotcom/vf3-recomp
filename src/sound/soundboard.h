@@ -10,7 +10,9 @@
 // 44.1 kHz.
 #pragma once
 #include "scsp.h"
-#include "scsp_maison.h"
+// (plus de scsp_maison.h : le miroir MADRS passait par un dynamic_cast ecrit ici, il passe
+// maintenant par scsp_select.h, et la carte ne nomme donc plus que le coeur dont elle tire ses
+// trois extras -- celui de MAME)
 #include "scsp_mame.h"
 #include "scsp_select.h"
 #include "scsp_trace.h"
