@@ -888,9 +888,12 @@ Deux crans plus fins ont ete essayes, et **aucun des deux n'est utilisable** :
 |---|---|
 | **par ligne de source** (tables DWARF, `addr2line`) | a `-O2` l'inlining brouille tout : plusieurs « lignes chaudes » sont des COMMENTAIRES, et `std::clamp` apparait comme `stl_algo.h:3617` chez le coeur du projet alors qu'il s'est fait replier dans la ligne appelante chez MAME. Les deux colonnes ne mesurent pas la meme chose |
 | **par instruction** (desassemblage, echantillon rattache a l'instruction precedente) | **le decalage d'echantillonnage.** Sans PEBS, un echantillon PMC atterrit plusieurs instructions apres celle qui a retire, et il s'accumule sur certaines : `test` et `ja` portent a elles deux la moitie des echantillons du coeur du projet, et MAME sort a 70 % de charges. Deux dispositions de code se decalent differemment, donc les deux histogrammes ne sont pas comparables **entre eux** |
+| **par instruction, seconde tentative** : prendre pour chemin l'ENSEMBLE des adresses touchees, en se disant qu'un echantillon atterrit toujours sur une instruction ATTEINTE | **le `PrgrmCtr` d'`xperf` n'est pas une adresse d'instruction.** Desassemblage cale sur le symbole de chaque boucle, donc sur un debut sur : **21 des 84 adresses chaudes de MAME et 35 des 104 du projet** y tombent, soit **2 % et 22 % des echantillons**. Les deux tiers des adresses ne designent aucune instruction, et l'ensemble n'est donc pas le chemin |
 
-Le niveau fonction, lui, est robuste : le decalage porte sur quelques instructions, les corps de boucle en
-font 140. Un seul chiffre indicatif survit au cran du dessous, et il vaut d'etre note : **84 adresses
+Le niveau fonction, lui, est robuste, et pour une raison qu'on peut chiffrer : les deux corps de boucle
+font **1 072 et 1 248 octets**, soit 283 et 307 instructions ; un decalage de quelques dizaines d'octets
+reste donc dans la meme fonction. **Le cran sous la fonction n'existe pas avec cet outillage** -- trois
+tentatives, trois raisons differentes, aucune contournable sans PEBS ou sans PDB. Un seul chiffre indicatif survit au cran du dessous, et il vaut d'etre note : **84 adresses
 distinctes touchees dans la boucle de MAME contre 104 dans celle du projet**, soit vingt instructions de
 plus sur le chemin reellement execute.
 
