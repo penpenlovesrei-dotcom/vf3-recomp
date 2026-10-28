@@ -155,12 +155,39 @@ par le jeu à chaque rejeu.
   double-clic sur `mesurer-concurrence.cmd`. Lire son `LISEZ-MOI.txt` avant de commenter les chiffres —
   notamment le piège des cadences avec `VF3_SND_OFF`.
 
-**Bloqué sur un instrument qui manque**
+**Une capture, et le socle du DSP est tranché**
 
-- **Le socle du DSP.** Trois instruments s'accordent sur l'endroit — le socle, par pas — et divergent sur la
-  cause. Ce qu'il faudrait : un **compteur matériel** — cycles, instructions retirées, branchements mal
-  prédits, défauts de cache — sur deux boucles de même taille. La question est maintenant assez étroite pour
-  qu'un seul passage y réponde, ce qui n'était pas vrai le matin.
+Le compteur matériel **est** sur cette machine — je l'avais déclaré absent deux fois sans le chercher, et
+`scsp_audit.md` §4 nonies porte la correction et la mesure. Ce qu'il dit :
+
+| par pas de DSP | rapport `maison` / `mame` |
+|---|---|
+| instructions retirées | **×1,144 — +14,4 %** |
+| branchements mal prédits | **×1,010 — identiques** |
+
+**Ce ne sont pas les branchements** : les 31 de `dsp_maison::boucle` contre les 16 de MAME sont parfaitement
+prédits, ils coûtent leur décodage et non leur raté — ce qui explique enfin pourquoi les deux lots du
+point 7 perdaient. **Ce sont les instructions, +14,4 % par pas**, et c'est le premier chiffre de l'enquête
+qu'on puisse viser.
+
+Seuls les **rapports** sont publiables : l'intervalle qu'`xperf -pmcsources` annonce ne tient pas à
+l'arithmétique, donc aucune valeur absolue n'est utilisable (§4 nonies le détaille).
+
+**Il reste une capture à faire**, et elle demande un terminal **administrateur** — mes terminaux ne
+s'élèvent pas. Celle de `mame` est faite, celle de `maison` non. Avec les deux, on saurait s'il y a en plus
+une perte d'IPC d'environ 8 %, que le quotient laisse deviner. Dans une fenêtre administrateur, depuis le
+dépôt, ligne par ligne :
+
+```
+$x = "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\xperf.exe"
+& $x -on PROC_THREAD+LOADER+PMC_PROFILE -PmcProfile UnhaltedCoreCyclesFixed
+.\build\bin\mesurer-coeur.exe --socle maison 2000000
+& $x -stop -d C:\Temp\cyc-maison.etl
+```
+
+La ligne du milieu doit imprimer son `ns/pas` **avant** le `-stop` : c'est le signe que le banc a tourné
+dans la capture. Et fermer le jeu d'abord — une capture a déjà été perdue parce que `vf3.exe` prenait les
+cycles. L'analyse, elle, ne demande pas d'élévation.
 
 **Rien à faire**
 
@@ -178,6 +205,7 @@ par le jeu à chaque rejeu.
 |---|---|
 | `mesurer-coeur --dsp` | le DSP par caractéristique, les deux cœurs, socle déduit |
 | `mesurer-coeur --socle` | le socle seul, sept passages — pour entrelacer une référence et une variante |
+| `mesurer-coeur --socle <cœur>` | **un seul cœur par processus** — pour qu'un compteur matériel l'attribue sans lire nos symboles MinGW |
 | `make test-sans-mame` | les sept tests de bloc liés sans une ligne du cœur de MAME |
 | `VF3_SND_PROF=1` | n'a plus besoin de `VF3_PROF`, exige `--wav`, et vaut pour les deux cœurs |
 | trace `# scsp-trace 2` | l'en-tête porte `miroir=0|1` ; une trace v1 est refusée |

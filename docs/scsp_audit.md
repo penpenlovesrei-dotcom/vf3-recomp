@@ -670,8 +670,14 @@ Et la barre ne change pas : **WAV identique a l'octet**, empreinte `9A2310F8AF00
 
 **Ce qui reste hors de portee**, et il vaut mieux l'ecrire : pourquoi 145 instructions au lieu de 108 pour
 le meme algorithme ecrit de la meme facon, un compteur materiel le dirait en un passage — instructions
-retirees, branchements mal predits, cycles. Ce poste n'en a pas. La question est maintenant assez etroite
-pour qu'un profileur y reponde d'un coup, ce qui n'etait pas vrai ce matin.
+retirees, branchements mal predits, cycles. La question est maintenant assez etroite pour qu'un profileur y
+reponde d'un coup, ce qui n'etait pas vrai ce matin.
+
+> **« Ce poste n'en a pas » — ET C'ETAIT FAUX, voir §4 nonies.** La phrase est restee la une journee entiere
+> et elle a servi deux fois a conclure. Le Windows Performance Toolkit est installe sur cette machine, avec
+> les compteurs qu'il fallait. Je ne l'avais pas cherche. Le compteur a repondu le 2026-10-28 : les
+> branchements mal predits sont **identiques** des deux cotes, et ce sont les instructions qui sont plus
+> nombreuses.
 
 ### Ce que ce banc ne peut pas dire
 
@@ -724,11 +730,16 @@ et la fin des essais.
    double du lot A. Lire un octet est moins cher que deballer un champ, et la boucle fait ca 112 fois par
    echantillon.
 
-4. **ET L'ENSEMBLE DIT OU EST LA LIMITE DE CE POSTE.** Trois instruments ont maintenant parle — le banc par
+4. **ET L'ENSEMBLE DIT CE QU'IL FAUT ALLER CHERCHER.** Trois instruments ont parle — le banc par
    caracteristique, l'assembleur, et ces deux lots — et ils s'accordent sur l'endroit (le socle, par pas) et
-   divergent sur la cause. Ce qui manque n'est plus une idee mais **un compteur materiel** : cycles,
-   instructions retirees, branchements mal predits, defauts de cache, sur deux boucles de meme taille. La
-   question est etroite ; l'instrument n'est pas la.
+   divergent sur la cause. Ce qu'il faut est **un compteur materiel** : cycles, instructions retirees,
+   branchements mal predits, defauts de cache, sur deux boucles de meme taille.
+
+   > **ET IL EST SUR CETTE MACHINE.** J'ai ecrit ici « l'instrument n'est pas la » sans l'avoir cherche.
+   > `xperf`, du Windows Performance Toolkit, est installe. Mesure le meme jour, **§4 nonies** : les
+   > branchements mal predits sont identiques, donc la conclusion 1 ci-dessus est juste pour une raison
+   > qu'elle ne donnait pas — les branchements supplementaires sont **parfaitement predits**, ils coutent
+   > leur decodage et non leur raté.
 
 ### Ce qui a ete garde de ces deux lots
 
@@ -736,6 +747,74 @@ et la fin des essais.
 ci-dessus ont ete refaites apres le retour pour le verifier. Ce qui reste est `mesurer-coeur --socle`, ecrit
 pour ces essais et qui sert a tout essai suivant : il entrelace une reference et une variante du meme
 fichier, ce qu'il fallait pour voir que le lot A perdait 7 % quand la machine, elle, derivait de 19 %.
+
+
+## 4 nonies. Le compteur materiel : ce ne sont pas les branchements, ce sont les instructions
+
+**Et d'abord une correction, parce qu'elle a coute une journee de conclusions.** §4 septies et §4 octies
+disent tous les deux qu'il n'y a pas de compteur materiel sur ce poste. **C'est faux.** Le Windows
+Performance Toolkit y est installe — `xperf` — et il expose `InstructionRetired`,
+`BranchMispredictsRetired`, `UnhaltedCoreCycles`, `CacheMisses`, `LLCMisses` et `BranchInstructionRetired`.
+Je l'avais declare absent sans le chercher, deux fois, et les deux sections s'arretaient la.
+
+### Ce qu'il a fallu pour que la mesure sorte, et ca valait d'etre note
+
+Quatre tentatives, et aucune des trois premieres ne dit qu'elle echoue :
+
+| | pourquoi ca ne sortait rien |
+|---|---|
+| sans elevation | `Failed to configure counters` — le seul message franc des quatre |
+| `-Pmc <compteurs> CSWITCH` | compte sur un evenement : `-a perfctrs` rend `No Counter Info`, `-a pmc` un en-tete sans lignes, et les evenements `CSwitch` ne portent pas de colonne de compteur |
+| `-PmcProfile` avec `-on PROC_THREAD+LOADER` | le bon commutateur, mais **le groupe noyau qui enregistre les echantillons n'etait pas allume** : 54 885 `UnknownEvent/Classic` et pas un `PmcInterrupt` |
+| `-on PROC_THREAD+LOADER+PMC_PROFILE` | **celui-la marche.** `PMC_PROFILE : PMC sampling events`, et `xperf -providers K` le nomme lui-meme |
+
+Et un piege de plus, qui n'est pas d'`xperf` : nos binaires sortent de MinGW, donc en **DWARF sans PDB**, que
+`xperf` ne lit pas. Il n'aurait nomme aucune fonction. D'ou `mesurer-coeur --socle <coeur>`, ecrit pour
+l'occasion : **un seul coeur par processus**, et les compteurs du processus sont alors ceux du socle de ce
+coeur-la. 99,9 % des echantillons tombent dans notre propre module ; le reste est du bruit noyau.
+
+### Ce que le compteur dit
+
+Deux captures, `--socle mame 2000000` et `--socle maison 2000000`, 1 568 000 000 pas de DSP chacune :
+
+| | `mame` | `maison` | rapport |
+|---|---|---|---|
+| **instructions retirees** | 1 404 064 ech. | 1 605 796 ech. | **×1,144 — +14,4 %** |
+| **branchements mal predits** | 608 ech. | 614 ech. | **×1,010 — identiques** |
+
+**LES RAPPORTS SEULS SONT PUBLIABLES, ET IL FAUT DIRE POURQUOI.** `xperf -pmcsources` annonce un intervalle
+de 65 536 evenements par echantillon, et ce nombre ne tient pas : applique a la capture de cycles, il donne
+2,14 milliards de cycles sur 4,09 secondes de travail, soit 523 MHz — impossible. Applique aux instructions,
+il donnerait 22,5 milliards d'instructions par seconde sur un seul fil, ce qui n'existe pas non plus.
+L'intervalle REEL n'est donc pas celui qui est affiche, et **aucune valeur absolue n'est utilisable**. Les
+rapports, eux, ne dependent pas de l'intervalle : meme compteur, meme charge, meme nombre de pas des deux
+cotes. C'est tout ce dont la question avait besoin.
+
+### Les deux conclusions
+
+1. **CE NE SONT PAS LES BRANCHEMENTS.** `BranchMispredictsRetired` est le meme a 1 % pres — environ un rate
+   tous les quarante pas, des deux cotes. Les 31 branchements de `dsp_maison::boucle` contre les 16 de MAME
+   sont donc **parfaitement predits** : ils coutent leur decodage, pas leur raté. L'hypothese de §4 septies
+   tombe pour de bon, et elle explique enfin pourquoi les deux lots de §4 octies perdaient — **ils
+   enlevaient quelque chose qui ne coutait rien**, en ajoutant du cache (lot A) ou du deballage de bits
+   (lot B).
+
+2. **CE SONT LES INSTRUCTIONS : +14,4 % par pas.** Et c'est le premier chiffre de toute cette enquete qu'on
+   puisse viser. Le comptage statique de §4 septies donnait +34 % (145 contre 108) ; le dynamique en donne
+   **+14,4 %**, donc une bonne partie de ces 145 ne s'execute pas dans le socle — ce qui etait attendu, et
+   que personne n'avait mesure. Le travail suivant est donc arithmetique : trouver, dans le chemin
+   inevitable d'un pas, les instructions que MAME n'execute pas.
+
+### Ce qui manque encore, et c'est une seule chose
+
+**Le rapport des CYCLES.** La capture de `mame` est faite ; celle de `maison` ne l'est pas. Avec les deux on
+saurait s'il y a, en plus des 14,4 % d'instructions, une perte d'IPC — le quotient le laisse deviner : 14,4 %
+d'instructions en plus devraient donner 3,107 ns par pas, et le banc en mesure environ 3,35. Il resterait
+donc **environ 8 % a expliquer autrement** que par le nombre d'instructions. La commande est dans la reprise.
+
+**ET LA LECON DE METHODE, qui vaut plus que la mesure :** j'ai ecrit deux fois « ce poste n'a pas de compteur
+materiel » sans lancer une seule commande pour le verifier, et les deux sections se sont arretees sur cette
+phrase. Un instrument declare absent ferme une piste aussi surement qu'une mesure fausse.
 
 
 ## 5. Ce que le programme DSP contient vraiment
