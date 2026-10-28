@@ -127,5 +127,25 @@ VARIANTES = [
 # ECRITE D'ABORD DANS LE LITTERAL, par `VARIANTES[1:]`, elle etait VIDE : le nom n'est pas encore lie a cet
 # endroit, et les scripts qui lisent ce fichier par `exec` le pre-definissent a []. La variante passait donc
 # les dix tests et mesurait exactement comme le temoin, ce qui ressemblait a un resultat.
-VARIANTES.append(("tout", "les quatre gagnantes ensemble",
+VARIANTES.append(("tout", "les quatre qui gagnaient AU SOCLE, ensemble",
                   [p for _, _, patches in VARIANTES[1:] for p in patches]))
+
+# ET CELLES QUI GAGNENT LA OU CA COMPTE. Mesure du 2026-10-28 au compteur d'instructions, sur les DEUX
+# programmes, et le classement se renverse presque entierement :
+#
+#                        socle        forme du jeu
+#   ysel_coef_premier   -1,55 %         -3,06 %      <- gagne des deux cotes
+#   shift_deux_bits     -3,03 %         -1,10 %      <- gagne des deux cotes
+#   sortie_groupee      -6,02 %         +0,91 %
+#   tout                                +3,27 %
+#   entree_paresseuse  -15,00 %         +4,75 %      <- la grande gagnante du socle, la pire du jeu
+#
+# `entree_paresseuse` ajoute un test par pas pour eviter de calculer une entree dont, dans le vrai
+# programme, 37 pas sur 112 ont besoin par XSEL et 23 par IWT (docs/scsp_audit.md §5). Elle paie donc le
+# test ET le calcul. Dans le socle, XSEL est nul PARTOUT : l'entree y est calculee puis jetee 112 fois par
+# echantillon, et c'est le seul endroit ou sa paresse rapporte.
+#
+# Le socle situe un cout ; il ne dit pas ce qu'une modification rend. Il a fallu les deux programmes.
+NOMS_GAGNANTES = ('ysel_coef_premier', 'shift_deux_bits')
+VARIANTES.append(("gagnantes", "les deux qui gagnent sur le programme du jeu",
+                  [p for n, _, patches in VARIANTES for p in patches if n in NOMS_GAGNANTES]))
