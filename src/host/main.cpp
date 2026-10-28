@@ -3042,6 +3042,44 @@ int main(int argc, char **argv)
 	};
 	auto on_off = [](bool b) { return std::string(b ? "On" : "Off"); };
 	auto wrap = [](int v, int n) { return (v % n + n) % n; };
+	// THE PLAY STYLE, in one place because two menus offer it: this port's own under Escape, and the
+	// console's own GAME page. Three ways round, and only two where the console way is not known -- it is
+	// one game's, and offering it on another would be offering nothing.
+	auto switch_play_style = [&](int d) {
+				const int n = console_known ? 3 : 2;
+				int i = (cfg.arcade ? 1 : cfg.console ? 2 : 0) + (d < 0 ? n - 1 : 1);
+				i %= n;
+				cfg.arcade = i == 1;
+				cfg.console = i == 2;
+				// AND WHAT WAS BORROWED IS GIVEN BACK BEFORE THE BORROWER IS REPLACED: the way out of a match
+				// lends itself VS FINISH, and the line below forgets which value it was (console_play.h).
+				cplay.return_vs_finish(board);
+				cplay = console_play();   // (a style changed mid-session: nothing of the last one is carried over)
+				cplay.on = cfg.console && console_known;
+				// AND WHAT THE CONSOLE LENT THE BOARD GOES BACK WITH IT. The state is PLAY again by the line
+				// above, but the one thing it had set OUTSIDE itself is the board's own mute, which is written
+				// from the state once a frame and only while the console way is on: dropped here with the way
+				// out of a MENU_IN still set, the game would have stayed silent for the rest of the session.
+				// The two narrower mutes beside it -- the logo's voice, the announcer's -- are written the
+				// same way and are put back for the same reason.
+				board.mute_game_midi = false;
+				game.mute_voices = false;
+				game.mute_fight_voice = false;
+				modes.hide();
+				options.hide();
+				if (cplay.on) {   // (read once: the second call is free)
+		modes.load(ren, find_assets(), stderr);
+		console_font.load(ren, find_assets(), stderr);
+		options.load(ren, find_assets(), &console_font, stderr);
+		pause.load(ren, find_assets(), &console_font, stderr);
+		stages.load(ren, find_assets(), &console_font, stderr);
+		train.load(ren, find_assets(), &console_font, stderr);
+		curtain.load(ren, find_assets(), stderr);
+				}
+				g_pc_mode = !cfg.arcade;
+				cfg_dirty = true;
+				reset_game();
+	};
 	auto back_item = [&] { return menu_item{ "Back", "Back to the previous page.", {}, {}, [&] { menu.pop(); } }; };
 	auto display_page = [&] {
 		menu_page p{ "Display", "", {} };
@@ -3146,39 +3184,7 @@ int main(int argc, char **argv)
 			// Three ways round, and only two where the console way isn't known: it is one game's, and offering
 			// it on another would be offering nothing.
 			[&](int d) {
-				const int n = console_known ? 3 : 2;
-				int i = (cfg.arcade ? 1 : cfg.console ? 2 : 0) + (d < 0 ? n - 1 : 1);
-				i %= n;
-				cfg.arcade = i == 1;
-				cfg.console = i == 2;
-				// AND WHAT WAS BORROWED IS GIVEN BACK BEFORE THE BORROWER IS REPLACED: the way out of a match
-				// lends itself VS FINISH, and the line below forgets which value it was (console_play.h).
-				cplay.return_vs_finish(board);
-				cplay = console_play();   // (a style changed mid-session: nothing of the last one is carried over)
-				cplay.on = cfg.console && console_known;
-				// AND WHAT THE CONSOLE LENT THE BOARD GOES BACK WITH IT. The state is PLAY again by the line
-				// above, but the one thing it had set OUTSIDE itself is the board's own mute, which is written
-				// from the state once a frame and only while the console way is on: dropped here with the way
-				// out of a MENU_IN still set, the game would have stayed silent for the rest of the session.
-				// The two narrower mutes beside it -- the logo's voice, the announcer's -- are written the
-				// same way and are put back for the same reason.
-				board.mute_game_midi = false;
-				game.mute_voices = false;
-				game.mute_fight_voice = false;
-				modes.hide();
-				options.hide();
-				if (cplay.on) {   // (read once: the second call is free)
-					modes.load(ren, find_assets(), stderr);
-					console_font.load(ren, find_assets(), stderr);
-					options.load(ren, find_assets(), &console_font, stderr);
-					pause.load(ren, find_assets(), &console_font, stderr);
-					stages.load(ren, find_assets(), &console_font, stderr);
-					train.load(ren, find_assets(), &console_font, stderr);
-					curtain.load(ren, find_assets(), stderr);
-				}
-				g_pc_mode = !cfg.arcade;
-				cfg_dirty = true;
-				reset_game();
+				switch_play_style(d);
 			} });
 		p.items.push_back({ "Reset game", "Restarts the game, like switching the arcade off and on. Rankings and settings are kept. (F3)",
 			{}, {}, [&] { reset_game(); } });
@@ -3515,6 +3521,73 @@ int main(int argc, char **argv)
 			  }) : std::function<void(int)>(), {}, {}, 0, false, 0 },
 			{ "FPS COUNTER", [&] { return std::string(cfg.show_fps ? "ON" : "OFF"); },
 			  [&](int) { cfg.show_fps = !cfg.show_fps; cfg_dirty = true; }, {}, {}, 0, false, 0 },
+			// ---- WHAT THE PORT'S OWN MENU HAD AND THIS PAGE DID NOT ----
+			//
+			// Frederic went through the two menus line by line the 2026-10-27 and chose these ten for here.
+			// They are the SAME settings the menu under Escape steps -- the same cfg fields, the same levers --
+			// said in the console's own words: short names, short values, no sentences. A line that reads
+			// differently in the two menus would be two settings as far as a player is concerned.
+			//
+			// (Picture shape is not among them because it is already here: WIDESCREEN steps the same five
+			// shapes through the same set_shape.)
+			{ "RENDER SCALE", [&] {
+				const int want = chosen_scale();
+				std::string t = std::to_string(want) + "X";
+				if (gov.scale_cut) t += " (" + std::to_string(scale) + "X NOW)";
+				return t;
+			  }, [&](int d) { set_scale(chosen_scale() + d); }, {}, {}, 0, false, 0.32f },
+			{ "ANTIALIASING", [&] {
+				const int k = aa_now();
+				std::string t = cfg.aa > 1 ? std::to_string(cfg.aa) + "X" : std::string("OFF");
+				if (cfg.aa > 1 && k < cfg.aa) t += k > 1 ? " (" + std::to_string(k) + "X NOW)" : " (OFF NOW)";
+				return t;
+			  }, [&](int d) { cfg.aa = std::clamp(cfg.aa + d, 1, 3); cfg_dirty = true; gov_fresh(); }, {}, {}, 0, false, 0 },
+			{ "3D RENDERER", [&] {
+				static const char *const N[] = { "AUTO", "CPU", "GPU" };
+				if (cfg.renderer3d != r3d_mode) return std::string(N[cfg.renderer3d]) + " (NEXT START)";
+				if (r3d_mode == R3D_AUTO) return std::string("AUTO (") + (g3.on ? "GPU" : "CPU") + ")";
+				if (r3d_mode == R3D_GPU && g3.failed) return std::string("GPU (FAILED: CPU)");
+				return std::string(N[r3d_mode]);
+			  }, [&](int d) {
+				static const int ORDER[] = { R3D_AUTO, R3D_CPU, R3D_GPU };
+				int i = 0;
+				while (i < 2 && ORDER[i] != cfg.renderer3d) i++;
+				cfg.renderer3d = ORDER[wrap(i + d, 3)];
+				cfg_dirty = true;
+				cfg.gpu3d_failed.clear();   // (the player's choice: every driver tried again from the next start)
+			  }, {}, {}, 0, false, 0 },
+			{ "BACKGROUND", [&] { return std::string(cfg.smooth_bg ? "SMOOTH" : "OFF"); },
+			  [&](int) {
+				cfg.smooth_bg = !cfg.smooth_bg;
+				cfg_dirty = true;
+				SDL_SetTextureScaleMode(tex_below, cfg.smooth_bg ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
+			  }, {}, {}, 0, false, 0 },
+			{ "TEXTURES", [&] { return std::string(cfg.sharp_textures ? "SHARP" : "ARCADE"); },
+			  [&](int) {
+				cfg.sharp_textures = !cfg.sharp_textures;
+				video::Raster::arcade_lod = !cfg.sharp_textures;
+				cfg_dirty = true;
+			  }, {}, {}, 0, false, 0 },
+			{ "SMOOTH MOTION", [&] {
+				return std::string(cfg.smooth ? "ON" : "OFF") + (cfg.smooth && gov.smooth_off ? " (60 NOW)" : "");
+			  }, [&](int) { cfg.smooth = !cfg.smooth; cfg_dirty = true; gov_fresh(); }, {}, {}, 0, false, 0 },
+			{ "SCREEN FILTER", [&] {
+				static const char *const N[] = { "OFF", "SCANLINES", "CRT" };
+				return std::string(N[cfg.filter]);
+			  }, [&](int d) { cfg.filter = wrap(cfg.filter + d, 3); cfg_dirty = true; }, {}, {}, 0, false, 0 },
+			// The five sets of colours have long names in the port's own menu, which says where each comes from.
+			// Here they are said in a word each: the page has a column's width, not a paragraph's.
+			{ "CRT COLOURS", [&] {
+				static const char *const N[] = { "OFF", "SEGA", "SONY", "NTSC-J", "NTSC-U", "PAL" };
+				const int i = cfg.crt_colours >= 0 && cfg.crt_colours < N_CRT_COLOURS ? cfg.crt_colours : 0;
+				return std::string(N[i]) + (i && crt_failed ? " (NOT HERE)" : "");
+			  }, [&](int d) { cfg.crt_colours = wrap(cfg.crt_colours + d, N_CRT_COLOURS); cfg_dirty = true; }, {}, {}, 0, false, 0 },
+#ifdef _WIN32
+			{ "GRAPHICS", [&] { return std::string(cfg.graphics ? "DIRECT3D 12" : "AUTO"); },
+			  [&](int) { cfg.graphics = !cfg.graphics; cfg_dirty = true; }, {}, {}, 0, false, 0 },
+#endif
+			{ "FULLSCREEN", [&] { return std::string(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN ? "ON" : "OFF"); },
+			  [&](int) { set_fullscreen(!(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN)); }, {}, {}, 0, false, 0 },
 			// August's ENDING switched the fork's own illustrations over the replays, and nothing of those
 			// exists here. But the GAME has an ending -- the staff roll, mode 12 -- which no one had ever
 			// seen running, because reaching it means finishing the ladder and the notes have it among the
@@ -3615,10 +3688,36 @@ int main(int argc, char **argv)
 				  cfg.music = std::clamp(cfg.music + 5 * d, 0, 100); cfg_dirty = true;
 				  game.sound.set_volumes(cfg.music / 100.0f, cfg.effects / 100.0f);
 			  }, {}, [&] { return (cfg.music + 4) / 5; }, 20, false, 0 },
+			// THE OVERALL VOLUME, which this page did not have: the two it had are shares OF it, so with the
+			// master at nothing both of them are at nothing and neither line says why. Twenty arrows like the
+			// other two, and the same step of five.
+			{ "MAIN VOLUME", {}, [&](int d) {
+				  cfg.volume = std::clamp(cfg.volume + 5 * d, 0, 100);
+				  cfg_dirty = true;
+				  game.sound_wait();
+				  game.sound.gain = LEVEL * cfg.volume / 100.0;
+			  }, {}, [&] { return (cfg.volume + 4) / 5; }, 20, false, 0.32f },
 			{ "INITIALIZE", {}, {}, [&] {
-				  cfg.music = cfg.effects = 100; cfg_dirty = true;
+				  cfg.volume = cfg.music = cfg.effects = 100; cfg_dirty = true;
+				  game.sound_wait();
+				  game.sound.gain = LEVEL;
 				  game.sound.set_volumes(1.0f, 1.0f);
 			  }, {}, 0, true, 1.2f },
+		};
+		// ---- GAME: the port's own page, and the three lines of its own menu that belong in a console's ----
+		//
+		// PLAY STYLE is the one line here that can take this menu away: chosen as PC or ARCADE, the console
+		// way goes out and with it the list, this tree, the pause menu and the carousel. That is what it is
+		// for, and the game restarts on the spot as it does from the port's own menu, which is the only
+		// honest way to change it.
+		options.own[fv2_options::SCR_GAME] = {
+			{ "PLAY STYLE", [&] { return std::string(cfg.arcade ? "ARCADE" : cfg.console ? "CONSOLE" : "PC"); },
+			  [&](int d) { switch_play_style(d); }, {}, {}, 0, false, 0 },
+			// AND THE PAGE GOES WITH THE RESET. A game restarted under an open page would come back with the
+			// tree still in front of it and the state still saying the game is held -- the port's own menu
+			// closes itself for the same reason (reset_game calls menu.close).
+			{ "RESET GAME", {}, {}, [&] { enter(cstate::PLAY, "RESET GAME"); reset_game(); }, {}, 0, true, 1.2f },
+			{ "QUIT", {}, {}, [&] { running = false; }, {}, 0, true, 0.32f },
 		};
 		options.ctl = cfg.ctl;   // CONTROLLER reads the bindings and writes them
 		// And which pad is whose, so a capture on one player's column takes that player's pad and no other

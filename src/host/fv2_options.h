@@ -143,11 +143,14 @@ struct fv2_options
 	// of those thirteen and nothing else, so on a page that no longer shows them it would be a button whose
 	// effect cannot be seen. August and the disc both keep it at the foot of OPTIONS; they could, because the
 	// settings were there.
-	enum screen { SCR_OPTIONS, SCR_SETTINGS, SCR_DISPLAY, SCR_SOUNDS, SCR_CONTROLLER, SCR_STATS, SCR_COUNT };
+	// SCR_GAME is this port's own, and it is the one page of the tree that is not August's: what the port's
+	// menu under Escape had and this one did not -- the play style, the reset, and the way out. Frederic
+	// picked the lines the 2026-10-27, page by page, off the list of what was missing.
+	enum screen { SCR_OPTIONS, SCR_SETTINGS, SCR_DISPLAY, SCR_SOUNDS, SCR_GAME, SCR_CONTROLLER, SCR_STATS, SCR_COUNT };
 	static const char *screen_name(int s)
 	{
 		static const char *const N[SCR_COUNT] = { "OPTIONS", "GAME ASSIGNMENTS", "DISPLAY", "SOUNDS",
-												  "CONTROLLER", "STATS" };
+												  "GAME", "CONTROLLER", "STATS" };
 		return s >= 0 && s < SCR_COUNT ? N[s] : "?";
 	}
 	// A line of a screen: a setting of the game's, one of this port's own, a door, or the INITIALIZE button.
@@ -188,7 +191,7 @@ struct fv2_options
 		for (int s = 0; s < SCR_COUNT; s++) built[s].clear();
 		built[SCR_OPTIONS] = {
 			{ line::DOOR, SCR_SETTINGS, 0 }, { line::DOOR, SCR_DISPLAY, 0 }, { line::DOOR, SCR_SOUNDS, 0 },
-			{ line::DOOR, SCR_CONTROLLER, 0 }, { line::DOOR, SCR_STATS, 0 },
+			{ line::DOOR, SCR_GAME, 0 }, { line::DOOR, SCR_CONTROLLER, 0 }, { line::DOOR, SCR_STATS, 0 },
 		};
 		for (int i = 0; i < int(table().size()); i++) built[SCR_SETTINGS].push_back({ line::SETTING, i, 0 });
 		built[SCR_SETTINGS].push_back({ line::BUTTON, 0, 1.2f });   // August's own gap before the button
