@@ -758,6 +758,42 @@ Fighting Vipers 2 :
 | `YSEL == COEF` | 87 |
 | `IRA` dans MEMS | 108 |
 
+### Cherchés dans tous les jeux que ce portage sert, et toujours à zéro
+
+Le tableau ci-dessus ne portait **qu'un programme d'un seul jeu**, et l'en-tête de `dsp_maison.h` en tirait
+la phrase « les programmes de ce jeu les laissent à zéro ». **Élargi le 2026-10-28** : `dspprog` lu sur tous
+les sets que `src/machine/romset.cpp` connaît, en attraction et à travers un combat entier.
+
+| | écritures de programme | formes distinctes | `FRCL` `ADRL` `YRL` `NEGB` |
+|---|---|---|---|
+| `fvipers2` | 45 | 4 — de 0, 108, 112 et **127** pas | **0 partout** |
+| `vf3` | 46 | 3 — 0, 108, 112 pas, **les mêmes que `fvipers2`** | **0 partout** |
+| `srally2` | 61 | 2 — 0 et 112 pas, mais **un autre programme** | **0 partout** |
+| `vf3tb`, `fvipers2p` | — | — | sets incomplets, inutilisables |
+
+**152 écritures de programme, cinq formes distinctes, trois jeux, et pas un seul des quatre contrôles.**
+
+Trois choses à en tirer :
+
+1. **`srally2` est un témoin indépendant**, et c'est lui qui donne du poids au reste : son programme de
+   112 pas n'est pas celui des jeux de combat — `iwt 18 twt 28 mrd 18 mwt 6 ewt 6` contre
+   `iwt 23 twt 39 mrd 23 mwt 10 ewt 5`. Un autre jeu, un autre pilote, un autre programme, les mêmes quatre
+   zéros. `vf3` et `fvipers2`, eux, chargent **exactement les mêmes programmes** : ils ne se comptent pas
+   deux fois.
+2. **Deux programmes de plus qu'au §5 d'origine** : un de 108 pas, et un de **127** qui n'apparaît que
+   pendant un combat de `fvipers2`. Le tableau ci-dessus ne voyait que celui de 112, et il tient toujours :
+   relu ce jour, il donne les mêmes douze nombres.
+3. **La question n'est donc pas close par un jeu.** Il n'y a pas de programme à aller chercher qui
+   exercerait ces quatre champs et ferait du rejoueur leur juge à l'octet. Ce qui reste est d'étendre la
+   **spécification** — `tools/son/test_scsp_dsp.cpp`, qui juge déjà les deux cœurs, et dont
+   `tools/son/test_scspdsp.cpp` porte déjà les cas équivalents pour le DSP de MAME. Avec ce que ça achète
+   et ce que ça n'achète pas : la cohérence avec la cible déclarée, et non la preuve que MAME a raison
+   (`docs/scsp_references.md` : jamais le consensus entre émulateurs comme preuve).
+
+Et un chiffre que §4 septies a produit au passage : ces quatre-là, **quand on les pose**, coûtent
+**+1,078 ns par pas** au cœur de MAME et **+0,425** à celui du projet — le seul endroit du dépôt où leur
+coût se lise, puisque aucun jeu ne les pose.
+
 Deux choses se lisent là-dedans :
 
 1. **Quatre contrôles ne sont jamais posés** — `FRCL`, `ADRL`, `YRL`, `NEGB`. Les tester à chaque pas de chaque

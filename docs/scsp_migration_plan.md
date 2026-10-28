@@ -226,6 +226,13 @@ Repris du cahier des charges, et rendus vérifiables ici :
 | 7 | les dépendances et les licences sont documentées | `docs/scsp_audit.md` §2, `docs/scsp_references.md`, `third_party/README.md` |
 | 8 | le repli reste utilisable pendant la validation | le sélecteur de l'étape 2, et l'ancien cœur derrière. Depuis le 2026-10-28 **chaque cœur s'inscrit dans son propre `.cpp`** : le sélecteur ne nomme plus aucune classe concrète, donc ce qui est lié décide ce qui existe, et `make test-sans-mame` construit les sept tests de bloc **sans une ligne du cœur de MAME** — le dernier préalable d'un dépôt séparé |
 
-**État au 2026-10-24 :** 1 ✔, 2 non revérifié depuis les lots (les lots ne touchent pas le PowerPC, et
-`verifier-vf3.cmd` ne regarde pas le son — à lancer quand même), 3 ✔ sur les deux jeux, 4 ✔ (aucun écart),
-5 ✔, 6 ✔, 7 ✔, 8 sans objet (rien n'a été remplacé).
+**État au 2026-10-28 :** **les huit sont satisfaits.** 1 ✔. **2 ✔, lancé ce jour** après tout le travail
+du son : `verifier-vf3.cmd 3000` dit **IDENTIQUE** sur les quatre contrôles — l'état du PowerPC image par
+image, les 8 Mo de RAM, les images rendues, l'hôte complet — et le pas à pas interpréteur contre code
+recompilé concorde sur 2 231 images. 3 ✔ sur les deux jeux. 4 ✔ : **aucun écart**, l'empreinte
+`9A2310F8AF000E09EB18BD114852B003` tenue par les deux cœurs sur les 4 200 images. 5 ✔, et deux crans plus
+fin depuis (`scsp_audit.md` §4 sexies à §4 octies). 6 ✔. 7 ✔. 8 sans objet : rien n'a été remplacé, et le
+sélecteur permet maintenant de ne **pas lier** l'ancien cœur du tout (`make test-sans-mame`).
+
+(L'état du 2026-10-24 disait « 2 non revérifié depuis les lots — à lancer quand même ». C'est fait, et il
+fallait : un contrôle qu'on remet à plus tard n'est pas un contrôle.)
