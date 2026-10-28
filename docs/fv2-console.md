@@ -856,3 +856,111 @@ C'est le même chiffre que la route arcade, et c'est la même route.
 - `fv2_restart_attract()` depuis le combat met bien le jeu en `ADV`, mais **la tâche du match reste
   vivante**, donc `fv2_in_attract()` continue de dire qu'une partie tourne ;
 - écrire 0 dans les deux vies **n'est pas un K.O.** : le jeu le décide dans son gestionnaire de dégâts.
+
+## La fin d'un match à deux est un état, pas un écran de borne (2026-10-28)
+
+Frédéric, le 2026-10-28 : « MODE VERSUS : à la fin de combat, à la place du sous état GAME OVER, créer un
+sous état propre au mode versus qui propose REMATCH, CHANGE VIPERS, CHANGE STAGE, MAIN MENU. »
+
+### Le jeu dit lui-même quand un match est décidé
+
+Une route a été écrite pour le regarder : `tools/scripts/fv2-vs-fin.txt`, un versus où le joueur 1 frappe
+sans arrêt et le 2 ne bouge pas, donc chaque round finit par un K.O. Jouée cachée avec `VF3_VS_TRACE=1`,
+elle imprime une ligne par changement de sous-état à partir du jugement. La fin de chaque round lit les
+mêmes quatre états, puis **se sépare en deux** :
+
+```
+round qui ne décide rien   13 JUDGE  14 JUDGE_DSP  15 REPLAY_INT  16 REPLAY_DSP
+                           17 VIC_INT -> demande 19      (VIC_DSP est sauté)
+                           19 NEXT_PROG_SEL -> demande 6  (un round de plus)
+
+le round qui décide        13 14 15 16
+                           17 VIC_INT -> demande 18
+                           18 VIC_DSP tourne
+```
+
+**`VIC_DSP`, sous-état 18, n'arrive qu'à la fin d'un match décidé.** Ce n'est pas un seuil ni un compte de
+rounds tenu par ce portage : c'est un état que Sega a nommé et qu'il n'atteint nulle part ailleurs. C'est
+la porte, et elle est du jeu.
+
+### Et le panneau monte à sa fin, pas à son début
+
+Le moment pris est celui où `VIC_DSP` a **demandé** `NEXT_PROG_SEL` et où le répartiteur n'a pas encore
+agi — le même tic que le carrousel (`step_select`). La pose du vainqueur se joue donc entière, et
+`NEXT_PROG_SEL` ne tourne pas du tout. Une image plus tard il aurait déjà décidé : `GAME OVER` si le
+réglage `VS FINISH` de la borne est à ON, le vainqueur emmené dans l'échelle arcade s'il est à OFF —
+mesuré dans cette même partie, où il est à OFF : le 19 a tourné, l'octet des joueurs est tombé de 3 à 1,
+et le jeu a enchaîné un combat d'échelle. **Aucune des deux routes n'est prise maintenant.**
+
+Comme rien ne doit rester en attente derrière le panneau, la demande de sous-état est remise à 18 —
+`Model3::fv2_hold_submode`, l'inverse exact de `fv2_cut_submode`, et la valeur que le jeu lui-même tient
+là à toutes les autres images.
+
+### Ce que l'état déclare
+
+`VS_OVER` est une ligne de la table de `console_state.h`, exactement comme `PAUSE` :
+
+| état | tourne | écran | son | commandes |
+|---|---|---|---|---|
+| `PAUSE` | non | par-dessus | les deux | le portage |
+| `VS_OVER` | non | par-dessus | les deux | le portage |
+
+La surface est **le même panneau** (`fv2_pause.h`), parce que les quatre lignes y étaient déjà. Trois
+choses diffèrent, et pas une de plus : `RESUME` n'est pas affichée (il n'y a pas de combat où revenir), le
+joueur ne peut pas sortir par Start ou B (même raison), et la barre dit `VS` `BATTLE OVER` au lieu de qui
+a mis en pause.
+
+`chose_pause` sert les deux : la seule différence est que le match est **déjà** fini, donc `MAIN MENU` et
+`CHANGE YOUR VIPER` ne demandent pas `end_match` — `fv2_end_match` refuse ailleurs que pendant un round
+joué, ce qui est juste, ses deux mots ne voulant rien dire à `VIC_DSP`. Tout le reste de la sortie se lit
+pareil depuis là : le bit tenu, les états coupés, `VS FINISH` emprunté, les écrans de fin raccourcis
+derrière l'image du portage.
+
+### Seulement à deux, et jamais en training
+
+`fv2_players()` lit 3 quand deux joueurs sont en lice : les matchs de l'échelle arcade finissent aussi à
+`VIC_DSP`, et là la fin d'un match est l'affaire de l'échelle, pas du joueur. Le TRAINING est un versus à
+deux sur cette carte et il est écarté par son nom — le mannequin n'a pas de revanche à demander, et le
+menu pause de ce mode est la sortie.
+
+### Sortir de ce panneau : un deuxième prêt, et c'est la mesure qui l'a imposé
+
+`REMATCH` a marché du premier coup (`VS_OVER -> PLAY`, `a rematch asked for, the game says 1`, et le match
+suivant se joue). `MAIN MENU` **non** : le jeu repartait dans un combat et la sortie abandonnait au bout de
+sa minute. Le point de branchement entier, relu d'un vidage pris à l'image 5000 (`VF3_RAM_DUMP`, nouveau
+crochet, et `tools/fv2/desas_ppc.py`) :
+
+```
+0000DB4C  lwz r10,[0x005813F0]        ADV_INFO_STATUS
+0000DB50  bit 0x00000008              -> DD4C : mode 12, la fin du jeu
+0000DB58  bit 0x40000000 absent       -> DD28 : ++ROUND_NO, sous-mode 6, une manche de plus
+0000DB64  lbz r3,[0x0058145A]         COMBIEN JOUENT
+0000DB70    == 3                      -> DBD0 : la route des deux joueurs, qui lit VS FINISH
+0000DB74    == 0                      -> DC9C
+0000DB88    != [0x00581457] + 1       -> DC9C : 145F -> mode 22 RESULT, sinon mode 8 CONTINUE
+0000DB8C    sinon                     le dernier debout continue l'echelle : ++145C, sous-mode 0
+```
+
+**`VS FINISH` est la deuxième question, pas la première.** Et l'octet qui commande la première tombe sous
+nos pieds : `VF3_RAM_WATCH=00581454:12` sur la route du panneau donne
+
+```
+frame 6659  VS_OVER -> MENU_IN (MAIN MENU)
+frame 6660  mode 7 sub 19 : 0058145A 03->01
+frame 6661  mode 7 sub 19 : 0058145C 01->02      <- la route de l'echelle, pas celle du versus
+```
+
+Le `3` tient tout le match et tombe à `1` **dans la trame même** où `NEXT_PROG_SEL` tourne : c'est la règle
+`INTRUDE` de la borne — le gagnant hérite de la partie — appliquée à la fin de la pose du vainqueur. Un
+versus décidé a donc **cessé d'être un versus** avant que le branchement ne le regarde, et il prend la
+route de l'échelle quoi qu'on fasse de `VS FINISH`.
+
+**Prêter le 3 a été essayé et ne prend pas** : la main passe au vainqueur dans la trame même du
+branchement, donc après l'écriture du prêt, qui se fait en haut de l'image. Mesuré, pas supposé.
+
+Ce qui marche est plus court et plus honnête : la route des deux joueurs finit en trois instructions,
+`li r0,18 ; stb r0,[0x0058FD9A]`, et **le portage écrit ce qu'elle écrit, là où elle l'écrit**
+(`Model3::fv2_request_game_over`). Depuis le panneau, `MAIN MENU` et `CHANGE YOUR VIPER` ne demandent donc
+pas la fin du match — il est fini — mais `GAME OVER`, et la sortie part directement sur les écrans de fin,
+que le rideau du portage couvre déjà. Les routes arcade, survival et le menu pause en plein combat ne sont
+pas touchées : elles gardent la leur, qui marche.

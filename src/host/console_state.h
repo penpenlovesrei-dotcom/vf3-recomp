@@ -48,6 +48,7 @@
 enum class cstate {
 	PLAY,         // the game, alone: the port shows nothing and says nothing
 	PAUSE,        // the pause menu over a frozen fight
+	VS_OVER,      // the end of a two-player match: the same panel, over the winner's pose, with no way back
 	STAGE,        // the carousel on the select screen: the game RUNS, parked in Sega's empty STAGE_SEL
 	STAGE_HELD,   // the carousel opened from the pause menu: there is no sub-state to park in, so the game is held
 	GOING,        // a way out of a match that leads back into the game: the curtain, and the game walks behind it
@@ -75,6 +76,7 @@ inline const crule &crules(cstate s)
 	static const crule TABLE[] = {
 		{ "PLAY",       true,  cscreen::GAME, csound::GAME, cinput::GAME },
 		{ "PAUSE",      false, cscreen::OVER, csound::BOTH, cinput::PORT },
+		{ "VS_OVER",    false, cscreen::OVER, csound::BOTH, cinput::PORT },
 		{ "STAGE",      true,  cscreen::OVER, csound::BOTH, cinput::PORT },
 		{ "STAGE_HELD", false, cscreen::OVER, csound::BOTH, cinput::PORT },
 		{ "GOING",      true,  cscreen::PORT, csound::PORT, cinput::PORT },

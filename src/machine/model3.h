@@ -356,12 +356,23 @@ public:
 	// 2026-10-27: 3 through a versus and through a training (which is a versus with a mode on top).
 	int fv2_players() const { return fv2_option(0x0058145A, 1); }
 	int fv2_vs_finish() const { return fv2_option(0x00120558, 1); }
+	// AND THE WORKING COPY OF IT WRITTEN, which is the one the branch point reads: what the player chose
+	// in OPTIONS, kept in the backup, is not touched. Lent for the length of a way out (console_play.h).
 	bool fv2_set_vs_finish(int v)
 	{
 		if (set != "fvipers2" || ram.size() <= 0x00120559) return false;
 		ram[0x00120558 ^ 3] = uint8_t(v);
 		return true;
 	}
+	// THE END-OF-GAME SCREEN A DECIDED VERSUS GOES TO, asked for with the game's own write.
+	//
+	// NEXT_PROG_SEL's two-player road ends in three instructions -- li r0,18 ; stb r0,[0x0058FD9A] -- and
+	// that road is unreachable once the winner's pose is over: the byte it branches on, 0x0058145A, falls
+	// from 3 to 1 in the very frame the branch runs (docs/fv2-console.md, measured the 2026-10-28), the
+	// board's INTRUDE rule handing the winner the game. Lending the 3 back was tried and does not take,
+	// the handover being in the same tick and after the lend. So the port writes what that road writes,
+	// where it writes it: not a lever invented here, Sega's own three instructions.
+	void fv2_request_game_over();
 	// THE ENDING'S TWO BYTES: where the staff roll is in its list of segments, and which half of the
 	// current one is on screen -- a page of credits or a replay. August measured both; model3.cpp says
 	// what they are. The console's Dreamcast ending hangs its illustrations off them.
@@ -429,6 +440,11 @@ public:
 	// SET_INT and SET_DSP following normally. So the request IS read there -- unlike inside a fight, where
 	// the note above records that nobody reads it. Written once and never held, like every request here.
 	void fv2_cut_submode();
+	// and the opposite of it: the sub-state the game is in asked for AGAIN, which is what the game itself
+	// holds there every other frame. For a surface that freezes the game in the middle of a sub-state
+	// after that sub-state has asked to move on -- the versus end-of-match panel -- so that nothing is
+	// left pending behind it (console_play::step_vs_over).
+	void fv2_hold_submode();
 	// THE CONSOLE'S STAGE PAGE DOES NOT FREEZE THE GAME: it parks it in Sega's own empty STAGE_SEL sub-state,
 	// where the game runs its whole frame -- drawing, music, sound board -- and advances nothing. Held every
 	// frame while the page is up, and that holding is deliberate (model3.cpp says why it is not the mistake

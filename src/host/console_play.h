@@ -55,7 +55,7 @@ struct console_play
 	// the moment that already belonged to it: after the frame that has run, before the frame that will.
 	// The game's own dispatcher reads a request once a tick, so a write placed here is read by the very
 	// next tick and by no other.
-	enum class ask { end_match, rematch, title_now, stage_free };
+	enum class ask { end_match, rematch, title_now, stage_free, vs_hold };
 	std::vector<ask> asked;
 	void ask_for(ask a) { asked.push_back(a); }
 
@@ -82,6 +82,12 @@ struct console_play
 		case ask::title_now:
 			b.fv2_attract_to_title();
 			fprintf(stderr, "the console: the title screen asked for from the attract loop\n");
+			break;
+		case ask::vs_hold:
+			// The winner's pose asked to move on and the panel went up instead: the request is put back to
+			// the sub-state the game is actually in, so NEXT_PROG_SEL is not left waiting to run the moment
+			// the game is let go of (step_vs_over).
+			b.fv2_hold_submode();
 			break;
 		case ask::stage_free:
 			b.fv2_leave_stage_select();
@@ -389,11 +395,16 @@ struct console_play
 	int leave_frames = 0, leave_cut = -1, leave_scene = -1;
 	// VS FINISH as the player had it, lent for the length of the way out (model3.h). -1: not borrowed.
 	int leave_vs_finish = -1;
+	// AND WHETHER THE MATCH WAS ALREADY DECIDED when the way out began -- the end-of-match panel's road.
+	// There is nothing to end there, and the branch point that would have ended it is out of reach: see
+	// Model3::fv2_request_game_over. So that road asks for GAME OVER with the game's own write and goes
+	// straight to the end-of-game screens.
+	bool leave_decided = false;
 	// whether the training is to be put back at the far side (see leave_match)
 	bool leave_training = false;
 	static constexpr int LEAVE_GIVE_UP = 3600;   // a minute: a match that will not end is let go of
 
-	void leave_match(leave_dest what)
+	void leave_match(leave_dest what, bool decided = false)
 	{
 		// LEAVING A MATCH TURNS THE TRAINING OFF, and not merely suspends its holding: the way out finishes
 		// the match, and a training that went on filling the lives every frame would lock the player in --
@@ -414,6 +425,7 @@ struct console_play
 		// touched, so what the player chose in OPTIONS is not changed.
 		leaving = L_ENDING;
 		leave_for = what;
+		leave_decided = decided;
 		leave_frames = 0;
 		leave_cut = -1;
 		leave_scene = -1;
@@ -813,6 +825,20 @@ struct console_play
 				leaving = L_CLEARING;
 				return;
 			}
+			// AND A MATCH THAT WAS ALREADY DECIDED HAS NOTHING TO END. This is the end-of-match panel's road:
+			// the game is standing at VIC_DSP with the match settled, and the branch point that would send it
+			// to GAME OVER no longer sees a two-player game to send (Model3::fv2_request_game_over says why,
+			// and the measurement that showed it). So the port writes what that road writes, once, and the
+			// test just above catches mode 18 on the next tick.
+			if (leave_decided) {
+				if (leave_cut < 0) {
+					leave_cut = 18;   // (spent: the one write this road makes)
+					b.fv2_request_game_over();
+					fprintf(stderr, "the console: the match was already decided -- GAME OVER asked for,"
+						" the game's own way out of a settled versus\n");
+				}
+				return;
+			}
 			// THE JUDGEMENT, THE REPLAY AND THE WINNER'S POSE, EACH CUT SHORT -- once each, by asking for the
 			// next sub-state, which is exactly what the game's own handlers do between themselves. Sub 13 is
 			// JUDGE and 18 is VIC_DSP; NEXT_PROG_SEL (19) is LEFT ALONE, because it is the branch point
@@ -1044,6 +1070,78 @@ struct console_play
 		fprintf(stderr, "the console ENDING: the match is over -- the game's own ending asked for\n");
 	}
 
+	// ---- THE END OF A TWO-PLAYER MATCH IS A STATE OF ITS OWN ----
+	//
+	// Frederic, the 2026-10-28: "MODE VERSUS: a la fin de combat, a la place du sous etat GAME OVER, creer
+	// un sous etat propre au mode versus qui propose REMATCH, CHANGE VIPERS, CHANGE STAGE, MAIN MENU."
+	//
+	// WHEN, and it is the game's own answer rather than a count of rounds kept here. Measured the 2026-10-28
+	// on tools/scripts/fv2-vs-fin.txt -- a versus fought to its end with VF3_VS_TRACE=1 -- where the end of
+	// every round reads the same four states and then parts in two:
+	//
+	//   a round that settles nothing   13 JUDGE, 14 JUDGE_DSP, 15 REPLAY_INT, 16 REPLAY_DSP, then 17 VIC_INT
+	//                                  ASKS FOR 19 -- VIC_DSP skipped -- and 19 NEXT_PROG_SEL asks for 6:
+	//                                  another round;
+	//   the round that decides it      the same four, then 17 VIC_INT ASKS FOR 18, and 18 VIC_DSP runs.
+	//
+	// So VIC_DSP, sub-state 18, happens ONLY at the end of a decided match. It is not a threshold and not a
+	// count of this port's own: it is a state Sega named and reaches nowhere else, which is what makes it the
+	// door.
+	//
+	// AND THE PANEL GOES UP AT ITS END, not at its beginning: the winner's pose is played out whole, and the
+	// moment caught is the one where VIC_DSP has ASKED for NEXT_PROG_SEL and the dispatcher has not acted yet
+	// -- the same tick the carousel is opened on (step_select). One tick later and NEXT_PROG_SEL has already
+	// decided: GAME OVER if the board's VS FINISH is on, the winner handed the ladder if it is off. Measured
+	// in that same run, VS FINISH being off there -- 19 ran, the players byte fell from 3 to 1, and the game
+	// carried the winner into an arcade ladder. Neither road is taken now.
+	//
+	// AND ONLY FOR TWO PLAYERS, which the game says as well (fv2_players reads 3): the arcade ladder's own
+	// matches end at VIC_DSP too, and there the end of a match is the ladder's business and not the player's.
+	// Training is a two-player versus on this board and is left out by name -- the dummy has no rematch to ask
+	// for, and that mode's own pause menu is the way out of it.
+	bool vs_over_done = false;    // this match's panel has been shown: one a match, not one a tick
+	void step_vs_over(m3::Model3 &b)
+	{
+		const int m = b.fv2_mode(), su = b.fv2_submode();
+		if (m != 6 && m != 7) { vs_over_done = false; return; }   // off GAME: the next match gets its own
+		// AND A ROUND BEING FOUGHT IS WHAT ARMS IT AGAIN. Leaving GAME is not enough: REMATCH and CHANGE
+		// STAGE both go back into a match by asking for GAME_INT (Model3::fv2_rematch), so the mode never
+		// leaves 6/7 and the second match of a session would have found this already spent.
+		if (su == 11 || su == 12) vs_over_done = false;
+		if (su != 18 || vs_over_done) return;                     // VIC_DSP, and nowhere else
+		if (b.fv2_submode_request() != 19) return;                // ... at the tick it asks to move on
+		if (training_on || leaving != L_OFF) return;              // the mode and the way out have their own roads
+		if (b.fv2_players() != 3 || !b.fv2_match_over()) return;
+		vs_over_done = true;
+		ask_for(ask::vs_hold);
+		ask_state(cstate::VS_OVER, "the versus match is decided");
+		fprintf(stderr, "the console: the versus is decided at VIC_DSP -- the match's own panel, not GAME OVER\n");
+	}
+
+	// ---- VF3_VS_TRACE: what the end of a two-player match looks like, frame by frame ----
+	//
+	// The versus panel below has to open at a moment that is at once LATE enough to BE the end of the
+	// match and EARLY enough that NEXT_PROG_SEL has not decided anything yet -- that handler is the one
+	// that sends a finished versus to GAME OVER, and the whole point of the panel is to stand where
+	// GAME OVER stood. Which frame that is is MEASURED here, not supposed: it prints one line each time
+	// the sub-state changes from the judgement on, with what the game has asked for next, whether it
+	// already calls the match decided, how many are playing and the rounds each side has lost.
+	int vs_trace_was = -1;
+	void step_vs_trace(m3::Model3 &b)
+	{
+		static const bool tracing = getenv("VF3_VS_TRACE") != nullptr;
+		if (!tracing) return;
+		const int m = b.fv2_mode(), su = b.fv2_submode();
+		const bool fighting = m == 6 || m == 7;
+		if (fighting && su < 13) return;      // the round itself says nothing about the end of the match
+		const int key = fighting ? 100 + su : m;
+		if (key == vs_trace_was) return;
+		vs_trace_was = key;
+		fprintf(stderr, "vs: mode %d sub %d -> asked %d, the match is %s, %d playing, rounds lost %d/%d\n",
+			m, su, b.fv2_submode_request(), b.fv2_match_over() ? "decided" : "open", b.fv2_players(),
+			b.fv2_option(0x00581455, 1), b.fv2_option(0x0058FDBA, 1));
+	}
+
 	// The presses this layer hands the game, eight frames each (see the top for why eight).
 	void inject(m3::Controls &out)
 	{
@@ -1068,6 +1166,8 @@ struct console_play
 		note_tasks(b);                                            // the two task registers, while they fight
 		step_select(b, out);                                      // the trip through the select screen
 		step_logo(b);                                             // the road that skips the SEGA logo
+		step_vs_over(b);                                          // the end of a two-player match
+		step_vs_trace(b);                                         // VF3_VS_TRACE: the end of a match, read
 		step_real_ending(b);                                      // the game's own ending, when asked for
 		inject(out);                                              // the presses handed to the game
 		step_holds(b);                                            // what this port holds while a mode runs

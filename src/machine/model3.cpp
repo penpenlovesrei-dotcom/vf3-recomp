@@ -1692,6 +1692,8 @@ constexpr uint32_t FV2_SUBMODE_REQUEST = 0x0058FD9B;
 constexpr uint8_t FV2_MODE_ADV_INT = 2, FV2_MODE_ADV_DSP = 3;
 constexpr uint8_t FV2_ADV_TITLE_INT = 4, FV2_ADV_TITLE_DSP = 5;
 constexpr uint8_t FV2_MODE_ENDING_INT = 12;   // the staff roll: see fv2_request_ending below
+// GAME OVER, which is where NEXT_PROG_SEL's two-player road sends a decided versus (fv2_request_game_over)
+constexpr uint8_t FV2_MODE_OVER_INT = 18;
 // SEL's six, by Sega's own names (docs/fv2-etats.md): 0 SEL_START, 1 SELECT, 2 STAGE_SEL_INT,
 // 3 STAGE_SEL_DSP, 4 DECIDE_INT, 5 DECIDE_DSP. The two in the middle are the empty stub the console's stage
 // page parks the game in (fv2_park_stage_select below).
@@ -1884,6 +1886,28 @@ bool Model3::fv2_leave_stage_select()
 	if (mode != 4 && mode != 5) return false;   // and 4 is DECIDE_INT only in SEL: see the park above
 	ram[FV2_SUBMODE_REQUEST ^ 3] = FV2_SEL_DECIDE_INT;
 	return true;
+}
+
+// GAME OVER, asked for with the game's own write. NEXT_PROG_SEL's two-player road ends in three
+// instructions -- li r0,18 ; stb r0,[0x0058FD9A] -- and that road is UNREACHABLE once the winner's
+// pose is over: the byte it branches on, 0x0058145A, falls from 3 to 1 in the very frame the branch
+// runs, the board's INTRUDE rule handing the winner the game. Measured the 2026-10-28 with
+// VF3_RAM_WATCH, and lending the 3 back was tried and does not take -- the handover is in the same
+// tick and after the lend. So the port writes what that road writes, where it writes it. The console's
+// end-of-match panel uses it, and nothing of GAME OVER is seen or heard: the port owns the screen and
+// the sound while it is walked through (console_state.h, GOING and MENU_IN).
+void Model3::fv2_request_game_over()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_MODE_REQUEST) return;
+	ram[FV2_MODE_REQUEST ^ 3] = FV2_MODE_OVER_INT;
+}
+
+void Model3::fv2_hold_submode()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return;
+	const int sub = fv2_submode();
+	if (sub < 0 || sub > 255) return;
+	ram[FV2_SUBMODE_REQUEST ^ 3] = uint8_t(sub);
 }
 
 // What the game is ASKING FOR, as opposed to where it is (fv2_submode). The two differ for exactly one tick,

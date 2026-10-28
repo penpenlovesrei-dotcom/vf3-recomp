@@ -2416,6 +2416,33 @@ int main(int argc, char **argv)
 			// follows it. Written the 2026-10-27 to find where the select screen keeps each cursor, which is
 			// what a CPU label in training has to follow. Addresses are the game's own (the dump's indexing is
 			// elsewhere); the range is read through Model3::fv2_option, a byte at a time.
+			// VF3_RAM_DUMP=bytes@frame -- THE GAME'S MEMORY FROM ZERO, written once to the data folder as
+			// ram.bin, in the HOST's word order, which is the order tools/fv2/desas_ppc.py reads (the byte of
+			// address A sits at index A^3). Written the 2026-10-28, because reading thirty instructions of
+			// Sega's own code is how every door of this layer was found -- VS FINISH, the branch point, the
+			// four ROUND_MASK handlers -- and until now each of those readings needed a dump made by hand
+			// somewhere else. A frame number rather than the end of the run: what a handler decides is
+			// decided at a moment, and the code is unpacked, so the dump has to be taken while it is there.
+			if (static const char *rd = getenv("VF3_RAM_DUMP"); rd) {
+				static bool done = false;
+				static const int len = atoi(rd);
+				static const uint64_t at = strchr(rd, '@') ? strtoull(strchr(rd, '@') + 1, nullptr, 10) : 0;
+				if (!done && len > 0 && game_frame >= at) {
+					done = true;
+					std::vector<uint8_t> out(size_t(len), 0);
+					for (int i = 0; i < len; i++) {
+						const int v = board.fv2_option(i, 1);
+						out[size_t(i ^ 3)] = uint8_t(v < 0 ? 0 : v);
+					}
+					const std::string where = (data.empty() ? std::string(".") : data) + "/ram.bin";
+					if (FILE *f = fopen(where.c_str(), "wb")) {
+						fwrite(out.data(), 1, out.size(), f);
+						fclose(f);
+						fprintf(stderr, "frame %llu: %d bytes of the game's memory written to %s\n",
+							(unsigned long long)game_frame, len, where.c_str());
+					} else fprintf(stderr, "the dump could not be written to %s\n", where.c_str());
+				}
+			}
 			if (static const char *rw = getenv("VF3_RAM_WATCH"); rw) {
 				static uint32_t at = 0;
 				static int len = 0;
@@ -3470,7 +3497,8 @@ int main(int argc, char **argv)
 		// Sega's empty STAGE_SEL on the tick the page was asked for, and something has to let it go.
 		const bool have = (s != cstate::MENU && s != cstate::MENU_IN ? true : modes.ready)
 			&& (s != cstate::OPTIONS ? true : options.ready)
-			&& (s != cstate::STAGE && s != cstate::STAGE_HELD ? true : stages.ready);
+			&& (s != cstate::STAGE && s != cstate::STAGE_HELD ? true : stages.ready)
+			&& (s != cstate::VS_OVER ? true : pause.ready);
 		if (!have) {
 			fprintf(stderr, "the console: %s was asked for (%s) and its page is not there -- staying in play\n",
 				crules(s).name, why ? why : "");
@@ -3480,7 +3508,7 @@ int main(int argc, char **argv)
 		cplay.ui.set(s, why);
 		const bool want_modes = s == cstate::MENU || s == cstate::MENU_IN;
 		const bool want_opts  = s == cstate::OPTIONS;
-		const bool want_pause = s == cstate::PAUSE;
+		const bool want_pause = s == cstate::PAUSE || s == cstate::VS_OVER;
 		const bool want_stage = s == cstate::STAGE || s == cstate::STAGE_HELD;
 		if (want_modes && !modes.shown) modes.show();
 		else if (!want_modes && modes.shown) modes.hide();
@@ -3861,7 +3889,14 @@ int main(int argc, char **argv)
 	// A line of the pause menu chosen. Two of the four have a lever and the other two are stepped over
 	// before they get here (fv2_pause.h says what each is waiting on).
 	auto chose_pause = [&](int line) {
-		fprintf(stderr, "the console's pause menu: %s chosen\n", fv2_pause::name(line));
+		// THE SAME FOUR LINES SERVE THE END OF A VERSUS, where the panel is the match's own and not a
+		// pause (console_play::step_vs_over). One thing differs and it is here: the match is ALREADY
+		// over, so the two lines that leave it do not ask for it to be ended. fv2_end_match refuses
+		// anywhere but a round being fought, which is right -- its two words mean nothing at VIC_DSP --
+		// and the rest of the way out reads the same from here: the bit held, the states cut, VS FINISH
+		// lent, the end-of-game screens shortened behind the port's own picture.
+		const bool from_over = cplay.ui.at == cstate::VS_OVER;
+		fprintf(stderr, "the console's %s: %s chosen\n", from_over ? "end of match" : "pause menu", fv2_pause::name(line));
 		if (line == fv2_pause::MAIN_MENU) {
 			// August's own lever, and this port already had it under another name: push the attract
 			// sequencer to the end of its list with its timer expired and the game walks off the end
@@ -3872,8 +3907,8 @@ int main(int argc, char **argv)
 			// title lever is pulled at the far side of it, where it works (console_play::arrive).
 			if (board.fv2_in_attract()) cplay.ask_for(console_play::ask::title_now);
 			else {
-				cplay.ask_for(console_play::ask::end_match);
-				cplay.leave_match(console_play::L_TO_TITLE);
+				if (!from_over) cplay.ask_for(console_play::ask::end_match);
+				cplay.leave_match(console_play::L_TO_TITLE, from_over);
 				// AND THE LIST GOES UP ON THE SPOT, over its own ground (fv2_mode_list.h). It used to wait for
 				// the game to be home on its title screen, because the title screen WAS its backdrop -- so the
 				// player watched the end of the game go by, GAME OVER and all. Now the way home is walked
@@ -3887,8 +3922,8 @@ int main(int argc, char **argv)
 		} else if (line == fv2_pause::CHANGE_VIPER) {
 			if (board.fv2_in_attract()) cplay.choose_versus();
 			else {
-				cplay.ask_for(console_play::ask::end_match);
-				cplay.leave_match(console_play::L_TO_SELECT);
+				if (!from_over) cplay.ask_for(console_play::ask::end_match);
+				cplay.leave_match(console_play::L_TO_SELECT, from_over);
 				// AND THE CURTAIN OVER IT, for the same reason MAIN MENU has the list's ground over it: the end
 				// of a game is CONTINUE and then GAME OVER, modes of their own, and this road let the player
 				// watch them go by and hear them. GOING says the port owns the screen and the sound while the
@@ -3918,8 +3953,9 @@ int main(int argc, char **argv)
 			// Nothing to do but close, which is what B and Start already did -- the line is there so the
 			// way back is written down rather than guessed at.
 		}
-		// Every other line leaves the pause menu for the game, including RESUME, whose whole job this is.
-		if (cplay.ui.at == cstate::PAUSE) enter(cstate::PLAY, "the pause menu closed");
+		// Every other line leaves the panel for the game, including RESUME, whose whole job this is.
+		if (cplay.ui.at == cstate::PAUSE || cplay.ui.at == cstate::VS_OVER)
+			enter(cstate::PLAY, from_over ? "the end-of-match panel closed" : "the pause menu closed");
 	};
 
 	// ---- test hooks ----
@@ -4352,7 +4388,8 @@ int main(int argc, char **argv)
 		}
 		// VF3_CONSOLE_PAUSE=n: the pause menu answered without a hand -- the line's own number in fv2_pause.h,
 		// which is 0 RESUME, 1 REMATCH, 2 CHANGE STAGE, 3 CHANGE YOUR VIPER, 4 MAIN MENU -- as soon as it is
-		// up, however it was opened. The third of this family,
+		// up, HOWEVER IT WAS OPENED, which now means the end-of-match panel of a versus as well as a pause
+		// (console_play::step_vs_over): the same surface, the same four lines. The third of this family,
 		// and for the same reason as the first two: the menu FREEZES the game, so VF3_KEYS_S goes by a clock
 		// the game no longer shares and a measurement silently becomes a run that chose nothing.
 		if (static const char *cp = getenv("VF3_CONSOLE_PAUSE"); cp) {
@@ -4749,6 +4786,10 @@ int main(int argc, char **argv)
 				if (cplay.want_why) {
 					const char *why = cplay.want_why;
 					cplay.want_why = nullptr;
+					// The end of a versus is the one state that brings a surface with it: the pause panel, in its
+					// end-of-match form (fv2_pause::show_over). enter() only ever CLOSES that panel, because which
+					// hand pressed Start is what opens the other one -- and here no hand pressed anything.
+					if (cplay.want_state == cstate::VS_OVER && pause.ready) pause.show_over();
 					enter(cplay.want_state, why);
 				}
 				// (the carousel is asked for by console_play itself, where the fighters being chosen is seen:

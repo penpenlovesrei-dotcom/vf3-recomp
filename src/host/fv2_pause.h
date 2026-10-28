@@ -91,6 +91,12 @@ struct fv2_pause
 	static constexpr SDL_Color BAR = { 226, 226, 226, 235 };      // the header bar
 	static constexpr SDL_Color BAR_INK = { 32, 32, 32, 255 };     // and what is written on it
 
+	// AND THE SAME PANEL STANDS AT THE END OF A VERSUS, which is Frederic's of the 2026-10-28: a decided
+	// two-player match used to hand the player GAME OVER, a screen that belongs to a ladder nobody was
+	// climbing. The lines are already the right four -- REMATCH, CHANGE STAGE, CHANGE YOUR VIPER, MAIN MENU
+	// -- so what differs is three things and no more: RESUME is not shown (there is no fight to go back to),
+	// the player cannot back out (same reason), and the bar says what this is instead of who paused.
+	bool over = false;
 	bool shown = false;
 	int who = 0;                   // the player who paused: the panel stands on his side, 1P left, 2P right
 	int sel = MAIN_MENU;
@@ -155,6 +161,7 @@ struct fv2_pause
 	{
 		if (!ready) return;
 		shown = true;
+		over = false;
 		who = player ? 1 : 0;
 		sel = RESUME;
 		locked = false;
@@ -163,6 +170,20 @@ struct fv2_pause
 		if (!shows(sel)) move(+1);
 	}
 	void hide() { shown = false; locked = false; lock_t = 0; }
+
+	// The end-of-match panel: the four lines that command this match, and no way out but one of them.
+	void show_over()
+	{
+		if (!ready) return;
+		shown = true;
+		over = true;
+		who = 0;
+		on = ALL & ~(1u << RESUME);
+		sel = REMATCH;
+		locked = false;
+		lock_t = 0;
+		stick_x = stick_y = 0;
+	}
 
 	void move(int d)
 	{
@@ -190,8 +211,8 @@ struct fv2_pause
 			else if (sc == SDL_SCANCODE_DOWN || bound(C_DOWN, sc)) move(+1);
 			// Start closes what Start opened. It is listed before A so that a player whose Start is also a
 			// game button cannot choose a line with it by accident.
-			else if (bound(C_START, sc)) { want_sound = SND_CANCEL; return CANCELLED; }
-			else if (sc == SDL_SCANCODE_BACKSPACE || bound(C_KICK, sc)) { want_sound = SND_CANCEL; return CANCELLED; }
+			else if (bound(C_START, sc)) { if (over) return -1; want_sound = SND_CANCEL; return CANCELLED; }
+			else if (sc == SDL_SCANCODE_BACKSPACE || bound(C_KICK, sc)) { if (over) return -1; want_sound = SND_CANCEL; return CANCELLED; }
 			else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER || sc == SDL_SCANCODE_SPACE
 					 || bound(C_PUNCH, sc)) {
 				if (!shows(sel)) return -1;
@@ -205,6 +226,7 @@ struct fv2_pause
 			case SDL_GAMEPAD_BUTTON_DPAD_UP: move(-1); break;
 			case SDL_GAMEPAD_BUTTON_DPAD_DOWN: move(+1); break;
 			case SDL_GAMEPAD_BUTTON_START: case SDL_GAMEPAD_BUTTON_EAST:
+				if (over) return -1;
 				want_sound = SND_CANCEL;
 				return CANCELLED;
 			case SDL_GAMEPAD_BUTTON_SOUTH:
@@ -264,9 +286,9 @@ struct fv2_pause
 
 		// "1P PAUSE" on the bar, in its own ink: the player first, hard against the left, then the word.
 		const float bar_cap = bar * 0.56f, bar_h = bar_cap / fv2_texte::CAP;
-		const char *side = who ? "2P" : "1P";
+		const char *side = over ? "VS" : who ? "2P" : "1P";
 		font->draw(ren, side, x + TEXT_IN * mid.w * 0.5f, y - bar + bar * 0.20f, bar_h, BAR_INK);
-		font->draw(ren, "PAUSE", x + w * 0.30f, y - bar + bar * 0.20f, bar_h, BAR_INK);
+		font->draw(ren, over ? "BATTLE OVER" : "PAUSE", x + w * 0.30f, y - bar + bar * 0.20f, bar_h, BAR_INK);
 
 		// The lines this mode shows, left-aligned inside the box as they are there, and only those: a line
 		// that means nothing here is not greyed out, it is absent, and the ones below it move up. August
