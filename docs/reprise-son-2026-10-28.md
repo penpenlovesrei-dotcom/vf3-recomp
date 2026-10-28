@@ -58,26 +58,17 @@ Toute la mesure, les pistes écartées et la leçon sont en `docs/scsp_validatio
 
 ## Ce qui est vérifié, et ce qui ne l'est pas
 
-**Vérifié :**
+**Vérifié, tout l'est maintenant** (les deux derniers contrôles relancés le 2026-10-28 à la reprise) :
 
-- `make build/bin/vf3run build/bin/rejouer build/bin/mesurer-coeur` — compile, code 0 ;
-- `tools/son/rejouer.cmd fvipers2 tools/scripts/fv2-fight.txt 4200 mame maison` → **TOUT CONCORDE**, les
-  **quatre** contrôles, 3 219 865 échantillons par puce, les deux puces. C'est le contrôle qui compte ;
-- les dix tests passaient sur les deux cœurs **avant** le correctif du miroir (séance plus tôt).
+| | |
+|---|---|
+| la construction | `make test build/bin/vf3run build/bin/rejouer build/bin/mesurer-coeur`, code 0 |
+| le rejoueur, scène entière | `tools/son/rejouer.cmd fvipers2 tools/scripts/fv2-fight.txt 4200 mame maison` → **TOUT CONCORDE**, les **quatre** contrôles, 3 219 865 échantillons par puce. C'est le contrôle qui compte |
+| les dix tests | `make test` **après** le correctif du miroir : tous les cas passent, les deux cœurs là où le test prend un nom de cœur |
+| l'empreinte de bout en bout | `vf3run --frames 4200 --rec --wav` avec chaque cœur : **`9A2310F8AF000E09EB18BD114852B003`** des deux côtés — le correctif ne change pas une valeur du son (critère 3 du plan de migration) |
 
-**NON vérifié — à refaire en premier à la reprise :**
+**Reste hors de ce travail** : `verifier-vf3.cmd` (critère 2) n'a pas été lancé, et il ne regarde pas le son.
 
-1. **`make test` après le correctif du miroir.** Le lancement a été interrompu. Rien ne devrait bouger
-   (`scsp_select.cpp`, `scsp_trace.cpp`, `scsp.h`, `scsp_mame.h`, `soundboard.cpp` seuls ont changé, et
-   `banc_scsp.h` ne pose pas de miroir) mais **ce n'est pas mesuré**.
-2. **L'empreinte de bout en bout après le correctif du miroir** : `vf3run --frames 4200 --rec --wav` avec
-   chaque cœur doit redonner `9A2310F8AF000E09EB18BD114852B003`. Le correctif ne touche pas le réglage que
-   la carte applique — il ne change que l'ORDRE où il s'applique et la trace — donc l'empreinte doit tenir.
-   **Interrompu aussi.** C'est le critère 3 du plan de migration.
-3. `verifier-vf3.cmd` (critère 2) n'a pas été lancé.
-
-**Une verrue connue** : le bloc §3 c que j'ai écrit dans `docs/scsp_validation.md` est **sans accents**,
-contrairement au reste des documents. Contenu juste, forme à reprendre.
 
 ## Ce qui reste de ta liste, inchangé
 

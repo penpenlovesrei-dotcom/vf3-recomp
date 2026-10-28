@@ -155,66 +155,72 @@ les timers et les écritures de RAM. Le rejeu retrouve le PCM de la carte **à l
 échantillons, ce qui établit que la trace est complète — le contrôle à passer avant que comparer deux cœurs
 veuille dire quelque chose.
 
-**Et il faut dire jusqu'ou, parce que ce n'etait pas jusqu'au bout.** Ces 229 991 echantillons sont
-**300 images**, la valeur par defaut de `rejouer.cmd`. Lance le 2026-10-28 sur la scene entiere -- 4 200
-images, 3 219 865 echantillons par puce -- **ce controle echouait** :
+**Et il faut dire jusqu'où, parce que ce n'était pas jusqu'au bout.** Ces 229 991 échantillons sont
+**300 images**, la valeur par défaut de `rejouer.cmd`. Lancé le 2026-10-28 sur la scène entière — 4 200
+images, 3 219 865 échantillons par puce — **ce contrôle échouait** :
 
-| puce | premiere divergence | ce que le rejeu rendait | ce que la carte avait produit |
+| puce | première divergence | ce que le rejeu rendait | ce que la carte avait produit |
 |---|---|---|---|
-| 0 | echantillon **772 067** gauche (image ~1 007) | 0 | -4 |
-| 1 | echantillon **1 149 006** droite (image ~1 499) | -992 | -976 |
+| 0 | échantillon **772 067** gauche (image ~1 007) | 0 | −4 |
+| 1 | échantillon **1 149 006** droite (image ~1 499) | −992 | −976 |
 
-**Trouve et referme le meme jour.** Ce qui suit est la mesure qui l'a nomme, gardee parce que la facon dont
+**Trouvé et refermé le même jour.** Ce qui suit est la mesure qui l'a nommé, gardée parce que la façon dont
 cette divergence se cachait est le plus instructif de l'affaire.
 
 ### Ce que la mesure disait avant de savoir
 
-1. **Ce n'etait pas une divergence entre les deux coeurs.** Le second controle, `mame` contre `maison` sur
-   la meme trace de 4 200 images, disait **IDENTIQUES** sur les cinq flux. L'identite des coeurs tenait donc
-   sur la scene entiere ; c'etait **la completude de la trace** qui ne tenait que sur 300 images.
-2. **L'etendue, et c'est elle qui a oriente.** Non pas un echantillon isole : **84,7 % des valeurs apres la
-   premiere divergence**, jusqu'au bout, d'amplitude minuscule -- ecart median 12 sur 131 072, maximum 156,
-   et **tous multiples de 4** (la sortie 18 bits dont les deux bits bas tombent). Donc un etat, pas un
-   accident de calcul. Et la puce 1 etait **identique a l'octet** sur les 1 050 premieres images alors que
-   la puce 0 divergeait : la cause dependait de ce que le pilote ecrivait, puce par puce.
-3. **Trois pistes ecartees par la mesure, pas par le raisonnement** : un chemin d'ecriture de la RAM son qui
-   manquerait a la trace (il n'y en a qu'un, `Bus` cas 0x0/0x2, et il appelle `ram_ecrite`) ; les gains par
-   groupe (inertes, les deux volumes valant 1, et `m_group_gains` reste faux) ; la ROM d'echantillons
-   (les SCSP ne jouent que depuis leur RAM, le 68000 y recopie -- `soundboard.h`).
+1. **Ce n'était pas une divergence entre les deux cœurs.** Le second contrôle, `mame` contre `maison` sur
+   la même trace de 4 200 images, disait **IDENTIQUES** sur les cinq flux. L'identité des cœurs tenait donc
+   sur la scène entière ; c'était **la complétude de la trace** qui ne tenait que sur 300 images.
+2. **L'étendue, et c'est elle qui a orienté.** Non pas un échantillon isolé : **84,7 % des valeurs après la
+   première divergence**, jusqu'au bout, d'amplitude minuscule — écart médian 12 sur 131 072, maximum 156,
+   et **tous multiples de 4** (la sortie 18 bits dont les deux bits bas tombent). Donc un état, pas un
+   accident de calcul. Et la puce 1 était **identique à l'octet** sur les 1 050 premières images alors que
+   la puce 0 divergeait : la cause dépendait de ce que le pilote écrivait, puce par puce.
+3. **Trois pistes écartées par la mesure, pas par le raisonnement** : un chemin d'écriture de la RAM son qui
+   manquerait à la trace (il n'y en a qu'un, `Bus` cas 0x0/0x2, et il appelle `ram_ecrite`) ; les gains par
+   groupe (inertes, les deux volumes valant 1, et `m_group_gains` reste faux) ; la ROM d'échantillons
+   (les SCSP ne jouent que depuis leur RAM, le 68000 y recopie — `soundboard.h`).
 
-### La cause, et elle etait ecrite d'avance
+### La cause, et elle était écrite d'avance
 
-`scsp_core.h` la nommait depuis le debut, dans sa section **"AND WHAT IS DELIBERATELY ABSENT"** : quatre
+`scsp_core.h` la nommait depuis le début, dans sa section **« AND WHAT IS DELIBERATELY ABSENT »** : quatre
 choses de ce portage ne passent pas par l'interface, et la carte les posait **directement sur la classe
-concrete**. Le miroir MADRS est la seule des quatre **qui change le son**, et il change **par jeu** : vrai
+concrète**. Le miroir MADRS est la seule des quatre **qui change le son**, et il change **par jeu** : vrai
 pour Virtua Fighter 3, **faux pour Fighting Vipers 2**. Il se posait dans `SoundBoard::reset`, par un
-`dynamic_cast`, **apres** la creation de l'enregistreur -- donc la trace ne pouvait pas le voir, et un rejeu
-le laissait a son defaut, `true`.
+`dynamic_cast`, **après** la création de l'enregistreur — donc la trace ne pouvait pas le voir, et un rejeu
+le laissait à son défaut, `true`.
 
-**Le controle decisif n'a demande aucun code** : la meme scene reenregistree avec `VF3_SCSP_MADRS_MIRROR=1`,
-qui met la carte dans le reglage que le rejeu supposait, se rejouait **identique a l'octet sur les deux
-puces**. C'est ce qui a nomme le coupable au lieu de le soupconner.
+**Le contrôle décisif n'a demandé aucun code** : la même scène réenregistrée avec `VF3_SCSP_MADRS_MIRROR=1`,
+qui met la carte dans le réglage que le rejeu supposait, se rejouait **identique à l'octet sur les deux
+puces**. C'est ce qui a nommé le coupable au lieu de le soupçonner.
 
-Et cela explique pourquoi 300 images passaient : la premiere ecriture dans `0x7C0-0x7FF` arrive a
-l'echantillon **29 211**, mais elle vaut **zero** -- or le miroir ne distingue les deux reglages que quand
-une valeur non nulle y va et que le programme DSP s'en sert. Le controle ne mentait pas ; il etait trop court.
+Et cela explique pourquoi 300 images passaient : la première écriture dans `0x7C0-0x7FF` arrive à
+l'échantillon **29 211**, mais elle vaut **zéro** — or le miroir ne distingue les deux réglages que quand
+une valeur non nulle y va et que le programme DSP s'en sert. Le contrôle ne mentait pas ; il était trop court.
 
-### Ce qui a ete referme
+### Ce qui a été refermé
 
 | | |
 |---|---|
-| **une seule porte** | `scsp::regle_miroir_madrs` et `scsp::miroir_madrs` dans `scsp_select.h` -- dont l'en-tete nommait deja ce manque. Le `dynamic_cast` ne vit plus dans `soundboard.cpp` |
-| **l'ordre** | le miroir se pose **avant** que l'enregistreur existe, et l'enregistreur le **relit de la puce** au lieu qu'on pense a le lui dire |
-| **la trace le porte** | en-tete **version 2** : `# scsp-trace 2 puce=N horloge=H ram=B miroir=0|1`, et le rejeu le pose avant la premiere ligne |
-| **une trace v1 est refusee** | avec un message qui dit quoi faire, et non devinee -- supposer est precisement ce qui a coute cette divergence |
+| **une seule porte** | `scsp::regle_miroir_madrs` et `scsp::miroir_madrs` dans `scsp_select.h` — dont l'en-tête nommait déjà ce manque. Le `dynamic_cast` ne vit plus dans `soundboard.cpp` |
+| **l'ordre** | le miroir se pose **avant** que l'enregistreur existe, et l'enregistreur le **relit de la puce** au lieu qu'on pense à le lui dire |
+| **la trace le porte** | en-tête **version 2** : `# scsp-trace 2 puce=N horloge=H ram=B miroir=0|1`, et le rejeu le pose avant la première ligne |
+| **une trace v1 est refusée** | avec un message qui dit quoi faire, et non devinée — supposer est précisément ce qui a coûté cette divergence |
 
-**Verifie le 2026-10-28, scene entiere** : `tools/son/rejouer.cmd fvipers2 tools/scripts/fv2-fight.txt 4200
-mame maison` dit **TOUT CONCORDE** -- les quatre controles, 3 219 865 echantillons par puce, les deux puces.
-La completude de la trace est donc etablie sur la scene entiere, et plus seulement sur 300 images.
+**Vérifié le 2026-10-28, scène entière**, et les trois contrôles comptent ensemble :
 
-**La lecon, et elle est generale :** *un etat qui n'arrive pas par un appel n'entre pas dans une trace
-d'appels.* Les trois autres extras du portage ne changent pas le son au reglage par defaut, et c'est la
-seule raison pour laquelle ils ne sont pas dans l'en-tete ; si l'un d'eux se mettait a compter, il faudrait
+| | |
+|---|---|
+| `tools/son/rejouer.cmd fvipers2 tools/scripts/fv2-fight.txt 4200 mame maison` | **TOUT CONCORDE** — les quatre contrôles, 3 219 865 échantillons par puce, les deux puces |
+| `make test` | les dix tests, **tous les cas passent**, les deux cœurs là où le test prend un nom de cœur |
+| `vf3run --frames 4200 --rec --wav`, chaque cœur | même empreinte **`9A2310F8AF000E09EB18BD114852B003`** — le correctif ne change pas une valeur du son |
+
+La complétude de la trace est donc établie sur la scène entière, et plus seulement sur 300 images.
+
+**La leçon, et elle est générale :** *un état qui n'arrive pas par un appel n'entre pas dans une trace
+d'appels.* Les trois autres extras du portage ne changent pas le son au réglage par défaut, et c'est la
+seule raison pour laquelle ils ne sont pas dans l'en-tête ; si l'un d'eux se mettait à compter, il faudrait
 l'y mettre aussi.
 
 
