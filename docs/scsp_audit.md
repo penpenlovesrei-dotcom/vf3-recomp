@@ -657,11 +657,14 @@ absence permet. Les deux colonnes se lisent ensemble ou pas du tout.
 
 ### Ce qu'il reste a faire, et c'est maintenant precis
 
-**La direction est nommee : resoudre a la DECODE ce qui se rebranche a chaque pas de chaque echantillon.**
-`Decode` construit deja le `Pas` une fois par ecriture de programme ; la chaine `IRA` (trois comparaisons
-d'octets et un `return`) et les deux `switch` a quatre cas s'y resoudraient une fois pour toutes — un
-pointeur ou un index pour la source d'entree, un code deja reduit pour le decalage. 44 100 fois par seconde
-par puce, c'est la que vont les branchements.
+**La direction semblait nommee : resoudre a la DECODE ce qui se rebranche a chaque pas de chaque
+echantillon.** `Decode` construit deja le `Pas` une fois par ecriture de programme ; la chaine `IRA` (trois
+comparaisons d'octets et un `return`) et les deux `switch` a quatre cas s'y resoudraient une fois pour
+toutes. 44 100 fois par seconde par puce, c'est la que vont les branchements.
+
+> **ESSAYE LE MEME JOUR, ET ELLE PERD. Voir §4 octies.** Les deux manieres de le faire sont plus LENTES que
+> ce qu'elles remplacent, de 7 % et de 16 %. La phrase ci-dessus est gardee parce qu'elle etait raisonnable
+> et qu'elle est fausse : le nombre de branchements n'etait pas le cout.
 
 Et la barre ne change pas : **WAV identique a l'octet**, empreinte `9A2310F8AF000E09EB18BD114852B003`.
 
@@ -677,6 +680,62 @@ du vrai programme. Il **situe** un coût, il ne le prédit pas — et le témoin
 (+0,629 ns par pas, soit +15 %) est en dessous du **+19,8 %** mesuré dans le jeu (§4 sexies). Le banc
 sous-estime. C'est pour cela que le témoin est dans la sortie : si son écart n'était pas du même ordre que
 ceux de la table, c'est le banc qu'il faudrait croire le moins.
+
+
+## 4 octies. Deux lots qui perdaient, et ce qu'ils apprennent
+
+§4 septies avait nomme une direction : les 31 branchements de la boucle de pas contre les 16 de MAME, donc
+resoudre a la decode la chaine `IRA` et les deux `switch`. **Essaye le 2026-10-28, et les deux manieres de le
+faire sont plus lentes.** Defait. C'est le second lot de ce document a finir ainsi, apres le quatrieme de §7,
+et il est garde pour la meme raison : un essai qui perd est une mesure.
+
+### Les deux lots, et ce qu'ils coutent
+
+Les deux font exactement ce que §4 septies demandait — la chaine `IRA` devient un indice de tableau, les deux
+`switch` deviennent des indicateurs deja poses, et le `return` de la chaine est trouve une fois au `Start`
+plutot que teste a chaque pas. Ils ne differaient que par **ou ranger les decisions** :
+
+| | ce qui change | socle `maison` | rapport au socle `mame` |
+|---|---|---|---|
+| **l'original** | — | 3,48 — 3,57 | **1,22** |
+| **lot A** | cinq octets de plus dans `Pas` : `src`, `idx`, `ira_dec`, `y_src`, `y_dec` | 3,50 — 3,56 | **1,30** |
+| **lot B** | les memes decisions rangees dans les bits libres du mot d'indicateurs | 4,24 — 4,33 | **1,42** |
+
+Mesure par `mesurer-coeur --socle 600000`, trois fois chacun, **dans la meme seance** — c'est pour ca que
+cette comparaison vaut quelque chose, le socle de `mame` ayant lui-meme derive de 2,70 a 3,21 entre le debut
+et la fin des essais.
+
+### Ce que ca apprend, et c'est plus utile que le lot
+
+1. **LE NOMBRE DE BRANCHEMENTS N'ETAIT PAS LE COUT.** C'est l'hypothese que §4 septies tirait de
+   l'assembleur — 145 instructions et 31 branchements contre 108 et 16 — et elle etait raisonnable. Elle est
+   fausse : en enlever une bonne part rend le code **plus lent**. Un compteur statique d'instructions ne
+   mesure pas un temps, et ce document vient de le payer une seconde fois.
+
+2. **LE LOT A DIT POURQUOI : LA TAILLE DU PAS DECODE.** Cinq octets de plus font passer `Pas` de 16 a 24
+   octets, donc le programme de 2 Ko a 3 Ko, sur un chemin parcouru 112 fois par echantillon et 44 100 fois
+   par seconde. **+7 % pour un kilo-octet.** Et c'est l'exacte reciproque de ce que §4 septies avait ecarte :
+   « le pas decode est plus gros, donc plus de cache » y figurait parmi les hypotheses mortes, parce que
+   celui du projet est PLUS PETIT que celui de MAME. Il l'est — et c'est precisement pour ca qu'il ne faut
+   pas le grossir.
+
+3. **LE LOT B DIT QUE LE REMEDE EST PIRE.** Ranger les memes decisions dans les bits libres du mot garde les
+   16 octets, mais chaque pas paie alors trois extractions (`>>` puis `&`) pour les relire. **+16 %**, le
+   double du lot A. Lire un octet est moins cher que deballer un champ, et la boucle fait ca 112 fois par
+   echantillon.
+
+4. **ET L'ENSEMBLE DIT OU EST LA LIMITE DE CE POSTE.** Trois instruments ont maintenant parle — le banc par
+   caracteristique, l'assembleur, et ces deux lots — et ils s'accordent sur l'endroit (le socle, par pas) et
+   divergent sur la cause. Ce qui manque n'est plus une idee mais **un compteur materiel** : cycles,
+   instructions retirees, branchements mal predits, defauts de cache, sur deux boucles de meme taille. La
+   question est etroite ; l'instrument n'est pas la.
+
+### Ce qui a ete garde de ces deux lots
+
+**Rien dans `src/`.** `dsp_maison.{h,cpp}` sont revenus a l'identique, et les trois mesures de l'original
+ci-dessus ont ete refaites apres le retour pour le verifier. Ce qui reste est `mesurer-coeur --socle`, ecrit
+pour ces essais et qui sert a tout essai suivant : il entrelace une reference et une variante du meme
+fichier, ce qu'il fallait pour voir que le lot A perdait 7 % quand la machine, elle, derivait de 19 %.
 
 
 ## 5. Ce que le programme DSP contient vraiment
