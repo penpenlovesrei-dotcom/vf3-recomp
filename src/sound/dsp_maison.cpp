@@ -126,6 +126,9 @@ void dsp_maison::Decode(int pas)
 	if ((m[3] >> 15) & 1) f |= I_NOFL;
 	if ((m[3] >> 1) & 1)  f |= I_ADREB;
 	if (m[3] & 1)         f |= I_NXADR;
+	// Les deux questions du decalage, posees une fois a l'ecriture du programme.
+	if (p.shift == 1 || p.shift == 2) f |= I_SHPRE;
+	if (p.shift <= 1)                 f |= I_SHECR;
 	p.f = f;
 }
 
@@ -200,13 +203,13 @@ void dsp_maison::boucle()
 		}
 		const s32 x = (f & I_XSEL) ? entree : tempv;
 
-		s32 y = 0;
-		switch (I.ysel) {
-		case 0: y = m_frc_reg; break;
-		case 1: y = COEF[I.coef] >> 3; break;       // COEF fait 16 bits, Y en veut 13
-		case 2: y = (m_y_reg >> 11) & 0x1FFF; break;
-		case 3: y = (m_y_reg >> 4) & 0x0FFF; break;
-		}
+		// COEF EN PREMIER, comme chez MAME et pour sa raison : 87 des 112 pas du jeu le prennent
+		// (docs/scsp_audit.md §5), et c'est le cas 1, donc le deuxieme d'un switch ecrit dans l'ordre.
+		s32 y;
+		if (I.ysel == 1)      y = COEF[I.coef] >> 3;       // COEF fait 16 bits, Y en veut 13
+		else if (I.ysel == 0) y = m_frc_reg;
+		else if (I.ysel == 2) y = (m_y_reg >> 11) & 0x1FFF;
+		else                  y = (m_y_reg >> 4) & 0x0FFF;
 		if constexpr (RARES) if ((f & I_YRL)) m_y_reg = entree;
 
 		// --- LE SHIFTER, ET IL EST UN PAS EN RETARD SUR L'ACCUMULATEUR.
@@ -219,13 +222,8 @@ void dsp_maison::boucle()
 		//
 		// Les deux premiers decalages ECRETENT a 24 bits signes, les deux autres ETENDENT LE SIGNE -- donc
 		// rebouclent. La difference entre saturer et claquer est tout l'interet du champ.
-		s32 shifted = 0;
-		switch (I.shift) {
-		case 0: shifted = std::clamp<s32>(m_acc, -0x00800000, 0x007FFFFF); break;
-		case 1: shifted = std::clamp<s32>(m_acc * 2, -0x00800000, 0x007FFFFF); break;
-		case 2: shifted = sext(m_acc * 2, 24); break;
-		case 3: shifted = sext(m_acc, 24); break;
-		}
+		const s32 av = (f & I_SHPRE) ? (m_acc * 2) : m_acc;
+		const s32 shifted = (f & I_SHECR) ? std::clamp<s32>(av, -0x00800000, 0x007FFFFF) : sext(av, 24);
 
 		// --- le produit, en 13 bits signes pour Y
 		//

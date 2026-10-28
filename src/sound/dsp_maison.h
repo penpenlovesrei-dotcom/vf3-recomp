@@ -101,6 +101,8 @@ private:
 		// Les quatre que ce jeu n'exerce jamais, groupes pour qu'un seul test les ecarte toutes.
 		I_FRCL = 1u << 12, I_ADRL = 1u << 13, I_YRL = 1u << 14, I_NEGB = 1u << 15,
 		I_RARES = I_FRCL | I_ADRL | I_YRL | I_NEGB,
+		I_SHPRE = 1u << 16,          // le decalage double l'accumulateur d'abord (SHIFT 1 et 2)
+		I_SHECR = 1u << 17,          // il ECRETE (SHIFT 0 et 1) au lieu d'etendre le signe (2 et 3)
 	};
 	struct Pas {
 		u32 f = 0;                   // les champs d'un bit
