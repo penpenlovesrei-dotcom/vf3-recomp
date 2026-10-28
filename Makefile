@@ -82,7 +82,7 @@ $(BIN)/test_scspdsp: $(call objs,src/sound/scspdsp.cpp src/core/mame_shim.cpp to
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# src/sound/scsp_contract.h against the two things it describes: the field positions in scsp.cpp and the
+# scsp/src/sound/scsp_contract.h against the two things it describes: the field positions in scsp.cpp and the
 # driver's constants in the sound ROM (tools/son/test_scsp_contract.cpp). Part 1 needs nothing but the
 # sources; part 2 says so and steps aside when build/fv2-son-68000.bin is not there.
 $(BIN)/test_scsp_contract: $(call objs,tools/son/test_scsp_contract.cpp)
@@ -158,7 +158,7 @@ $(BIN)/mesurer-coeur: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/s
 # Les sept tests ci-dessous ne parlent que de scsp::core, du contrat et du selecteur ; ils liaient pourtant
 # les 2 110 lignes du coeur de MAME, par les deux aiguillages de scsp/tools/son/banc_scsp.h et par un troisieme
 # dans test_scsp_regs.cpp -- sans aucune raison de fond, leurs references etant des nombres geles. Depuis que
-# chaque coeur s'inscrit dans son propre .cpp (src/sound/scsp_select.h), CE QUI EST LIE DECIDE CE QUI EXISTE,
+# chaque coeur s'inscrit dans son propre .cpp (scsp/src/sound/scsp_select.h), CE QUI EST LIE DECIDE CE QUI EXISTE,
 # et ces memes tests se construisent avec le seul coeur du projet. C'est le dernier prealable d'un depot
 # separe (scsp/docs/scsp_migration_plan.md), et `make test` le refait a chaque fois pour que ca ne rouille pas.
 #

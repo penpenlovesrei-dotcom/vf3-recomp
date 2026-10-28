@@ -151,12 +151,29 @@ Et le bug sonore de l'écran WINNER y est tombé **avec une ligne** — `sound.m
 que `stable-1` n'avait pas. Ce n'est pas la puce qui corrige : le miroir est un réglage par jeu, et le cœur
 ne connaît pas le jeu. Mais il le rend corrigeable en une ligne nommée et mesurée.
 
-## 15. Le SCSP sort en dépôt autonome
+## 15. Le SCSP est un dépôt autonome, et c'est git qui l'y porte
 
-`tools/son/exporter-scsp.py` sort 30 fichiers, un Makefile et un README, **aux mêmes chemins**. Le dépôt
-sorti se construit et passe ses **sept tests**, sans une ligne de MAME. Ce qu'il ne peut pas faire est dans
-son README : refaire ses propres nombres — **la preuve vit dans le jeu**, et c'était l'argument de
-`son.md` §7.
+**[github.com/penpenlovesrei-dotcom/scsp-model3](https://github.com/penpenlovesrei-dotcom/scsp-model3)**,
+un vrai `git subtree` sous le préfixe `scsp/`. Un clone neuf du dépôt publié passe ses **sept tests**, sans
+une ligne de MAME. Les chemins sont les mêmes des deux côtés, donc un `diff` se lit sans traduction, et la
+circulation tient en une ligne dans chaque sens :
+
+    git subtree push --prefix=scsp scsp main
+    git subtree pull --prefix=scsp scsp main
+
+`tools/son/exporter-scsp.py` a disparu : il recopiait les fichiers dans un dossier neuf, donc sans passé.
+`scsp/LICENSE` est né avec le dépôt — le MIT sans sa liste de tiers, puisque la liste ne s'applique plus :
+rien là-bas ne vient de MAME, et la frontière de licence passe exactement à la limite du préfixe.
+
+**L'histoire ne traverse pas, et il faut le dire.** `git subtree split` suit un chemin, et avant le
+déplacement le chemin `scsp/` n'existait pas : le dépôt autonome commence au jour du préfixe. Les quarante
+commits qui ont fait le cœur restent ici, où `git log --follow scsp/src/sound/scsp_maison.cpp` les remonte
+tous. Je les ai reconstruits pour voir (filtre sur les 30 anciens chemins, 40 commits, les mêmes blobs au
+sommet) ; les greffer coûtait **une fusion à chaque synchronisation**, et le choix a été de garder
+`subtree push` en une ligne. Le README du dépôt porte cette phrase, pour qui arrive par là.
+
+Ce que ce dépôt ne peut pas faire est dans son README : refaire ses propres nombres — **la preuve vit dans
+le jeu**, et c'était l'argument de `son.md` §7.
 
 ## 16. Sur deux cœurs : le dernier chiffre
 
@@ -199,12 +216,16 @@ DSP du projet atteint le comportement **visé**, et rien de plus.
 
 ## Ce qui reste
 
-**Un choix, pas une dette** : le vrai `git subtree` pour le SCSP. Il demande de déplacer `src/sound`,
-`tools/son` et les documents sous un répertoire unique, ce qui touche le Makefile, les inclusions et tous
-les chemins que les neuf documents citent. **L'export marche déjà** — c'est à faire quand l'arbre est calme,
-ou jamais.
+**Rien sur le son.** Le dernier point ouvert était le vrai `git subtree`, fait le 2026-10-29 : les 30
+fichiers déplacés sous `scsp/` par `git mv`, le Makefile et les inclusions suivis, les 33 renvois des
+documents réécrits, et les trois contrôles repassés après le déplacement. Le dépôt autonome est en ligne et
+un clone neuf s'y construit.
 
-Rien d'autre. Les six points de la liste du matin sont fermés, et ce que j'ai pu nommer en chemin — le pic
+Deux choses sont en anglais dans le sous-arbre, et ce sont les deux premières qu'un lecteur extérieur
+ouvre : `scsp_contract.h` et `scsp_core.h`, les deux plus anciens fichiers du cœur neuf, écrits avant que
+tout passe au français. Les 30 autres fichiers sont en français, et 36 des 41 messages de commit.
+
+Les six points de la liste du matin sont fermés, et ce que j'ai pu nommer en chemin — le pic
 d'attente isolé à 7,4 ms, les cycles de `maison`, l'assembleur sous la fonction — a été **mesuré et écarté**,
 pas laissé ouvert.
 
@@ -218,7 +239,7 @@ pas laissé ouvert.
 | `make test-sans-mame` | les sept tests de bloc liés sans une ligne de MAME |
 | `batir-variantes.py`, `variantes-dsp.py` | une variante par exe, chacune passée aux dix tests |
 | `mesurer-variantes.cmd [socle\|jeu]` | le jugement au compteur matériel — fenêtre **administrateur** |
-| `exporter-scsp.py` | le dépôt SCSP autonome |
+| `git subtree push --prefix=scsp` | le dépôt SCSP autonome, sans rien recopier |
 | `mesurer-concurrence.cmd` | cinq passages, **les deux cœurs** — pour le portable |
 | `VF3_SND_PROF=1` | sans `VF3_PROF`, exige `--wav`, et vaut pour les deux cœurs |
 | trace `# scsp-trace 2` | l'en-tête porte `miroir=0|1` ; une trace v1 est refusée |

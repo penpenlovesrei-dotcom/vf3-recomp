@@ -682,13 +682,13 @@ ajoutees tombaient, a donne `read32` en deux commandes.
 
 ## Journal du 2026-10-24, l'après-midi — le son : où va son temps, et un quart de moins
 
-Deux commits, `1757e83` et `7f732ee`. Six documents dans `docs/scsp_*.md` ; ce qui suit est ce qu'il faut
+Deux commits, `1757e83` et `7f732ee`. Six documents dans `scsp/docs/scsp_*.md` ; ce qui suit est ce qu'il faut
 savoir sans les ouvrir.
 
 ### Ce que la mesure a dit, et que personne n'avait demandé
 
 Le profileur de `vf3run` donnait déjà le coût de la carte son **en bloc**. Il manquait la répartition dedans,
-et c'était tout le sujet : `src/sound/sound_prof.h` (`VF3_SND_PROF=1`) la donne, en retirant le temps imbriqué,
+et c'était tout le sujet : `scsp/src/sound/sound_prof.h` (`VF3_SND_PROF=1`) la donne, en retirant le temps imbriqué,
 ce qui n'est pas trivial — **les échantillons ne sont pas fabriqués dans une phase à eux**, le 68000 les
 déclenche depuis l'intérieur de ses propres tranches chaque fois qu'il touche un registre de chip.
 
@@ -832,7 +832,7 @@ coûte rien (**zéro repatch sur 1500 images**), et le coût est le même avec u
 (15,0 contre 15,7 ms).
 
 **Ce qui est proposé et pas fait** : annuler le **code** de ces deux commits — `scspdsp.cpp`, `scspdsp.h`,
-`scsp.cpp`, `sound_prof.h` — et **garder tout leur savoir**, les six documents `docs/scsp_*.md` et le banc
+`scsp.cpp`, `sound_prof.h` — et **garder tout leur savoir**, les six documents `scsp/docs/scsp_*.md` et le banc
 d'essai `tools/son/test_scspdsp.cpp`, qui ne coûtent rien à l'exécution. Frédéric a demandé une pause avant
 de décider.
 
