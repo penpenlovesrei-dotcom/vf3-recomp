@@ -2971,7 +2971,8 @@ int main(int argc, char **argv)
 		if (!modes.shown && !options.shown && !pause.shown && !stages.shown && !column && !veil && !cpu) return;
 		picture_rect(all, mid);
 		if (cpu)
-			fv2_cpu_label::render(ren, mid, game.above.data(), game.below.data(), video::W, video::H, &console_font);
+			fv2_cpu_label::render(ren, mid, b.fv2_option(fv2_cpu_label::CURSOR_2P, 1), game.below.data(),
+				video::W, video::H, &console_font);
 		// THE CURTAIN FIRST, and under everything: it is not a surface the player works, it is what is on
 		// screen while the game is taken from one place to another (fv2_curtain.h).
 		if (veil) curtain.render(ren, all, mid);
