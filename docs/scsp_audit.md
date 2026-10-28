@@ -851,6 +851,59 @@ Le premier ne demande rien d'autre que du travail ; le second demande de verifie
 bien le meme. Et la question, elle, est maintenant posee proprement : **ou sont les huit instructions que
 MAME n'execute pas ?**
 
+### Le premier chemin, pris : jusqu'a la fonction oui, jusqu'a l'instruction non
+
+Fait le 2026-10-28, sans PDB et sans rien reconstruire. Le dumper d'`xperf` imprime le `PrgrmCtr` brut de
+chaque echantillon ; la trace donne la base de chargement de l'exe, `objdump -p` son `ImageBase`, et `nm`
+les plages de ses 557 fonctions. Une soustraction et une recherche dichotomique plus tard, chaque
+echantillon a un nom.
+
+**Et le resultat deplace le chiffre, parce qu'il faut APPARIER les fonctions** -- elles ne portent pas le
+meme nom des deux cotes, et un tableau qui les compare par nom ne donne rien :
+
+| | `mame` | `maison` | ecart |
+|---|---|---|---|
+| **la boucle de pas** | `Run<0>` **1 249 810** | `boucle<false>` **1 494 867** | **+19,6 %** |
+| l'enveloppe par echantillon | `DoMasterSamples` + `Step` + `run` **127 858** | `scsp_maison::run` + `Step` **107 746** | **−15,7 %** |
+| `lround`, `ceil`, `log2l` | 20 842 | ~190 | — |
+| **tout le processus** | 1 404 064 | 1 605 796 | +14,4 % |
+
+Trois choses en sortent :
+
+1. **L'ECART EST PLUS GRAND ET PLUS LOCALISE QUE +14,4 %.** La boucle de pas en retire **+19,6 %** ; le
+   chiffre global etait dilue parce que le coeur du projet **gagne 15,7 %** sur l'enveloppe par echantillon.
+   §4 septies l'avait deja vu en separant le par-pas du par-echantillon ; un autre instrument le confirme.
+2. **IL Y A BIEN UNE PERTE D'IPC, et elle se deduit sans la capture de cycles** : +14,4 % d'instructions
+   pour +21,8 % de temps donne un IPC inferieur d'environ **6 %**. La capture manquante ne dirait donc plus
+   rien d'essentiel, et la liste de ce qui reste s'en trouve allegee.
+3. **Un detail qui n'est pas le sujet** : `mame` passe ~1,5 % de ses instructions dans `lround`, `ceil` et
+   `log2l`, que le coeur du projet n'appelle pas du tout. C'est du flottant dans `DoMasterSamples`, hors du
+   DSP -- a regarder un autre jour, du cote de l'enveloppe.
+
+### Et pourquoi ca s'arrete a la fonction
+
+Deux crans plus fins ont ete essayes, et **aucun des deux n'est utilisable** :
+
+| | pourquoi |
+|---|---|
+| **par ligne de source** (tables DWARF, `addr2line`) | a `-O2` l'inlining brouille tout : plusieurs « lignes chaudes » sont des COMMENTAIRES, et `std::clamp` apparait comme `stl_algo.h:3617` chez le coeur du projet alors qu'il s'est fait replier dans la ligne appelante chez MAME. Les deux colonnes ne mesurent pas la meme chose |
+| **par instruction** (desassemblage, echantillon rattache a l'instruction precedente) | **le decalage d'echantillonnage.** Sans PEBS, un echantillon PMC atterrit plusieurs instructions apres celle qui a retire, et il s'accumule sur certaines : `test` et `ja` portent a elles deux la moitie des echantillons du coeur du projet, et MAME sort a 70 % de charges. Deux dispositions de code se decalent differemment, donc les deux histogrammes ne sont pas comparables **entre eux** |
+
+Le niveau fonction, lui, est robuste : le decalage porte sur quelques instructions, les corps de boucle en
+font 140. Un seul chiffre indicatif survit au cran du dessous, et il vaut d'etre note : **84 adresses
+distinctes touchees dans la boucle de MAME contre 104 dans celle du projet**, soit vingt instructions de
+plus sur le chemin reellement execute.
+
+### L'instrument suivant, et il est meilleur que celui qu'on vient d'user
+
+Plutot que de chercher OU sont les huit instructions, **les compter pour chaque variante**. Le compteur
+d'instructions retirees est bien moins bruyant que le temps : il ne derive pas avec la temperature, il ne
+depend pas de l'ordre des mesures, et c'est precisement ce qui a fait echouer la lecture du `restrict`
+ci-dessus et failli valider un faux gain de 6,9 %. Une capture par variante, et le verdict est net.
+
+Ce que ca demande : une fenetre **administrateur** par capture, donc Frederic. Ce que ca rendrait : les deux
+lots du §4 octies rejuges sur un chiffre dur, et toute tentative suivante avec eux.
+
 ### Ce qui manque encore, et c'est une seule chose
 
 **Le rapport des CYCLES.** La capture de `mame` est faite ; celle de `maison` ne l'est pas. Avec les deux on
