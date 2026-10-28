@@ -1,16 +1,17 @@
-# Reprise — le son, état à la fin du 2026-10-28
+# Reprise — le son, la journée du 2026-10-28
 
 **Lis `docs/son.md` d'abord** : il dit où est quoi. Ce fichier-ci ne dit que ce qui a bougé ce jour-là, ce
 qui est vérifié, et ce qui reste — avec, à chaque fois, l'instrument qui l'a établi.
 
-Huit commits, de `7876901` à `609b2ac`, poussés sur `mine/fv2`.
+Vingt commits, de `7876901` à `d62f732`, poussés sur `mine/fv2`. **Les six points de la liste de reprise du
+matin sont fermés.**
 
 ---
 
 ## 1. `VF3_SND_PROF` ne sortait rien — quatre raisons, toutes muettes
 
 Chacune rendait la mesure **vide ou fausse sans le dire**. Toutes fermées, et les trois premières **parlent**
-maintenant. Détail en `docs/scsp_audit.md` §4 sexies.
+maintenant. Détail en `scsp_audit.md` §4 sexies.
 
 1. l'appel à `sndprof::report` vivait dans le bloc `if (prof)` de `tools/vf3run.cpp` : `VF3_SND_PROF=1` sans
    `VF3_PROF=1` n'imprimait rien. Il a son propre test, et écrit sur **stdout** comme la ligne `prof`.
@@ -32,98 +33,149 @@ Trois passages par cœur, alternés, fenêtres 1500-4200, 18 mesures par cœur, 
 | **DSP** | **1 737** | **2 039** | **+302 kc (+17,4 %)** |
 | toute la carte son | 3 284 | 3 550 | **+266 kc (+8,1 %)** |
 
-Sans dénominateur : **9,60 → 11,50 cycles par pas de DSP, +19,8 %**. Et dans l'image sous `--rec` :
-**+0,09 ms, soit 0,5 % du budget de 17,4 ms** ; la part du son passe de 30,7 % à 31,6 %.
+Dans l'image sous `--rec` : **+0,09 ms, soit 0,5 % du budget de 17,4 ms**.
 
 ## 3. La trace du rejoueur n'était complète que sur 300 images — refermé
 
 Le contrôle « la trace est-elle complète ? » échouait sur la scène entière (échantillons 772 067 et
 1 149 006). **La cause : le miroir MADRS**, le seul des quatre extras hors de `scsp::core` qui change le son,
-posé par `dynamic_cast` dans `SoundBoard::reset` **après** la création de l'enregistreur — donc invisible à
-la trace, qu'un rejeu laissait à son défaut `true` alors que Fighting Vipers 2 le veut faux.
+posé par `dynamic_cast` **après** la création de l'enregistreur — donc invisible à la trace, qu'un rejeu
+laissait à son défaut `true` alors que Fighting Vipers 2 le veut faux.
 
-Une seule porte maintenant (`scsp::regle_miroir_madrs` / `miroir_madrs` dans `src/sound/scsp_select.h`), le
-miroir posé **avant** que l'enregistreur existe et **relu de la puce** par lui, un en-tête de trace
-**version 2** qui le porte, et une trace v1 **refusée** au lieu d'être devinée. Toute la mesure, les pistes
-écartées et la leçon sont en `docs/scsp_validation.md` §3 c.
+Une seule porte maintenant (`scsp::regle_miroir_madrs` dans `scsp_select.h`), posée **avant** l'enregistreur
+qui la **relit de la puce**, un en-tête de trace **version 2** qui la porte, et une trace v1 **refusée**.
+Toute la mesure est en `scsp_validation.md` §3 c.
 
 ## 4. Sept tests ne traînent plus le cœur de MAME
 
-`tools/son/banc_scsp.h` incluait `scsp_mame.h` **et** `scsp_maison.h` pour deux aiguillages de trois lignes,
-si bien que sept tests de bloc liaient les 2 110 lignes du cœur de MAME sans aucune raison de fond. Le même
-`dynamic_cast` existait en **trois** copies : la carte, le banc, `test_scsp_regs`.
-
-**Chaque cœur s'inscrit maintenant dans son propre `.cpp`** (`scsp::inscrit`), avec sa fabrique et trois
-fonctions qui rendent faux quand le cœur passé n'est pas le leur. Le sélecteur ne nomme plus aucune classe
-concrète, et `noms_connus()` rend ce qui est **lié**. La preuve est une cible : **`make test-sans-mame`**
-construit les sept tests avec `scsp_select.o`, `scsp_maison.o`, `dsp_maison.o` et rien d'autre, et
-`make test` la refait à chaque fois. **C'était le dernier préalable technique d'un dépôt séparé**
-(`son.md` §7).
+`banc_scsp.h` incluait les deux classes concrètes pour deux aiguillages de trois lignes. **Chaque cœur
+s'inscrit maintenant dans son propre `.cpp`** (`scsp::inscrit`) : le sélecteur ne nomme plus aucune classe
+concrète, et **ce qui est lié décide ce qui existe**. `make test-sans-mame` construit les sept tests de bloc
+avec `scsp_select.o`, `scsp_maison.o`, `dsp_maison.o` et rien d'autre, et `make test` le refait à chaque fois.
 
 ## 5. Le DSP par caractéristique : ce n'est aucune instruction, c'est le socle
 
-`mesurer-coeur --dsp` descend d'un cran sous le poste « DSP ». Des programmes de 112 pas où tous les pas ne
-font qu'une chose, les deux cœurs côte à côte, et la colonne qui compte est le coût **propre** — socle
-déduit (`scsp_audit.md` §4 septies).
-
-- **le socle** — 112 pas qui ne font rien — coûte **+0,520 ns par pas (+19 %)** au cœur du projet ;
-- **le témoin**, la forme du jeu, a un coût propre **quasi nul** entre les deux cœurs. Une fois le socle
-  retiré, les deux DSP exécutent le mélange du jeu au même prix ;
-- le cœur du projet est **meilleur** sur la moitié de la table : COEF, IWT, le produit, `SHIFT 1`, et les
-  quatre champs rares de −0,33 à −0,65 ;
-- il n'est vraiment moins bon que sur l'**accès mémoire** : `MRD` +0,72, `MWT` +0,73, `PACK` +0,89,
-  `SHIFT 3` +0,53. Dans le jeu, 33 pas sur 112, soit ≈ +0,21 ns par pas.
-
-Un second banc sépare le par-pas du par-échantillon (trois longueurs de programme) : **l'écart est par pas**.
-L'ordonnée à l'origine n'est **pas résolue**, et le contrôle de linéarité posé dans l'outil le dit.
+`mesurer-coeur --dsp`, des programmes de 112 pas où tous les pas ne font qu'une chose, les deux cœurs côte à
+côte, coût **propre** socle déduit (`scsp_audit.md` §4 septies). Le socle — 112 pas qui ne font rien — coûte
+**+19 %** au cœur du projet, et le témoin de la forme du jeu a un coût propre **quasi nul**. Le cœur du
+projet est **meilleur** sur la moitié de la table ; il n'est moins bon que sur l'accès mémoire.
 
 ## 6. L'assembleur, lu après que le banc ait resserré la question
 
-`SCSPDSP::Run<0>` : 108 instructions, **16 branchements**. `dsp_maison::boucle<false>` : 145 et **31**. Pour
-le même algorithme. **Cinq hypothèses mortes à l'inspection**, aucune par raisonnement : les deux corps
-existent chez `maison` ; son pas décodé est **plus petit** (16 octets contre 28) ; pas de table de saut, pas
-de division ; le produit 64 bits n'est pas une divergence du portage — MAME écrit la même ligne ; et les
-deux compilent `std::clamp` en `cmov`.
+`Run<0>` : 108 instructions, **16 branchements**. `boucle<false>` : 145 et **31**. **Cinq hypothèses mortes
+à l'inspection** : les deux corps existent, le pas décodé est plus petit (16 octets contre 28), pas de table
+de saut, pas de division, le produit 64 bits est identique chez MAME, et les deux compilent `std::clamp` en
+`cmov`.
 
 ## 7. Deux lots pour enlever ces branchements — et les deux perdent
 
-Défaits, `src/` revenu à l'identique et vérifié (`scsp_audit.md` §4 octies).
-
-| | rapport au socle de `mame` |
-|---|---|
-| **l'original** | **1,22** |
-| lot A — cinq octets de plus dans `Pas` | 1,30 |
-| lot B — les mêmes décisions dans les bits libres du mot | 1,42 |
-
-**Le nombre de branchements n'était pas le coût.** Le lot A dit pourquoi : cinq octets font passer `Pas` de
-16 à 24 octets, donc le programme de 2 à 3 Ko — **+7 % pour un kilo-octet**, et c'est l'exacte réciproque de
-ce que §4 septies avait écarté. Le lot B dit que le remède est pire : garder les 16 octets en déballant trois
-champs par pas coûte **+16 %**.
-
-D'où **`mesurer-coeur --socle`**, écrit pour ces essais : sept passages, assez rapide pour entrelacer une
-référence et une variante du même fichier. Il fallait — le socle de `mame` a dérivé de 2,70 à 3,21 pendant
-les essais, et sans lui on aurait pris cette dérive pour un résultat.
+Défaits (`scsp_audit.md` §4 octies). Cinq octets de plus dans `Pas` : **+7 %**. Les mêmes décisions dans les
+bits libres du mot : **+16 %**. Et un faux gain de 6,9 % a failli être gardé — `mame` dérivait dans le
+dénominateur. D'où `mesurer-coeur --socle`, assez rapide pour entrelacer référence et variante.
 
 ## 8. Les quatre champs du DSP : cherchés partout, puis éprouvés
 
-**Aucun jeu servi ne les pose.** `dspprog` lu sur tous les sets que `romset.cpp` connaît, en attraction et à
-travers un combat : **152 écritures de programme, cinq formes distinctes, trois jeux** — `fvipers2` (4
-formes, dont une de 127 pas), `vf3` (les mêmes que `fvipers2`), `srally2` (un **autre** programme, le témoin
-qui compte). `vf3tb` et `fvipers2p` sont des sets incomplets. Donc **rien à aller chercher** : le rejoueur ne
-pouvait pas en être juge (`scsp_audit.md` §5).
+**Aucun jeu servi ne les pose** : 152 écritures de programme, cinq formes distinctes, trois jeux dont
+`srally2` avec un tout autre programme (`scsp_audit.md` §5). **`test_scsp_dsp.cpp` cas 9 à 13** les mesurent,
+chacun par le seul chemin de lecture qui existe. Le cœur du projet les rend tous **du premier coup**, et
+quatre fautes injectées sont attrapées **chacune par son cas**.
 
-**`tools/son/test_scsp_dsp.cpp` cas 9 à 13** les mesurent, chacun par le seul chemin de lecture qui existe :
+## 9. Le compteur matériel était là, et j'avais dit deux fois qu'il n'y était pas
 
-| cas | relevé |
+`xperf`, du Windows Performance Toolkit, est installé sur cette machine. Je l'avais déclaré absent sans le
+chercher, et §4 septies comme §4 octies s'étaient arrêtées sur cette phrase — toutes deux la gardent
+maintenant, datées, avec le renvoi à la mesure qui les corrige.
+
+| par pas de DSP | rapport `maison` / `mame` |
 |---|---|
-| `NEGB` — le signe de B sur un pas de maintien | `+2330` / `−2330` |
-| `FRCL` — `FRC_REG` relu **comme Y** (`YSEL=0`) | `331` à `SHIFT=0`, `2912` à `SHIFT=3` |
-| `YRL` — `Y_REG` relu par `YSEL=2` puis `YSEL=3` | `662` / `946` |
-| `ADRL` — l'adresse que `ADREB` décale | `MEMS[1] = 0x567800` |
-| les deux corps s'accordent | `EFREG[0] = 2330` |
+| instructions retirées | **×1,144** |
+| branchements mal prédits | **×1,010 — identiques** |
 
-Le cœur du projet les rend tous les cinq **du premier coup** : une confirmation, pas une correction. Et
-**les cas savent échouer** — quatre fautes injectées, chacune attrapée par son propre cas.
+**Ce ne sont pas les branchements** : ils sont parfaitement prédits, ils coûtent leur décodage et non leur
+raté — ce qui explique pourquoi les deux lots du point 7 perdaient. **Ce sont les instructions.**
+
+Seuls les **rapports** sont publiables : l'intervalle qu'annonce `xperf -pmcsources` ne tient pas à
+l'arithmétique (§4 nonies le détaille).
+
+## 10. La chasse aux huit instructions : première piste, et elle ne donne rien
+
+MAME porte `u16 *const __restrict rp = ram;` dans son en-tête de boucle ; le projet ne l'avait pas, et c'est
+une vraie promesse avec une explication complète. **Elle ne gagne rien** : −0,08 % au socle, plat sur le jeu.
+Défaite. Et le rapport `maison`/`mame`, qui protégeait des deux lots, **devient un piège** dès qu'un seul
+côté change : c'est l'absolu du côté modifié qu'il faut lire.
+
+## 11. Situées jusqu'à la fonction, et pas plus bas
+
+Attribution par fonction sans PDB : le dumper donne le `PrgrmCtr`, la trace la base de chargement, `nm` les
+plages. **La boucle de pas retire +19,6 %** ; le +14,4 % global était dilué parce que le cœur du projet
+**gagne 15,7 %** sur l'enveloppe par échantillon.
+
+**Trois tentatives pour descendre plus bas, trois raisons de s'arrêter** : l'inlining brouille les tables de
+lignes ; le décalage d'échantillonnage sans PEBS rend les histogrammes par instruction incomparables ; et le
+`PrgrmCtr` n'est pas une adresse d'instruction — 21 des 84 adresses chaudes de MAME y tombent.
+
+## 12. Les variantes jugées au compteur, et le classement se renverse
+
+Six variantes construites par `batir-variantes.py`, chacune **passée aux dix tests** avant d'être gardée, et
+jugées par `mesurer-variantes.cmd` sur les **deux** programmes :
+
+| | socle | **forme du jeu** |
+|---|---|---|
+| `ysel_coef_premier` | −1,55 % | **−3,09 %** |
+| `shift_deux_bits` | −3,03 % | **−1,17 %** |
+| `sortie_groupee` | −6,02 % | +0,85 % |
+| `tout` | — | +3,28 % |
+| **`entree_paresseuse`** | **−15,00 %** | **+4,68 %** |
+
+**La grande gagnante du socle est la pire du jeu** : elle ajoute un test par pas pour éviter un calcul dont
+37 pas sur 112 ont besoin. Le socle **situe** un coût, il ne dit pas ce qu'une modification rend. D'où
+`mesurer-coeur --jeu`. L'instrument est reproductible **à 0,07 point près** d'une séance à l'autre.
+
+**Et les cas 9 à 13 ont arrêté `sortie_groupee` au premier tour** : son masque groupé englobait les écritures
+de `FRCL` et d'`ADRL`. Elle passait tous les autres tests, le rejoueur, et rendait le WAV identique — parce
+qu'aucun jeu ne pose ces champs. C'est ce que ces cas achètent vraiment, et ce n'est pas ce que j'avais
+annoncé : **ils protègent ces quatre champs contre nos propres optimisations.**
+
+## 13. L'optimisation gardée : −3,47 %
+
+`1a14781`. COEF testé en premier dans le choix de Y, et le champ `SHIFT` résolu en deux bits du mot
+d'indicateurs — **sans grossir le pas décodé**, ce qui avait coulé le lot B. Aucun des deux ne change ce
+qu'un pas **calcule**, seulement la façon dont il **choisit**. Barre complète passée.
+
+## 14. Le cœur validé à l'oreille, dans le vrai jeu
+
+`fv2-stable-1` + les dix-huit fichiers de `src/sound` de HEAD + quatre lignes de Makefile : **ça compile et
+ça joue**, sur une base vieille de dix jours. Aucune différence à l'oreille, comme le rejoueur le promettait.
+
+Et le bug sonore de l'écran WINNER y est tombé **avec une ligne** — `sound.madrs_mirror = board.set == "vf3"`,
+que `stable-1` n'avait pas. Ce n'est pas la puce qui corrige : le miroir est un réglage par jeu, et le cœur
+ne connaît pas le jeu. Mais il le rend corrigeable en une ligne nommée et mesurée.
+
+## 15. Le SCSP sort en dépôt autonome
+
+`tools/son/exporter-scsp.py` sort 30 fichiers, un Makefile et un README, **aux mêmes chemins**. Le dépôt
+sorti se construit et passe ses **sept tests**, sans une ligne de MAME. Ce qu'il ne peut pas faire est dans
+son README : refaire ses propres nombres — **la preuve vit dans le jeu**, et c'était l'argument de
+`son.md` §7.
+
+## 16. Sur deux cœurs : le dernier chiffre
+
+AMD A9-9425, deux cœurs, deux processeurs logiques. Cinq passages de 4 000 images, médianes sur 70 à 76
+relevés (`scsp_audit.md` §4 quater bis) :
+
+| | une image | le fil du son | le jeu attend |
+|---|---|---|---|
+| `off` | **12,21 ms** | 0 | 0,001 |
+| `mame-normal` | **12,34** | 6,10 | 0,003 |
+| `maison-normal` | **12,38** | 6,46 | 0,003 |
+| `mame-sync` | **16,03** | 4,67 | 0,000 |
+| `maison-sync` | **15,95** | 4,64 | 0,000 |
+
+- **Le son sur son fil coûte +0,12 ms par image** — environ 1 %. Le mot « gratuit » peut enfin être pesé.
+- **Les 8 % du cœur du projet ne se voient pas**, même ici : +0,04 ms à l'image, **non résolu** dans une
+  dispersion qui va de 1,86 à 52,65 ms. Au fil, le surcoût est bien là : +5,8 %, qui recoupe le +8,1 %.
+- **Le recouvrement achète 3,7 ms par image** — trente pour cent de la durée d'une image. C'est la
+  justification mesurée du fil du son, et elle n'existait pas.
 
 ---
 
@@ -131,81 +183,42 @@ Le cœur du projet les rend tous les cinq **du premier coup** : une confirmation
 
 | | |
 |---|---|
-| la construction | `make test` et les quatre outils, code 0 |
 | les tests | **24 fichiers au vert** : les dix sur les deux cœurs, plus les sept **sans une ligne de MAME** |
-| le rejoueur, scène entière | `tools/son/rejouer.cmd fvipers2 tools/scripts/fv2-fight.txt 4200 mame maison` → **TOUT CONCORDE**, les quatre contrôles, 3 219 865 échantillons par puce |
-| l'empreinte de bout en bout | `vf3run --frames 4200 --rec --wav` avec chaque cœur : **`9A2310F8AF000E09EB18BD114852B003`** |
-| la non-régression de VF3 | `verifier-vf3.cmd 3000` → **IDENTIQUE** sur les quatre contrôles, et le pas à pas interpréteur / recompilé concorde sur 2 231 images |
+| le rejoueur, scène entière | **TOUT CONCORDE**, les quatre contrôles, 3 219 865 échantillons par puce |
+| l'empreinte de bout en bout | **`9A2310F8AF000E09EB18BD114852B003`** avec chaque cœur |
+| la non-régression de VF3 | `verifier-vf3.cmd 3000` → **IDENTIQUE** sur les quatre contrôles |
+| à l'oreille | le vrai jeu, fenêtre, aucune différence |
 
-**Les huit critères d'acceptation du plan de migration sont satisfaits** (`scsp_migration_plan.md`), le 2
-inclus, qui n'avait pas tourné depuis les lots.
+**Les huit critères d'acceptation du plan de migration sont satisfaits.**
 
 ## Ce qui n'est pas vérifié, et il n'en reste qu'un
 
-**Que MAME ait raison sur les quatre champs.** Personne ne les a mesurés sur du matériel, et
+**Que MAME ait raison sur les quatre champs du DSP.** Personne ne les a mesurés sur du matériel, et
 `scsp_references.md` refuse le consensus entre émulateurs comme preuve. Les cas 9 à 13 établissent que le
-DSP du projet atteint le comportement **visé**, et rien de plus. Les huit premiers cas, eux, sont recoupés
-par le jeu à chaque rejeu.
+DSP du projet atteint le comportement **visé**, et rien de plus.
 
 ## Ce qui reste
 
-**À toi**
+**Un choix, pas une dette** : le vrai `git subtree` pour le SCSP. Il demande de déplacer `src/sound`,
+`tools/son` et les documents sous un répertoire unique, ce qui touche le Makefile, les inclusions et tous
+les chemins que les neuf documents citent. **L'export marche déjà** — c'est à faire quand l'arbre est calme,
+ou jamais.
 
-- **La mesure de concurrence sur le portable deux cœurs** : `C:\Users\frede\Desktop\mesure-concurrence`, un
-  double-clic sur `mesurer-concurrence.cmd`. Lire son `LISEZ-MOI.txt` avant de commenter les chiffres —
-  notamment le piège des cadences avec `VF3_SND_OFF`.
-
-**Une capture, et le socle du DSP est tranché**
-
-Le compteur matériel **est** sur cette machine — je l'avais déclaré absent deux fois sans le chercher, et
-`scsp_audit.md` §4 nonies porte la correction et la mesure. Ce qu'il dit :
-
-| par pas de DSP | rapport `maison` / `mame` |
-|---|---|
-| instructions retirées | **×1,144 — +14,4 %** |
-| branchements mal prédits | **×1,010 — identiques** |
-
-**Ce ne sont pas les branchements** : les 31 de `dsp_maison::boucle` contre les 16 de MAME sont parfaitement
-prédits, ils coûtent leur décodage et non leur raté — ce qui explique enfin pourquoi les deux lots du
-point 7 perdaient. **Ce sont les instructions, +14,4 % par pas**, et c'est le premier chiffre de l'enquête
-qu'on puisse viser.
-
-Seuls les **rapports** sont publiables : l'intervalle qu'`xperf -pmcsources` annonce ne tient pas à
-l'arithmétique, donc aucune valeur absolue n'est utilisable (§4 nonies le détaille).
-
-**Il reste une capture à faire**, et elle demande un terminal **administrateur** — mes terminaux ne
-s'élèvent pas. Celle de `mame` est faite, celle de `maison` non. Avec les deux, on saurait s'il y a en plus
-une perte d'IPC d'environ 8 %, que le quotient laisse deviner. Dans une fenêtre administrateur, depuis le
-dépôt, ligne par ligne :
-
-```
-$x = "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\xperf.exe"
-& $x -on PROC_THREAD+LOADER+PMC_PROFILE -PmcProfile UnhaltedCoreCyclesFixed
-.\build\bin\mesurer-coeur.exe --socle maison 2000000
-& $x -stop -d C:\Temp\cyc-maison.etl
-```
-
-La ligne du milieu doit imprimer son `ns/pas` **avant** le `-stop` : c'est le signe que le banc a tourné
-dans la capture. Et fermer le jeu d'abord — une capture a déjà été perdue parce que `vf3.exe` prenait les
-cycles. L'analyse, elle, ne demande pas d'élévation.
-
-**Rien à faire**
-
-- **Les gains par groupe** : ils atténuent par fente avant le mélange, donc ils ne montent pas dans la carte
-  sans changer l'interface. Inertes tant que les deux volumes valent 1.
-- **La boucle de fentes** : +18 % au banc, invisible dans le jeu (+41 kc mesurés contre un jeu de ±68),
-  0,2 % du budget d'image.
-- **Le dépôt séparé** : le dernier préalable technique est tombé (point 4). Ce qui reste n'est pas technique
-  — la preuve vit dans le jeu, et c'est l'argument de `son.md` §7. Trois tests ne partiraient pas :
-  `test_scsp_core`, `test_scspdsp` et `test_scsp_contract` ont le cœur de MAME pour sujet.
+Rien d'autre. Les six points de la liste du matin sont fermés, et ce que j'ai pu nommer en chemin — le pic
+d'attente isolé à 7,4 ms, les cycles de `maison`, l'assembleur sous la fonction — a été **mesuré et écarté**,
+pas laissé ouvert.
 
 ## Les outils nouveaux ou changés ce jour-là
 
 | | |
 |---|---|
 | `mesurer-coeur --dsp` | le DSP par caractéristique, les deux cœurs, socle déduit |
-| `mesurer-coeur --socle` | le socle seul, sept passages — pour entrelacer une référence et une variante |
-| `mesurer-coeur --socle <cœur>` | **un seul cœur par processus** — pour qu'un compteur matériel l'attribue sans lire nos symboles MinGW |
-| `make test-sans-mame` | les sept tests de bloc liés sans une ligne du cœur de MAME |
-| `VF3_SND_PROF=1` | n'a plus besoin de `VF3_PROF`, exige `--wav`, et vaut pour les deux cœurs |
+| `mesurer-coeur --socle [cœur]` | le socle seul ; avec un nom de cœur, un seul par processus |
+| `mesurer-coeur --jeu <cœur>` | **le programme de la forme du jeu** — le socle est artificiel |
+| `make test-sans-mame` | les sept tests de bloc liés sans une ligne de MAME |
+| `batir-variantes.py`, `variantes-dsp.py` | une variante par exe, chacune passée aux dix tests |
+| `mesurer-variantes.cmd [socle\|jeu]` | le jugement au compteur matériel — fenêtre **administrateur** |
+| `exporter-scsp.py` | le dépôt SCSP autonome |
+| `mesurer-concurrence.cmd` | cinq passages, **les deux cœurs** — pour le portable |
+| `VF3_SND_PROF=1` | sans `VF3_PROF`, exige `--wav`, et vaut pour les deux cœurs |
 | trace `# scsp-trace 2` | l'en-tête porte `miroir=0|1` ; une trace v1 est refusée |
