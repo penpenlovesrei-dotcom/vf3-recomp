@@ -189,7 +189,7 @@ CPU (a machine with no graphics driver), where the CPU's own renderer is faster.
 | `src/machine` | Model 3 Step 1.0: memory map, IRQs, the 53C810's DMA, JTAG, EEPROM, inputs, the ROM set |
 | `src/video` | the tile generator, the Real3D's scene builder, smooth motion's in-betweens and the CPU rasteriser |
 | `src/gpu` | the Real3D on the GPU (SDL_GPU), its HLSL shaders (`r3d.hlsl`) and their compiled forms (`r3d_shaders.h`) |
-| `src/sound` | the sound board: MAME's SCSP and its DSP, with MAME's 68000 in `third_party/mame`. The subject spans five places in the tree, so it has one door: [docs/son.md](docs/son.md) |
+| `src/sound` | the sound board: MAME's SCSP and its DSP, with MAME's 68000 in `third_party/mame`. The subject spans five places in the tree, so it has one door: [scsp/docs/son.md](scsp/docs/son.md) |
 | `src/host` | the SDL 3 game: window, input, pacing, the GPU compositing, settings, the RmlUi menu |
 | `assets/` | the app icon, the menu (`ui/`) and its font |
 | `third_party/` | MAME's 68000 and SCSP, SLJIT, RmlUi (`third_party/README.md`) |
@@ -249,7 +249,7 @@ own cloth handler and nobody else's: [docs/fv2-honey.md](docs/fv2-honey.md).
 The sound is its own subject, and a large one: the board, MAME's SCSP, the effects DSP this port rewrote, the
 68000 sound driver read function by function, and the measurements that back all of it. It lives in five
 places in the tree and nine documents, so there is a single entry point that says where each thing is:
-[docs/son.md](docs/son.md).
+[scsp/docs/son.md](scsp/docs/son.md).
 
 ## Credits
 

@@ -1,7 +1,7 @@
 @echo off
 rem rejouer.cmd : prend une trace d'acces au SCSP sur une scene, et la rejoue.
 rem
-rem Point 2 de l'etape 2 de docs/scsp_migration_plan.md. Deux controles en une commande :
+rem Point 2 de l'etape 2 de scsp/docs/scsp_migration_plan.md. Deux controles en une commande :
 rem   1. le rejeu retrouve-t-il le PCM que la carte a produit ? (la trace est-elle complete)
 rem   2. deux coeurs rendent-ils la meme chose ? (la comparaison, quand il y en aura deux)
 rem

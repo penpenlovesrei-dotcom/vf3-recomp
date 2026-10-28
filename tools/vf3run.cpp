@@ -42,7 +42,7 @@
 #include "../src/video/r3d_raster.h"
 #include "../src/video/tex3d_hd.h"
 #include "../src/sound/soundboard.h"
-#include "../src/sound/sound_prof.h"
+#include "sound_prof.h"
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>

@@ -1,5 +1,5 @@
 // A differential test for the SCSP's effects DSP, written for the hole that specialising its body
-// left open (docs/scsp_validation.md): SCSPDSP::Step now compiles two bodies, Run<0> for a program
+// left open (scsp/docs/scsp_validation.md): SCSPDSP::Step now compiles two bodies, Run<0> for a program
 // that sets none of FRCL, ADRL, YRL or NEGB -- which is the program BOTH games of this port use --
 // and Run<USES_ALL> for any other. The games' sound is checked to the byte, so Run<0> is covered;
 // the generic body is the path neither game takes, and until this test nothing exercised it.

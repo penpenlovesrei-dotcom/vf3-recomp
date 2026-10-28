@@ -4,7 +4,7 @@ rem
 rem   tools\son\mesurer-hote.cmd [secondes]      (120 par defaut)
 rem
 rem POURQUOI CE N'EST PAS LE CHIFFRE DE vf3run. Dans le lanceur la carte son est DANS la boucle d'image,
-rem donc son temps est celui de l'image : 30,5 % sous --rec (docs/scsp_audit.md sect. 4 bis). Dans l'hote elle est
+rem donc son temps est celui de l'image : 30,5 % sous --rec (scsp/docs/scsp_audit.md sect. 4 bis). Dans l'hote elle est
 rem sur un fil a elle, une image en retard, et son cout se separe en deux :
 rem
 rem   le cout CPU    -- le travail du fil, qu'il faut bien faire quelque part ;

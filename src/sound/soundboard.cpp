@@ -56,7 +56,7 @@ struct SoundBoard::Bus : m68000_bus
 		// effects-preset loader (snd_charger_preset_dsp at 0x602B32, see docs/fv2-son-programme.md)
 		// writes COEF at +0x700 and MADRS at +0x780 from a TABLE of commands, each carrying a byte
 		// offset -- so whether anything ever lands in 0x7C0-0x7FF, the range this port and MAME
-		// disagree about (docs/scsp_references.md), depends on data and not on the instructions.
+		// disagree about (scsp/docs/scsp_references.md), depends on data and not on the instructions.
 		// This says what actually happens.
 		// It also logs two ranges outside the DSP, for the other open question of that document (its
 		// section 4): the driver accumulates per slot into +0x600, which this port routes to MAME's
@@ -167,7 +167,7 @@ void SoundBoard::reset()
 		// des quatre extras qui change le son, il change par jeu (soundboard.h) et il ne passe pas par
 		// scsp::core. Pose APRES l'enregistreur -- comme il l'etait -- il n'entrait pas dans l'en-tete de la
 		// trace, un rejeu le supposait `true`, et sur Fighting Vipers 2 ou il vaut faux le rejeu divergeait
-		// de la carte a l'echantillon 772 067 (docs/scsp_validation.md §3 c). Pose ici, l'enregistreur le
+		// de la carte a l'echantillon 772 067 (scsp/docs/scsp_validation.md §3 c). Pose ici, l'enregistreur le
 		// RELIT de la puce : il n'y a plus rien a penser a lui dire.
 		{
 			const char *sep = getenv("VF3_SCSP_MADRS_SEPARATE"), *mir = getenv("VF3_SCSP_MADRS_MIRROR");

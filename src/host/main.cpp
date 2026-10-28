@@ -135,7 +135,7 @@
 #include "../machine/romset.h"
 #include "../rec/ppc_rec.h"
 #include "../sound/soundboard.h"
-#include "../sound/sound_prof.h"
+#include "sound_prof.h"
 #include "../video/tilegen.h"
 #include "../video/sky_lead.h"
 #include "../video/r3d_scene.h"
@@ -1034,7 +1034,7 @@ struct Game
 	}
 	// LES DEUX INTERRUPTEURS DE LA MESURE DE CONCURRENCE, et ce qui les rend valables.
 	//
-	// La question que le §4 quater de docs/scsp_audit.md laisse ouverte : sur une machine a deux coeurs, le
+	// La question que le §4 quater de scsp/docs/scsp_audit.md laisse ouverte : sur une machine a deux coeurs, le
 	// jeu n'attend jamais le son (0,00 % de l'image, mesure) -- mais le fil du son prend quand meme 17 % d'un
 	// coeur, et ce qu'il coute au fil PRINCIPAL par le cache, l'ordonnanceur et la frequence ne se voit pas
 	// dans une attente bloquante. Il faut donc comparer des passages.

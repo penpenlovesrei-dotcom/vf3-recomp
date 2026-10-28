@@ -1,6 +1,6 @@
 // test_scsp_core: drives MAME's SCSP through the NEW interface, and only through it.
 //
-// Step 3 of docs/scsp_migration_plan.md asks for "un adaptateur qui présente l'ancien coeur à travers le
+// Step 3 of scsp/docs/scsp_migration_plan.md asks for "un adaptateur qui présente l'ancien coeur à travers le
 // contrat neuf. C'est le geste qui décide si le contrat tient". This is how it is decided: the test touches
 // nothing but scsp::core and scsp::sink. If something the board needs cannot be said through those, this
 // file cannot be written -- and that, not a number, is what it proves.
@@ -10,7 +10,7 @@
 // here, rather than waiting to be found in a game. The two files hold each other up.
 //
 // No ROM, no window, no framework: a RAM buffer, a waveform written into it by hand, one voice keyed on.
-#include "../../src/sound/scsp_contract.h"
+#include "scsp_contract.h"
 #include "../../src/sound/scsp_mame.h"
 
 #include <cmath>

@@ -1,6 +1,6 @@
 # Le programme son, lu dans son code
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [scsp/docs/son.md](son.md).
 
 Commencé le 2026-10-24. **C'est un début, pas un relevé complet** : le programme fait 512 Ko et ce qui suit
 en couvre une poignée de fonctions. Chaque ligne dit où elle a été lue.
@@ -987,7 +987,7 @@ tournerait toujours avec des adresses nulles. Or la borne avait une réverbérat
 
 C'est une **inférence**, pas une mesure : elle suppose que la réverbération d'époque fonctionnait comme prévue.
 Mais elle vient du code du jeu lui-même, et non d'un accord entre émulateurs — ce qui est exactement la sorte
-d'argument que `docs/scsp_references.md` demande de préférer.
+d'argument que `scsp/docs/scsp_references.md` demande de préférer.
 
 ### Ce que ça fait, et pourquoi c'est une déduction et pas une mesure
 
@@ -1110,7 +1110,7 @@ une correction, et elle n'est pas à moi.
 
 ## 5 bis. Comment la question se posait avant la sonde
 
-Rappel de la question (`docs/scsp_references.md`) : ce portage garde le miroir de MADRS pour VF3 et le sépare
+Rappel de la question (`scsp/docs/scsp_references.md`) : ce portage garde le miroir de MADRS pour VF3 et le sépare
 pour Fighting Vipers 2 ; MAME `master` jette les écritures et renvoie MADRS en lecture. Personne n'avait
 regardé ce que le programme fait.
 

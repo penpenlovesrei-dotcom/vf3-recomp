@@ -1,6 +1,6 @@
 # Reprise — le son, la journée du 2026-10-28
 
-**Lis `docs/son.md` d'abord** : il dit où est quoi. Ce fichier-ci ne dit que ce qui a bougé ce jour-là, ce
+**Lis `scsp/docs/son.md` d'abord** : il dit où est quoi. Ce fichier-ci ne dit que ce qui a bougé ce jour-là, ce
 qui est vérifié, et ce qui reste — avec, à chaque fois, l'instrument qui l'a établi.
 
 Vingt commits, de `7876901` à `d62f732`, poussés sur `mine/fv2`. **Les six points de la liste de reprise du

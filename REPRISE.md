@@ -49,9 +49,9 @@ Tout est derrière un lanceur `.cmd` à la racine, et tous épinglent `VF3_DATA`
 | construire la fenêtre aussi | `construire-hote.cmd` | |
 | construire | `construire.cmd` | |
 | vérifier | `verifier-vf3.cmd` | |
-| où va le temps de la carte son | `VF3_SND_PROF=1` avec `VF3_PROF=1` | `docs/scsp_audit.md` |
-| le son n'a pas bougé d'un octet | `tools\son\comparer-son.cmd` | `docs/scsp_validation.md` |
-| les deux corps du DSP, testés | `make test` | `docs/scsp_validation.md` |
+| où va le temps de la carte son | `VF3_SND_PROF=1` avec `VF3_PROF=1` | `scsp/docs/scsp_audit.md` |
+| le son n'a pas bougé d'un octet | `tools\son\comparer-son.cmd` | `scsp/docs/scsp_validation.md` |
+| les deux corps du DSP, testés | `make test` | `scsp/docs/scsp_validation.md` |
 
 Et le jeu tourne en **free play** : un seul octet de la NVRAM, `backup[0x17] = 27`.
 
@@ -780,7 +780,7 @@ ne le lise comme un aveuglement.
   machine bougeait — non retenu).
 - **Les scènes qui manquent** : silence, musique seule, effets seuls, sound test. Les deux du milieu sont un
   mot (`VF3_VOLUMES`), avec la réserve qu'ils allument le niveleur d'effets.
-- **Un test par bloc sur huit.** Les sept autres sont listés dans `docs/scsp_validation.md` §3b, et ce sont
+- **Un test par bloc sur huit.** Les sept autres sont listés dans `scsp/docs/scsp_validation.md` §3b, et ce sont
   eux, avec le rejoueur à deux cœurs, le préalable à tout remplacement du SCSP de MAME. Sans eux, écrire un
   cœur autonome est un pari — et rien ne presse : MAME est BSD, et **son code est aujourd'hui la référence de
   fidélité de ce portage**.
@@ -861,8 +861,8 @@ mesure, le jour même où il me l'avait reproché deux fois.
 
 > **Note sur le commit `b0eadeb`.** Il a emporté, sans que je le veuille, des lignes de ce journal qu'une
 > autre session avait écrites et pas encore commises — l'en-tête « État au 2026-10-24 » et le tableau des
-> outils du son (`VF3_SND_PROF`, `tools\son\comparer-son.cmd`, `docs/scsp_audit.md`,
-> `docs/scsp_validation.md`). **Elles sont d'elle, pas de moi.** `git status` montrait `REPRISE.md` modifié
+> outils du son (`VF3_SND_PROF`, `tools\son\comparer-son.cmd`, `scsp/docs/scsp_audit.md`,
+> `scsp/docs/scsp_validation.md`). **Elles sont d'elle, pas de moi.** `git status` montrait `REPRISE.md` modifié
 > avant que j'y touche et j'ai commis le fichier entier au lieu de ne commettre que mon ajout. La parade
 > existe et avait déjà servi le matin du 2026-10-24 : `git update-index --cacheinfo` pour ne mettre à l'index
 > que sa propre version d'un fichier partagé. L'histoire n'est pas réécrite — elle est poussée — donc cette

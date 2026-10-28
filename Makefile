@@ -2,7 +2,11 @@
 # ROM-derived data lives in build/ and outside the repo, and is never committed.
 CXX ?= clang++
 CXXFLAGS ?= -std=c++20 -O2 -g -Wall -Wno-unused-function
-CXXFLAGS += -DSLJIT_CONFIG_AUTO=1 -Isrc/core/shim_include $(EXTRA_CFLAGS)
+# -Iscsp/src/sound : le SCSP du projet vit sous scsp/ depuis le 2026-10-29, pour que `git subtree`
+# puisse l'extraire. Les fichiers qui restent ici disent toujours `#include "scsp_select.h"` sans
+# chemin, et c'est ce -I qui les fait tomber juste -- rien a reecrire dans soundboard, scsp_mame
+# ni scspdsp.
+CXXFLAGS += -DSLJIT_CONFIG_AUTO=1 -Isrc/core/shim_include -Iscsp/src/sound $(EXTRA_CFLAGS)
 # The PowerPC's floating point must round each operation on its own, on every platform (no fused multiply-adds)
 PPC_FLAGS = -ffp-contract=off
 LDLIBS ?= -lz
@@ -42,7 +46,7 @@ CORE = src/ppc/ppc.cpp src/machine/model3.cpp src/machine/romset.cpp src/machine
 	src/rec/ppc_rec.cpp src/rec/vf3_map.cpp src/rec/fv2_map.cpp src/video/tilegen.cpp src/video/r3d_scene.cpp src/video/r3d_raster.cpp \
 	src/video/tex3d_hd.cpp src/video/tilehd.cpp \
 	src/sound/soundboard.cpp src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp \
-	src/sound/scsp_trace.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp src/core/mame_shim.cpp \
+	scsp/src/sound/scsp_trace.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp src/core/mame_shim.cpp \
 	third_party/mame/m68000/m68000.cpp third_party/mame/m68000/m68000-decode.cpp \
 	third_party/mame/m68000/m68000-sdf.cpp third_party/mame/m68000/m68000-sdp.cpp \
 	third_party/mame/315-5881/crypt_315_5881.cpp
@@ -90,78 +94,78 @@ $(BIN)/test_scsp_contract: $(call objs,tools/son/test_scsp_contract.cpp)
 # field table, so a wrong field there stops the sound here instead of in a game.
 # (scsp_select.cpp est la depuis que chaque coeur S'INSCRIT dans son propre .cpp : lier un coeur demande de
 # lier le registre. Ce test n'emploie pas le selecteur -- il construit scsp_mame directement, c'est son sujet.)
-$(BIN)/test_scsp_core: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/core/mame_shim.cpp tools/son/test_scsp_core.cpp)
+$(BIN)/test_scsp_core: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_select.cpp src/core/mame_shim.cpp tools/son/test_scsp_core.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# What a register write reads back (tools/son/test_scsp_regs.cpp): block 1 of the architecture's order,
+# What a register write reads back (scsp/tools/son/test_scsp_regs.cpp): block 1 of the architecture's order,
 # and the plan wants these written BEFORE the blocks they test. No ROM, no sound: write, read back.
-$(BIN)/test_scsp_regs: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_regs.cpp)
+$(BIN)/test_scsp_regs: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp src/core/mame_shim.cpp scsp/tools/son/test_scsp_regs.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# L'oscillateur, l'adressage PCM et les quatre bouclages (tools/son/test_scsp_fentes.cpp) : bloc 2 de
+# L'oscillateur, l'adressage PCM et les quatre bouclages (scsp/tools/son/test_scsp_fentes.cpp) : bloc 2 de
 # l'architecture. Mesure la suite exacte des indices d'echantillon, SDIR mettant l'enveloppe de cote.
-$(BIN)/test_scsp_fentes: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_fentes.cpp)
+$(BIN)/test_scsp_fentes: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp src/core/mame_shim.cpp scsp/tools/son/test_scsp_fentes.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# L'enveloppe ADSR (tools/son/test_scsp_adsr.cpp) : bloc 3 de l'architecture. Une onde continue fait que la
+# L'enveloppe ADSR (scsp/tools/son/test_scsp_adsr.cpp) : bloc 3 de l'architecture. Une onde continue fait que la
 # sortie EST l'enveloppe, et les durees d'attaque en echantillons encodent les tables de temps de MAME.
-$(BIN)/test_scsp_adsr: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_adsr.cpp)
+$(BIN)/test_scsp_adsr: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp src/core/mame_shim.cpp scsp/tools/son/test_scsp_adsr.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# Le pas, les deux LFO et la modulation par anneau (tools/son/test_scsp_lfo.cpp) : bloc 4 de l'architecture.
+# Le pas, les deux LFO et la modulation par anneau (scsp/tools/son/test_scsp_lfo.cpp) : bloc 4 de l'architecture.
 # Lit l'accumulateur de phase par une rampe, et fixe les deux divergences deliberees du portage (PLFOS, MDL).
-$(BIN)/test_scsp_lfo: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_lfo.cpp)
+$(BIN)/test_scsp_lfo: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp src/core/mame_shim.cpp scsp/tools/son/test_scsp_lfo.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# Les timers, les cinq lignes d'interruption et le DMA (tools/son/test_scsp_irq.cpp) : bloc 6. Mesure par le
+# Les timers, les cinq lignes d'interruption et le DMA (scsp/tools/son/test_scsp_irq.cpp) : bloc 6. Mesure par le
 # PUITS et non par le son, et fixe le "+1" de timer_samples, troisieme divergence voulue du portage.
-$(BIN)/test_scsp_irq: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_irq.cpp)
+$(BIN)/test_scsp_irq: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp src/core/mame_shim.cpp scsp/tools/son/test_scsp_irq.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# Le melange et le rendu (tools/son/test_scsp_mix.cpp) : bloc 7, le dernier. Lit les trois tables de
+# Le melange et le rendu (scsp/tools/son/test_scsp_mix.cpp) : bloc 7, le dernier. Lit les trois tables de
 # decibels a la Sega (TL, DIPAN, SDLT) dans leur entier, et les DEUX canaux.
-$(BIN)/test_scsp_mix: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_mix.cpp)
+$(BIN)/test_scsp_mix: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp src/core/mame_shim.cpp scsp/tools/son/test_scsp_mix.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# Le rejoueur (tools/son/rejouer.cpp) : point 2 de l'etape 2 du plan de migration. Rejoue une trace d'acces
+# Le rejoueur (scsp/tools/son/rejouer.cpp) : point 2 de l'etape 2 du plan de migration. Rejoue une trace d'acces
 # dans un ou deux coeurs et compare le PCM, les interruptions, les armements, les lectures et le MIDI.
-$(BIN)/rejouer: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_trace.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp src/core/mame_shim.cpp tools/son/rejouer.cpp)
+$(BIN)/rejouer: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_trace.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp src/core/mame_shim.cpp scsp/tools/son/rejouer.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# Le jeu d'instructions du DSP d'effets (tools/son/test_scsp_dsp.cpp) : bloc 5, et c'est une SPECIFICATION
+# Le jeu d'instructions du DSP d'effets (scsp/tools/son/test_scsp_dsp.cpp) : bloc 5, et c'est une SPECIFICATION
 # avant d'etre un test -- ce jeu d'instructions n'existe nulle part ecrit. Observe par la fenetre de
 # registres (TEMP, MEMS, MIXS, EFREG) et par la RAM, sans une note de musique.
-$(BIN)/test_scsp_dsp: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp src/core/mame_shim.cpp tools/son/test_scsp_dsp.cpp)
+$(BIN)/test_scsp_dsp: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp src/core/mame_shim.cpp scsp/tools/son/test_scsp_dsp.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# Ce qu'un coeur de SCSP coute, par partie (tools/son/mesurer-coeur.cpp). Le rejoueur compare a l'octet mais
+# Ce qu'un coeur de SCSP coute, par partie (scsp/tools/son/mesurer-coeur.cpp). Le rejoueur compare a l'octet mais
 # son temps est domine par l'analyse de trace ; ce banc ne chronometre que run(), et separe les postes.
-$(BIN)/mesurer-coeur: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp src/core/mame_shim.cpp tools/son/mesurer-coeur.cpp)
+$(BIN)/mesurer-coeur: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp src/core/mame_shim.cpp scsp/tools/son/mesurer-coeur.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 # LA PREUVE QUE LA DEPENDANCE AU COEUR DE MAME EST COUPEE, et c'est une cible et non une phrase.
 #
 # Les sept tests ci-dessous ne parlent que de scsp::core, du contrat et du selecteur ; ils liaient pourtant
-# les 2 110 lignes du coeur de MAME, par les deux aiguillages de tools/son/banc_scsp.h et par un troisieme
+# les 2 110 lignes du coeur de MAME, par les deux aiguillages de scsp/tools/son/banc_scsp.h et par un troisieme
 # dans test_scsp_regs.cpp -- sans aucune raison de fond, leurs references etant des nombres geles. Depuis que
 # chaque coeur s'inscrit dans son propre .cpp (src/sound/scsp_select.h), CE QUI EST LIE DECIDE CE QUI EXISTE,
 # et ces memes tests se construisent avec le seul coeur du projet. C'est le dernier prealable d'un depot
-# separe (docs/scsp_migration_plan.md), et `make test` le refait a chaque fois pour que ca ne rouille pas.
+# separe (scsp/docs/scsp_migration_plan.md), et `make test` le refait a chaque fois pour que ca ne rouille pas.
 #
 # Les trois autres tests ne sont pas ici, et pour une bonne raison chacun : test_scsp_core pilote MAME par
 # l'interface neuve, test_scspdsp mesure les deux corps du DSP de MAME, test_scsp_contract lit les macros de
 # scsp.cpp. Leur sujet EST le coeur de MAME.
-MAISON_SEUL = src/sound/scsp_select.cpp src/sound/scsp_maison.cpp src/sound/dsp_maison.cpp
+MAISON_SEUL = scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp
 SANS_MAME = test_scsp_regs test_scsp_fentes test_scsp_adsr test_scsp_lfo test_scsp_irq test_scsp_mix test_scsp_dsp
 
 $(BIN)/sans-mame/%: $(call objs,$(MAISON_SEUL)) $(OBJ)/tools/son/%.o

@@ -1,6 +1,6 @@
 // scsp_mame.h -- MAME's SCSP presented through the new interface.
 //
-// Step 3 of docs/scsp_migration_plan.md, and the plan says why it comes first: "l'interface posée d'abord
+// Step 3 of scsp/docs/scsp_migration_plan.md, and the plan says why it comes first: "l'interface posée d'abord
 // sur le coeur de MAME : un adaptateur qui présente l'ancien coeur à travers le contrat neuf. C'est le geste
 // qui décide si le contrat tient, et il ne coûte rien à défaire."
 //

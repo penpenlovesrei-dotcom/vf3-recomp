@@ -18,7 +18,7 @@
 //
 // PART 2 is skipped, with a visible line, when build/fv2-son-68000.bin is absent -- it is extracted from a
 // ROM the repository does not carry (tools/son/extraire-son.py). PART 1 always runs.
-#include "../../src/sound/scsp_contract.h"
+#include "scsp_contract.h"
 
 #include <cstdio>
 #include <cstdlib>
