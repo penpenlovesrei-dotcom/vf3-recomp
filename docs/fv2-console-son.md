@@ -641,3 +641,52 @@ avant de vérifier quoi que ce soit.
   à 11 bits** reste une correction tirée du manuel que ce portage n'a pas.
 - `LEVEL = 4.0`, les 12 dB choisis pour Virtua Fighter 3, s'appliquent toujours aussi à ce jeu. Ils ne
   saturent plus, mais ils n'ont jamais été mesurés pour lui.
+
+## Le menu qui grésille : 56 ms de musique jetés à chaque ouverture (2026-10-28)
+
+Frédéric : « parfois le son du menu principal grésille, ou plutôt a un écho ».
+
+### Ce que les mesures ont écarté d'abord
+
+Trois routes jouées cachées, avec `VF3_MENU_SOUND=1`, qui imprime la profondeur de la file du
+périphérique image par image :
+
+| route | file (images) | cadence |
+|---|---|---|
+| la liste sur l'écran titre, 65 s | min 2,7 — médiane 3,0 — max 3,4 | 57,6/s |
+| la même, **tous les cœurs chargés** | min 3,0 — médiane 3,3 — max 3,6 | 58,1/s |
+| le retour au menu depuis un match | médiane 3,0 | — |
+
+**La pompe ne décroche pas**, même sous charge, et l'enregistrement du son (`VF3_SOUND_WAV`, nouveau)
+ne montre ni rupture d'échantillon ni bloc répété. Ce n'était donc ni une famine de la file ni un
+doublement de l'audio.
+
+### Ce qu'elles ont trouvé
+
+L'ouverture d'une surface **vidait la file du périphérique**, et c'est du son que le joueur n'a pas encore
+entendu. La ligne était là depuis le jour où les bips arrivaient « en décalé », et le chiffre n'avait
+jamais été regardé. Mesuré sur la route arcade :
+
+```
+the console: MENU_IN -> MENU (the game is home)
+the console's sound: 3.2 frames (56 ms) were queued and are thrown away
+```
+
+**3,2 images, 56 ms** — ce n'est pas un retard accumulé, ce sont les trois images d'avance que le
+régulateur du jeu tient exprès. Autrement dit, **56 ms de musique étaient coupés au milieu d'eux-mêmes à
+chaque fois qu'un menu s'ouvrait** : un saut dans une note tenue, ce qui s'entend exactement comme un
+grésillement ou un écho.
+
+### La correction
+
+L'excédent seulement est vidé — au-delà du double de ce que le périphérique veut — et les trois images
+habituelles sont laissées tranquilles. La pompe ne fabrique plus que ce qui manque réellement
+(`max(0, QUEUED - file)`) au lieu d'amorcer trois images par-dessus une file déjà pleine. Le cas que la
+première version soignait vraiment, une file dans laquelle le jeu a couru loin devant, reste soigné :
+c'est celui de l'avance rapide, huit images par passe.
+
+Un bip arrive donc 56 ms après la touche, soit trois rafraîchissements — personne n'entend ça.
+
+**Après** : plus une seule ligne « thrown away », et la file ne descend plus jamais à zéro à l'ouverture
+(min 2,5 images sur 106 relevés, contre 0,0 à chaque ouverture avant). Les trois routes de
+`verifier-console.cmd` passent toujours.

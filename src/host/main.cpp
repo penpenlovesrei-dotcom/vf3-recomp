@@ -77,6 +77,8 @@
 //   VF3_SCRIPT=file      inputs from an input script (src/host/input_script.h), frame by frame from the boot;
 //                        its shots go to build/host_<name>.png
 //   VF3_WINDOW=WxH       the window's size in points
+//   VF3_SOUND_WAV=file   everything handed to the sound device, in order, as a WAV -- the menus' own
+//                        sound included, which VF3_RECORD's sound.wav misses (see where it is opened)
 //   VF3_DATA=dir         the data folder
 //   VF3_PACE_LOG=1       the pacing and the pictures' times every 2 s
 //   VF3_SCSP_COEUR=n     which SCSP core the board uses: `mame` (the default) or `maison`, the project's
@@ -4051,6 +4053,35 @@ int main(int argc, char **argv)
 		rec.on = false;
 	};
 
+	// VF3_SOUND_WAV=file -- EVERYTHING THE PLAYER HEARS, written as it is handed to the device.
+	//
+	// VF3_RECORD already writes a sound.wav, and it is deaf to half of this port: its only write is on the
+	// game's own frames, and the console's surfaces have none -- the game is frozen and the board is turned
+	// by the pump instead. A menu in a recording came out silent, and a fault heard under a menu could not be
+	// looked at at all. This one sits at both places audio is handed over, so what it holds is what came out
+	// of the speakers, in order, with nothing of the host's pacing left to imagine.
+	FILE *snd_wav = nullptr;
+	uint32_t snd_wav_bytes = 0;
+	if (const char *w = getenv("VF3_SOUND_WAV")) snd_wav = fopen(w, "wb");
+	auto snd_wav_head = [&] {
+		if (!snd_wav) return;
+		const uint32_t rate = SOUND_RATE, br = rate * 4, sz = 36 + snd_wav_bytes;
+		const uint16_t fmt = 1, ch = 2, align = 4, bits = 16;
+		const uint32_t sixteen = 16;
+		fseek(snd_wav, 0, SEEK_SET);
+		fwrite("RIFF", 1, 4, snd_wav); fwrite(&sz, 4, 1, snd_wav); fwrite("WAVEfmt ", 1, 8, snd_wav);
+		fwrite(&sixteen, 4, 1, snd_wav); fwrite(&fmt, 2, 1, snd_wav); fwrite(&ch, 2, 1, snd_wav);
+		fwrite(&rate, 4, 1, snd_wav); fwrite(&br, 4, 1, snd_wav); fwrite(&align, 2, 1, snd_wav); fwrite(&bits, 2, 1, snd_wav);
+		fwrite("data", 1, 4, snd_wav); fwrite(&snd_wav_bytes, 4, 1, snd_wav);
+		fseek(snd_wav, 0, SEEK_END);
+	};
+	auto snd_wav_put = [&](const std::vector<int16_t> &a) {
+		if (!snd_wav || a.empty()) return;
+		fwrite(a.data(), sizeof(int16_t), a.size(), snd_wav);
+		snd_wav_bytes += uint32_t(a.size() * sizeof(int16_t));
+	};
+	snd_wav_head();
+
 	// ---- the loop ----
 	// Pacing (as VF2's): the game's frames by the clock, one every 1/57.52 s; the sound card's clock is the one
 	// that counts: the frame clock is nudged (1% at most) to keep about QUEUED frames of sound queued, and a queue
@@ -4499,18 +4530,38 @@ int main(int argc, char **argv)
 			// menu and the carousel the game's screen is still there, and its music belongs with it
 			const bool holds_music = cplay.on && cplay.ui.port_screen() && !cplay.ui.game_runs();
 			if (up && !was_up) {
-				// THE QUEUE IS EMPTIED ON THE WAY IN, and that is what makes the menu's sounds prompt.
-				// Frederic heard them "en decale" -- late, and only once the game started again. The board
-				// was making them on time all along, measured: what was late was the SDL queue, which the
-				// game had run ahead into before it froze. A beep put behind a second of backlog comes out a
-				// second later. Nothing drains that backlog while the game is stopped, since the pump below
-				// makes exactly as much as real time asks for.
-				if (audio) SDL_ClearAudioStream(audio);
-				game.audio.clear();
-				// Emptied, then PRIMED. Left at nothing the device is starved, which is the other way to make
-				// it rasp: the pump only makes what real time asks for, so it never gets ahead on its own.
-				// Three frames is what the game itself keeps ahead (QUEUED).
-				menu_sound_owed = QUEUED;
+				// THE QUEUE IS DRAINED ON THE WAY IN ONLY WHERE THERE IS SOMETHING TO DRAIN, and the version
+				// before this one emptied it every time.
+				//
+				// It was put in for a real fault: Frederic heard the menu's beeps "en decale", late and only
+				// once the game started again. The board was making them on time all along -- what was late was
+				// the SDL queue, which the game had run ahead into before it froze, and nothing drains it while
+				// the game is stopped, since the pump below makes exactly as much as real time asks for.
+				//
+				// But emptying a queue is throwing away sound the player has not heard yet, and the figure was
+				// never looked at. Measured the 2026-10-28 on the arcade road: 3.2 frames, 56 ms. That is not a
+				// backlog, it is the three frames the game's own governor keeps ahead on purpose -- and 56 ms of
+				// the music was being cut out of the middle of itself every time a surface opened, which is a
+				// jump in a held note and sounds like what Frederic calls a crackle, or an echo.
+				//
+				// So the excess is drained and the usual three frames are left alone. A beep then comes 56 ms
+				// after the key, which is three refreshes and not a lateness anybody hears; what the first
+				// version was really curing was a queue the game had run far ahead into, and that is still cured,
+				// because that is the case this still empties. Fast-forward is where it happens: eight frames a
+				// pass, and the queue grows past twice what the device wants.
+				const double queued_now = audio && frame_bytes > 0
+					? double(SDL_GetAudioStreamQueued(audio)) / frame_bytes : 0.0;
+				if (queued_now > 2 * QUEUED) {
+					fprintf(stderr, "the console's sound: %.1f frames were queued -- drained to %.0f\n",
+						queued_now, QUEUED);
+					SDL_ClearAudioStream(audio);
+					game.audio.clear();
+					menu_sound_owed = QUEUED;
+				} else {
+					// nothing emptied, and the pump only makes up what the device is actually short of: left at
+					// nothing the device is starved, which is the other way to make it rasp.
+					menu_sound_owed = std::max(0.0, QUEUED - queued_now);
+				}
 				menu_sound_last = 0;
 				menu_sound_frames = 0;
 				menu_sound_t0 = 0;
@@ -4592,6 +4643,7 @@ int main(int argc, char **argv)
 							since, frames, since > 0 ? frames / since : 0.0, peak, q,
 							frame_bytes > 0 ? double(q) / frame_bytes : 0.0);
 			}
+			snd_wav_put(game.audio);
 			if (audio && !game.audio.empty() && rec.dir.empty())
 				SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
 			game.audio.clear();
@@ -4908,6 +4960,7 @@ int main(int argc, char **argv)
 				fwrite(game.audio.data(), sizeof(int16_t), game.audio.size(), rec.wav);
 				rec.wav_bytes += uint32_t(game.audio.size() * sizeof(int16_t));
 			}
+			snd_wav_put(game.audio);
 			if (audio && !game.audio.empty() && !ff && rec.dir.empty())   // (recording: to its file only, not queued for hours)
 				SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
 			game.audio.clear();
@@ -5197,6 +5250,11 @@ int main(int argc, char **argv)
 	saved_hash = ~nvram_hash();   // (the last copies written here whatever the writer did)
 	save_nvram(true);
 	rec_stop();
+	if (snd_wav) {
+		snd_wav_head();
+		fprintf(stderr, "sound: %.1f s written to VF3_SOUND_WAV\n", double(snd_wav_bytes) / (SOUND_RATE * 4.0));
+		fclose(snd_wav);
+	}
 	if (cfg_dirty && quit_after < 0) cfg.save(settings_path);
 	if (audio) SDL_DestroyAudioStream(audio);
 	if (tile_dump.on()) {
