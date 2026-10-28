@@ -238,6 +238,12 @@ struct fv2_options
 	bool ctl_capturing = false;       // waiting for the key or button that will be the new binding
 	bool ctl_changed = false;         // something was really rebound: the host saves and clears this
 	int ctl_testing = -1;             // -1: the grid; 0 or 1: that player's mirror, opened by its TEST line
+	// What the host lends this page for those three: it owns the pads, and this file has no business
+	// knowing what a pad is called or how one is opened.
+	std::function<std::string(int)> pad_text;   // that column's pad, as the player should read it
+	std::function<void(int)> pad_cycle;         // the next pad for that column
+	std::function<void(int)> ctl_defaults;      // that column's controls as they were
+	std::function<void()> ctl_swap;             // the two columns' pads exchanged
 	fv2_texte *font = nullptr;   // the sheet, loaded once by the host and shared
 
 	// The backdrop is authored 16:9 with the 4:3 picture inset in it and flat purple outside; only the inset is
@@ -869,7 +875,18 @@ private:
 	// that split, and it is the right one -- the first version of this page was the mirror alone, and setting
 	// nothing made it useless; the mirror hung off the editor is worth having.
 	static constexpr int CTL_TEST = 9;    // the row index of that line
-	static constexpr int CTL_ROWS = 10;
+	// ---- AND THE THREE THINGS THE PORT'S OWN MENU COULD DO THAT THIS PAGE COULD NOT ----
+	//
+	// The keyboard was never missing: a capture on a cell takes a key as readily as a pad button, and the
+	// cell shows both. What was missing is everything ABOUT the pads rather than their buttons -- which
+	// pad is this player's, putting a player's controls back as they were, and swapping the two players'
+	// pads. Frederic listed them the 2026-10-27 off the port's own menu, where all three already live.
+	//
+	// They bind nothing, so they carry no action: A works them, and left and right go on meaning "the
+	// other player" as they do on every other line of this grid. SWAP belongs to neither column, so it is
+	// drawn once, between them.
+	static constexpr int CTL_PAD = 10, CTL_DEFAULTS = 11, CTL_SWAP = 12;
+	static constexpr int CTL_ROWS = 13;
 
 	// What a cell says: the key, then the pad button when one is bound.
 	std::string binding_text(int player, int action) const
@@ -1008,12 +1025,15 @@ private:
 		return -1;
 	}
 
-	// A opens a capture on a binding line, and the mirror on the TEST line.
+	// A opens a capture on a binding line, the mirror on TEST, and works the three that bind nothing.
 	void ctl_act()
 	{
-		if (ctl_row == CTL_TEST) ctl_testing = ctl_col;
-		else ctl_capturing = true;
 		want_sound = SND_VALIDATE;
+		if (ctl_row == CTL_TEST) { ctl_testing = ctl_col; return; }
+		if (ctl_row == CTL_PAD) { if (pad_cycle) pad_cycle(ctl_col); return; }
+		if (ctl_row == CTL_DEFAULTS) { if (ctl_defaults) ctl_defaults(ctl_col); ctl_changed = true; return; }
+		if (ctl_row == CTL_SWAP) { if (ctl_swap) ctl_swap(); return; }
+		ctl_capturing = true;
 	}
 
 	// THE MIRROR, which this page began as: the eight directions and the three buttons of one player, lit
@@ -1083,6 +1103,24 @@ private:
 				for (int c = 0; c < 2; c++)
 					font->draw_mid(ren, "TEST", col_x[size_t(c)], ty, h,
 								   r == ctl_row && c == ctl_col ? CHOSEN : PLAIN);
+				continue;
+			}
+			// The three that bind nothing: the pad under each column, that column's controls put back, and
+			// the swap, which belongs to neither column and is drawn between them.
+			if (r == CTL_PAD || r == CTL_DEFAULTS || r == CTL_SWAP) {
+				const float yy = y + pitch * 0.18f;
+				if (r == CTL_SWAP) {
+					font->draw_mid(ren, "SWAP PADS", (col_x[0] + col_x[1]) * 0.5f, yy, h,
+								   r == ctl_row ? CHOSEN : PLAIN);
+					continue;
+				}
+				font->draw(ren, r == CTL_PAD ? "PAD" : "DEFAULTS", name_x, yy, h, r == ctl_row ? CHOSEN : PLAIN);
+				for (int c = 0; c < 2; c++) {
+					const bool here = r == ctl_row && c == ctl_col;
+					const std::string t = r == CTL_DEFAULTS ? std::string("PUT BACK")
+										: pad_text ? pad_text(c) : std::string("-");
+					font->draw_mid(ren, t.c_str(), col_x[size_t(c)], yy, h, here ? CHOSEN : PLAIN);
+				}
 				continue;
 			}
 			const ctl_row_def &d = ctl_rows()[size_t(r)];

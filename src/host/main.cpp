@@ -3720,6 +3720,40 @@ int main(int argc, char **argv)
 			{ "QUIT", {}, {}, [&] { running = false; }, {}, 0, true, 0.32f },
 		};
 		options.ctl = cfg.ctl;   // CONTROLLER reads the bindings and writes them
+		// AND THE THREE LINES OF THAT PAGE THAT ARE ABOUT THE PADS RATHER THAN THEIR BUTTONS. The page owns
+		// the grid and the capture; the host owns the pads, so it lends them (fv2_options.h). The same three
+		// levers the port's own menu offers, called rather than written again.
+		options.pad_text = [&](int p) {
+			std::string t = pad_name(p);
+			for (char &c : t) c = char(toupper((unsigned char)c));
+			// the page has a column's width: the long answers are said short
+			if (t.rfind("ANY PAD:", 0) == 0) return std::string("AUTO");
+			if (t == "ANY PAD (NONE CONNECTED)") return std::string("AUTO (NONE)");
+			if (t == "CHOSEN PAD (NOT CONNECTED)") return std::string("NOT HERE");
+			if (t.size() > 12) t = t.substr(0, 12);
+			return t;
+		};
+		options.pad_cycle = [&](int p) { cycle_pad(p, 1); };
+		options.ctl_defaults = [&](int p) {
+			cfg.ctl[p] = player_controls::defaults(p);
+			for (auto k : cfg.ctl[p].key)
+				if (k) for (auto &x : cfg.ctl[1 - p].key) if (x == k) x = SDL_SCANCODE_UNKNOWN;
+			cfg_dirty = true;
+			open_pads();
+			options.ctl = cfg.ctl;   // (the page reads its own copy: it was just written under it)
+		};
+		options.ctl_swap = [&] {
+			auto choice = [&](int p) { return pads[p] ? guid_of(SDL_GetGamepadID(pads[p])) : std::string("none"); };
+			const std::string a = choice(0), b = choice(1);
+			if (a == b) { pads_swapped = !pads_swapped; std::swap(pads[0], pads[1]); }
+			else {
+				cfg.ctl[0].pad_choice = b;
+				cfg.ctl[1].pad_choice = a;
+				cfg_dirty = true;
+				open_pads();
+			}
+			for (int q = 0; q < 2; q++) options.pad_id[q] = pads[q] ? SDL_GetGamepadID(pads[q]) : 0;
+		};
 		// And which pad is whose, so a capture on one player's column takes that player's pad and no other
 		// (fv2_options.h). Filled again whenever the pads are opened again, below.
 		for (int p = 0; p < 2; p++) options.pad_id[p] = pads[p] ? SDL_GetGamepadID(pads[p]) : 0;
