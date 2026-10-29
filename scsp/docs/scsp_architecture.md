@@ -1,93 +1,94 @@
-# Le SCSP autonome — contrat d'interface et découpage
+# The standalone SCSP — interface contract and partition
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/sound.md](son.md).
+> This document is one of the nine on the sound. The front door, which says where everything is:
+> [docs/sound.md](sound.md).
 
-> **Mise à jour du 2026-10-25.** Ce document décrit l'**interface C++**. Le second morceau du contrat —
-> ce que le pilote attend de la **puce**, champ par champ, avec la provenance de chaque nombre — existe
-> maintenant à part : `src/sound/scsp_contract.h`, vérifié par `tools/sound/test_scsp_contract.cpp` contre
-> l'implémentation et contre la ROM. Les deux ensemble sont le préalable que `docs/scsp_migration_plan.md`
-> appelait « le contrat d'interface ».
+> **Update of 2026-10-25.** This document describes the **C++ interface**. The contract's second piece —
+> what the driver expects of the **chip**, field by field, with every number's provenance — now exists
+> separately: `src/sound/scsp_contract.h`, checked by `tools/sound/test_scsp_contract.cpp` against the
+> implementation and against the ROM. The two together are the prerequisite that
+> `docs/scsp_migration_plan.md` called "the interface contract".
 
-**Ceci est un plan, pas une description.** Rien de ce qui suit n'est écrit à ce jour (2026-10-24) : le cœur du
-son est toujours celui de MAME, modifié (`docs/scsp_audit.md` §2). Ce document existe pour que, le jour où on
-s'y mettra, le premier geste ne soit pas de deviner.
+**This is a plan, not a description.** Nothing that follows is written as of today (2026-10-24): the
+sound's core is still MAME's, modified (`docs/scsp_audit.md` §2). This document exists so that, the day it
+is taken on, the first move is not to guess.
 
-Pourquoi un cœur autonome : objectif A du cahier des charges — sortir progressivement du code tiers. Ce n'est
-**pas** un objectif de vitesse (les gains mesurés du 2026-10-24 ont été obtenus sur le cœur de MAME tel quel,
-sans en changer une sortie), et ce n'est **pas** un objectif de fidélité (le code de MAME est aujourd'hui la
-référence de fidélité de ce portage, mesurée jeu par jeu).
+Why a standalone core: objective A of the specification — progressively getting out of third-party code.
+It is **not** a speed objective (the gains measured on 2026-10-24 were obtained on MAME's core as it is,
+without changing one of its outputs), and it is **not** a fidelity objective (MAME's code is today this
+port's fidelity reference, measured game by game).
 
 
-## 1. L'interface d'aujourd'hui, telle qu'elle est
+## 1. Today's interface, as it stands
 
-Avant de dessiner la suivante, il faut lire celle-là. Ce que `SoundBoard` demande au `scsp_device`, et
-réciproquement, est exactement :
+Before drawing the next one, that one has to be read. What `SoundBoard` asks of the `scsp_device`, and the
+other way round, is exactly:
 
-**La carte vers le chip** (appels) :
-
-| | |
-|---|---|
-| construction | `scsp_device(u32 clock, u16 *ram, u32 ram_bytes, const host &)` — la RAM est **partagée** avec le 68000, pas copiée |
-| registres | `u16 read(offs_t offset)` / `void write(offs_t offset, u16 data, u16 mem_mask)`, en mots depuis la base du chip |
-| MIDI | `midi_in(int state)` (un bit) et `midi_in_byte(u8)` (un octet, la voie réellement utilisée) |
-| timers | `timer_fired(int timer)` — 0-2 les timers A/B/C, 3 l'horloge du récepteur, 4 celle de l'émetteur |
-| temps | `update()` — « fabrique les échantillons jusqu'à maintenant » |
-| sortie | `std::vector<float> m_out` (paires stéréo, −1..1, avant le gain), `output_gain()`, `samples_made()` |
-
-**Le chip vers la carte** (`scsp_device::host`, aujourd'hui cinq `std::function`) :
+**The board to the chip** (calls):
 
 | | |
 |---|---|
-| `irq(line, state)` | les lignes IPL du 68000 (seul le premier chip y est relié) |
-| `midi_out(state)` | TxD vers la carte principale |
-| `timer_adjust(timer, delay, period)` | armer/désarmer, en attosecondes, `period != 0` = périodique |
-| `sample_index()` | l'échantillon courant (`now * 44100`) |
-| `time_is_zero()` | vrai juste après la mise sous tension |
+| construction | `scsp_device(u32 clock, u16 *ram, u32 ram_bytes, const host &)` — the RAM is **shared** with the 68000, not copied |
+| registers | `u16 read(offs_t offset)` / `void write(offs_t offset, u16 data, u16 mem_mask)`, in words from the chip's base |
+| MIDI | `midi_in(int state)` (one bit) and `midi_in_byte(u8)` (one byte, the route actually used) |
+| timers | `timer_fired(int timer)` — 0-2 the timers A/B/C, 3 the receiver's clock, 4 the transmitter's |
+| time | `update()` — "make the samples up to now" |
+| output | `std::vector<float> m_out` (stereo pairs, −1..1, before the gain), `output_gain()`, `samples_made()` |
 
-Ce que cette interface **traîne de MAME**, et qu'un cœur autonome n'a aucune raison de garder :
+**The chip to the board** (`scsp_device::host`, today five `std::function`s):
 
-1. **Les attosecondes.** `timer_adjust` parle en `unsigned __int128` d'attosecondes, que `soundboard.cpp`
-   reconvertit aussitôt en cycles du 68000, et arrondit à l'échantillon pour les timers A-C. Deux conversions
-   pour rien : l'unité naturelle de cette carte est **l'échantillon** (et le cycle 68000, qui en vaut 1/256).
-2. **Le flux tiré.** `update()` est le `sound_stream::update` de MAME : le chip fabrique « jusqu'à maintenant »
-   quand on le touche. C'est ce qui fait que les échantillons naissent **à l'intérieur** des tranches du 68000
-   et que la mesure a été difficile à découper (`docs/scsp_audit.md` §1). Le modèle n'est pas faux — il est
-   même ce qui donne le bon grain quand le 68000 écrit un registre au milieu d'un échantillon — mais il doit
-   être **choisi**, pas hérité.
-3. **Les cinq `std::function`.** Deux d'entre elles (`sample_index`, `time_is_zero`) sont appelées à chaque
-   accès registre, donc des milliers de fois par image, pour renvoyer un entier. Un appel indirect par
-   question.
-4. **`device_serial_interface`.** Le récepteur et l'émetteur série de MAME (`emu/diserial.cpp`) sont recopiés
-   dans `scsp.h` pour une seule liaison MIDI à 31250 bauds, 8N1, dont ce portage n'utilise que le chemin
-   « un octet entier » (`midi_in_byte`). Une trentaine de membres et sept méthodes pour ça.
+| | |
+|---|---|
+| `irq(line, state)` | the 68000's IPL lines (only the first chip is wired to them) |
+| `midi_out(state)` | TxD to the main board |
+| `timer_adjust(timer, delay, period)` | arm/disarm, in attoseconds, `period != 0` = periodic |
+| `sample_index()` | the current sample (`now * 44100`) |
+| `time_is_zero()` | true just after power-on |
+
+What this interface **drags along from MAME**, and that a standalone core has no reason to keep:
+
+1. **The attoseconds.** `timer_adjust` speaks in `unsigned __int128` of attoseconds, which
+   `soundboard.cpp` converts straight back into 68000 cycles, and rounds to the sample for timers A-C. Two
+   conversions for nothing: this board's natural unit is **the sample** (and the 68000 cycle, which is
+   1/256 of one).
+2. **The pulled stream.** `update()` is MAME's `sound_stream::update`: the chip makes "up to now" when it
+   is touched. That is what makes the samples be born **inside** the 68000's slices and what made the
+   measurement hard to break up (`docs/scsp_audit.md` §1). The model is not wrong — it is even what gives
+   the right grain when the 68000 writes a register in the middle of a sample — but it must be **chosen**,
+   not inherited.
+3. **The five `std::function`s.** Two of them (`sample_index`, `time_is_zero`) are called on every register
+   access, hence thousands of times per frame, to return an integer. One indirect call per question.
+4. **`device_serial_interface`.** MAME's serial receiver and transmitter (`emu/diserial.cpp`) are copied
+   into `scsp.h` for a single MIDI link at 31250 baud, 8N1, of which this port uses only the "one whole
+   byte" path (`midi_in_byte`). Some thirty members and seven methods for that.
 
 
-## 2. Le contrat proposé
+## 2. The proposed contract
 
-Une seule règle de découpage : **le cœur ne connaît ni le PC, ni MAME, ni le 68000.** Il connaît des
-échantillons, des registres et de la RAM.
+One partitioning rule only: **the core knows neither the PC, nor MAME, nor the 68000.** It knows samples,
+registers and RAM.
 
 ```cpp
-// Pas de std::function, pas d'attosecondes, pas de framework. L'unite de temps est l'echantillon.
+// No std::function, no attoseconds, no framework. The unit of time is the sample.
 class scsp_core
 {
 public:
-    struct sink {                                   // ce que la carte branche dessous
-        virtual void irq(int level) = 0;            // le niveau demande (0 = rien), pas une ligne a la fois
-        virtual void midi_out(u8 byte) = 0;         // un octet, pas un bit
-        virtual void timer(int which, u32 samples, u32 period) = 0;   // 0 = desarmer
+    struct sink {                                   // what the board plugs in underneath
+        virtual void irq(int level) = 0;            // the level asked for (0 = nothing), not one line at a time
+        virtual void midi_out(u8 byte) = 0;         // a byte, not a bit
+        virtual void timer(int which, u32 samples, u32 period) = 0;   // 0 = disarm
     };
 
     scsp_core(u16 *ram, u32 ram_bytes, sink &);
     void reset();
 
-    // Les registres. L'appelant garantit que le temps est a jour (voir run) avant d'y toucher.
+    // The registers. The caller guarantees that time is up to date (see run) before touching them.
     u16  read_reg(u32 word_offset) const;
     void write_reg(u32 word_offset, u16 data, u16 mem_mask);
 
-    // Le temps, pousse : fabrique exactement n echantillons dans out (paires stereo, s32 20 bits
-    // avant le DAC, comme le chip les a). L'appelant decoupe ses tranches ou il veut -- a
-    // l'echantillon s'il veut le grain de MAME, plus large s'il s'en passe.
+    // Time, pushed: makes exactly n samples into out (stereo pairs, s32 20 bits before the DAC, as the
+    // chip has them). The caller slices wherever it likes -- to the sample if it wants MAME's grain,
+    // wider if it does without.
     void run(u32 n, s32 *out);
 
     void timer_fired(int which);
@@ -95,121 +96,122 @@ public:
 };
 ```
 
-Ce que ce contrat change, et pourquoi :
+What this contract changes, and why:
 
-| | aujourd'hui | proposé | pourquoi |
+| | today | proposed | why |
 |---|---|---|---|
-| temps | tiré (`update()` interroge l'hôte) | **poussé** (`run(n)`) | le cœur n'a plus besoin de savoir l'heure ; la granularité redevient une décision de la carte, écrite une fois dans `soundboard.cpp` |
-| unité | attosecondes → cycles → échantillons | **échantillons** | l'unité du matériel ; plus d'arrondi à recoller |
-| rappels | 5 `std::function` | **une interface, 3 méthodes** | un appel virtuel par événement rare au lieu d'un appel indirect par accès registre |
-| sortie | `std::vector<float>` qui pousse et qu'on vide | **un tampon que l'appelant fournit** | zéro allocation dans le chemin temps réel, et le flottant arrive à la fin, une fois |
-| série | `device_serial_interface` recopié | **un octet dedans, un octet dehors** ; les bauds et les bits restent dans un petit `midi_uart` à part | la liaison du Model 3 ne transporte que des octets ; les bits ne servent qu'à la cadence des interruptions, qui est la seule chose à garder |
+| time | pulled (`update()` asks the host) | **pushed** (`run(n)`) | the core no longer needs to know the time; the granularity goes back to being the board's decision, written once in `soundboard.cpp` |
+| unit | attoseconds → cycles → samples | **samples** | the hardware's unit; no more rounding to patch up |
+| callbacks | 5 `std::function`s | **one interface, 3 methods** | one virtual call per rare event instead of an indirect call per register access |
+| output | a `std::vector<float>` that grows and gets drained | **a buffer the caller provides** | zero allocation on the real-time path, and the float arrives at the end, once |
+| serial | `device_serial_interface` copied in | **a byte in, a byte out**; the bauds and the bits stay in a small separate `midi_uart` | the Model 3's link carries nothing but bytes; the bits serve only the interrupt rate, which is the one thing to keep |
 
-**Le 68000 et la carte Model 3 restent dehors.** `soundboard.cpp` garde la carte (carte mémoire, banque,
-timers, cadence), `third_party/mame/m68000` garde le 68000. Le cœur SCSP ne dépend d'aucun des deux, ce qui est
-la condition pour le tester seul.
+**The 68000 and the Model 3 board stay outside.** `soundboard.cpp` keeps the board (memory map, banking,
+timers, rate), `third_party/mame/m68000` keeps the 68000. The SCSP core depends on neither, which is the
+condition for testing it alone.
 
-**Et l'API audio du PC n'entre nulle part.** Elle n'y entre pas aujourd'hui non plus (`SoundBoard::run` rend des
-`int16_t`, l'hôte fait le reste) : rien à défaire.
+**And the PC's audio API comes in nowhere.** It does not come in today either (`SoundBoard::run` returns
+`int16_t`, the host does the rest): nothing to undo.
 
 
-## 3. Les blocs, et dans quel ordre les écrire
+## 3. The blocks, and the order to write them in
 
-Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas celui de l'importance.
+One block per thing that can be tested on its own. The order is the order of dependency, not of importance.
 
-1. **Registres et sémantique d'accès** — la carte des 0x000-0xFFF : les 32 fentes (0x20 octets chacune), le
-   commun (0x400-0x45F), les registres DSP (COEF 0x700, MADRS 0x780, MPRO 0x800, TEMP, MEMS, MIXS, EFREG,
-   EXTS). Y compris les bits réservés, ce qui se relit, et **la plage 0x7C0-0x7FF**, dont ce portage et MAME ne
-   font pas la même chose (`docs/scsp_references.md`). Se teste sans aucun son : écrire, relire.
-   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_regs.cpp`, neuf cas, et il a déjà rapporté
-   deux choses qu'aucune lecture n'avait vues — l'exception « bit 5 » de MAME tombe sur MCIRE (0x42E) et non
-   sur MCIPD (0x42C), que le commentaire nomme ; et la plage 0x7C0-0x7FF, mesurée dans les **deux** réglages
-   du miroir MADRS plutôt que dans celui qui est par défaut.
-2. **Fentes, oscillateur, PCM, adressage, bouclage** — 8 et 16 bits signés, `SA`/`LSA`/`LEA`, les quatre modes
-   `LPCTL`, l'interpolation linéaire, les limites de la RAM. Se teste en comptant des échantillons.
-   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_slots.cpp`, onze cas, et il a démenti la
-   lecture sur les quatre bouclages à la fois. La boucle de bouclage tourne sur `cur_addr` **et** `nxt_addr`,
-   mais `nxt_addr` est réaffecté à chaque échantillon : sa réécriture d'adresse est perdue, ses effets de bord
-   (`Backwards`, `StopSlot`) ne le sont pas. Tout se déclenche donc **un échantillon tôt**, et aucun échantillon
-   au-delà de `LEA` n'est jamais lu — contrairement à ce que la lecture seule prédisait (`scsp_contract.h` §9).
-3. **Enveloppes ADSR** — les quatre états, `AR`/`D1R`/`D2R`/`RR`, `DL`, `EGHOLD`, `KRS`, `LPSLNK`, et les
-   tables de temps. **Attention** : les tables `ARTimes`/`DRTimes` de MAME sont des constantes mesurées, pas
-   une formule ; les reprendre est un choix de fidélité à assumer explicitement.
-   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_adsr.cpp`, dix cas. Il fixe les durées d'attaque
-   **en échantillons** (1297, 332, 83, 24, 1 pour `AR` = 0x10 à 0x1F), si bien qu'une formule à la place des
-   tables échoue là et nulle part ailleurs — l'avertissement ci-dessus devient une mesure. Il montre aussi que
-   l'attaque multiplie le **volume brut** quand tout le reste passe par la courbe en décibels, et que `DECAY1`
-   décrémente toujours une fois même quand `DL=0` le fait céder aussitôt (`scsp_contract.h` §10).
-4. **Pitch, LFO, modulation FM** — `OCT`/`FNS`, les quatre formes de LFO, `PLFOS`/`ALFOS`, et la modulation par
-   anneau (`MDL`/`MDXSL`/`MDYSL`). **Les réglages de ce portage se gardent tels quels** jusqu'à mesure
-   contraire : profondeur FM à 24 et bit bas de `MDL` ignoré (`docs/scsp_audit.md` §2).
-   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_lfo.cpp`, onze cas, et il fixe les deux réglages
-   nommés ci-dessus plutôt que de les laisser à la bonne volonté d'un relecteur. Il a aussi trouvé que **huit
-   des trente-deux cadences de LFO ne font rien** — `phase_step` tronque à zéro en dessous de 0,673 Hz — et que
-   `LFORE` n'est lu nulle part dans ce cœur (`scsp_contract.h` §11).
-5. **Le DSP d'effets** — 128 pas, `TEMP`/`MEMS`/`MIXS`/`EFREG`, `PACK`/`UNPACK`, la ligne de retard dans la RAM
-   son, l'accès mémoire sur pas impairs. C'est **le bloc le plus coûteux** (la moitié de la carte son) et celui
-   qui a le plus à gagner d'être écrit pour ce qu'il est : un programme fixe de 112 pas exécuté 44 100 fois par
-   seconde. La forme décodée de ce dépôt (`Inst`, `Inst::f`) est déjà au-delà de MAME et de Supermodel, qui
-   décodent dans la boucle ; la suite naturelle est une forme compilée par programme, pas un interpréteur plus
-   serré.
-   **Le seul bloc que `scsp_own` n'a pas écrit**, et la raison n'est pas le temps : son jeu d'instructions
-   n'existe nulle part écrit. Le contrat n'en donne que la disposition (§6), et `docs/scsp_references.md` est
-   clair — il n'y a ni fiche technique ni spécification indépendante, seulement les implémentations de MAME et
-   de Supermodel, issues du même travail d'ElSemi. Écrire ce bloc demande donc d'abord un **test qui mesure**
-   le comportement instruction par instruction, comme pour les six autres. Tant qu'il n'existe pas, il n'y a
-   rien contre quoi écrire, et le cœur emprunte `scspdsp.{h,cpp}`.
-   **La spécification a été écrite d'abord**, le 2026-10-27 : `tools/sound/test_scsp_dsp.cpp`, huit cas mesurés
-   par la fenêtre de registres (TEMP, MEMS, MIXS, EFREG) et par la RAM, sans une note de musique. Elle a sorti
-   le fait central du bloc, qu'aucune lecture ne crie : **le shifter est un pas en retard sur l'accumulateur**
-   — le pas qui fait un produit ne peut pas en écrire le résultat, il faut le suivant.
-   **Puis le bloc**, `src/sound/dsp_own.{h,cpp}`, vérifié à l'octet par le rejoueur sur la scène entière.
-   Quatre de ses vingt-cinq champs — `FRCL`, `ADRL`, `YRL`, `NEGB` — ne sont validés par **aucune** mesure :
-   les programmes de ce jeu les laissent à zéro sur toutes ses arènes, et la sonde `dspprog` le dit avec son
-   propre témoin dans la même ligne. Écrits, jamais éprouvés.
-6. **Timers, interruptions, synchronisation** — A/B/C, `SCIEB`/`SCIPD`/`SCILV`, `MCIEB`/`MCIPD`, le DMA, et la
-   cadence des interruptions, dont Mednafen dit qu'elle est ce qui fait dériver le tempo de 2 %
+1. **Registers and access semantics** — the map of 0x000-0xFFF: the 32 slots (0x20 bytes each), the common
+   area (0x400-0x45F), the DSP registers (COEF 0x700, MADRS 0x780, MPRO 0x800, TEMP, MEMS, MIXS, EFREG,
+   EXTS). Including the reserved bits, what reads back, and **the range 0x7C0-0x7FF**, which this port and
+   MAME do not do the same thing with (`docs/scsp_references.md`). Tested with no sound at all: write,
+   read back.
+   **The test exists** since 2026-10-26: `tools/sound/test_scsp_regs.cpp`, nine cases, and it has already
+   reported two things no reading had seen — MAME's "bit 5" exception lands on MCIRE (0x42E) and not on
+   MCIPD (0x42C), which the comment names; and the range 0x7C0-0x7FF, measured in **both** settings of the
+   MADRS mirror rather than in the default one.
+2. **Slots, oscillator, PCM, addressing, looping** — signed 8 and 16 bits, `SA`/`LSA`/`LEA`, the four
+   `LPCTL` modes, linear interpolation, RAM's limits. Tested by counting samples.
+   **The test exists** since 2026-10-26: `tools/sound/test_scsp_slots.cpp`, eleven cases, and it
+   contradicted the reading on all four loop modes at once. The looping loop runs over `cur_addr` **and**
+   `nxt_addr`, but `nxt_addr` is reassigned on every sample: its address rewrite is lost, its side effects
+   (`Backwards`, `StopSlot`) are not. So everything fires **one sample early**, and no sample beyond `LEA`
+   is ever read — contrary to what reading alone predicted (`scsp_contract.h` §9).
+3. **ADSR envelopes** — the four states, `AR`/`D1R`/`D2R`/`RR`, `DL`, `EGHOLD`, `KRS`, `LPSLNK`, and the
+   time tables. **Careful**: MAME's `ARTimes`/`DRTimes` tables are measured constants, not a formula;
+   taking them over is a fidelity choice to be owned explicitly.
+   **The test exists** since 2026-10-26: `tools/sound/test_scsp_adsr.cpp`, ten cases. It pins the attack
+   durations **in samples** (1297, 332, 83, 24, 1 for `AR` = 0x10 to 0x1F), so that a formula in the
+   tables' place fails there and nowhere else — the warning above becomes a measurement. It also shows that
+   the attack multiplies the **raw volume** when everything else goes through the decibel curve, and that
+   `DECAY1` always decrements once even when `DL=0` makes it give way immediately (`scsp_contract.h` §10).
+4. **Pitch, LFO, FM modulation** — `OCT`/`FNS`, the four LFO waveforms, `PLFOS`/`ALFOS`, and ring
+   modulation (`MDL`/`MDXSL`/`MDYSL`). **This port's settings are kept as they are** until measured
+   otherwise: FM depth at 24 and `MDL`'s low bit ignored (`docs/scsp_audit.md` §2).
+   **The test exists** since 2026-10-26: `tools/sound/test_scsp_lfo.cpp`, eleven cases, and it pins the two
+   settings named above rather than leaving them to a reviewer's goodwill. It also found that **eight of
+   the thirty-two LFO rates do nothing** — `phase_step` truncates to zero below 0.673 Hz — and that
+   `LFORE` is read nowhere in this core (`scsp_contract.h` §11).
+5. **The effects DSP** — 128 steps, `TEMP`/`MEMS`/`MIXS`/`EFREG`, `PACK`/`UNPACK`, the delay line in sound
+   RAM, memory access on odd steps. It is **the costliest block** (half the sound board) and the one with
+   the most to gain from being written for what it is: a fixed 112-step program executed 44 100 times a
+   second. This repository's decoded form (`Inst`, `Inst::f`) is already beyond MAME's and Supermodel's,
+   which decode in the loop; the natural next step is a form compiled per program, not a tighter
+   interpreter.
+   **The only block `scsp_own` has not written**, and the reason is not time: its instruction set exists
+   nowhere written down. The contract gives only its layout (§6), and `docs/scsp_references.md` is clear —
+   there is neither a datasheet nor an independent specification, only MAME's and Supermodel's
+   implementations, out of ElSemi's same work. So writing this block requires first a **test that
+   measures** the behaviour instruction by instruction, as for the other six. As long as it does not exist,
+   there is nothing to write against, and the core borrows `scspdsp.{h,cpp}`.
+   **The specification was written first**, on 2026-10-27: `tools/sound/test_scsp_dsp.cpp`, eight cases
+   measured through the register window (TEMP, MEMS, MIXS, EFREG) and through RAM, without a note of music.
+   It brought out the block's central fact, which no reading shouts: **the shifter is one step behind the
+   accumulator** — the step that does a product cannot write its result, the next one is needed.
+   **Then the block**, `src/sound/dsp_own.{h,cpp}`, verified byte for byte by the replayer over the whole
+   scene. Four of its twenty-five fields — `FRCL`, `ADRL`, `YRL`, `NEGB` — are validated by **no**
+   measurement: this game's programs leave them at zero in all its arenas, and the `dspprog` probe says so
+   with its own control in the same line. Written, never tested.
+6. **Timers, interrupts, synchronisation** — A/B/C, `SCIEB`/`SCIPD`/`SCILV`, `MCIEB`/`MCIPD`, the DMA, and
+   the interrupt rate, which Mednafen says is what makes the tempo drift by 2%
    (`docs/scsp_references.md`).
-   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_irq.cpp`, onze cas, mesurés par le puits
-   plutôt que par le son. Il fixe le `+1` de `timer_samples` — la troisième divergence voulue du portage, celle
-   qui a remis le tic de VF3 à 882 Hz — et il a trouvé que la **ligne 0 ne retombe pas quand rien n'est en
-   attente** : `CheckPendingIRQ` sort avant, et le `-0` n'arrive que sur une source en attente que rien n'arme
-   (`scsp_contract.h` §12).
-7. **Mélange et rendu** — `DISDL`/`DIPAN`, `EFSDL`/`EFPAN`, `MVOL`, `DAC18B`, les tables de panoramique. Les
-   deux volumes par groupe et le niveleur d'effets de ce portage sont **au-dessus** du chip, pas dedans : ils
-   restent dans la carte.
-   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_mix.cpp`, neuf cas. Il lit les trois tables de
-   décibels en entier, et il a établi que **`MVOL` n'est jamais appliqué dans la puce** — elle l'expose seulement,
-   et la carte multiplie — ce qui est un **trou dans l'interface** : `scsp::core` ne sait pas rendre `MVOL`,
-   donc la carte descend par `->device()` (`scsp_contract.h` §13).
+   **The test exists** since 2026-10-26: `tools/sound/test_scsp_irq.cpp`, eleven cases, measured through
+   the sink rather than through the sound. It pins `timer_samples`'s `+1` — the port's third deliberate
+   divergence, the one that put VF3's tick back to 882 Hz — and it found that **line 0 does not drop when
+   nothing is pending**: `CheckPendingIRQ` returns before that, and the `-0` only happens on a pending
+   source that nothing arms (`scsp_contract.h` §12).
+7. **Mixing and output** — `DISDL`/`DIPAN`, `EFSDL`/`EFPAN`, `MVOL`, `DAC18B`, the pan tables. This port's
+   two per-group volumes and its effects leveller are **above** the chip, not in it: they stay in the
+   board.
+   **The test exists** since 2026-10-26: `tools/sound/test_scsp_mix.cpp`, nine cases. It reads the three
+   decibel tables in full, and it established that **`MVOL` is never applied in the chip** — the chip only
+   exposes it, and the board multiplies — which is a **hole in the interface**: `scsp::core` cannot return
+   `MVOL`, so the board goes down through `->device()` (`scsp_contract.h` §13).
 
 
-## 4. Ce que la Model 3 a de particulier, et qu'une doc Saturn ne dira pas
+## 4. What is particular to the Model 3, and that a Saturn document will not say
 
-À garder sous les yeux, parce que la tentation sera de lire une documentation Saturn et de l'appliquer :
+To keep in view, because the temptation will be to read Saturn documentation and apply it:
 
-- **Deux SCSP**, pas un. Chacun sa RAM de 1 Mo, chacun son DSP de 128 pas (les deux tournent : mesuré, 112 pas
-  chacun pendant l'attraction de Fighting Vipers 2). **Seules les interruptions du premier atteignent le
-  68000** ; celles du second ne vont nulle part.
-- **Le 68000 est à 11,2896 MHz** (45,1584 / 4), soit exactement **256 cycles par échantillon** à 44,1 kHz.
-  C'est ce qui rend l'échantillon une unité de temps honnête sur cette carte.
-- **Les SCSP ne jouent que depuis leur RAM** ; c'est le 68000 qui y recopie les échantillons depuis les 16 Mo
-  de ROM, par banque (bit 4 du registre 0x400001).
-- **Le MIDI arrive de la carte principale** dans l'entrée du premier SCSP, et c'est tout le canal de commande :
-  le PowerPC n'envoie que des octets.
-- **Le Model 3 sort quatre canaux**, repliés en stéréo ici comme chez Mednafen.
-- Les réglages de ce portage qui tiennent à **ces jeux-là** (le miroir de MADRS par jeu, le groupe d'une voix
-  lu dans les fiches à 0x400 de la RAM son) ne sont pas du chip : ils sont de la carte et du pilote de son, et
-  ils doivent le rester.
+- **Two SCSPs**, not one. Each with its own 1 MB of RAM, each with its own 128-step DSP (both run:
+  measured, 112 steps each during Fighting Vipers 2's attract). **Only the first one's interrupts reach the
+  68000**; the second's go nowhere.
+- **The 68000 is at 11.2896 MHz** (45.1584 / 4), that is exactly **256 cycles per sample** at 44.1 kHz.
+  That is what makes the sample an honest unit of time on this board.
+- **The SCSPs only play from their own RAM**; it is the 68000 that copies the samples there from the 16 MB
+  of ROM, by bank (bit 4 of register 0x400001).
+- **The MIDI arrives from the main board** into the first SCSP's input, and that is the whole command
+  channel: the PowerPC sends nothing but bytes.
+- **The Model 3 outputs four channels**, folded into stereo here as in Mednafen.
+- This port's settings that depend on **these particular games** (the per-game MADRS mirror, a voice's
+  group read from the records at 0x400 in sound RAM) are not the chip's: they are the board's and the sound
+  driver's, and they must stay that way.
 
 
-## 5. Ce qui doit exister avant la première ligne
+## 5. What must exist before the first line
 
-1. Le **harnais différentiel** : il existe (`tools/sound/compare-sound.cmd`), mais il compare deux *constructions*
-   du portage, pas deux *cœurs*. Il lui faut un sélecteur (variable d'environnement ou option de build) qui
-   fasse tourner l'ancien et le neuf dans le même binaire, sur la même séquence d'accès, et compare les PCM,
-   les états observables, les interruptions et les timers.
-2. Le **repli** : l'ancien cœur reste là, derrière ce sélecteur, et ne part qu'après.
-3. Les **tests par bloc** de la liste du §3, écrits avant le bloc qu'ils testent.
+1. The **differential harness**: it exists (`tools/sound/compare-sound.cmd`), but it compares two *builds*
+   of the port, not two *cores*. It needs a selector (environment variable or build option) that runs the
+   old one and the new one in the same binary, over the same sequence of accesses, and compares the PCM,
+   the observable state, the interrupts and the timers.
+2. The **fallback**: the old core stays there, behind that selector, and only goes afterwards.
+3. The **per-block tests** of §3's list, written before the block they test.
 
-Tant que ces trois-là n'existent pas, écrire le cœur autonome est un pari, pas un travail.
+As long as those three do not exist, writing the standalone core is a bet, not a job.

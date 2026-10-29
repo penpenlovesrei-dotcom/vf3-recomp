@@ -1,45 +1,46 @@
-# Sources du SCSP — ce qui a été lu, et ce qu'on en sait
+# The SCSP's sources — what was read, and what is known from it
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/sound.md](son.md).
+> This document is one of the nine on the sound. The front door, which says where everything is:
+> [docs/sound.md](sound.md).
 
-Relevé le 2026-10-24. Chaque ligne dit **où elle a été lue**. Ce qui n'a pas été vérifié est marqué comme tel ;
-rien ici n'est déduit d'un souvenir.
-
-
-## L'avertissement qui vient en premier
-
-**Les implémentations ne sont pas indépendantes les unes des autres, et leur accord ne prouve rien.**
-
-Le SCSP de MAME porte en tête `copyright-holders: ElSemi, R. Belmont` : ElSemi l'a écrit, R. Belmont l'a
-converti pour MAME/M1, kingshriek l'a corrigé. Le SCSP de Supermodel vient **du même ElSemi**, qui l'a donné au
-projet ; l'en-tête de `Src/Sound/SCSP.cpp` le dit et crédite par ailleurs une conversion MAME par Paul Prosser.
-Les deux émulateurs ne sont donc pas deux témoins : c'est **un seul témoin lu deux fois**. Quand MAME et
-Supermodel sonnent pareil, cela n'établit pas que le YMF292 sonne comme ça.
-
-Conséquence pratique : toute question de fidélité tranchée par « MAME et Supermodel font pareil » est une
-question **non tranchée**. Dans ce dépôt, les réglages qui s'écartent de MAME ont été décidés par la mesure sur
-la borne (le niveau d'un état, la corrélation gauche/droite de la réverbération, l'écart spectral d'une voix),
-pas par le vote des émulateurs — et c'est la bonne méthode à garder.
+Recorded on 2026-10-24. Every line says **where it was read**. What has not been checked is marked as such;
+nothing here is deduced from a memory.
 
 
-## Licences, et ce qu'on peut faire de chaque source
+## The warning that comes first
 
-| source | licence | ce qu'on peut en faire ici |
+**The implementations are not independent of one another, and their agreement proves nothing.**
+
+MAME's SCSP carries `copyright-holders: ElSemi, R. Belmont` at its head: ElSemi wrote it, R. Belmont
+converted it for MAME/M1, kingshriek corrected it. Supermodel's SCSP comes from **the same ElSemi**, who
+gave it to the project; the header of `Src/Sound/SCSP.cpp` says so and separately credits a MAME conversion
+by Paul Prosser. So the two emulators are not two witnesses: they are **one witness read twice**. When MAME
+and Supermodel sound the same, that does not establish that the YMF292 sounds like that.
+
+The practical consequence: any question of fidelity settled by "MAME and Supermodel do the same" is a
+question **not settled**. In this repository, the settings that depart from MAME were decided by
+measurement on the cabinet (a state's level, the reverb's left/right correlation, a voice's spectral gap),
+not by a vote between emulators — and that is the right method to keep.
+
+
+## Licences, and what may be done with each source
+
+| source | licence | what may be done with it here |
 |---|---|---|
-| MAME (`mamedev/mame`), `sound/scsp.cpp`, `sound/scspdsp.cpp`, `cpu/m68000/` | **BSD-3-Clause** | **réutilisable** en gardant l'avis, les conditions et la clause de non-garantie. C'est ce que fait le dépôt. |
-| Supermodel (`trzy/Supermodel`) | **GPL** | **observation seulement**. Ni copie, ni traduction mécanique : ce dépôt est sous MIT. On peut regarder ce qu'il *fait*, pas reprendre comment il l'écrit. |
-| Mednafen (SASPlay) | **GPL** | idem : observation seulement. |
-| Yabause, Kronos | **GPL** | idem. |
+| MAME (`mamedev/mame`), `sound/scsp.cpp`, `sound/scspdsp.cpp`, `cpu/m68000/` | **BSD-3-Clause** | **reusable**, keeping the notice, the conditions and the warranty disclaimer. That is what the repository does. |
+| Supermodel (`trzy/Supermodel`) | **GPL** | **observation only**. Neither copy nor mechanical translation: this repository is under MIT. One may look at what it *does*, not take over how it writes it. |
+| Mednafen (SASPlay) | **GPL** | likewise: observation only. |
+| Yabause, Kronos | **GPL** | likewise. |
 
-`tools/ref/README.md` pose déjà cette ligne pour le correctif de couverture Supermodel : « Supermodel is GPL,
-and so is this patch. The port's own code must not copy from it. » Elle vaut pour le son aussi.
+`tools/ref/README.md` already lays down this line for the Supermodel coverage patch: "Supermodel is GPL,
+and so is this patch. The port's own code must not copy from it." It holds for the sound as well.
 
 
-## Ce qui a été vérifié aujourd'hui, à la source
+## What was checked today, at the source
 
-### MAME — le DSP décode son programme à chaque échantillon
+### MAME — the DSP decodes its program on every sample
 
-Lu dans `src/devices/sound/scspdsp.cpp` de la branche `master` : la boucle ouvre sur
+Read in `src/devices/sound/scspdsp.cpp` on the `master` branch: the loop opens with
 
 ```
 for (int step = 0; step < /*128*/LastStep; ++step)
@@ -48,115 +49,117 @@ for (int step = 0; step < /*128*/LastStep; ++step)
     ...
 ```
 
-et **extrait les champs par décalages et masques à chaque pas de chaque échantillon**. La seule chose
-pré-calculée est `LastStep`, que `Start()` obtient en cherchant la dernière instruction non nulle.
+and **extracts the fields by shifts and masks at every step of every sample**. The only thing precomputed
+is `LastStep`, which `Start()` obtains by looking for the last non-zero instruction.
 
-Supermodel fait la même chose : `Src/Sound/SCSPDSP.cpp` calcule `IPtr = DSP->MPRO + step * 4` et extrait
-TRA, TWT, XSEL, MWT… dans la boucle, à chaque échantillon.
+Supermodel does the same: `Src/Sound/SCSPDSP.cpp` computes `IPtr = DSP->MPRO + step * 4` and extracts TRA,
+TWT, XSEL, MWT… inside the loop, on every sample.
 
-**Ce dépôt est donc en avance sur les deux** sur ce point précis : `SCSPDSP::Decode` écrit le programme décodé
-dans `prog[128]` une fois, au moment où le 68000 l'écrit, et depuis aujourd'hui les contrôles d'un bit sont
-regroupés dans un mot (`Inst::f`). Voir `docs/scsp_audit.md` §7. Ce n'est pas une divergence de comportement :
-le décodage est une bijection, et le WAV est identique à l'octet.
+**So this repository is ahead of both** on that precise point: `SCSPDSP::Decode` writes the decoded program
+into `prog[128]` once, at the moment the 68000 writes it, and since today the one-bit controls are grouped
+into a word (`Inst::f`). See `docs/scsp_audit.md` §7. It is not a divergence in behaviour: the decoding is
+a bijection, and the WAV is byte-identical.
 
-Sont bien présents dans MAME comme ici : `PACK`/`UNPACK`, et l'accès mémoire limité aux pas impairs
-(`if (MRD && (step & 1)) //memory only allowed on odd?`, avec la remarque sur les NOP que DoA insère sur les
-pas pairs).
+Present in MAME as they are here: `PACK`/`UNPACK`, and the memory access restricted to odd steps
+(`if (MRD && (step & 1)) //memory only allowed on odd?`, with the remark about the NOPs DoA inserts on the
+even steps).
 
-### MAME — le miroir de MADRS, et ce qu'il en a fait
+### MAME — the mirroring of MADRS, and what it did with it
 
-`mamedev/mame` **PR #16527**, fusionnée le **2026-10-19** :
+`mamedev/mame` **PR #16527**, merged on **2026-10-19**:
 > `sound/scsp.cpp: Don't mirror MADRS at 0x7c0-0x7ff, fixes corrupted and then silent sound in doa`
 
-État de `master` lu aujourd'hui, et il faut être précis parce que les deux chemins ne font pas la même chose :
+The state of `master` as read today, and precision is needed because the two paths do not do the same
+thing:
 
-| | MAME `master` | ce dépôt, `madrs_mirror = true` | ce dépôt, `madrs_mirror = false` |
+| | MAME `master` | this repository, `madrs_mirror = true` | this repository, `madrs_mirror = false` |
 |---|---|---|---|
-| écriture dans 0x7C0-0x7FF | **jetée** (branche vide, commentaire « 0x7c0-0x7ff does not mirror MADRS: doa clears this range ») | va dans MADRS | gardée dans `m_madrs_hi` |
-| lecture de 0x7C0-0x7FF | **renvoie MADRS** | renvoie MADRS | renvoie `m_madrs_hi` |
+| write into 0x7C0-0x7FF | **thrown away** (empty branch, comment "0x7c0-0x7ff does not mirror MADRS: doa clears this range") | goes into MADRS | kept in `m_madrs_hi` |
+| read of 0x7C0-0x7FF | **returns MADRS** | returns MADRS | returns `m_madrs_hi` |
 
-Donc :
+So:
 
-1. **Du côté écriture**, MAME `master` et le mode « séparé » de ce dépôt font la même chose pour ce qui compte :
-   les zéros que le programme son écrit par-dessus n'effacent plus les adresses des lignes de retard. C'est le
-   réglage que la mesure a imposé pour **Fighting Vipers 2** (`docs/fv2-console-son.md` : le son de l'écran de
-   victoire qui se nourrit lui-même, pic moyen de l'état 22831 → 6532 quand on les sépare). Le dépôt et MAME se
-   sont retrouvés sur la même réponse, par deux chemins séparés et pour deux jeux différents (`doa` là-bas,
-   `fvipers2` ici).
-2. **Du côté lecture**, les deux diffèrent : MAME renvoie MADRS, le mode « séparé » renvoie les mots écrits. Si
-   un programme son relit cette plage et agit dessus, les deux ne donneront pas la même chose. **Non mesuré**
-   ici : on ne sait pas si un des deux jeux la relit.
-3. **Et pour Virtua Fighter 3, ce dépôt garde le miroir** (`soundboard.h` : `madrs_mirror = true`), parce que
-   sans lui la réverbération tenait plusieurs secondes là où la référence la coupe en une
+1. **On the write side**, MAME `master` and this repository's "separate" mode do the same thing in what
+   matters: the zeros the sound program writes over the top no longer erase the delay lines' addresses. It
+   is the setting the measurement forced for **Fighting Vipers 2** (`docs/fv2-console-son.md`: the victory
+   screen's sound feeding itself, mean peak of the state 22831 → 6532 when they are kept apart). The
+   repository and MAME arrived at the same answer, by two separate paths and for two different games (`doa`
+   there, `fvipers2` here).
+2. **On the read side**, the two differ: MAME returns MADRS, the "separate" mode returns the words written.
+   If a sound program reads that range back and acts on it, the two will not give the same thing. **Not
+   measured** here: it is not known whether either game reads it back.
+3. **And for Virtua Fighter 3, this repository keeps the mirror** (`soundboard.h`: `madrs_mirror = true`),
+   because without it the reverb held for several seconds where the reference cuts it in one
    (`src/sound/scsp.h`).
 
-   **Mesuré depuis, et ça change la lecture** (`docs/fv2-son-programme.md` §5) : le programme son des **deux**
-   jeux charge MADRS puis écrit **32 zéros dans `0x7C0-0x7FF`**, dans cet ordre. Avec le miroir, ces zéros
-   écrasent MADRS : **878 adresses perdues sur Fighting Vipers 2, 176 sur Virtua Fighter 3**, et seules les 53
-   et 19 écrites après l'effacement survivent. Donc le miroir replie les lignes de retard du DSP sur l'adresse
-   0 pour VF3 aussi — le même mécanisme que la même journée a jugé faux sur Fighting Vipers 2, et que MAME a
-   corrigé pour `doa`.
+   **Measured since, and it changes the reading** (`docs/fv2-son-programme.md` §5): **both** games' sound
+   program loads MADRS and then writes **32 zeros into `0x7C0-0x7FF`**, in that order. With the mirror,
+   those zeros overwrite MADRS: **878 addresses lost on Fighting Vipers 2, 176 on Virtua Fighter 3**, and
+   only the 53 and 19 written after the erasure survive. So the mirror folds the DSP's delay lines onto
+   address 0 for VF3 as well — the same mechanism that the same day judged wrong on Fighting Vipers 2, and
+   that MAME corrected for `doa`.
 
-   **Mais l'ampleur n'y est pas, et il faut le dire.** Les deux sons produits sans fenêtre sur la même scène
-   VF3 (`tools/sound/compare-madrs.cmd vf3`, 2400 images) diffèrent de peu : pic moyen **+2,2 dB** sur la pièce
-   et **+0,0 dB** en combat, spectre à **±0,1 dB**, échos de la pièce et du start qui passent de 2,05 à 2,25 s
-   et de 0,95 à 1,15 s — et surtout **la corrélation gauche/droite ne bouge pas** (0,861 contre 0,865), alors
-   que c'est la signature de l'effondrement et qu'elle valait 0,99 contre 0,73-0,85 sur VF2. « Plusieurs
-   secondes » n'est pas reproduit. Soit VF3 utilise peu de lignes de retard, soit la scène ne va pas là où ça
-   se voit — elle ne traverse ni K.O. ni écran de victoire, et c'est là que vivait le défaut de FV2.
+   **But the magnitude is not there, and that has to be said.** The two sounds produced without a window on
+   the same VF3 scene (`tools/sound/compare-madrs.cmd vf3`, 2400 frames) differ by little: mean peak
+   **+2.2 dB** on the coin-up and **+0.0 dB** in combat, spectrum within **±0.1 dB**, the coin-up's and the
+   start's echoes going from 2.05 to 2.25 s and from 0.95 to 1.15 s — and above all **the left/right
+   correlation does not move** (0.861 against 0.865), when that is the signature of the collapse and it was
+   0.99 against 0.73-0.85 on VF2. "Several seconds" is not reproduced. Either VF3 uses few delay lines, or
+   the scene does not go where it shows — it crosses neither a K.O. nor a victory screen, and that is where
+   FV2's defect lived.
 
-   **Ce qui reste ouvert, et ne se tranche pas ici** : ce que fait le matériel. Si un vrai SCSP mirrore, la
-   borne tournait aussi avec ses lignes effondrées et la réverbération courte est le son d'époque. Et, plus
-   près de nous : si l'écart s'entend ailleurs que sur cette scène. Changer ce réglage change le son du
-   portage, c'est une décision et pas une correction.
+   **What remains open, and is not settled here**: what the hardware does. If a real SCSP mirrors, the
+   cabinet also ran with its lines collapsed and the short reverb is the period sound. And, closer to home:
+   whether the gap is audible anywhere other than on that scene. Changing this setting changes the port's
+   sound; it is a decision and not a correction.
 
 ### Mednafen — SASPlay
 
-Lu sur `https://mednafen.github.io/documentation/sasplay.html` : c'est un module de **lecture de la musique**
-des bornes Sega Model 2A/2B/2C et 3, pas une référence de chip. Ce qui s'y trouve d'utile :
+Read at `https://mednafen.github.io/documentation/sasplay.html`: it is a module for **playing the music**
+of Sega Model 2A/2B/2C and 3 cabinets, not a chip reference. What is useful there:
 
-- le Model 3 sort **4 canaux**, que SASPlay replie en stéréo ;
-- une base de volumes par jeu, avec des ajustements par morceau (Virtua Fighter 3 y est nommé) ;
-- et surtout, dit noir sur blanc : la musique des Model 3 peut jouer **jusqu'à 2 % trop vite**, parce que
-  Mednafen n'émule pas « dynamic SCSP wait states and interrupt signaling delays », et que les gestionnaires
-  d'interruption y sont sensibles.
+- the Model 3 outputs **4 channels**, which SASPlay folds into stereo;
+- a base of per-game volumes, with per-track adjustments (Virtua Fighter 3 is named there);
+- and above all, said in black and white: the Model 3s' music can play **up to 2% fast**, because Mednafen
+  does not emulate "dynamic SCSP wait states and interrupt signaling delays", and the interrupt handlers
+  are sensitive to them.
 
-Ce dernier point vaut d'être retenu : la **cadence** de la musique dépend des états d'attente du SCSP et du
-délai de signalement des interruptions. Ce dépôt a déjà dû traiter la même famille de problème autrement — ses
-timers A-C comptent les échantillons et tombent sur un échantillon rond, comme ceux de Supermodel
-(`src/sound/scsp.h`), et `SoundBoard::run` ne donne au 68000 qu'un échantillon de cycles à la fois pour qu'un
-timer réarmé dans une interruption soit vu dans la tranche où il a été posé (le commentaire de
-`soundboard.cpp` dit ce qui arrive sinon : « the music slowed to a crawl »). Si un jour la cadence de la
-musique est mise en doute, c'est là qu'il faudra regarder, et la phrase de Mednafen dit où.
+That last point is worth keeping: the music's **rate** depends on the SCSP's wait states and on the
+interrupt signalling delay. This repository has already had to treat the same family of problem another
+way — its timers A-C count samples and land on a round sample, like Supermodel's (`src/sound/scsp.h`), and
+`SoundBoard::run` gives the 68000 only one sample's worth of cycles at a time so that a timer rearmed
+inside an interrupt is seen in the slice where it was set (`soundboard.cpp`'s comment says what happens
+otherwise: "the music slowed to a crawl"). If the music's rate is ever called into doubt, that is where to
+look, and Mednafen's sentence says where.
 
-### Ce qui n'a PAS été fait
+### What was NOT done
 
-- **Yabause** (`libretro/yabause`) et **Kronos** (`FCare/Kronos`) : non lus. Ce sont les deux implémentations
-  Saturn que le cahier des charges cite, et le commentaire de `src/sound/scsp.h` affirme déjà quelque chose à
-  leur sujet (« Mednafen's SCSP (its MADRS at 0x780-0x7bf only) and Yabause's keep them apart ») — **cette
-  affirmation n'a pas été revérifiée à la source aujourd'hui**.
-- **La documentation technique du YMF292-F / SCSP** : non obtenue. Rien n'a été téléchargé, et aucune
-  affirmation de ce dépôt ne repose dessus pour l'instant.
-- **Le code de Supermodel au-delà de `SCSPDSP.cpp`** : seul l'en-tête et la forme de la boucle ont été lus.
-  L'affirmation de `src/sound/scsp.h` selon laquelle « Supermodel kept ElSemi's older DSP for this very game
-  until it made its DSP's memory access follow the manual » **n'a pas été confirmée** : le fichier lu
-  aujourd'hui ne mentionne ni MAME, ni DSP d'origine, ni manuel. Il existe par ailleurs un indice indirect
-  (une recherche renvoie un commit Supermodel qui « ported MAME's implementation and added a legacy DSP option
-  for games with DSP glitches »), mais c'est une source secondaire et elle n'est pas retenue comme preuve.
+- **Yabause** (`libretro/yabause`) and **Kronos** (`FCare/Kronos`): not read. They are the two Saturn
+  implementations the specification cites, and `src/sound/scsp.h`'s comment already asserts something about
+  them ("Mednafen's SCSP (its MADRS at 0x780-0x7bf only) and Yabause's keep them apart") -- **that
+  assertion was not rechecked at the source today**.
+- **The YMF292-F / SCSP technical documentation**: not obtained. Nothing was downloaded, and no assertion
+  in this repository rests on it for the time being.
+- **Supermodel's code beyond `SCSPDSP.cpp`**: only the header and the loop's shape were read.
+  `src/sound/scsp.h`'s assertion that "Supermodel kept ElSemi's older DSP for this very game until it made
+  its DSP's memory access follow the manual" **has not been confirmed**: the file read today mentions
+  neither MAME, nor an original DSP, nor a manual. There is besides an indirect hint (a search returns a
+  Supermodel commit that "ported MAME's implementation and added a legacy DSP option for games with DSP
+  glitches"), but that is a secondary source and it is not accepted as proof.
 
-### Et ce qui restera impossible à vérifier ici
+### And what will remain impossible to check here
 
-Aucune mesure sur **matériel réel** n'est possible depuis ce poste : pas de borne Model 3, pas de capture
-analogique de référence. Toute question de fidélité tranchée ici l'est contre **une autre émulation** ou contre
-**la cohérence interne du jeu** (un niveau qui ne devrait pas monter, une réverbération qui ne devrait pas se
-replier en mono). C'est utile et ce n'est pas la même chose. Aucun énoncé de ce dépôt ne doit dire « conforme
-au matériel » sur cette base.
+No measurement on **real hardware** is possible from this machine: no Model 3 cabinet, no analogue
+reference capture. Every question of fidelity settled here is settled against **another emulation** or
+against **the game's internal coherence** (a level that should not rise, a reverb that should not fold into
+mono). That is useful and it is not the same thing. No statement in this repository should say "faithful to
+the hardware" on that basis.
 
 
 ## Sources
 
-- MAME, [`src/devices/sound/scspdsp.cpp`](https://raw.githubusercontent.com/mamedev/mame/master/src/devices/sound/scspdsp.cpp) et [`src/devices/sound/scsp.cpp`](https://raw.githubusercontent.com/mamedev/mame/master/src/devices/sound/scsp.cpp) (branche `master`, lues le 2026-10-24)
-- MAME, [PR #16527](https://github.com/mamedev/mame/pull/16527) — « Don't mirror MADRS at 0x7c0-0x7ff »
-- Supermodel, [`Src/Sound/SCSPDSP.cpp`](https://raw.githubusercontent.com/trzy/Supermodel/master/Src/Sound/SCSPDSP.cpp) et [`Src/Sound/SCSP.cpp`](https://repo.retrodeck.net/Xargon/Supermodel/src/branch/master/Src/Sound/SCSP.cpp)
-- Mednafen, [documentation SASPlay](https://mednafen.github.io/documentation/sasplay.html)
-- [`github.com/mirror/model3emu`](https://github.com/mirror/model3emu) (miroir de Supermodel)
+- MAME, [`src/devices/sound/scspdsp.cpp`](https://raw.githubusercontent.com/mamedev/mame/master/src/devices/sound/scspdsp.cpp) and [`src/devices/sound/scsp.cpp`](https://raw.githubusercontent.com/mamedev/mame/master/src/devices/sound/scsp.cpp) (branch `master`, read on 2026-10-24)
+- MAME, [PR #16527](https://github.com/mamedev/mame/pull/16527) — "Don't mirror MADRS at 0x7c0-0x7ff"
+- Supermodel, [`Src/Sound/SCSPDSP.cpp`](https://raw.githubusercontent.com/trzy/Supermodel/master/Src/Sound/SCSPDSP.cpp) and [`Src/Sound/SCSP.cpp`](https://repo.retrodeck.net/Xargon/Supermodel/src/branch/master/Src/Sound/SCSP.cpp)
+- Mednafen, [SASPlay documentation](https://mednafen.github.io/documentation/sasplay.html)
+- [`github.com/mirror/model3emu`](https://github.com/mirror/model3emu) (Supermodel mirror)

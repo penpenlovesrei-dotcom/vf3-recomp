@@ -1,180 +1,185 @@
-# Le banc du son — la ligne de base, et chaque lot mesuré contre elle
+# The sound's bench — the baseline, and every batch measured against it
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/sound.md](son.md).
+> This document is one of the nine on the sound. The front door, which says where everything is:
+> [docs/sound.md](sound.md).
 
-Mesuré le 2026-10-24. Machine de Frédéric (Windows 11, g++ 16.1.0 MSYS2, `-O2 -g`), branche `fv2`, ligne de
-base au commit `335c050`. **Un seul banc à la fois** : deux runs lancés ensemble se disputent les cœurs et les
-chiffres ne veulent plus rien dire.
+Measured on 2026-10-24. Frédéric's machine (Windows 11, g++ 16.1.0 MSYS2, `-O2 -g`), branch `fv2`, baseline
+at commit `335c050`. **One bench at a time**: two runs started together fight over the cores and the
+figures stop meaning anything.
 
 
-## Comment on refait ces chiffres
+## How these figures are redone
 
 ```bash
-# construire
-./construire.cmd                       # ou : make CXX=g++ build/bin/vf3run -j8
+# build
+./construire.cmd                       # or: make CXX=g++ build/bin/vf3run -j8
 
-# le temps de chaque partie d'une image
+# the time of each part of a frame
 VF3_PROF=1 build/bin/vf3run.exe "$ROMS/fvipers2.zip" \
-    --script tools/scripts/fv2-fight.txt --frames 4200 --wav son.wav --quiet
+    --script tools/scripts/fv2-fight.txt --frames 4200 --wav sound.wav --quiet
 
-# et, dedans, ou va le temps de la carte son
-VF3_PROF=1 VF3_SND_PROF=1 build/bin/vf3run.exe ... --wav son.wav --quiet
+# and, within it, where the sound board's time goes
+VF3_PROF=1 VF3_SND_PROF=1 build/bin/vf3run.exe ... --wav sound.wav --quiet
 
-# le meme, coeur par coeur : trois passages alternes par coeur, fenetres 1500-4200 (audit S4 sexies)
-VF3_PROF=1 VF3_SND_PROF=1 VF3_SCSP_CORE=mame|maison build/bin/vf3run.exe ... --rec --wav son.wav --quiet
+# the same, core by core: three alternating passes per core, windows 1500-4200 (audit S4 sexies)
+VF3_PROF=1 VF3_SND_PROF=1 VF3_SCSP_CORE=mame|own build/bin/vf3run.exe ... --rec --wav sound.wav --quiet
 
-# et : le son n'a pas bouge (contre un commit de reference, octet par octet)
-tools\son\compare-sound.cmd fvipers2 tools\scripts\fv2-fight.txt 4200
+# and: the sound has not moved (against a reference commit, byte by byte)
+tools\sound\compare-sound.cmd fvipers2 tools\scripts\fv2-fight.txt 4200
 ```
 
-`$ROMS` = `C:\Users\frede\Documents\SEGA Model 3\ROMs`. `VF3_PROF=1` imprime une ligne toutes les 500 images ;
-`VF3_SND_PROF=1` ajoute la répartition dans la carte son (`src/sound/sound_prof.h`) et la composition du
-programme DSP (`dspprog`, une ligne par écriture de programme). **`--wav` est obligatoire dans ces trois
-commandes** : sans lui `vf3run` ne fait pas tourner la carte son, et les deux sondes n'ont rien à compter —
-l'outil le dit maintenant au lieu de rendre une ligne de zéros (`docs/scsp_audit.md` §4 sexies).
+`$ROMS` = `C:\Users\frede\Documents\SEGA Model 3\ROMs`. `VF3_PROF=1` prints one line every 500 frames;
+`VF3_SND_PROF=1` adds the breakdown inside the sound board (`src/sound/sound_prof.h`) and the DSP program's
+composition (`dspprog`, one line per program write). **`--wav` is required in all three commands**: without
+it `vf3run` does not run the sound board, and the two probes have nothing to count — the tool now says so
+instead of returning a line of zeros (`docs/scsp_audit.md` §4 sexies).
 
-**Les scènes.** Une seule a servi jusqu'ici, et il faut le dire :
+**The scenes.** Only one has served so far, and that has to be said:
 
-| scène | fichier | ce qu'elle traverse |
+| scene | file | what it goes through |
 |---|---|---|
-| **Fighting Vipers 2, un round** | `tools/scripts/fv2-fight.txt` | démarrage (0-960), attraction et écran titre, pièce, sélection, chargement, intro, un round contre l'ordinateur avec jeu aléatoire (graine 20261019) |
-| Virtua Fighter 3, un round | `tools/scripts/vf3-match.txt` | la même forme, sur l'autre jeu — utilisée pour la non-régression, **pas pour le temps** |
+| **Fighting Vipers 2, one round** | `tools/scripts/fv2-fight.txt` | start-up (0-960), attract and title screen, coin-up, selection, loading, intro, one round against the computer with random play (seed 20261019) |
+| Virtua Fighter 3, one round | `tools/scripts/vf3-match.txt` | the same shape, on the other game — used for non-regression, **not for time** |
 
-Ce qui manque et qui est demandé par le cahier des charges : **silence, musique seule, effets seuls, sound
-test**. Le portage n'a pas de levier pour y aller sans main humaine (le menu test se traverse à la manette), et
-`VF3_SCSP_SOLO` ne sépare que les deux chips, pas la musique des effets. Donc : tous les chiffres ci-dessous
-sont ceux d'**une** scène, qui contient de la musique du début à la fin et des effets à partir de l'image
-~1900. Rien n'y mesure le cas « rien ne joue ».
+What is missing and is asked for by the specification: **silence, music only, effects only, sound test**.
+The port has no lever to get there without a human hand (the test menu is crossed with the pad), and
+`VF3_SCSP_SOLO` separates only the two chips, not the music from the effects. So: all the figures below are
+those of **one** scene, which contains music from beginning to end and effects from frame ~1900 on. Nothing
+in it measures the "nothing is playing" case.
 
-**Le limiteur de l'instrumentation.** Les portées de `sound_prof.h` coûtent deux `rdtsc` chacune. Vérifié sur
-la scène entière : sondes éteintes contre sondes allumées, le temps de la carte son bouge de moins de 1 %, et
-le WAV sort **identique à l'octet**. Le rapport imprime lui-même ce que ses `rdtsc` pèsent (~58 kcycles par
-image). Les chiffres de temps ci-dessous sont tous pris **sondes éteintes**.
+**The instrumentation's limiter.** `sound_prof.h`'s scopes cost two `rdtsc` each. Checked over the whole
+scene: probes off against probes on, the sound board's time moves by less than 1%, and the WAV comes out
+**byte-identical**. The report itself prints what its `rdtsc` weigh (~58 kcycles per frame). The timing
+figures below are all taken **with the probes off**.
 
 
-## La ligne de base, `335c050`
+## The baseline, `335c050`
 
-Budget d'une image à 57,52 Hz : **17,4 ms**.
+A frame's budget at 57.52 Hz: **17.4 ms**.
 
-| images | carte Model 3 | carte son | part de l'image |
+| frames | Model 3 board | sound board | share of the frame |
 |---|---|---|---|
-| 0-500 | 13,09 ms | 1,60 ms | 9,2 % |
-| 500-1000 | 12,89 | 1,75 | 10,1 % |
-| 1000-1500 | 13,49 | 1,83 | 10,5 % |
-| 1500-2000 | 14,02 | 1,83 | 10,5 % |
-| 2000-2500 | 13,45 | 1,85 | 10,6 % |
-| 2500-3000 | 14,57 | 1,89 | 10,9 % |
-| 3000-3500 | 14,57 | 2,03 | 11,7 % |
-| 3500-4000 | 14,67 | 2,02 | 11,6 % |
-| **moyenne** | **13,8** | **1,85** | **10,6 %** |
+| 0-500 | 13.09 ms | 1.60 ms | 9.2% |
+| 500-1000 | 12.89 | 1.75 | 10.1% |
+| 1000-1500 | 13.49 | 1.83 | 10.5% |
+| 1500-2000 | 14.02 | 1.83 | 10.5% |
+| 2000-2500 | 13.45 | 1.85 | 10.6% |
+| 2500-3000 | 14.57 | 1.89 | 10.9% |
+| 3000-3500 | 14.57 | 2.03 | 11.7% |
+| 3500-4000 | 14.67 | 2.02 | 11.6% |
+| **mean** | **13.8** | **1.85** | **10.6%** |
 
-Répartition dans la carte son, et le coût d'un pas de DSP (cycles TSC — pas des cycles de cœur : le TSC tourne
-à la fréquence nominale, le cœur monte plus haut, donc ces nombres servent à **comparer entre eux**, pas à
-convertir en nanosecondes) :
+The breakdown inside the sound board, and the cost of one DSP step (TSC cycles — not core cycles: the TSC
+runs at the nominal frequency, the core goes higher, so these numbers serve to **compare with each other**,
+not to convert into nanoseconds):
 
-| | boucle+timers | 68000 | voix | DSP | mélange | cycles / pas de DSP |
+| | loop+timers | 68000 | voices | DSP | mix | cycles / DSP step |
 |---|---|---|---|---|---|---|
-| ligne de base | 1,1-1,4 % | 22,6-24,2 % | 5,7-13,3 % | **62,0-69,0 %** | 0,5-1,1 % | **16,2-16,4** |
+| baseline | 1.1-1.4% | 22.6-24.2% | 5.7-13.3% | **62.0-69.0%** | 0.5-1.1% | **16.2-16.4** |
 
 
-## Chaque lot, mesuré seul, sur la même scène et la même machine
+## Each batch, measured alone, on the same scene and the same machine
 
-Tous les lots touchent **uniquement** `src/sound/scspdsp.{h,cpp}`. Après chacun, le WAV de 4200 images
-(12 879 504 octets) a été comparé à celui de la ligne de base : **identique à l'octet**, à chaque fois. Ce n'est pas un
-bonus, c'est la condition pour garder le lot.
+Every batch touches **only** `src/sound/scspdsp.{h,cpp}`. After each one, the 4200-frame WAV
+(12 879 504 bytes) was compared with the baseline's: **byte-identical**, every time. That is not a bonus,
+it is the condition for keeping the batch.
 
-| images | base | lot 1 | lot 2 | lot 3 |
+| frames | base | batch 1 | batch 2 | batch 3 |
 |---|---|---|---|---|
-| 0-500 | 1,60 | 1,41 | 1,38 | 1,40 |
-| 500-1000 | 1,75 | 1,53 | 1,50 | 1,27 |
-| 1000-1500 | 1,83 | 1,62 | 1,56 | 1,39 |
-| 1500-2000 | 1,83 | 1,66 | 1,59 | 1,42 |
-| 2000-2500 | 1,85 | 1,65 | 1,60 | 1,37 |
-| 2500-3000 | 1,89 | 1,68 | 1,65 | 1,38 |
-| 3000-3500 | 2,03 | 1,81 | 1,76 | 1,51 |
-| 3500-4000 | 2,02 | 1,75 | 1,69 | 1,46 |
-| **moyenne (ms)** | **1,85** | **1,64** | **1,59** | **1,40** |
-| contre la base | — | **−11,4 %** | **−14,1 %** | **−24,3 %** |
-| apport du lot | — | −11,4 % | −3,1 % | −12,0 % |
-| cycles / pas de DSP | 16,3 | 13,2 | 13,1 | **10,0** |
-| part du DSP | 62-69 % | 57-66 % | 57-66 % | **52-60 %** |
+| 0-500 | 1.60 | 1.41 | 1.38 | 1.40 |
+| 500-1000 | 1.75 | 1.53 | 1.50 | 1.27 |
+| 1000-1500 | 1.83 | 1.62 | 1.56 | 1.39 |
+| 1500-2000 | 1.83 | 1.66 | 1.59 | 1.42 |
+| 2000-2500 | 1.85 | 1.65 | 1.60 | 1.37 |
+| 2500-3000 | 1.89 | 1.68 | 1.65 | 1.38 |
+| 3000-3500 | 2.03 | 1.81 | 1.76 | 1.51 |
+| 3500-4000 | 2.02 | 1.75 | 1.69 | 1.46 |
+| **mean (ms)** | **1.85** | **1.64** | **1.59** | **1.40** |
+| against the base | — | **−11.4%** | **−14.1%** | **−24.3%** |
+| the batch's own gain | — | −11.4% | −3.1% | −12.0% |
+| cycles / DSP step | 16.3 | 13.2 | 13.1 | **10.0** |
+| the DSP's share | 62-69% | 57-66% | 57-66% | **52-60%** |
 
-### Lot 1 — le corps du DSP spécialisé sur ce que le programme utilise
+### Batch 1 — the DSP's body specialised on what the program uses
 
-`Step` devient `Run<U>`, un patron sur l'ensemble des contrôles que le programme touche vraiment. Mesuré :
-le programme de Fighting Vipers 2 (112 pas, et 127 pour celui du combat) ne pose **jamais** `FRCL`, `ADRL`,
-`YRL` ni `NEGB`. Sans eux, quatre branches par pas disparaissent et `FRC_REG`, `Y_REG`, `ADRS_REG` se replient
-sur zéro, ce qui en emporte d'autres. Le mot de `TEMP` que `B` et `X` lisaient tous les deux est lu une fois.
+`Step` becomes `Run<U>`, a template on the set of controls the program really touches. Measured: Fighting
+Vipers 2's program (112 steps, and 127 for the fight's) **never** sets `FRCL`, `ADRL`, `YRL` or `NEGB`.
+Without them, four branches per step disappear and `FRC_REG`, `Y_REG`, `ADRS_REG` collapse to zero, which
+takes others with them. The `TEMP` word that `B` and `X` both read is read once.
 
-### Lot 2 — les copies locales, contre l'aliasing de la RAM son
+### Batch 2 — the local copies, against sound RAM's aliasing
 
-Un pas qui écrit dans la ligne de retard écrit à travers `ram`, et le compilateur n'a aucun moyen de savoir que
-la RAM son n'est pas **dans l'objet DSP lui-même** : sans copies, `DEC`, `RBL`, `RBP` et `LastStep` doivent être
-relus après chaque écriture, et chaque mot de `TEMP` aussi. Le lot prend une copie locale des quatre et passe
-par un pointeur `__restrict` — une promesse vraie : la RAM son est celle du 68000, une allocation séparée.
+A step that writes into the delay line writes through `ram`, and the compiler has no way of knowing that
+sound RAM is not **inside the DSP object itself**: without copies, `DEC`, `RBL`, `RBP` and `LastStep` have
+to be reread after every write, and so does every word of `TEMP`. The batch takes a local copy of all four
+and goes through a `__restrict` pointer — a true promise: sound RAM is the 68000's, a separate allocation.
 
-### Lot 3 — les contrôles d'un bit groupés dans un mot
+### Batch 3 — the one-bit controls grouped into a word
 
-Un pas allait chercher **huit octets séparés pour tester huit bits**. `Inst::f` les met dans un `u16`, avec
-`SHIFT` et `YSEL` en prime ; `Inst::mf` fait de même pour les quatre lus seulement dans le bloc mémoire (un
-tiers des pas). Le choix de `Y` teste d'abord le cas `COEF`, qui est celui de 87 pas sur 112. Les champs
-nommés d'origine restent dans `Inst` : `Decode` et le rapport les lisent, et ils disent ce qu'ils sont.
+A step was fetching **eight separate bytes to test eight bits**. `Inst::f` puts them into a `u16`, with
+`SHIFT` and `YSEL` thrown in; `Inst::mf` does the same for the four read only inside the memory block (a
+third of the steps). The choice of `Y` tests the `COEF` case first, which is the one of 87 steps out of
+112. The originally named fields stay in `Inst`: `Decode` and the report read them, and they say what they
+are.
 
 
-## Le lot qui n'a rien donné, et qui a été défait
+## The batch that gave nothing, and was undone
 
-**Lot 4 — la boucle des deux adresses de `UpdateSlot`, déroulée.** MAME y promène `(addr1, cur_addr)` puis
-`(addr2, nxt_addr)` à travers deux tableaux de pointeurs vers des locales, ce qui garde `addr1` et `addr2` en
-mémoire pour toute la fonction. Écrite à plat, avec `LPCTL`, `LSA` et `LEA` lus une fois, le code est plus clair
-et le WAV reste identique à l'octet.
+**Batch 4 — `UpdateSlot`'s two-address loop, unrolled.** MAME walks `(addr1, cur_addr)` then `(addr2,
+nxt_addr)` through it via two arrays of pointers to locals, which keeps `addr1` and `addr2` in memory for
+the whole function. Written out flat, with `LPCTL`, `LSA` and `LEA` read once, the code is clearer and the
+WAV stays byte-identical.
 
-**Et il ne gagne rien :** moyenne **1,399 ms** contre **1,400 ms** sans lui — soit zéro, dans le bruit.
+**And it gains nothing:** a mean of **1.399 ms** against **1.400 ms** without it — that is, zero, in the
+noise.
 
-| images | lot 3 | lot 3 + lot 4 |
+| frames | batch 3 | batch 3 + batch 4 |
 |---|---|---|
-| 0-500 | 1,40 | 1,32 |
-| 500-1000 | 1,27 | 1,26 |
-| 1000-1500 | 1,39 | 1,35 |
-| 1500-2000 | 1,42 | 1,40 |
-| 2000-2500 | 1,37 | 1,37 |
-| 2500-3000 | 1,38 | 1,45 |
-| 3000-3500 | 1,51 | 1,52 |
-| 3500-4000 | 1,46 | 1,52 |
-| **moyenne** | **1,400** | **1,399** |
+| 0-500 | 1.40 | 1.32 |
+| 500-1000 | 1.27 | 1.26 |
+| 1000-1500 | 1.39 | 1.35 |
+| 1500-2000 | 1.42 | 1.40 |
+| 2000-2500 | 1.37 | 1.37 |
+| 2500-3000 | 1.38 | 1.45 |
+| 3000-3500 | 1.51 | 1.52 |
+| 3500-4000 | 1.46 | 1.52 |
+| **mean** | **1.400** | **1.399** |
 
-**Défait.** Une modification dans un fichier de fidélité qui n'achète rien de mesurable ne se garde pas : elle
-écarte le fichier de MAME sans raison, et quelqu'un la relira un jour en croyant qu'elle servait. Le résultat
-négatif, lui, se garde — il dit que les voix ne se gagnent pas là, et que le prochain qui voudra les accélérer
-doit chercher ailleurs (les tables de panoramique de 256 Ko, l'enveloppe, le LFO).
-
-
-## Virtua Fighter 3 : vérifié, pas chiffré
-
-Le harnais a été lancé sur `vf3.zip` (`tools\son\compare-sound.cmd vf3 tools\scripts\vf3-match.txt 1200`, puis
-2400 images) : **son identique à l'octet** dans les deux cas. Son programme DSP a aussi 0 pas qui posent
-`FRCL`, `ADRL`, `YRL` ou `NEGB`, donc il prend le corps maigre lui aussi.
-
-Le harnais imprime au passage le temps des deux constructions, et sur les 1000 premières images de VF3 il
-donne 1,34 puis 2,03 ms pour la référence contre 1,08 puis 1,15 ms pour cette branche. **Ce n'est pas une
-mesure retenue** : deux fenêtres de 500 images sur le démarrage, où le temps de la carte Model 3 varie lui
-aussi de 6,77 à 5,20 ms entre les deux runs — la machine bougeait. L'ordre de grandeur va dans le même sens que
-celui mesuré sur Fighting Vipers 2, et c'est tout ce qu'on peut en dire. **Le temps de VF3 reste à mesurer
-proprement.**
+**Undone.** A change in a fidelity file that buys nothing measurable is not kept: it moves the file away
+from MAME for no reason, and somebody will read it one day thinking it served a purpose. The negative
+result, on the other hand, is kept — it says the voices are not won there, and that the next person who
+wants to speed them up must look elsewhere (the 256 KB pan tables, the envelope, the LFO).
 
 
-## Ce que ces chiffres ne disent pas
+## Virtua Fighter 3: checked, not quantified
 
-1. ~~**Rien sur le temps d'une image dans le jeu.**~~ **Mesuré le 2026-10-26** (`docs/scsp_audit.md` §4 ter),
-   et cette ligne avait vu juste : dans l'hôte le fil du son travaille 1,49 ms par image et **le jeu ne
-   l'attend jamais** — 0,000 ms, maximum 0,016. Les 0,45 ms économisées sont donc bien du temps processeur en
-   moins — chaleur, batterie, cœurs laissés au rendu — et **pas** une image qui arrive plus tôt. Dans
-   `vf3run`, tout est sur un fil, et là le gain se lit directement.
-2. ~~**Rien sur la version recompilée.**~~ **Mesuré le 2026-10-25** (`docs/scsp_audit.md` §4 bis), et la
-   prévision de cette ligne était juste : avec `--rec` la carte passe de 13,77 à **3,23 ms** et le son reste
-   à **1,42**, donc sa part va de 9,6 % à **30,5 %**. Les pourcentages de ce document ne s'y transposent
-   effectivement pas. Le partage interne au son, lui, est identique dans les deux modes, et les deux WAV
-   sont identiques à l'octet.
-3. **Rien sur une autre machine.** Un seul poste, un seul compilateur, un seul niveau d'optimisation.
-4. **Rien sur les scènes qui manquent** (silence, musique seule, effets seuls, sound test) — voir plus haut.
-5. **Rien sur la fidélité au matériel.** Le WAV identique à l'octet dit que *ce portage n'a pas changé*, ce qui
-   est exactement ce qu'on demande à une optimisation. Il ne dit rien sur ce que fait un YMF292-F réel.
+The harness was run on `vf3.zip` (`tools\sound\compare-sound.cmd vf3 tools\scripts\vf3-match.txt 1200`,
+then 2400 frames): **byte-identical sound** in both cases. Its DSP program also has 0 steps that set
+`FRCL`, `ADRL`, `YRL` or `NEGB`, so it takes the lean body too.
+
+The harness prints both builds' time along the way, and over VF3's first 1000 frames it gives 1.34 then
+2.03 ms for the reference against 1.08 then 1.15 ms for this branch. **That is not an accepted
+measurement**: two windows of 500 frames over the start-up, where the Model 3 board's time itself also
+varies from 6.77 to 5.20 ms between the two runs — the machine was moving. The order of magnitude goes the
+same way as the one measured on Fighting Vipers 2, and that is all that can be said of it. **VF3's time
+remains to be measured properly.**
+
+
+## What these figures do not say
+
+1. ~~**Nothing about a frame's time in the game.**~~ **Measured on 2026-10-26** (`docs/scsp_audit.md` §4
+   ter), and that line had it right: in the host the sound thread works 1.49 ms per frame and **the game
+   never waits for it** — 0.000 ms, maximum 0.016. So the 0.45 ms saved really are processor time less —
+   heat, battery, cores left to the rendering — and **not** a frame arriving earlier. In `vf3run`,
+   everything is on one thread, and there the gain reads directly.
+2. ~~**Nothing about the recompiled version.**~~ **Measured on 2026-10-25** (`docs/scsp_audit.md` §4 bis),
+   and that line's prediction was right: with `--rec` the board goes from 13.77 to **3.23 ms** and the
+   sound stays at **1.42**, so its share goes from 9.6% to **30.5%**. This document's percentages really do
+   not transpose there. The sound's internal split, though, is identical in both modes, and the two WAVs
+   are byte-identical.
+3. **Nothing about another machine.** One workstation, one compiler, one optimisation level.
+4. **Nothing about the scenes that are missing** (silence, music only, effects only, sound test) — see
+   above.
+5. **Nothing about fidelity to the hardware.** The byte-identical WAV says that *this port has not
+   changed*, which is exactly what is asked of an optimisation. It says nothing about what a real YMF292-F
+   does.
