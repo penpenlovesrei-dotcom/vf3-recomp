@@ -139,3 +139,20 @@ it, which is what says the rectangles are read right. **The sheets are stored fi
 
 The script of the two roll scenes asks for pages i = 1 to 8, which is ranks 80 to 88. Ranks 79 and 89 are
 drawn by params 21 and 30, which no scene in this table uses.
+
+## Cutting the replays: not through MODE_SUB
+
+Frédéric asked for the fight passages to go: "est il possible de supprimer proprement les phases de combat
+du ending ?". Three of the ending's seven sub-states are the replay and nothing else — `ending_replay_init`,
+`ending_replay_ctrl`, `ending_replay_next` — and this port already knows how to ask a sub-state to move on:
+`Model3::fv2_cut_submode` writes `SUBMODE_REQUEST` and Sega's dispatcher copies it into `MODE_SUB` on the
+next tick, which is the door training uses for the round's announcement.
+
+**It is not that door.** Watched byte by byte through a whole roll (`VF3_RAM_WATCH=0x0058FD90:16`),
+`0x0058FD99` — `MODE_SUB` — reads **11** from the first frame of mode 12 to the last of mode 13 and never
+moves; only `MODE_MAIN` steps, 12 then 13. The ending's seven sub-states are kept in its own task's block,
+not in the game's mode pair, so cutting them means finding that block first.
+
+Nothing of the replays is seen meanwhile: the port owns the screen for the whole ending (`fv2_roll.h`), so
+they run under a picture that is not drawn. What they still cost is time — the ending lasts about 110
+seconds whatever is on it, which is why the roll's own speed is set to fill that length.

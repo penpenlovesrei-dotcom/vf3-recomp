@@ -713,6 +713,17 @@ struct console_play
 	// the same roll more slowly instead of a shorter one.
 	bool in_ending = false;
 	uint64_t ending_frames = 0;
+	// THE REPLAYS CANNOT BE CUT THROUGH THIS DOOR, and that was measured rather than supposed. Frederic,
+	// the 2026-10-29: "est il possible de supprimer proprement les phases de combat du ending ?". Three of
+	// the ending's seven sub-states are the replay and nothing else -- ending_replay_init, _ctrl, _next,
+	// Sega's own names -- and the port knows how to ask a sub-state to move on (fv2_cut_submode, the door
+	// training uses for the round's announcement). But MODE_SUB is not where the ending keeps them: watched
+	// byte by byte through a whole roll (VF3_RAM_WATCH=0x0058FD90:16), 0x0058FD99 reads 11 from the first
+	// frame of mode 12 to the last of mode 13 and never moves. The ending's seven live in its own task's
+	// block, and finding that block is a piece of work of its own.
+	//
+	// Nothing of them is seen meanwhile: the port owns the screen for the whole ending (fv2_roll.h), so the
+	// replays run under a picture that is not drawn.
 	// AND IT SAYS WHAT IT SAW, because an ending is not a thing anyone can repeat on demand: reaching it
 	// means finishing the ladder. Frederic finished it the 2026-10-29 with the arcade's replays on screen
 	// although the line read DREAMCAST, and his log held nothing at all about the ending -- there was
