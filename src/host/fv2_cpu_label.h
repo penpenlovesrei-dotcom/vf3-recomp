@@ -1,6 +1,6 @@
 // TRAINING: the second side is CPU, and the select screen says so.
 //
-// Frederic, the 2026-10-25: "le P2 qui devrait s'appeler CPU". In training the two fighters are chosen by
+// Frederic, the 2026-10-25: "the P2 that ought to be called CPU". In training the two fighters are chosen by
 // one pair of hands and the second is a dummy, so the game's own "2P" under its cursor is a lie -- a small
 // one, but on the one screen where the player is deciding who he is fighting.
 //
@@ -15,7 +15,7 @@
 //     training: the 2P cursor is at 431..431 of the picture
 //
 // where the arrow really spans 441 to 478. The box landed twenty pixels off and the real "2P" stayed where
-// it was -- which is exactly what Frederic saw: "l'indication CPU est tres mal integree, P2 est toujours
+// it was -- which is exactly what Frederic saw: "the CPU marking is very badly fitted in, P2 is still
 // visible".
 //
 // ---- WHERE IT REALLY IS, read from the code and then measured ----
@@ -74,7 +74,7 @@ struct fv2_cpu_label
 	// Over the picture the game made, and under the console's own surfaces. `mid` is the game's 4:3 screen in
 	// the window's pixels; `below` is the layer the backdrop is in, at the picture's own size.
 	static void render(SDL_Renderer *ren, const SDL_FRect &mid, int column, const uint32_t *below,
-					   int w, int h, fv2_texte *font)
+					   int w, int h, fv2_text *font)
 	{
 		if (!font || !font->ready || !below || w <= 0 || h <= 0) return;
 		if (column < 0 || column >= COLUMNS) return;   // off the picture: nothing to say and nothing to cover
@@ -111,8 +111,8 @@ struct fv2_cpu_label
 		// and the word in the game's own azure, as tall as the glyphs it stands in for
 		const SDL_Color ink = { 0, 127, 255, 255 };
 		const float cap = float(TEXT_BOTTOM - TEXT_TOP - 2) * ky;
-		const float fh = cap / fv2_texte::CAP;
+		const float fh = cap / fv2_text::CAP;
 		font->draw(ren, "CPU", mid.x + mx * kx - font->width("CPU", fh) * 0.5f,
-				   mid.y + float(TEXT_TOP + 1) * ky - fv2_texte::CAP_TOP * fh, fh, ink);
+				   mid.y + float(TEXT_TOP + 1) * ky - fv2_text::CAP_TOP * fh, fh, ink);
 	}
 };

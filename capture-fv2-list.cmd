@@ -2,11 +2,11 @@
 rem The three pictures of Fighting Vipers 2's list of modes, taken with no window
 rem on screen and no hand on the pad. They arrive in build\:
 rem
-rem   build\liste-1-arcade.png          the list on the game's real title screen
-rem   build\liste-2-survival.png        three times down, then Enter: the game
+rem   build\list-1-arcade.png          the list on the game's real title screen
+rem   build\list-2-survival.png        three times down, then Enter: the game
 rem                                     starts, and the select screen says
 rem                                     SURVIVAL MODE
-rem   build\liste-3-retour-au-titre.png Start during the demonstration: the game
+rem   build\list-3-back-to-title.png   Start during the demonstration: the game
 rem                                     comes back to its title screen
 rem
 rem The list freezes the game behind it, so nothing that counts the game's frames
@@ -37,13 +37,13 @@ set VF3_QUIT_AFTER=999999
 set VF3_QUIT_AFTER_S=45
 set VF3_KEYS_S=
 "build\bin\vf3.exe" "%ROM%" --console
-copy /y build\host_window.png build\liste-1-arcade.png > nul
+copy /y build\host_window.png build\list-1-arcade.png > nul
 
 echo ---- 2 of 3: SURVIVAL chosen in the list ----
 set VF3_QUIT_AFTER_S=58
 set VF3_KEYS_S=Down@40,Down@41,Down@42,Return@44
 "build\bin\vf3.exe" "%ROM%" --console
-copy /y build\host_window.png build\liste-2-survival.png > nul
+copy /y build\host_window.png build\list-2-survival.png > nul
 
 echo ---- 3 of 3: Start during the demonstration ----
 set VF3_SCRIPT=%~dp0tools\scripts\fv2-console-title.txt
@@ -51,11 +51,11 @@ set VF3_QUIT_AFTER=1530
 set VF3_QUIT_AFTER_S=
 set VF3_KEYS_S=
 "build\bin\vf3.exe" "%ROM%" --console
-copy /y build\host_window.png build\liste-3-retour-au-titre.png > nul
+copy /y build\host_window.png build\list-3-back-to-title.png > nul
 
 echo.
 echo ---- the three pictures ----
-dir /b build\liste-*.png
+dir /b build\list-*.png
 echo.
 echo ---- finished (code %ERRORLEVEL%) ----
 pause

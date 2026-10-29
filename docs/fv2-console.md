@@ -345,9 +345,9 @@ With those, `capture-fv2-list.cmd` takes the three pictures in `build\`, hidden,
 
 | picture | what it shows |
 |---|---|
-| `liste-1-arcade.png` | the seven lines over the game's own title screen, FREE PLAY still readable under them |
-| `liste-2-survival.png` | three presses of down, then Enter: the game starts, and the select screen says SURVIVAL MODE |
-| `liste-3-retour-au-titre.png` | Start during the demonstration: the title screen is back |
+| `list-1-arcade.png` | the seven lines over the game's own title screen, FREE PLAY still readable under them |
+| `list-2-survival.png` | three presses of down, then Enter: the game starts, and the select screen says SURVIVAL MODE |
+| `list-3-back-to-title.png` | Start during the demonstration: the title screen is back |
 
 The second is the one that matters most, because it is end to end: the list opened on the real title screen,
 its own cursor moved, the line chosen handed the game a Start of its own, and the game began a match on free

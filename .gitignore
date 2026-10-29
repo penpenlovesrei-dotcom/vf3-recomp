@@ -14,7 +14,7 @@ build/
 __pycache__/
 
 # What this port keeps beside itself when it is launched from here: the four
-# jouer-*.cmd pin VF3_DATA to the project folder, so its settings, NVRAM, log,
+# play-*.cmd pin VF3_DATA to the project folder, so its settings, NVRAM, log,
 # the player's own portraits and their replacement textures land here and must
 # not be committed. The dumps and the packs are made from the player's own ROM
 # and never belong in the repository either.
@@ -30,19 +30,19 @@ __pycache__/
 assets-hd/
 /captures-honey/
 
-# Les images du menu console : elles viennent en partie du jeu, donc hors depot.
+# The console menu's pictures: they come in part from the game, so out of the repository.
 /assets/menu-console/
 
-# Les captures de textures, horodatees : images du jeu, hors depot.
+# The texture captures, timestamped: pictures from the game, out of the repository.
 /captures-textures-honey/
 
-# Le dump complet des textures : images du jeu, hors depot.
+# The full texture dump: pictures from the game, out of the repository.
 /Textures3D-dump*/
 /Textures3D-aplats/
 
-# De l amont : le cache de Wrangler et les portages voisins sortis a cote.
+# From upstream: Wrangler's cache and the neighbouring ports checked out beside this one.
 .wrangler/
 /*-recomp/
 
-# les WAV de mesure : produits par vf3run --wav et par les harnais, jamais une source
+# the measurement WAVs: made by vf3run --wav and by the harnesses, never a source
 *.wav

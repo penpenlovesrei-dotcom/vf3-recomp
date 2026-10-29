@@ -34,7 +34,7 @@ struct fv2_training
 {
 	static constexpr int CELL = 96;           // the atlas's step, measured on the file
 	// HOW MANY INPUTS STAY ON SCREEN, and how tall each line is. Both were raised the 2026-10-29 at
-	// Frederic's word -- "plus haute avec plus de lignes" -- the band having been eight lines of 4.7 per
+	// Frederic's word -- "taller with more lines" -- the band having been eight lines of 4.7 per
 	// cent, a little over a third of the picture. Twelve lines of 5.2 gives 62 per cent: the column runs
 	// from a third of the way down to its foot, which is where a training mode's input history belongs.
 	// The icons follow ROW_H, so they grow with it.
@@ -70,11 +70,11 @@ struct fv2_training
 	bool ready = false, tried = false;
 	SDL_Texture *atlas = nullptr;
 	int atlas_w = 0, atlas_h = 0;
-	fv2_texte *font = nullptr;
+	fv2_text *font = nullptr;
 	std::vector<line> lines;          // oldest first; the newest is at the bottom
 	line held;                        // what is held right now, to tell a change from a repeat
 
-	bool load(SDL_Renderer *ren, const std::string &assets, fv2_texte *sheet, FILE *log)
+	bool load(SDL_Renderer *ren, const std::string &assets, fv2_text *sheet, FILE *log)
 	{
 		if (tried) return ready;
 		tried = true;
@@ -164,8 +164,8 @@ struct fv2_training
 	{
 		(void)mid;
 		// AND IT IS DRAWN WITH NOTHING IN IT TOO. The band is a fixed place on the screen, not a thing that
-		// grows: Frederic, the 2026-10-25, "la colonne noire varie de taille selon son contenu (elle devrait
-		// etre fixe)". So it is always LINES tall and always as wide as its widest line with its damage
+		// grows: Frederic, the 2026-10-25, "the black column changes size with its contents (it ought to be
+		// fixed)". So it is always LINES tall and always as wide as its widest line with its damage
 		// column, whatever is in it at the moment.
 		if (!ready || !atlas) return;
 		SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
@@ -177,7 +177,7 @@ struct fv2_training
 		// line actually carries one, because a band kept open for figures that never come is a band of
 		// empty ground, and this one sits on top of the fight.
 		const float dmg_x = x0 + h + gap + 3.0f * h + gap;
-		const float wide = dmg_x - x0 + (font && font->ready ? font->width("DMG 000", cap / fv2_texte::CAP) : 4.0f * cap);
+		const float wide = dmg_x - x0 + (font && font->ready ? font->width("DMG 000", cap / fv2_text::CAP) : 4.0f * cap);
 		const float foot = all.y + BOTTOM * all.h;
 		// the band holds its whole height from the first frame; the lines themselves still pile up from the
 		// foot, so the newest is always in the same place
@@ -216,8 +216,8 @@ struct fv2_training
 				// of the text's BOX, and the capitals begin CAP_TOP into it and are CAP tall; centring the
 				// box left the figures riding high against the arrows, which are centred in their cells.
 				// Frederic saw it as the DMG line being out of line with the icons.
-				const float fh = cap / fv2_texte::CAP;
-				const float top = y + h * 0.5f - cap * 0.5f - fv2_texte::CAP_TOP * fh;
+				const float fh = cap / fv2_text::CAP;
+				const float top = y + h * 0.5f - cap * 0.5f - fv2_text::CAP_TOP * fh;
 				font->draw(ren, t, dmg_x, top, fh, DMG_INK, a);
 			}
 		}

@@ -38,14 +38,14 @@
 #include <vector>
 #include "png.h"
 
-struct fv2_texte
+struct fv2_text
 {
 	static constexpr int IMG_W = 1024, IMG_H = 384;
 	static constexpr int COLS = 16, ROWS = 6, CELL = 64;
 	static constexpr int FIRST = 0x20, LAST = 0x7F;
 
 	// tools/fv2/measure_font.py, run on assets/menu-console/police.png:
-	// x du bord gauche de l'encre dans la case, puis sa largeur ; 0,0 = pas d'encre
+	// x of the ink's left edge inside the cell, then its width; 0,0 = no ink
 	static constexpr uint8_t INK[96][2] = {
 		{ 0, 0}, {28, 7}, {25,13}, {19,25}, {19,24}, {15,34}, {16,32}, {29, 6},   // 0x20   !"#$%&'
 		{26,12}, {26,12}, {21,21}, {20,23}, {28, 7}, {25,13}, {28, 7}, {19,24},   // 0x28  ()*+,-./

@@ -56,8 +56,8 @@ struct fv2_stage_list
 	//     fraction of it, so growing the middle does not silently grow the strip;
 	//   * the words and the name hang off the chosen picture's edges, not off the screen, so they follow it;
 	//   * the arrows are centred on the ROW, not on the chosen one: they belong to the strip.
-	// AUGUST'S OWN PLACE, LOW, and it stays there. Frederic asked for the carousel "au-dessus des portraits
-	// des personnages" and I first read that as higher up and raised the whole band by 0.215, which was
+	// AUGUST'S OWN PLACE, LOW, and it stays there. Frederic asked for the carousel "above the characters'
+	// portraits" and I first read that as higher up and raised the whole band by 0.215, which was
 	// wrong: he meant IN FRONT OF them. The strip covers the game's row of portraits, as the Dreamcast's
 	// covers the bottom of its own select screen, and the band is translucent so they still show through.
 	static constexpr float BAND_TOP = 0.615f, BAND_BOTTOM = 0.975f, STRIP_TOP = 0.685f;
@@ -112,7 +112,7 @@ struct fv2_stage_list
 	int shot_w[STAGES] = {}, shot_h[STAGES] = {}, name_w[STAGES] = {}, name_h[STAGES] = {};
 	int banner_w = 0, banner_h = 0, arrow_w = 0, arrow_h = 0;
 	int have = 0;                  // how many stages actually loaded, in order from 1
-	fv2_texte *font = nullptr;     // (nothing on this page is written in letters any more: kept for textures_lost)
+	fv2_text *font = nullptr;     // (nothing on this page is written in letters any more: kept for textures_lost)
 	int stick_x = 0;
 
 	// One picture into a texture. Returns null and says why rather than failing silently: a page that draws
@@ -136,7 +136,7 @@ struct fv2_stage_list
 		return t;
 	}
 
-	bool load(SDL_Renderer *ren, const std::string &assets, fv2_texte *sheet, FILE *log)
+	bool load(SDL_Renderer *ren, const std::string &assets, fv2_text *sheet, FILE *log)
 	{
 		if (tried) return ready;
 		tried = true;

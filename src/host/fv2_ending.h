@@ -27,7 +27,7 @@
 #include <vector>
 #include "png.h"
 
-struct fv2_fin
+struct fv2_ending
 {
 	static constexpr int PICTURES = 8;       // one a segment, in the order of the roll
 

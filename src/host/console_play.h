@@ -214,8 +214,8 @@ struct console_play
 	// AND THE PUNCH THAT OPENED THE SELECT SCREEN IS NOT A CHOICE. The press that chose TRAINING in the
 	// console's own list is still down when the game arrives on SELECT several frames later, so the latch
 	// above closed on it at once, with nobody's fighter chosen -- and from that frame on player 1's pad
-	// was driving player 2's cursor. That is exactly what Frederic reported the 2026-10-25: "la manette en
-	// P1 choisit en premier le P2". So the button has to be SEEN RELEASED on the select screen before any
+	// was driving player 2's cursor. That is exactly what Frederic reported the 2026-10-25: "the pad in P1
+	// picks P2 first". So the button has to be SEEN RELEASED on the select screen before any
 	// press of it counts, which is what this says.
 	bool train_pick_arm = false;
 	// WHETHER THE CLOCK IS STILL STOPPED BY US. The freeze is a bit of the game's CONFIG block, held while
@@ -513,8 +513,8 @@ struct console_play
 	// original does with this button during the fight's presentation and during the replay (take_start)
 	enum class start_for { none, list, title, pause, cut };
 
-	// THE MENU IS THE FIGHT'S AND NOTHING ELSE'S. Frederic, the 2026-10-24: "le menu ne doit etre
-	// accessible uniquement pendant la phase de combat", and everywhere else Start is the game's own
+	// THE MENU IS THE FIGHT'S AND NOTHING ELSE'S. Frederic, the 2026-10-24: "the menu must only be
+	// reachable during the fight phase", and everywhere else Start is the game's own
 	// button again. So of the twenty GAME sub-states Sega named (docs/fv2-states.md, 0x000244F4):
 	// (docs/fv2-states.md, the twenty GAME sub-states at 0x000244F4):
 	//
@@ -591,7 +591,7 @@ struct console_play
 			// Frederic photographed it the 2026-10-28 and found it twice in one sitting: Start during the LAST
 			// round's replay, where the match is already decided so the task is already down, and Start on the
 			// CONTINUE screen -- where that button is the one that CONTINUES THE GAME, which is why he reported
-			// it as "pas de continue". Both are the same mistake and both gave the same torn title.
+			// it as "no continue". Both are the same mistake and both gave the same torn title.
 			//
 			// Sega's own answer is the mode: ADV, 2 and 3, IS the attract loop and nothing else is
 			// (docs/fv2-states.md). Everywhere else the game is showing something of its own and the button is
@@ -668,7 +668,7 @@ struct console_play
 	// ---- THE DREAMCAST'S ENDING: which of its pictures belongs on screen right now ----
 	//
 	// The roll is a list of segments, each one a page of credits then a replay (model3.cpp). The picture
-	// stands in for the replay. fin_art is what the host should show, -1 for nothing, and it is set here
+	// stands in for the replay. ending_art is what the host should show, -1 for nothing, and it is set here
 	// because this is where the game's state is already being read every frame.
 	//
 	// August's two rules, both of which he paid for:
@@ -678,25 +678,25 @@ struct console_play
 	//   * the picture goes up on the replay byte's RISE and comes down at the SEGMENT'S BOUNDARY, never on
 	//     the byte's fall: the byte drops two frames before the segment ends and the game is still showing
 	//     its replay in those two, so taking the picture away on the fall let a flash of replay through.
-	int fin_art = -1;
-	int fin_seg = 0;          // which segment: 1 is the first
-	int fin_ptr = -1;         // the sequence pointer as it last read
-	int fin_replay = 0;       // the replay byte as it last read
+	int ending_art = -1;
+	int ending_seg = 0;          // which segment: 1 is the first
+	int ending_ptr = -1;         // the sequence pointer as it last read
+	int ending_replay = 0;       // the replay byte as it last read
 	void step_ending(m3::Model3 &b)
 	{
 		const int mode = b.fv2_mode();
 		const bool dsp = mode == 13;      // ENDING_DSP; ENDING_INT is 12 and is followed without counting
-		if (mode != 12 && !dsp) { fin_art = -1; fin_seg = 0; fin_ptr = -1; fin_replay = 0; return; }
+		if (mode != 12 && !dsp) { ending_art = -1; ending_seg = 0; ending_ptr = -1; ending_replay = 0; return; }
 		const int ptr = b.fv2_ending_seq(), rep = b.fv2_ending_replay();
-		if (!dsp) { fin_ptr = ptr; fin_replay = rep; return; }
-		if (ptr != fin_ptr) {          // a boundary: the picture comes down here and the segment advances
-			fin_ptr = ptr;
-			fin_seg++;
-			fin_art = -1;
+		if (!dsp) { ending_ptr = ptr; ending_replay = rep; return; }
+		if (ptr != ending_ptr) {          // a boundary: the picture comes down here and the segment advances
+			ending_ptr = ptr;
+			ending_seg++;
+			ending_art = -1;
 		}
-		if (rep != fin_replay) {
-			fin_replay = rep;
-			if (rep && fin_seg > 0) fin_art = fin_seg - 1;   // the replay has begun: its picture stands in
+		if (rep != ending_replay) {
+			ending_replay = rep;
+			if (rep && ending_seg > 0) ending_art = ending_seg - 1;   // the replay has begun: its picture stands in
 		}
 	}
 	void arm_real_ending() { want_real_ending = true; }
@@ -717,7 +717,7 @@ struct console_play
 	//
 	//   the button has to be SEEN RELEASED first. The press that chose TRAINING in the console's list is
 	//   still down when the select screen arrives several frames later, and taken for a choice it made
-	//   player 1's pad pick player 2's fighter first -- "la manette en P1 choisit en premier le P2",
+	//   player 1's pad pick player 2's fighter first -- "the pad in P1 picks P2 first",
 	//   the 2026-10-25. It reaches the game no more than it counts, or it would validate player 1's
 	//   fighter on the frame the screen appeared, wherever the cursor happened to stand;
 	//
@@ -1129,8 +1129,8 @@ struct console_play
 
 	// ---- THE END OF A TWO-PLAYER MATCH IS A STATE OF ITS OWN ----
 	//
-	// Frederic, the 2026-10-28: "MODE VERSUS: a la fin de combat, a la place du sous etat GAME OVER, creer
-	// un sous etat propre au mode versus qui propose REMATCH, CHANGE VIPERS, CHANGE STAGE, MAIN MENU."
+	// Frederic, the 2026-10-28: "VERSUS MODE: at the end of the fight, in place of the GAME OVER sub-state,
+	// make a sub-state of versus mode's own offering REMATCH, CHANGE VIPERS, CHANGE STAGE, MAIN MENU."
 	//
 	// WHEN, and it is the game's own answer rather than a count of rounds kept here. Measured the 2026-10-28
 	// on tools/scripts/fv2-vs-end.txt -- a versus fought to its end with VF3_VS_TRACE=1 -- where the end of

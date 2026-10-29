@@ -1,7 +1,7 @@
 // THE CONSOLE'S OWN STATE, laid out the way the game lays out its own.
 //
-// Frederic, the 2026-10-25: "de tout le jeu, aucun etat ou sous etat n'empiete sur les autres, sauf celui que
-// l'on a integre. On dirait encore du bricolage, comme sur la rom." He is right, and the fault is nameable.
+// Frederic, the 2026-10-25: "in the whole game, no state or sub-state treads on the others, except the one
+// we fitted in. It still looks like a bodge, like on the rom." He is right, and the fault is nameable.
 //
 // Sega's board holds one state at a time: twenty-four modes, each with an INT that installs it and a DSP that
 // runs it, a table of handlers, and ONE byte that says where the game is (docs/fv2-states.md). Nothing overlaps
@@ -24,7 +24,7 @@
 //            state where `runs` is false STILL HAS FRAMES -- frames without the PowerPC, issued by the
 //            host's one frame loop, at its pace, from its clock, under its governor and against the same
 //            device queue as a played frame. That is the 2026-10-29 correction, and it is Frederic's own:
-//            "je veux des menus proprement integres au jeu, on arrete le bricolage". Before it, this table
+//            "I want menus properly fitted into the game, we stop the bodging". Before it, this table
 //            stopped the game and a PUMP of its own further up turned the board -- its own clock, its own
 //            catch-up cap, its own floor. Two pacemakers for one card, and they did not speak: measured in
 //            his session, the device queue reached ZERO 795 times under a menu. Measured after, under the

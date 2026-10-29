@@ -91,7 +91,7 @@ public:
 	// name's size is the native one, for identification only. report gets a line for the player.
 	bool load(const std::string &dir, std::string &report);
 
-	// Lever le refus des textures unies, pour une course et pas pour le jeu : voir find(). Mis par --hd-flats.
+	// Lifts the refusal of flat textures, for a run and not for the game: see find(). Set by --hd-flats.
 	void allow_flat_textures(bool on) { allow_flat = on; }
 	bool flat_allowed() const { return allow_flat; }
 

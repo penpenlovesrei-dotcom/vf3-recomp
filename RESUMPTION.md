@@ -123,9 +123,9 @@ still running.
 
 | picture | what it shows |
 |---|---|
-| `liste-1-arcade.png` | the seven lines on the real title screen, FREE PLAY readable under them |
-| `liste-2-survival.png` | three times down then Enter: the game starts, and the select screen says SURVIVAL MODE |
-| `liste-3-retour-au-titre.png` | Start during the demonstration: the title screen is back |
+| `list-1-arcade.png` | the seven lines on the real title screen, FREE PLAY readable under them |
+| `list-2-survival.png` | three times down then Enter: the game starts, and the select screen says SURVIVAL MODE |
+| `list-3-back-to-title.png` | Start during the demonstration: the title screen is back |
 
 The second is the one that counts: it goes end to end, with no hand on the pad.
 
@@ -300,7 +300,7 @@ correct measurement can carry too wide a conclusion: "it works" meant "the scree
 left the game".
 
 **The verification must bear on what is in question.** The day before, the check did not tell the two menus
-apart. Today `liste-2-survival.png` cannot be mistaken: the list opens on the game's title screen, its cursor
+apart. Today `list-2-survival.png` cannot be mistaken: the list opens on the game's title screen, its cursor
 goes down three lines, the chosen line starts the game, and the select screen says SURVIVAL MODE. It took two
 hooks for that (`VF3_QUIT_AFTER_S`, `VF3_KEYS_S`), because everything that counts the game's frames stops when
 the list is there.

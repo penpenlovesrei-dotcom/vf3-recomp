@@ -1030,35 +1030,36 @@ struct Game
 	std::atomic<double> sound_ms{ 0.0 };
 	void sound_wait()
 	{
-		if (!sound_thread.joinable()) return;   // (mesure : VF3_SND_OFF ou VF3_SND_SYNC, pas de fil)
+		if (!sound_thread.joinable()) return;   // (measurement: VF3_SND_OFF or VF3_SND_SYNC, no thread)
 		std::unique_lock<std::mutex> lk(sound_m);
 		sound_cv.wait(lk, [this] { return !sound_busy; });
 	}
-	// LES DEUX INTERRUPTEURS DE LA MESURE DE CONCURRENCE, et ce qui les rend valables.
+	// THE TWO SWITCHES OF THE CONCURRENCY MEASUREMENT, and what makes them worth anything.
 	//
-	// La question que le §4 quater de scsp/docs/scsp_audit.md laisse ouverte : sur une machine a deux coeurs, le
-	// jeu n'attend jamais le son (0,00 % de l'image, mesure) -- mais le fil du son prend quand meme 17 % d'un
-	// coeur, et ce qu'il coute au fil PRINCIPAL par le cache, l'ordonnanceur et la frequence ne se voit pas
-	// dans une attente bloquante. Il faut donc comparer des passages.
+	// The question §4 quater of scsp/docs/scsp_audit.md leaves open: on a two-core machine the game never
+	// waits for the sound (0.00 % of the frame, measured) -- but the sound's thread still takes 17 % of a
+	// core, and what it costs the MAIN thread through the cache, the scheduler and the clock frequency does
+	// not show in a blocking wait. So whole runs have to be compared.
 	//
-	// CE QUI PERMET UN CONTROLE PROPRE : le trafic vers la carte son est A SENS UNIQUE. Le jeu y pousse du
-	// MIDI (board.midi -> sound.midi_in) et NE LIT RIEN en retour -- verifie le 2026-10-27. Supprimer le
-	// travail du son ne change donc pas d'un bit l'execution du jeu, et les deux passages sont comparables.
-	// Si le jeu lisait un etat de la carte, aucun de ces deux interrupteurs ne vaudrait rien, et c'est pour
-	// cela que ce paragraphe existe : la validite de la mesure tient a ce fait-la.
+	// WHAT MAKES A CLEAN CONTROL POSSIBLE: the traffic towards the sound board is ONE-WAY. The game pushes
+	// MIDI into it (board.midi -> sound.midi_in) and READS NOTHING back -- checked on 2026-10-27. Taking
+	// the sound's work away therefore does not change the game's execution by one bit, and the two runs are
+	// comparable. If the game read a state of the board, neither of these switches would be worth anything,
+	// and that is why this paragraph exists: the measurement's validity rests on that fact.
 	//
-	//   VF3_SND_OFF=1    la carte son n'est pas tournee du tout (le MIDI est jete). Le jeu et l'image font
-	//                    exactement le meme travail, sans rien a cote : c'est le plafond. L'ecart avec un
-	//                    passage normal EST le cout de concurrence.
-	//   VF3_SND_SYNC=1   le son est fait DANS l'image, sur le fil principal, au lieu d'etre sur le sien. Le
-	//                    travail est identique, seul le moment change : l'ecart dit ce que le recouvrement
-	//                    achete, c'est-a-dire si le fil vaut son prix sur deux coeurs.
+	//   VF3_SND_OFF=1    the sound board is not run at all (the MIDI is thrown away). The game and the
+	//                    picture do exactly the same work with nothing beside them: that is the ceiling.
+	//                    The gap against a normal run IS the cost of concurrency.
+	//   VF3_SND_SYNC=1   the sound is made INSIDE the frame, on the main thread, instead of on its own. The
+	//                    work is identical and only the moment changes: the gap says what the overlap buys,
+	//                    which is to say whether the thread is worth its price on two cores.
 	//
-	// Les deux ne servent qu'a mesurer : sans eux rien ne change, et aucun n'est lu ailleurs qu'ici.
+	// Both are there to measure and nothing else: without them nothing changes, and neither is read anywhere
+	// but here.
 	const bool snd_off = [] { const char *e = getenv("VF3_SND_OFF"); return e && *e == '1'; }();
 	const bool snd_sync = [] { const char *e = getenv("VF3_SND_SYNC"); return e && *e == '1'; }();
 
-	// Le travail du son, la ou il se fait : sur le fil, ou dans l'image quand VF3_SND_SYNC le demande.
+	// The sound's work, where it gets done: on the thread, or inside the frame when VF3_SND_SYNC asks.
 	void sound_job()
 	{
 		const auto t0 = std::chrono::steady_clock::now();
@@ -1073,7 +1074,7 @@ struct Game
 	}
 	void sound_start()
 	{
-		if (snd_off || snd_sync) return;   // (mesure : pas de fil du tout)
+		if (snd_off || snd_sync) return;   // (measurement: no thread at all)
 		sound_thread = std::thread([this] {
 			fast_thread();
 			std::unique_lock<std::mutex> lk(sound_m);
@@ -1147,8 +1148,8 @@ struct Game
 			sound_job_on = true;
 			sound_busy = true;
 		}
-		if (snd_off) { sound_busy = false; sound_midi.clear(); }   // (mesure : le MIDI est jete)
-		else if (snd_sync) { sound_busy = false; sound_job(); }    // (mesure : dans l'image)
+		if (snd_off) { sound_busy = false; sound_midi.clear(); }   // (measurement: the MIDI is thrown away)
+		else if (snd_sync) { sound_busy = false; sound_job(); }    // (measurement: inside the frame)
 		else sound_cv.notify_all();
 	}
 	// A note handed to the sound board as if the game had written it: A0 <bank> <index>, the shape established
@@ -1218,28 +1219,28 @@ struct Game
 		// would feel, not cycles.
 		static const unsigned long snd_host = getenv("VF3_SND_HOST")
 		                                    ? strtoul(getenv("VF3_SND_HOST"), nullptr, 10) : 0;
-		static double attente_ms = 0.0, attente_max = 0.0, image_ms = 0.0;
-		static auto image_t0 = std::chrono::steady_clock::now();
+		static double wait_ms = 0.0, wait_max = 0.0, period_ms = 0.0;
+		static auto period_t0 = std::chrono::steady_clock::now();
 		static unsigned long snd_n = 0;
 		if (snd_host) {
 			const auto a = std::chrono::steady_clock::now();
 			sound_wait();
 			const double d = std::chrono::duration<double, std::milli>(
 			                     std::chrono::steady_clock::now() - a).count();
-			attente_ms += d;
-			if (d > attente_max) attente_max = d;
-			image_ms += std::chrono::duration<double, std::milli>(a - image_t0).count();
-			image_t0 = a;
+			wait_ms += d;
+			if (d > wait_max) wait_max = d;
+			period_ms += std::chrono::duration<double, std::milli>(a - period_t0).count();
+			period_t0 = a;
 			if (++snd_n % snd_host == 0) {
-				const double travail = sound_ms.exchange(0.0, std::memory_order_relaxed);
-				fprintf(stderr, "sndhost image %llu : le fil du son travaille %.3f ms a l'image,"
-				                " le jeu l'attend %.3f ms (max %.3f) ; periode %.2f ms,"
-				                " soit %.1f %% de CPU et %.2f %% d'image\n",
-				        (unsigned long long)frame, travail / snd_host, attente_ms / snd_host, attente_max,
-				        image_ms / snd_host, 100.0 * travail / std::max(1e-9, image_ms),
-				        100.0 * attente_ms / std::max(1e-9, image_ms));
-				sndprof::report("hote", int(snd_host));
-				attente_ms = attente_max = image_ms = 0.0;
+				const double work = sound_ms.exchange(0.0, std::memory_order_relaxed);
+				fprintf(stderr, "sndhost frame %llu: the sound thread works %.3f ms a frame,"
+				                " the game waits %.3f ms (max %.3f); period %.2f ms,"
+				                " so %.1f %% of CPU and %.2f %% of the frame\n",
+				        (unsigned long long)frame, work / snd_host, wait_ms / snd_host, wait_max,
+				        period_ms / snd_host, 100.0 * work / std::max(1e-9, period_ms),
+				        100.0 * wait_ms / std::max(1e-9, period_ms));
+				sndprof::report("host", int(snd_host));
+				wait_ms = wait_max = period_ms = 0.0;
 			}
 		} else {
 			sound_wait();   // (the frame before's sound, made meanwhile)
@@ -1296,8 +1297,8 @@ struct Game
 			sound_job_on = sound_on;
 			sound_busy = true;
 		}
-		if (snd_off) { sound_busy = false; sound_midi.clear(); }   // (mesure : le MIDI est jete)
-		else if (snd_sync) { sound_busy = false; sound_job(); }    // (mesure : dans l'image)
+		if (snd_off) { sound_busy = false; sound_midi.clear(); }   // (measurement: the MIDI is thrown away)
+		else if (snd_sync) { sound_busy = false; sound_job(); }    // (measurement: inside the frame)
 		else sound_cv.notify_all();
 		frame++;
 		if (!picture) { have_prev = false; sky.reset(); return; }
@@ -1603,8 +1604,8 @@ int main(int argc, char **argv)
 	}
 	// ---- THE WINDOW COMES FIRST, so the forty seconds of loading have something to show ----
 	//
-	// Frederic, the 2026-10-29: "je voudrais ne plus voir cet ecran noir au lancement du jeu [...] on peut
-	// afficher autre chose que ce qui vient du jeu, il serait totalement independant".
+	// Frederic, the 2026-10-29: "I would like not to see that black screen at the game's launch any more
+	// [...] we can show something other than what comes from the game, it would be wholly independent".
 	//
 	// It used to open after game.load AND after boot() -- the game run unseen until it is past its own
 	// start-up -- so nothing at all was on screen for the whole of it. Now SDL's video and the window are
@@ -2130,8 +2131,8 @@ int main(int argc, char **argv)
 	bool hud_hide_mid = false;   // training: the stopped clock is left undrawn (see where it is set)
 	// THE ROUND'S ANNOUNCEMENT BELONGS TO THE PICTURE, NOT TO THE 4:3 FRAME. Frederic, the 2026-10-28, on
 	// a photograph of his own: the HUD is spread to the window's edges and ROUND 1 is still the size it is
-	// on a 4:3 screen, sitting in the middle of a picture half as wide again -- "le texte Round X n'est pas
-	// recale pour le mode widescreen", and when asked what widescreen meant here: "widescreen = 16/9".
+	// on a 4:3 screen, sitting in the middle of a picture half as wide again -- "the Round X text is not
+	// re-placed for widescreen mode", and when asked what widescreen meant here: "widescreen = 16/9".
 	// So it is drawn across the picture the player is looking at, at the picture's own scale, on its own
 	// middle. Only in the states that announce a round (GAME's 4 to 10), which is where that art lives.
 	bool hud_wide_mid = false;
@@ -2161,7 +2162,7 @@ int main(int argc, char **argv)
 	static constexpr int HUD_MID_L = 217, HUD_MID_R = 275;
 	// The Dreamcast's ending, its pictures standing in for the roll's replays (fv2_ending.h). Declared here
 	// with the renderer's own state because the picture is composed where the 3D and the 2D are.
-	fv2_fin fin;
+	fv2_ending ending;
 	uint32_t side_colour[2] = { 0xFF000000u, 0xFF000000u };   // widescreen's bars beside the 2D (left, right)
 	bool sky_wide = false;
 	float bg_shift_x = 0, bg_shift_y = 0;   // the layers below the 3D moved back towards the frame before (draw_below)
@@ -2790,8 +2791,8 @@ int main(int argc, char **argv)
 		return crt_tex;
 	};
 	// WHAT GOES ON THE PICTURE BEFORE THE MONITOR DOES ITS WORK: the console's own surfaces. Frederic,
-	// the 2026-10-28: "les options graphiques, comme les scanlines, ne s'appliquent pas sur les menus des
-	// options". They did not, because they were drawn after compose had finished -- after the CRT colours
+	// the 2026-10-28: "the graphics options, like the scanlines, do not apply to the options menus".
+	// They did not, because they were drawn after compose had finished -- after the CRT colours
 	// and after the filter. The arcade's monitor does not stop at the game's picture: the menu is on the
 	// same glass. So compose calls this where the game's own picture ends, and the colours and the lines
 	// are laid over both. (This port's own menu under Escape is drawn later still and keeps its own
@@ -2844,18 +2845,18 @@ int main(int argc, char **argv)
 		// THE DREAMCAST'S ENDING stands in for the replay: its picture covers the whole window, and the 2D
 		// of that moment -- the replay's own banners -- goes with it (fv2_ending.h). Not an early return: the
 		// CRT filter below owns the render target and has to be let finish.
-		bool fin_on = false;
-		if (fin.want && cplay.fin_art >= 0 && fin.have()) {
-			fin.show(ren, cplay.fin_art, stderr);
-			if (fin.tex) { fin.render(ren, all); fin_on = true; }
-		} else if (fin.at >= 0) {
-			fin.drop();
+		bool ending_on = false;
+		if (ending.want && cplay.ending_art >= 0 && ending.have()) {
+			ending.show(ren, cplay.ending_art, stderr);
+			if (ending.tex) { ending.render(ren, all); ending_on = true; }
+		} else if (ending.at >= 0) {
+			ending.drop();
 		}
 		// THE PRESENTATION IS BACK, and it stays. Frederic asked for a training that starts without the
 		// STAGE / VS screen; the four ROUND_MASK sub-states are the ARENA LOADING (console_play.h), so there
 		// is nothing to skip, and hiding what is drawn over the load left a blank screen for two seconds,
 		// which he liked less than the banner. The banner at least says what is coming.
-		if (fin_on) { /* the Dreamcast ending's picture stands in for the whole frame */ } else
+		if (ending_on) { /* the Dreamcast ending's picture stands in for the whole frame */ } else
 		// The 2D over the 3D. In widescreen the HUD's two bands are drawn in three slices each, the outer two
 		// pushed out to the window's edges and the middle left exactly where it was (HudCut above). Only
 		// when the picture IS wider than 4:3 and only when a cut was found: everything else is one blit, as
@@ -2870,8 +2871,8 @@ int main(int argc, char **argv)
 				SDL_RenderTexture(ren, tex_above, &src, &dst);
 			};
 			// EVEN SPACE EITHER SIDE, for the band that has something standing still in the middle.
-			// Frederic, the 2026-10-25: the two blocks of the top HUD go "a egale distance entre le bord de
-			// l'ecran et le timer". Hard against the window's edge they left the whole of the widening on
+			// Frederic, the 2026-10-25: the two blocks of the top HUD go "at an equal distance between the
+			// screen's edge and the timer". Hard against the window's edge they left the whole of the widening on
 			// one side of each block, which reads as two things that fell off. The foot has nothing in its
 			// middle to measure against, and he passed it as it was, so it still goes hard against the edges.
 			// The rows between the two bands, drawn across the WHOLE picture and at its scale rather than the
@@ -3028,7 +3029,7 @@ int main(int argc, char **argv)
 	// Unlike the six others it EDITS something: the arcade's GAME ASSIGNMENTS, in the backup RAM where they
 	// last, so a change restarts the game when the page closes -- as the Arcade settings page does for Virtua
 	// Fighter 3 (src/host/fv2_options.h, docs/fv2-console-options.md).
-	fv2_texte console_font;
+	fv2_text console_font;
 	fv2_options options;
 	fv2_pause pause;   // Start during a match, over the fight
 	fv2_stage_list stages;   // VERSUS's arena, chosen before the match (fv2_stage_list.h)
@@ -3095,8 +3096,8 @@ int main(int argc, char **argv)
 		if (const char *cs = getenv("VF3_CONSOLE_STAGE"); cs && !strcmp(cs, "none")) stages.ready = false;
 		train.load(ren, find_assets(), &console_font, stderr);
 		curtain.load(ren, find_assets(), stderr);
-		fin.find(find_assets(), stderr);
-		fin.want = cfg.ending_dc;
+		ending.find(find_assets(), stderr);
+		ending.want = cfg.ending_dc;
 	}
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
@@ -3549,7 +3550,7 @@ int main(int argc, char **argv)
 		// menu is this port's own and has always been quiet, so the device still sleeps under it; the list and
 		// the OPTIONS tree now turn the sound board themselves and play the game's own three notes.
 		//
-		// Pausing the device under them was what Frederic heard as "des bruitages en decale". Measured with
+		// Pausing the device under them was what Frederic heard as "sound effects out of step". Measured with
 		// the probe on a real machine: the queue grew by exactly one sound frame per frame made -- 0, 1, 2, 3,
 		// 4, 5, 6, 7 frames of backlog -- because nothing was consuming it. Every beep went in behind that
 		// backlog and only came out when the surface closed and the device woke up, which is word for word
@@ -3779,8 +3780,8 @@ int main(int argc, char **argv)
 			// Armed, the line says so and the page stays up: there is a game to go and play. The arming
 			// keeps until a match ends, and nothing holds the bit (console_play.h, model3.cpp).
 			// AND THE LINE IS A CHOICE BETWEEN THE TWO ENDINGS, which is what Frederic asked for the
-			// 2026-10-25: "le but n'est pas de lancer la fin du jeu mais de choisir entre la fin version
-			// arcade ou version console quand on fini le mode arcade". It is August's own line again --
+			// 2026-10-25: "the point is not to launch the game's ending but to choose between the arcade
+			// ending and the console one when you finish arcade mode". It is August's own line again --
 			// his fork's said DREAMCAST or ARCADE -- and the difference is what stands in for the roll's
 			// REPLAYS: the arcade shows the matches just won, the Dreamcast its illustrations. Eight of
 			// them, chosen and ordered by Frederic out of a rip of the disc (fv2_ending.h).
@@ -3788,9 +3789,9 @@ int main(int argc, char **argv)
 			// Watching the roll from here has gone with it. It was a way to see a thing nobody had seen
 			// running, and it has been seen; a settings line that STARTS something is not a setting.
 			{ "ENDING", [&] { return std::string(cfg.ending_dc ? "DREAMCAST" : "ARCADE"); },
-			  fin.have() ? std::function<void(int)>([&](int) {
+			  ending.have() ? std::function<void(int)>([&](int) {
 				  cfg.ending_dc = !cfg.ending_dc;
-				  fin.want = cfg.ending_dc;
+				  ending.want = cfg.ending_dc;
 				  cfg_dirty = true;
 			  }) : std::function<void(int)>(), {}, {}, 0, false, 0 },
 		};
@@ -4042,7 +4043,7 @@ int main(int argc, char **argv)
 			if (stages.ready) {
 				// STAGE_HELD, not STAGE, and the state says the difference: in GAME the sub-state 2 that the
 				// park writes is ROUND_MASK_DSP, not Sega's empty STAGE_SEL, so a fight cannot be parked --
-				// which was Frederic's "change stage ne fonctionne pas". Held, the fight stands still under
+				// which was Frederic's "change stage does not work". Held, the fight stands still under
 				// the carousel exactly as it did under the pause menu this came from.
 				enter(board.fv2_in_attract() ? cstate::STAGE : cstate::STAGE_HELD, "CHANGE STAGE");
 				return;
@@ -4507,10 +4508,10 @@ int main(int argc, char **argv)
 			static bool done = false;
 			if (!done && game_frame >= at) {
 				done = true;
-				if (getenv("VF3_ENDING_DC")) fin.want = true;
+				if (getenv("VF3_ENDING_DC")) ending.want = true;
 				cplay.ask_ending(board);
 				fprintf(stderr, "frame %llu: VF3_CONSOLE_ENDING -- the staff roll asked for (%s)\n",
-						(unsigned long long)game_frame, fin.want ? "DREAMCAST" : "ARCADE");
+						(unsigned long long)game_frame, ending.want ? "DREAMCAST" : "ARCADE");
 			}
 		}
 		// VF3_CONSOLE_PAUSE=n: the pause menu answered without a hand -- the line's own number in fv2_pause.h,
@@ -4712,7 +4713,7 @@ int main(int argc, char **argv)
 		// that: a queue that reached zero 795 times, fifty-six milliseconds of music thrown away at every
 		// opening, and a beep whose tail nobody could reproduce.
 		//
-		// Frederic, the 2026-10-29: "je veux des menus proprement integres au jeu, on arrete le bricolage".
+		// Frederic, the 2026-10-29: "I want menus properly fitted into the game, we stop the bodging".
 		// So: ONE door. The pass works out what is due exactly as it always did -- the clock, the governor,
 		// the device's queue -- and the frame loop below runs a frame WITHOUT THE POWERPC when the state says
 		// the game does not run. The pump is gone, and with it its clock, its cap and its floor.

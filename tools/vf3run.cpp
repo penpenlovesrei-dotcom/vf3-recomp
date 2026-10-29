@@ -166,10 +166,10 @@ int main(int argc, char **argv)
 		video::hd3d().load(hd_pack, report);
 		if (!quiet) printf("%s\n", report.c_str());
 	}
-	// --hd-flats : lever le refus des textures unies, pour cette course seulement (src/video/tex3d_hd.cpp).
+	// --hd-flats: lifts the refusal of flat textures, for this run alone (src/video/tex3d_hd.cpp).
 	if (hd_flats) {
 		video::hd3d().allow_flat_textures(true);
-		if (!quiet) printf("3D texture dump: les textures unies sont acceptees (--hd-flats)\n");
+		if (!quiet) printf("3D texture dump: the flat textures are accepted (--hd-flats)\n");
 	}
 	if (!hd_dump.empty()) {
 		std::string why;
@@ -375,9 +375,9 @@ int main(int argc, char **argv)
 		// because a measurement wants a lever it can read from the command line. With --console-mode versus
 		// and no stage asked for, the console holds nothing, so the two do not fight.
 		{
-			// LES DEUX LEVIERS, parce qu'ils ne commandent pas la meme chose (model3.cpp) : l'octet de
-			// route commande l'arene du PREMIER match d'une partie, et le tirage commande celle d'un
-			// versus. Tenir les deux fait marcher VF3_STAGE dans les deux cas, et chacun dit s'il a ecrit.
+			// BOTH LEVERS, because they do not command the same thing (model3.cpp): the route byte
+			// commands the arena of a game's FIRST match, and the draw commands a versus match's. Holding
+			// both makes VF3_STAGE work in either case, and each one says whether it wrote.
 			static const char *stage = getenv("VF3_STAGE");
 			static int n_tirage = 0, n_route = 0, refus = 0;
 			if (stage) {
@@ -1246,8 +1246,8 @@ int main(int argc, char **argv)
 			std::string p = "ram_" + std::to_string(board.frame) + ".bin";
 			if (FILE *rf = fopen(p.c_str(), "wb")) { fwrite(board.ram.data(), 1, board.ram.size(), rf); fclose(rf); }
 		}
-		// --poly-at : la RAM de polygones, ou vit la table de colours des
-		// polygones sans texture (src/video/r3d_scene.cpp).
+		// --poly-at: the polygon RAM, where the colour table of the untextured
+		// polygons lives (src/video/r3d_scene.cpp).
 		if (long(board.frame) == poly_at) {
 			std::string p = "poly_" + std::to_string(board.frame) + ".bin";
 			if (FILE *pf = fopen(p.c_str(), "wb")) {

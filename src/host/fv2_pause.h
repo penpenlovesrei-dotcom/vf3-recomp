@@ -102,7 +102,7 @@ struct fv2_pause
 	int sel = MAIN_MENU;
 	bool ready = false, tried = false;
 	SDL_Texture *cursor = nullptr;
-	fv2_texte *font = nullptr;     // the sheet, loaded once by the host and shared
+	fv2_text *font = nullptr;     // the sheet, loaded once by the host and shared
 	int stick_x = 0, stick_y = 0;
 
 	// ANSWERED, AND HELD WHILE IT IS HEARD. Frederic's third complaint was that the menu did not respond:
@@ -117,7 +117,7 @@ struct fv2_pause
 	double lock_t = 0;             // seconds since the answer, kept by the host, which owns the clock
 	void lock() { locked = true; lock_t = 0; }
 
-	bool load(SDL_Renderer *ren, const std::string &assets, fv2_texte *sheet, FILE *log)
+	bool load(SDL_Renderer *ren, const std::string &assets, fv2_text *sheet, FILE *log)
 	{
 		if (tried) return ready;
 		tried = true;
@@ -261,7 +261,7 @@ struct fv2_pause
 		// picture, which has four lines and none longer than REMATCH; CHANGE YOUR VIPER ran straight out
 		// through the right edge, and a fifth line out through the bottom. So the height follows the lines
 		// shown and the width follows the longest of them, never under what was measured.
-		const float cap0 = ROW_CAP * mid.h, line_h0 = cap0 / fv2_texte::CAP;
+		const float cap0 = ROW_CAP * mid.h, line_h0 = cap0 / fv2_text::CAP;
 		int n = 0;
 		float longest = 0;
 		for (int i = 0; i < LINES; i++)
@@ -285,7 +285,7 @@ struct fv2_pause
 		SDL_RenderFillRect(ren, &edge);
 
 		// "1P PAUSE" on the bar, in its own ink: the player first, hard against the left, then the word.
-		const float bar_cap = bar * 0.56f, bar_h = bar_cap / fv2_texte::CAP;
+		const float bar_cap = bar * 0.56f, bar_h = bar_cap / fv2_text::CAP;
 		const char *side = over ? "VS" : who ? "2P" : "1P";
 		font->draw(ren, side, x + TEXT_IN * mid.w * 0.5f, y - bar + bar * 0.20f, bar_h, BAR_INK);
 		font->draw(ren, over ? "BATTLE OVER" : "PAUSE", x + w * 0.30f, y - bar + bar * 0.20f, bar_h, BAR_INK);
@@ -294,7 +294,7 @@ struct fv2_pause
 		// that means nothing here is not greyed out, it is absent, and the ones below it move up. August
 		// kept his four in place because all four were his; these differ from mode to mode, and a list with
 		// holes in it reads as a list of things that are broken.
-		const float cap = ROW_CAP * mid.h, line_h = cap / fv2_texte::CAP;
+		const float cap = ROW_CAP * mid.h, line_h = cap / fv2_text::CAP;
 		int row = 0;
 		for (int i = 0; i < LINES; i++) {
 			if (!shows(i)) continue;
@@ -306,7 +306,7 @@ struct fv2_pause
 		}
 
 		// The two hints, split along the bottom as the Dreamcast splits them.
-		const float fh = ROW_CAP * mid.h / fv2_texte::CAP * 0.58f;
+		const float fh = ROW_CAP * mid.h / fv2_text::CAP * 0.58f;
 		font->draw_mid(ren, "USE THE DIRECTION BUTTON TO SELECT", mid.x + FOOT_L * mid.w, mid.y + FOOT_Y * mid.h, fh, PLAIN);
 		font->draw_mid(ren, "USE THE A BUTTON TO DECIDE", mid.x + FOOT_R * mid.w, mid.y + FOOT_Y * mid.h, fh, PLAIN);
 	}

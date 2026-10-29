@@ -1850,8 +1850,8 @@ void Model3::fv2_cut_submode()
 // arcade board jumps straight from SELECT to DECIDE_INT: its two STAGE_SEL states are an EMPTY STUB, one `b`
 // to the dispatcher's exit (0x0000BBB4 -> 0x0000BAD8). Sega kept the name and emptied the body, so there is a
 // sub-state that runs the game's whole frame -- its drawing tasks, its music, its sound board -- and advances
-// nothing. Holding the game there is not a pause: it is the game itself, idling. "L'écran figé n'est donc pas
-// une pause : c'est le jeu lui-même au ralenti" (FV2 - Choix du decor.cmd, August 2026).
+// nothing. Holding the game there is not a pause: it is the game itself, idling. "So the frozen screen is
+// not a pause: it is the game itself running slow" (FV2 - Choix du decor.cmd, August 2026).
 //
 // HELD, and that is NOT the mistake fv2_request_title warns about. A request written once is read once and
 // the game walks on; here the point is that it never walks on, so the request is renewed every frame for as
@@ -1864,7 +1864,7 @@ void Model3::fv2_cut_submode()
 // screen it was on and the sound board goes on playing, because the game never stopped.
 //
 // AND IT REFUSES ANYWHERE BUT THE SELECT SCREEN, which is the fault Frederic found the 2026-10-25 under
-// "change stage ne fonctionne pas". The sub-state is read against the MODE it belongs to: 2 means Sega's
+// "change stage does not work". The sub-state is read against the MODE it belongs to: 2 means Sega's
 // empty STAGE_SEL_INT in SEL, and ROUND_MASK_DSP in GAME. The carousel opened from the pause menu parked
 // the game exactly as it does on the select screen -- and so wrote ROUND_MASK_DSP into a fight, every
 // frame. Mid-match the page freezes the game instead (main.cpp), as the pause menu it was opened from does.

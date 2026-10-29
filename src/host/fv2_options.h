@@ -120,16 +120,16 @@ struct fv2_options
 	// settings AND a short list of doors. Read back from
 	// Documents/SEGA Model 3/Sauvegardes/2026-08-20_23h04/Src/OSD/SDL/Main.cpp (OptionsEntries / OptionLines),
 	// its page was, in this order: the thirteen settings as name and value, then DISPLAY, SOUNDS, CONTROLLER
-	// and STATS -- drawn BOLD AND CENTRED "parce qu'elles mènent quelque part plutôt que de régler quelque
-	// chose" -- then INITIALIZE as a picture. The gaps are its own: half a line before the first door, and 1.2
+	// and STATS -- drawn BOLD AND CENTRED "because they lead somewhere rather than setting something" --
+	// then INITIALIZE as a picture. The gaps are its own: half a line before the first door, and 1.2
 	// before INITIALIZE.
 	//
 	// The Dreamcast's four are SOUNDS, CONTROLLER, RESULT and INITIALIZE. DISPLAY and STATS are the fork's own,
 	// and RESULT is the disc's; we follow August, which is what was asked.
 	//
 	// What is behind each door, honestly: nothing yet, and that is the next piece of work rather than a
-	// pretence. CONTROLLER was title-only in August too -- "LA PAGE CONTROLLER, VIDE POUR L'INSTANT. Demandée
-	// le 2026-08-18 : le titre et rien d'autre" -- so for that one the tree is already complete. DISPLAY held
+	// pretence. CONTROLLER was title-only in August too -- "THE CONTROLLER PAGE, EMPTY FOR NOW. Asked for on
+	// 2026-08-18: the title and nothing else" -- so for that one the tree is already complete. DISPLAY held
 	// WIDESCREEN, HD ART, FPS COUNTER and ENDING; SOUNDS the sound test, the twenty musics, the two volumes and
 	// the pack; STATS the VS DIAGRAM drawn from the backup's counters.
 	//
@@ -163,9 +163,9 @@ struct fv2_options
 	// A line that belongs to THIS PORT rather than to the game: what DISPLAY and SOUNDS are made of. The host
 	// fills these in, because they read and write its own settings and this file has no business knowing them.
 	//
-	// A line whose `step` is null is DRAWN AND STEPPED OVER, which is August's own idiom and its reason: "une
-	// ligne avec rien a basculer est enjambee plutot que retiree : une page dont les lignes glissent de haut en
-	// bas selon ce qui est la serait mal lue d'un coup d'oeil". That is how the lines this port cannot do yet
+	// A line whose `step` is null is DRAWN AND STEPPED OVER, which is August's own idiom and its reason: "a
+	// line with nothing to toggle is stepped over rather than taken away: a page whose lines slide up and down
+	// with what is there would read badly at a glance". That is how the lines this port cannot do yet
 	// keep their place without pretending.
 	struct own_line {
 		std::string name;
@@ -244,13 +244,13 @@ struct fv2_options
 	std::function<void(int)> pad_cycle;         // the next pad for that column
 	std::function<void(int)> ctl_defaults;      // that column's controls as they were
 	std::function<void()> ctl_swap;             // the two columns' pads exchanged
-	fv2_texte *font = nullptr;   // the sheet, loaded once by the host and shared
+	fv2_text *font = nullptr;   // the sheet, loaded once by the host and shared
 
 	// The backdrop is authored 16:9 with the 4:3 picture inset in it and flat purple outside; only the inset is
 	// drawn. Its bounds were measured on the file: the purple runs to x 447 and from x 3183.
 	static constexpr int BG_W = 3630, BG_H = 2048, BG_L = 447, BG_R = 3183;
 
-	bool load(SDL_Renderer *ren, const std::string &assets, fv2_texte *sheet, FILE *log)
+	bool load(SDL_Renderer *ren, const std::string &assets, fv2_text *sheet, FILE *log)
 	{
 		if (tried) return ready;
 		tried = true;
@@ -508,7 +508,7 @@ struct fv2_options
 	}
 
 private:
-	float foot_cell(const SDL_FRect &mid) const { return ROW_CAP * mid.h / fv2_texte::CAP * 0.62f; }
+	float foot_cell(const SDL_FRect &mid) const { return ROW_CAP * mid.h / fv2_text::CAP * 0.62f; }
 
 	// ---- STATS: the VS DIAGRAM, drawn rather than the game's own screen opened ----
 	//
@@ -628,8 +628,8 @@ private:
 	// ---- STATS: the whole diagram, and a page for the character the cursor is on ----
 	//
 	// Up and down move over the fourteen, A opens that one's page and B comes back to the diagram; on the
-	// page itself NOTHING answers the stick, which is August's own rule and his reason: "le bandeau dit
-	// cette ligne est choisie ; la ou aucune ligne ne peut l'etre il dit quelque chose de faux". The band
+	// page itself NOTHING answers the stick, which is August's own rule and his reason: "the band says this
+	// line is the chosen one; where no line can be, it says something false". The band
 	// keeps blinking on the row the page came from, which is the row B falls back onto.
 	int stats_event(const SDL_Event &e, const player_controls ctl[2])
 	{
@@ -716,7 +716,7 @@ private:
 			return off + 1 < board.backup.size() ? uint32_t(board.backup[off]) << 8 | board.backup[off + 1] : 0;
 		};
 		const float cw = VSC_W * tw, rh = VSC_H * th;
-		const float h = rh * 0.62f / fv2_texte::CAP;
+		const float h = rh * 0.62f / fv2_text::CAP;
 		// Black on this one, where the whole diagram is white: these cells are white and those are dark.
 		// The colour belongs to the picture, not to a rule in the drawing code.
 		const SDL_Color ink = { 20, 20, 30, 255 };
@@ -769,7 +769,7 @@ private:
 		const float gl = dst.x + VS_L * tw, gr = dst.x + VS_R * tw;
 		const float gt = dst.y + VS_T * th, gb = dst.y + VS_B * th;
 		const float cw = (gr - gl) / VS_COLS, rh = (gb - gt) / VS_ROWS;
-		const float h = rh * 0.62f / fv2_texte::CAP;
+		const float h = rh * 0.62f / fv2_text::CAP;
 		vs_row total = { 0, 0, 0, 0, 0, 0, 0, 0 };
 		for (int r = 0; r < VS_ROWS; r++) {
 			const vs_row v = read_vs(board, r);
@@ -794,7 +794,7 @@ private:
 	}
 
 	// All eight columns carry a figure now. SKO 1 and SKO 2 were blank while nobody could say where they
-	// lived -- August's own list of loose ends had them "affichés à zéro sans qu'on sache où ils vivent" --
+	// lived -- August's own list of loose ends had them "shown at zero with nobody knowing where they live" --
 	// and a played Super K.O. answered it (above).
 	void draw_vs_row(SDL_Renderer *ren, const vs_row &v, float gl, float y, float cw, float rh, float h,
 					 SDL_Color col)
@@ -1001,8 +1001,8 @@ private:
 			return -1;
 		}
 		if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
-			// A PAD STANDS ON ITS OWN PLAYER'S COLUMN AND CANNOT LEAVE IT. Frederic, the 2026-10-25: "1P ne
-			// doit pouvoir modifier que 1P, et 2P que 2P". So a press on a known pad moves the cursor to
+			// A PAD STANDS ON ITS OWN PLAYER'S COLUMN AND CANNOT LEAVE IT. Frederic, the 2026-10-25: "1P must
+			// only be able to change 1P, and 2P only 2P". So a press on a known pad moves the cursor to
 			// that player's column before anything else, and left and right do nothing from a pad -- there
 			// is nowhere for it to go. The KEYBOARD keeps them: it belongs to neither player, and without
 			// them a player with no pad could never reach the other column at all.
@@ -1056,7 +1056,7 @@ private:
 		const int player = ctl_testing;
 		const uint8_t v = live[size_t(player)];
 		const float cap = ROW_CAP * mid.h;
-		const float h = cap / fv2_texte::CAP;
+		const float h = cap / fv2_text::CAP;
 
 		char who[8];
 		snprintf(who, sizeof who, "%dP", player + 1);
@@ -1095,7 +1095,7 @@ private:
 	{
 		if (ctl_testing >= 0) { render_mirror(ren, mid); return; }
 		const float cap = ROW_CAP * mid.h * 0.78f;
-		const float h = cap / fv2_texte::CAP;
+		const float h = cap / fv2_text::CAP;
 		float slots = 0;
 		for (int r = 0; r < CTL_ROWS; r++) slots += (r ? 1.0f : 0.0f) + ctl_gap(r);
 		const float band = (CTL_BOTTOM - CTL_TOP) * mid.h;
@@ -1115,7 +1115,7 @@ private:
 			ink += (r ? pitch : 0.0f) + ctl_gap(r) * pitch;
 			const float y = ink;
 			if (r == ctl_row)
-				rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_texte::CELL + 0.12f), h, 0.145f, 0.805f);
+				rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_text::CELL + 0.12f), h, 0.145f, 0.805f);
 			// The TEST line binds nothing: it carries no name of its own and says TEST under each column.
 			if (r == CTL_TEST) {
 				for (int c = 0; c < 2; c++)
@@ -1166,7 +1166,7 @@ private:
 	// that pretended to hold something would be worse than one that says it is empty.
 	void render_child(SDL_Renderer *ren, const SDL_FRect &mid)
 	{
-		const float h = ROW_CAP * mid.h / fv2_texte::CAP;
+		const float h = ROW_CAP * mid.h / fv2_text::CAP;
 		static const char *const SOON[SCR_COUNT] = {
 			"", "", "WIDESCREEN, HD ART, FPS COUNTER, ENDING", "SOUND TEST, MUSIC, VOLUMES, PACK",
 			"", "THE VS DIAGRAM",
@@ -1178,8 +1178,8 @@ private:
 	// A screen that has lines: OPTIONS' five doors, or GAME ASSIGNMENTS' thirteen settings and its button.
 	//
 	// A PAGE TOO LONG LOOKS FOR ROOM BEFORE IT SHRINKS, which is August's rule and was paid for there: raise
-	// the band first and only then let the text give, "sinon toute augmentation de la police était annulée par
-	// le resserrement -- deux effets qui s'annulent exactement, et une correction qui semble ne rien faire".
+	// the band first and only then let the text give, "otherwise every increase of the font was cancelled by
+	// the tightening -- two effects that cancel exactly, and a correction that seems to do nothing".
 	// So the band is the room available, the pitch is as much of it as the lines want up to the Dreamcast's
 	// own, and the cap follows the pitch, never past the disc's. A SHORT PAGE DOES NOT STRETCH: it keeps the
 	// disc's pitch and sits in the middle of the band, which is why both screens read as the same menu.
@@ -1191,44 +1191,44 @@ private:
 		const float band = (ROWS_BOTTOM - ROWS_TOP) * mid.h;
 		const float pitch = std::min(DISC_PITCH * mid.h, band / (slots > 0 ? slots : 1));
 		const float cap = std::min(ROW_CAP * mid.h, pitch * 0.50f);
-		const float h = cap / fv2_texte::CAP;
+		const float h = cap / fv2_text::CAP;
 
 		float ink_top = mid.y + ROWS_TOP * mid.h + (band - pitch * slots) * 0.5f;
 		for (size_t i = 0; i < P.size(); i++) {
 			const line &l = P[i];
 			ink_top += (i ? pitch : 0) + l.gap * pitch;
-			const float y = ink_top - fv2_texte::CAP_TOP * h;   // the cell's top, the ink starting at 16/64
+			const float y = ink_top - fv2_text::CAP_TOP * h;   // the cell's top, the ink starting at 16/64
 			const bool on = int(i) == sel();
 			if (l.what == line::BUTTON) {
 				button_at(ren, mid, ink_top, cap, h, on);
 				continue;
 			}
 			// the rule's line just under the capitals, which end at (16 + 31) / 64 of the cell
-			if (on) rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_texte::CELL + 0.24f), h);
+			if (on) rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_text::CELL + 0.24f), h);
 			if (l.what == line::DOOR) {
-				// The doors are drawn BOLD AND CENTRED, as August drew them, "parce qu'elles mènent quelque
-				// part plutôt que de régler quelque chose". Bold here is the title's own thickening, without
+				// The doors are drawn BOLD AND CENTRED, as August drew them, "because they lead somewhere
+				// rather than setting something". Bold here is the title's own thickening, without
 				// the condensing: the sheet has one weight and this is how it gets another.
-				const float w = font->width(screen_name(l.which), h, 1.0f, fv2_texte::THICK);
+				const float w = font->width(screen_name(l.which), h, 1.0f, fv2_text::THICK);
 				font->draw(ren, screen_name(l.which), mid.x + mid.w * 0.5f - w * 0.5f, y, h,
-						   on ? CHOSEN : PLAIN, 255, fv2_texte::SLANT, 1.0f, fv2_texte::THICK);
+						   on ? CHOSEN : PLAIN, 255, fv2_text::SLANT, 1.0f, fv2_text::THICK);
 				continue;
 			}
 			if (l.what == line::OWN) {
 				const own_line &o = own[at][size_t(l.which)];
 				const SDL_Color col = on ? CHOSEN : ((o.step || o.act) ? PLAIN : MUTED);
 				if (o.as_button) { button_at(ren, mid, ink_top, cap, h, on); continue; }
-				font->draw(ren, o.name.c_str(), mid.x + LABEL_X * mid.w, y, h, col, 255, fv2_texte::SLANT);
+				font->draw(ren, o.name.c_str(), mid.x + LABEL_X * mid.w, y, h, col, 255, fv2_text::SLANT);
 				if (o.lit && o.total > 0) gauge(ren, mid, y, h, o.lit(), o.total);
 				else if (o.text) font->draw_mid(ren, o.text().c_str(), mid.x + VALUE_MID * mid.w, y, h, col,
-												255, fv2_texte::SLANT);
+												255, fv2_text::SLANT);
 				continue;
 			}
 			const size_t k = size_t(l.which);
 			const SDL_Color col = on ? CHOSEN : (read_only(k) ? MUTED : PLAIN);
-			font->draw(ren, table()[k].name, mid.x + LABEL_X * mid.w, y, h, col, 255, fv2_texte::SLANT);
+			font->draw(ren, table()[k].name, mid.x + LABEL_X * mid.w, y, h, col, 255, fv2_text::SLANT);
 			font->draw_mid(ren, value_text(board, k).c_str(), mid.x + VALUE_MID * mid.w, y, h, col, 255,
-						   fv2_texte::SLANT);
+						   fv2_text::SLANT);
 		}
 	}
 
