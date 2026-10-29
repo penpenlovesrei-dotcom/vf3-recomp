@@ -3604,7 +3604,11 @@ int main(int argc, char **argv)
 				std::string t = std::to_string(want) + "X";
 				if (gov.scale_cut) t += " (" + std::to_string(scale) + "X NOW)";
 				return t;
-			  }, [&](int d) { set_scale(chosen_scale() + d); }, {}, {}, 0, false, 0.32f },
+			// AND NO GAP BEFORE IT ANY MORE. It had one, to set the lines this page gained the 2026-10-27
+			// apart from the three it was born with -- a distinction that is the port's history and not the
+			// player's. Frederic read it as a fault the 2026-10-29, which is what it had become: one line
+			// standing a third of a line lower than every other, meaning nothing.
+			  }, [&](int d) { set_scale(chosen_scale() + d); }, {}, {}, 0, false, 0 },
 			{ "ANTIALIASING", [&] {
 				const int k = aa_now();
 				std::string t = cfg.aa > 1 ? std::to_string(cfg.aa) + "X" : std::string("OFF");
@@ -3641,7 +3645,7 @@ int main(int argc, char **argv)
 			// coming: no step and no act, so the cursor passes it by and it is painted grey, exactly as
 			// COUNTRY is. The shadows and the lighting are being worked on in another session; the line is
 			// here so the page does not move under the player's eye on the day they land.
-			{ "ENHANCED SHADOWS", [&] { return std::string("NO"); }, {}, {}, {}, 0, false, 0 },
+			{ "ENHANCED SHADOWS", [&] { return std::string("OFF"); }, {}, {}, {}, 0, false, 0 },
 			{ "SMOOTH MOTION", [&] {
 				return std::string(cfg.smooth ? "ON" : "OFF") + (cfg.smooth && gov.smooth_off ? " (60 NOW)" : "");
 			  }, [&](int) { cfg.smooth = !cfg.smooth; cfg_dirty = true; gov_fresh(); }, {}, {}, 0, false, 0 },
