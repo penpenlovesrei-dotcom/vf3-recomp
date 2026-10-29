@@ -1,122 +1,119 @@
-# Prompt de reprise — Fighting Vipers 2, menu console, session du 2026-10-20
+# Resumption prompt — Fighting Vipers 2, the console menu, session of 2026-10-20
 
-Colle ce texte au début d'une nouvelle session.
+Paste this text at the beginning of a new session.
 
 ---
 
-## Le contexte
+## The context
 
-`C:\Users\frede\Desktop\fv2-recomp` — portage de jeux Sega Model 3 (Virtua Fighter 3 Step 1.0, **Fighting
-Vipers 2** Step 2.0), dérivé de `mr-finster/vf3-recomp`. Le programme PowerPC est recompilé (SLJIT) avec un
-interpréteur en repli ; la carte, le Real3D, le 68000/SCSP et l'hôte SDL3 sont le code propre du projet.
-**Réponds en français.**
+`C:\Users\frede\Desktop\fv2-recomp` — a port of Sega Model 3 games (Virtua Fighter 3 Step 1.0, **Fighting
+Vipers 2** Step 2.0), derived from `mr-finster/vf3-recomp`. The PowerPC program is recompiled (SLJIT) with an
+interpreter to fall back on; the board, the Real3D, the 68000/SCSP and the SDL3 host are the project's own
+code. **Answer in French.**
 
-Branche `fv2`, 36 commits devant `mine/fv2`, rien de poussé depuis le tag `fv2-v0.2.0-alpha`.
+Branch `fv2`, 36 commits ahead of `mine/fv2`, nothing pushed since the tag `fv2-v0.2.0-alpha`.
 
-**Lis `REPRISE.md` à la racine avant tout.** Il porte l'état complet, le journal du jour, et où sont les
-sources d'origine. Les documents du chantier sont dans `docs/` ; les trois qui comptent pour la suite sont
-`fv2-etats.md`, `fv2-menu-console-inventaire.md` et `fv2-console.md`.
+**Read `REPRISE.md` at the root before anything else.** It carries the complete state, the day's journal, and
+where the original sources are. The project's documents are in `docs/`; the three that count for what follows
+are `fv2-etats.md`, `fv2-menu-console-inventaire.md` and `fv2-console.md`.
 
-## Ce qui est demandé
+## What is asked for
 
-Une seule touche, deux comportements :
+One key, two behaviours:
 
-- **ailleurs qu'à l'écran titre** → Start ramène le jeu à son écran titre ;
-- **à l'écran titre** → Start ouvre le sous-menu, la liste des sept modes (ARCADE, V.S., RANDOM, SURVIVAL,
-  NETWORK, TRAINING, OPTIONS) ;
-- dans les deux cas Start est **retenu**, le jeu ne le voit pas.
+- **anywhere but the title screen** → Start brings the game back to its title screen;
+- **on the title screen** → Start opens the sub-menu, the list of the seven modes (ARCADE, V.S., RANDOM,
+  SURVIVAL, NETWORK, TRAINING, OPTIONS);
+- in both cases Start is **withheld**, the game does not see it.
 
-Le menu de la touche Échap peut rester où il est.
+The Escape key menu can stay where it is.
 
-## Ce qui est déjà posé et qui ne sert encore à rien
+## What is already in place and is of no use yet
 
-`src/machine/model3.h` : `fv2_mode()`, `fv2_submode()`, `fv2_on_title()`, `fv2_request_title()`.
-`tools/vf3run.cpp` : `--modes`, le journal des états sous les noms de Sega.
+`src/machine/model3.h`: `fv2_mode()`, `fv2_submode()`, `fv2_on_title()`, `fv2_request_title()`.
+`tools/vf3run.cpp`: `--modes`, the log of the states under Sega's names.
 
 ```
 MODE_MAIN 0x0058FD98   MODE_SUB 0x0058FD99   MODE_REQUEST 0x0058FD9A   SUBMODE_REQUEST 0x0058FD9B
 ```
 
-Écran titre = mode `ADV` (2 ou 3) et sous-état 4 ou 5. Y aller depuis l'attraction =
-`MODE_REQUEST = 3`, `SUBMODE_REQUEST = 4`, **écrit une fois, jamais tenu**, deux images. Depuis un combat ces
-leviers ne commandent rien : il faut d'abord sortir de la partie par la route du jeu (`docs/fv2-etats.md`).
+Title screen = mode `ADV` (2 or 3) and sub-state 4 or 5. Getting there from the attract =
+`MODE_REQUEST = 3`, `SUBMODE_REQUEST = 4`, **written once, never held**, two frames. From a fight those
+levers command nothing: the game has to be left first by the game's own road (`docs/fv2-etats.md`).
 
-## La faute à ne pas refaire, commise DEUX fois le 20/10
+## The mistake not to repeat, made TWICE on 20/10
 
-**Le menu console n'est pas une page du menu de la touche Échap.** `menu.open(console_page())` ouvre le widget
-RmlUi des réglages de ce portage : quoi qu'on y mette, c'est le menu Échap qui s'affiche. Frédéric l'a rejeté
-deux fois dans la même journée.
+**The console menu is not a page of the Escape key menu.** `menu.open(console_page())` opens this port's
+settings RmlUi widget: whatever is put in it, it is the Escape menu that appears. Frédéric rejected it twice
+in the same day.
 
-La liste des modes doit être **une surface à elle**, dessinée par-dessus l'image du jeu, sur l'écran titre
-d'origine — pas sur une illustration qui le recouvre, pas dans le menu de réglages.
+The list of modes must be **a surface of its own**, drawn over the game's picture, on the original title
+screen — not on artwork that covers it, not in the settings menu.
 
-Et la vérification doit porter sur ce qui est en cause : constater que le jeu gèle ne distingue pas les deux
-menus, puisque les deux gèlent le jeu.
+And the verification must bear on what is in question: noting that the game freezes does not tell the two
+menus apart, since both of them freeze the game.
 
-## Les images
+## The pictures
 
-`assets/menu-console/`, 45 fichiers, **hors dépôt** (`.gitignore`). `title_list.png` est la liste des sept
-modes, 709 x 897 RGBA ; ses bandes, l'encre de chaque ligne et son placement sur l'écran titre sont relevés
-dans `docs/fv2-etats.md`. **Une seule version de chaque ligne existe** : aucun fichier n'est une variante
-« sélectionnée », donc la ligne choisie devra être marquée autrement.
+`assets/menu-console/`, 45 files, **outside the repository** (`.gitignore`). `title_list.png` is the list of
+the seven modes, 709 x 897 RGBA; its bands, each line's ink and its placement on the title screen are
+measured in `docs/fv2-etats.md`. **Only one version of each line exists**: no file is a "selected" variant, so
+the chosen line will have to be marked some other way.
 
-## Les règles de travail, non négociables
+## The working rules, non-negotiable
 
-- **Aucune prédiction.** Tout se lit dans le code ou se mesure. S'il faut décompiler, on décompile.
-- **Le code dit ce qui PEUT arriver, la mesure dit lequel est arrivé.**
-- **Montrer toutes les captures, sans verdict.** C'est Frédéric qui tranche.
-- **Toujours un lanceur `.cmd`**, jamais une ligne de commande à recopier.
-- **Ne jamais filtrer la sortie de compilation.**
-- **Ajouter à côté, ne jamais remplacer ce qui marche.** Lire avant d'écrire.
-- **Aucun binaire de Sega, aucune ROM, aucune image tirée du jeu dans le dépôt.**
-- **Ne rien reprendre du code de Supermodel ni de MAME** — ils sont sous GPL. Les adresses et les mesures sont
-  des faits sur le jeu, pas du code.
-- **Pousser sur `mine` uniquement**, jamais sur `origin` (l'amont de `mr-finster`).
-- **Rien n'est livré sans `verifier-vf3.cmd`** : cinq contrôles IDENTIQUE et 2231 images en pas à pas.
-- Réponses courtes. Dire ce qui est **mesuré** et ce qui ne l'est pas.
+- **No prediction.** Everything is read in the code or measured. If decompiling is needed, decompile.
+- **The code says what CAN happen, the measurement says which one did.**
+- **Show every capture, with no verdict.** Frédéric is the one who decides.
+- **Always a `.cmd` launcher**, never a command line to copy out.
+- **Never filter the build's output.**
+- **Add alongside, never replace what works.** Read before writing.
+- **No Sega binary, no ROM, no picture taken from the game in the repository.**
+- **Take nothing from Supermodel's code nor from MAME's** — they are under the GPL. The addresses and the
+  measurements are facts about the game, not code.
+- **Push to `mine` only**, never to `origin` (`mr-finster`'s upstream).
+- **Nothing is delivered without `verifier-vf3.cmd`**: five IDENTICAL checks and 2231 frames step by step.
+- Short answers. Say what is **measured** and what is not.
 
-## Les pièges, payés
+## The traps, paid for
 
-1. **Une seule image de la RAM qui diffère de l'instruction d'où son code natif a été bâti éteint le
-   recompilateur EN ENTIER.** Les correctifs arrivent avant `rebuild_from_ram_if_stale()`, ou provoquent une
-   reconstruction.
-2. **Le programme de FV2 est un gzip à l'offset 0 de la CROM**, déplié en RAM 0 par l'amorce. Tous les
-   correctifs sont des correctifs de RAM, et chacun relit avant d'écrire.
-3. **`board.ram` garde les mots de 32 bits dans l'ordre de l'hôte** : l'octet d'adresse A est à l'indice
-   `A ^ 3`.
-4. **`tools/vf3run` ne charge JAMAIS la NVRAM.** Aucun réglage d'exploitant ne peut s'y prouver.
-5. **`vf3run` ne rend l'image que sur les marques `shot` d'un script** (et `--hd-dump`).
-6. **Tenir une demande de mode casse le jeu** — l'écran de sélection et son chrono, deux fois. Une demande
-   s'écrit une fois.
-7. **Les heredocs bash mangent les apostrophes et les échappements** : écrire les fichiers avec l'outil Write.
-8. **Les fichiers du dépôt sont en CRLF** : un script d'insertion qui cherche `\n` ne trouve rien.
-9. **Le lien échoue en « Permission denied »** si le jeu ou le vérificateur tourne encore.
-10. **Une taille de PNG identique ne prouve rien**, et deux empreintes différentes non plus. Il faut regarder
-    l'image.
+1. **A single frame of RAM differing from the instruction its native code was built from switches the
+   recompiler off ENTIRELY.** Patches arrive before `rebuild_from_ram_if_stale()`, or force a rebuild.
+2. **FV2's program is a gzip at offset 0 of the CROM**, unpacked into RAM 0 by the boot. Every patch is a RAM
+   patch, and each one reads before writing.
+3. **`board.ram` keeps the 32-bit words in the host's order**: the byte at address A is at index `A ^ 3`.
+4. **`tools/vf3run` NEVER loads the NVRAM.** No operator setting can be proved with it.
+5. **`vf3run` only renders the picture on a script's `shot` marks** (and `--hd-dump`).
+6. **Holding a mode request breaks the game** — the select screen and its clock, twice. A request is written
+   once.
+7. **Bash heredocs eat apostrophes and escapes**: write the files with the Write tool.
+8. **The repository's files are CRLF**: an insertion script looking for `\n` finds nothing.
+9. **Linking fails with "Permission denied"** if the game or the verifier is still running.
+10. **An identical PNG size proves nothing**, and two different footprints prove nothing either. The picture
+    has to be looked at.
 
-## Les sources d'origine, hors dépôt
+## The original sources, outside the repository
 
 ```
-Documents\SEGA Model 3\SupermodelSrc\Docs\MenuConsole.md    3689 lignes -- TOUT le relevé sur la ROM
-Documents\SEGA Model 3\SupermodelSrc\Src\Menu\GameFV2.h     les adresses et la géométrie
-Documents\SEGA Model 3\ROMs\fvipers2.zip                    la ROM
+Documents\SEGA Model 3\SupermodelSrc\Docs\MenuConsole.md    3689 lines -- ALL the measurements on the ROM
+Documents\SEGA Model 3\SupermodelSrc\Src\Menu\GameFV2.h     the addresses and the geometry
+Documents\SEGA Model 3\ROMs\fvipers2.zip                    the ROM
 ```
 
-`grep -n "^#" MenuConsole.md` donne sa table des matières. §6 (savoir où en est le jeu), §6 bis (sortir d'un
-combat), §6 quater (les états nommés par Sega), §6 sexies (le menu sur le vrai écran titre), §13 (les pages du
-menu et leur géométrie).
+`grep -n "^#" MenuConsole.md` gives its table of contents. §6 (knowing where the game has got to), §6 bis
+(leaving a fight), §6 quater (the states named by Sega), §6 sexies (the menu on the real title screen), §13
+(the menu's pages and their geometry).
 
-## Ce qui reste ouvert
+## What remains open
 
-- **Le second joueur n'a jamais été introduit** (`0x0058145A == 3`). Trou de banc d'essai, pas de
-  connaissance. Le fermer servirait la boucle Versus et la vraie condition de déblocage de Honey.
-- La fin, l'entrée du nom, le classement et le Super K.O. : nommés, jamais atteints.
-- Ce qui *décide* de reconstruire un combattant (`0x00060288`) : inconnu. Ce qui le *commande* est connu et
-  employé.
-- Les branches de Survival n'ont jamais été regardées tourner.
+- **The second player has never been got in** (`0x0058145A == 3`). A test-harness gap, not a knowledge one.
+  Closing it would serve the Versus loop and the real condition for unlocking Honey.
+- The ending, the name entry, the ranking and the Super K.O.: named, never reached.
+- What *decides* to rebuild a fighter (`0x00060288`): unknown. What *commands* it is known and used.
+- Survival's branches have never been watched running.
 
-## Par où commencer
+## Where to start
 
-1. Lire `REPRISE.md`, puis `docs/fv2-etats.md`.
-2. Brancher Start sur les deux chemins — `fv2_on_title()` décide lequel.
-3. La surface : `title_list.png` par-dessus l'image du jeu. C'est la seule pièce sans antériorité à reprendre.
+1. Read `REPRISE.md`, then `docs/fv2-etats.md`.
+2. Wire Start to the two paths — `fv2_on_title()` decides which.
+3. The surface: `title_list.png` over the game's picture. It is the one piece with no earlier work to take up.
