@@ -2407,8 +2407,13 @@ int main(int argc, char **argv)
 				// never changes; Frederic asked for it gone the 2026-10-25. Nothing of the game is touched --
 				// the middle slice of the top band, which is the timer's own field and nothing else, is simply
 				// not drawn. Only during a fight, or the select screen would lose a strip of itself.
-				hud_hide_mid = mine && cplay.training_on;
 				const int gsub = board.fv2_submode();
+				// AND ONLY WHERE THERE IS A CLOCK TO HIDE. It was every frame of GAME, which includes the four
+				// ROUND_MASK sub-states -- the screen that says STAGE n while the arena loads. The HUD is not
+				// drawn there; the top band carries the banner. So the slice went undrawn over a picture that
+				// had something else in it, and what showed through was a grey rectangle the shape of the
+				// timer's field, which Frederic photographed the 2026-10-29. The HUD begins at ROUND (4).
+				hud_hide_mid = mine && cplay.training_on && gsub >= 4;
 				hud_wide_mid = mine && gsub >= 4 && gsub <= 10;
 			}
 			// VF3_HUD_AUDIT=1: WHERE THE 2D ACTUALLY IS, row band by row band and column run by column run.
