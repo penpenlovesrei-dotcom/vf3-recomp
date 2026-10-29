@@ -1655,10 +1655,17 @@ int main(int argc, char **argv)
 	// window that neither draws nor reads its events for forty seconds is one Windows paints over with
 	// "not responding". Each call pumps the events and puts the picture back.
 	SDL_Surface *splash_art = hidden ? nullptr : SDL_LoadPNG((find_assets() + "/menu-console/loading.png").c_str());
+	// CLOSING THE WINDOW WHILE IT LOADS CLOSES THE GAME. It has to: the loading screen is the first window
+	// this port ever showed before the game was ready, and a window that swallows the cross is one the player
+	// ends through the task manager -- which, landing in the second where the GPU renderer is starting, leaves
+	// gpu-start.crashed behind and costs them the GPU for every run after that (ten pictures a second instead
+	// of three hundred). Frederic, the 2026-10-29: "le jeu tourne a 12fps".
+	bool quit_while_loading = false;
 	auto splash = [&] {
 		if (!splash_art) return;
 		SDL_Event e;
-		while (SDL_PollEvent(&e)) {}   // (the window answers while the game loads; nothing is acted on yet)
+		while (SDL_PollEvent(&e))
+			if (e.type == SDL_EVENT_QUIT || e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) quit_while_loading = true;
 		SDL_Surface *face = SDL_GetWindowSurface(win);
 		if (!face) return;
 		// IT SAYS WHAT IT IS DRAWING ON, and again whenever that changes. The picture is 3630 by 2048 and
@@ -1701,6 +1708,7 @@ int main(int argc, char **argv)
 	// the window's name is the game's, now that there is one
 	game_name = game.board.title.empty() ? std::string("Virtua Fighter 3") : game.board.title;
 	SDL_SetWindowTitle(win, game_name.c_str());
+	splash();   // (the load is the long silence: the picture back, and the cross answered)
 	{
 	}
 	m3::Model3 &board = game.board;
@@ -1890,7 +1898,7 @@ int main(int argc, char **argv)
 			game.audio.clear();
 			game_frame++;
 			// the loading screen stays up and stays answering: this loop is most of the wait
-			if (game_frame % 60 == 0) splash();
+			if (game_frame % 60 == 0) { splash(); if (quit_while_loading) return; }
 		}
 		game.tiles_on = true;
 		game.rebuilt_after_boot = true;
@@ -1900,6 +1908,10 @@ int main(int argc, char **argv)
 				std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
 	};
 	boot();
+	if (quit_while_loading) {
+		fprintf(stderr, "closed while it was loading: nothing was started\n");
+		return 0;
+	}
 
 	// The 3D on the GPU (Display > 3D renderer: Auto or GPU, or VF3_3D=cpu|gpu|auto): SDL's "gpu" renderer
 	// (Vulkan, Direct3D 12 or Metal), whose device the 3D shares, its pictures the renderer's textures. Else, or if
