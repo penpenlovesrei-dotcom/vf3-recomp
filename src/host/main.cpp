@@ -3759,6 +3759,21 @@ int main(int argc, char **argv)
 #endif
 			{ "FULLSCREEN", [&] { return std::string(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN ? "ON" : "OFF"); },
 			  [&](int) { set_fullscreen(!(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN)); }, {}, {}, 0, false, 0 },
+			// PLAY STYLE LIVES HERE NOW. Frederic, the 2026-10-29: "PLAY STYLE vers DISPLAY". It is the
+			// one line of the port's own that can take this menu away -- chosen as PC or ARCADE, the console
+			// way goes out and with it the list, this tree, the pause menu and the carousel -- and the game
+			// restarts on the spot, which is the only honest way to change it.
+			{ "PLAY STYLE", [&] { return std::string(cfg.arcade ? "ARCADE" : cfg.console ? "CONSOLE" : "PC"); },
+			  [&](int d) { switch_play_style(d); }, {}, {}, 0, false, 0 },
+		};
+
+		// ---- GAME ASSIGNMENTS carries ONE line of the port's own, under the game's thirteen ----
+		//
+		// Frederic, the 2026-10-29: "deplace le ending Dreamcast/arcade vers GAME ASSIGNEMENTS". It sat on
+		// DISPLAY, which is where the shape of the picture is set; what ending a finished ladder plays is
+		// an assignment of the game, beside FREE PLAY and the difficulty, and it reads as one there.
+		// INITIALIZE still ends the page: build_pages pushes the button after this port's own lines.
+		options.own[fv2_options::SCR_SETTINGS] = {
 			// August's ENDING switched the fork's own illustrations over the replays, and nothing of those
 			// exists here. But the GAME has an ending -- the staff roll, mode 12 -- which no one had ever
 			// seen running, because reaching it means finishing the ladder and the notes have it among the
@@ -3875,19 +3890,16 @@ int main(int argc, char **argv)
 				  game.sound.set_volumes(1.0f, 1.0f);
 			  }, {}, 0, true, 1.2f },
 		};
-		// ---- GAME: the port's own page, and the three lines of its own menu that belong in a console's ----
+		// ---- GAME: what is left of the port's own page, and it is on its way out ----
 		//
-		// PLAY STYLE is the one line here that can take this menu away: chosen as PC or ARCADE, the console
-		// way goes out and with it the list, this tree, the pause menu and the carousel. That is what it is
-		// for, and the game restarts on the spot as it does from the port's own menu, which is the only
-		// honest way to change it.
+		// PLAY STYLE went to DISPLAY and ENDING to GAME ASSIGNMENTS the 2026-10-29, which leaves two buttons
+		// that are not settings at all. Frederic, the same day: "ligne et page GAME a supprimer par la suite".
+		// It stands until then rather than being emptied in two steps.
 		options.own[fv2_options::SCR_GAME] = {
-			{ "PLAY STYLE", [&] { return std::string(cfg.arcade ? "ARCADE" : cfg.console ? "CONSOLE" : "PC"); },
-			  [&](int d) { switch_play_style(d); }, {}, {}, 0, false, 0 },
 			// AND THE PAGE GOES WITH THE RESET. A game restarted under an open page would come back with the
 			// tree still in front of it and the state still saying the game is held -- the port's own menu
 			// closes itself for the same reason (reset_game calls menu.close).
-			{ "RESET GAME", {}, {}, [&] { enter(cstate::PLAY, "RESET GAME"); reset_game(); }, {}, 0, true, 1.2f },
+			{ "RESET GAME", {}, {}, [&] { enter(cstate::PLAY, "RESET GAME"); reset_game(); }, {}, 0, true, 0 },
 			{ "QUIT", {}, {}, [&] { running = false; }, {}, 0, true, 0.32f },
 		};
 		options.ctl = cfg.ctl;   // CONTROLLER reads the bindings and writes them

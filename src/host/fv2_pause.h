@@ -305,10 +305,9 @@ struct fv2_pause
 			font->draw(ren, name(i), x + TEXT_IN * mid.w, ly, line_h, col);
 		}
 
-		// The two hints, split along the bottom as the Dreamcast splits them.
-		const float fh = ROW_CAP * mid.h / fv2_text::CAP * 0.58f;
-		font->draw_mid(ren, "USE THE DIRECTION BUTTON TO SELECT", mid.x + FOOT_L * mid.w, mid.y + FOOT_Y * mid.h, fh, PLAIN);
-		font->draw_mid(ren, "USE THE A BUTTON TO DECIDE", mid.x + FOOT_R * mid.w, mid.y + FOOT_Y * mid.h, fh, PLAIN);
+		// THE TWO HINTS ARE GONE. The Dreamcast splits them along the bottom of its own menus and this one
+		// followed; Frederic, the 2026-10-29: "enleve ce texte en bas d'ecran sur tous les ecrans qui le
+		// propose". A player holding the pad that opened this menu knows which button decides.
 	}
 
 private:

@@ -92,6 +92,10 @@ struct fv2_options
 
 	// the geometry, in fractions of the game's 4:3 picture (above)
 	static constexpr float TITLE_TOP = 0.0996f, TITLE_CAP = 0.0442f;
+	// The doors of the OPTIONS page are the title's own lettering, a little smaller: 78 % of its capitals,
+	// which is above the settings' 0.0292 and below the title, so the page reads as one hand's work.
+	// Frederic, the 2026-10-29: "utilise la meme police que le titre OPTIONS en un peu plus petit".
+	static constexpr float DOOR_CAP = TITLE_CAP * 0.78f;
 	static constexpr float LABEL_X = 0.3136f, VALUE_MID = 0.665f;
 	static constexpr float RULE_L = 0.2913f, RULE_R = 0.7295f;
 	static constexpr float ROW_CAP = 0.0292f;
@@ -194,10 +198,13 @@ struct fv2_options
 			{ line::DOOR, SCR_GAME, 0 }, { line::DOOR, SCR_CONTROLLER, 0 }, { line::DOOR, SCR_STATS, 0 },
 		};
 		for (int i = 0; i < int(table().size()); i++) built[SCR_SETTINGS].push_back({ line::SETTING, i, 0 });
-		built[SCR_SETTINGS].push_back({ line::BUTTON, 0, 1.2f });   // August's own gap before the button
 		for (int s = 0; s < SCR_COUNT; s++)
 			for (int i = 0; i < int(own[s].size()); i++)
 				built[s].push_back({ line::OWN, i, own[s][size_t(i)].gap });
+		// INITIALIZE LAST, AFTER THIS PORT'S OWN LINES. It used to be pushed before them, which was right
+		// while GAME ASSIGNMENTS was nothing but the game's thirteen settings; ENDING moved here the
+		// 2026-10-29 and would have sat under the button, which is where a page ends.
+		built[SCR_SETTINGS].push_back({ line::BUTTON, 0, 1.2f });   // August's own gap before the button
 	}
 
 	bool shown = false;
@@ -490,21 +497,22 @@ struct fv2_options
 		else if (page(at).empty()) render_child(ren, mid);
 		else render_lines(ren, mid, board);
 
-		// The foot the Dreamcast puts on this very screen, in three lines there and two here -- and its own
-		// on CONTROLLER, where A and B belong to the mirror and only Start goes back.
-		const float fh = foot_cell(mid);
-		const bool mirror = at == SCR_CONTROLLER;
-		const char *f1 = "USE THE DIRECTION BUTTON TO SELECT", *f2 = "A : DECIDE        B : BACK";
-		if (mirror) {
-			// B IS THE WAY OUT AND THE FOOT SAYS SO. It said START, which is no longer true and was never
-			// what a console says: Start is the game's own button. Start keeps ONE job here and the foot
-			// names it where it applies -- calling off a capture, which is what stops a pad being trapped.
-			if (ctl_testing >= 0) { f1 = "HOLD A DIRECTION OR A BUTTON"; f2 = "B : BACK"; }
-			else if (ctl_capturing) { f1 = "PRESS THE KEY OR BUTTON TO SET"; f2 = "START OR BACKSPACE : CANCEL"; }
-			else { f1 = "A : SET        B : BACK"; f2 = "TEST : WATCH THEM LIGHT"; }
+		// THE FOOT IS GONE, and only what the player cannot guess is left. The Dreamcast puts two lines at the
+		// bottom of this screen -- "USE THE DIRECTION BUTTON TO SELECT", "A : DECIDE   B : BACK" -- and this
+		// page carried them. Frederic, the 2026-10-29: "enleve ce texte en bas d'ecran sur tous les ecrans qui
+		// le propose". A cabinet tells a passer-by which buttons exist because he has never touched it; a
+		// player who has opened this page has already used both.
+		//
+		// WHAT STAYS IS THE CAPTURE'S OWN PROMPT on CONTROLLER, which is not a reminder but the only thing
+		// that says what the page is waiting for: a press that will be written down, or a pad being watched.
+		// Nothing else on the screen says so, and the way out of a capture is not any of the usual two.
+		if (at == SCR_CONTROLLER && (ctl_testing >= 0 || ctl_capturing)) {
+			const float fh = foot_cell(mid);
+			const char *f1 = ctl_testing >= 0 ? "HOLD A DIRECTION OR A BUTTON" : "PRESS THE KEY OR BUTTON TO SET";
+			const char *f2 = ctl_testing >= 0 ? "B : BACK" : "START OR BACKSPACE : CANCEL";
+			font->draw_mid(ren, f1, mid.x + mid.w * 0.5f, mid.y + FOOT1 * mid.h, fh, PLAIN);
+			font->draw_mid(ren, f2, mid.x + mid.w * 0.5f, mid.y + FOOT2 * mid.h, fh, PLAIN);
 		}
-		font->draw_mid(ren, f1, mid.x + mid.w * 0.5f, mid.y + FOOT1 * mid.h, fh, PLAIN);
-		font->draw_mid(ren, f2, mid.x + mid.w * 0.5f, mid.y + FOOT2 * mid.h, fh, PLAIN);
 	}
 
 private:
@@ -1204,14 +1212,15 @@ private:
 				continue;
 			}
 			// the rule's line just under the capitals, which end at (16 + 31) / 64 of the cell
-			if (on) rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_text::CELL + 0.24f), h);
+			if (on && l.what != line::DOOR) rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_text::CELL + 0.24f), h);
 			if (l.what == line::DOOR) {
-				// The doors are drawn BOLD AND CENTRED, as August drew them, "because they lead somewhere
-				// rather than setting something". Bold here is the title's own thickening, without
-				// the condensing: the sheet has one weight and this is how it gets another.
-				const float w = font->width(screen_name(l.which), h, 1.0f, fv2_text::THICK);
-				font->draw(ren, screen_name(l.which), mid.x + mid.w * 0.5f - w * 0.5f, y, h,
-						   on ? CHOSEN : PLAIN, 255, fv2_text::SLANT, 1.0f, fv2_text::THICK);
+				// THE DOORS ARE THE TITLE'S OWN LETTERING, and nothing is drawn under them. They were bold,
+				// slanted and underlined by the pink rule like any chosen line; Frederic, the 2026-10-29:
+				// "enleve la ligne rose qui souligne, et utilise la meme police que le titre OPTIONS en un
+				// peu plus petit". The yellow already says which line is chosen -- the rule said it twice --
+				// and a door that is the title a size down says what it opens onto before it is opened.
+				font->draw_title(ren, screen_name(l.which), mid.x + mid.w * 0.5f, ink_top, DOOR_CAP * mid.h,
+								 on ? CHOSEN : PLAIN);
 				continue;
 			}
 			if (l.what == line::OWN) {
