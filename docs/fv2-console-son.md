@@ -733,3 +733,31 @@ runs dry stops being a gap and becomes a tick.
 **Every sample is a multiple of four.** That is `LEVEL = 4.0`, the 12 dB chosen for Virtua Fighter 3:
 the board's output is multiplied by four, so two bits of resolution go. Inaudible on its own, noted
 because it shows in every figure above.
+
+### And it is OURS: the same sound has no tail through the game's own loop
+
+Frederic, plainly: "le son doit se jouer une seule fois. Pas de reverb, echo ou autre."
+
+The A/B that settles it. `A0 2E 26` -- the menu's own move sound -- sent by hand into the game's own
+frame loop with VF3_MIDI_SEND, the music silenced first with the game's own `A0 00 01`, the board
+loaded by a match already played, against the same sound as the pump plays it:
+
+```
+                         at the attack   +165 ms   +330 ms   +495 ms
+  the game's own loop           1566           0         0         0
+  the menu's pump               1564         259       119        56
+```
+
+Nothing at all through the game's loop. Three decaying repeats through the pump, 165.01 ms apart --
+7277 samples, 9.49 sound frames, which is no round number of anything this port counts -- and the
+repeats are the SAME WAVEFORM, not an echo of the attack: cross-correlated, repeat two against repeat
+three gives 0.952 at zero lag, and the pattern is found again at 265, 430, 595, 640 and 805 ms.
+
+So the board itself produces this when the PUMP turns it and not when the game does. The two call
+paths differ in one thing only -- `sound_only_frame` does not run the PowerPC -- so what the game
+stops sending while it is frozen is the next place to look. The 68000 and its DSP go on running
+without their host.
+
+Measured along the way, and worth keeping for whoever picks this up: of the seventeen indices of bank
+0x2E, 0x26 is among the cleanest through the game's loop (no tail at all), so the fault is not in the
+choice of sound.
