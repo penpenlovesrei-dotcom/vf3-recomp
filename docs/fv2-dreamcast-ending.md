@@ -116,17 +116,22 @@ The eleven patterns the staff roll draws from, each a rectangle in its sheet:
 
 | rank | sheet | x | y | w | h | what it holds |
 |---|---|---|---|---|---|---|
-| 79 | 3 | 0 | 0 | 272 | 64 | the heading |
-| 80 | 3 | 0 | 64 | 304 | 112 | Chief Programmer, Chief Designer, Sound Director |
-| 81 | 3 | 0 | 184 | 304 | 168 | Director, Game Coordinator and the names under them |
-| 82 | 3 | 304 | 0 | 208 | 192 | the Programmers column |
-| 83 | 3 | 304 | 216 | 144 | 168 | the rest of that column -- drawn over page i = 3 at (378, 161) |
-| 84 | 4 | 0 | 336 | 360 | 168 | Character Designers, Original Character Designer |
-| 85 | 4 | 0 | 0 | 384 | 168 | Motion Designers |
+| 79 | 3 | 0 | 0 | 272 | 64 | FightingVipers2 STAFF, the heading |
+| 80 | 3 | 0 | 64 | 304 | 112 | Director, Game Coordinator |
+| 81 | 3 | 0 | 184 | 304 | 168 | Chief Programmer, Chief Designer, Sound Director |
+| 82 | 3 | 304 | 0 | 208 | 192 | Programmers -- the LEFT half of those six names |
+| 83 | 3 | 304 | 216 | 144 | 168 | their RIGHT half, drawn beside it at (378, 161) |
+| 84 | 4 | 0 | 336 | 360 | 168 | Motion Designers |
+| 85 | 4 | 0 | 0 | 384 | 168 | Character Designers, Original Character Designer |
 | 86 | 4 | 0 | 168 | 328 | 168 | Stage Designers, Visual Effect Designer |
-| 87 | 5 | 0 | 368 | 328 | 144 | Publicity by, Assistant Companies |
-| 88 | 5 | 0 | 0 | 360 | 312 | Presented by, Special Thanks to |
-| 89 | 5 | 0 | 312 | 408 | 56 | Half HP Studio, SEGA DIGITAL STUDIO |
+| 87 | 5 | 0 | 368 | 328 | 144 | Special Thanks to |
+| 88 | 5 | 0 | 0 | 360 | 312 | Publicity by, Assistant Companies, the two studios |
+| 89 | 5 | 0 | 312 | 408 | 56 | Presented by Original Game, SEGA ENTERPRISES, LTD. |
+
+THE PROGRAMMERS' NAMES ARE CUT IN TWO BY THE SHEET'S EDGE, and that is not damage: pattern 82 ends at
+x = 512, the sheet's right edge, and pattern 83 holds the rest of the same six names. The page draws 82 at
+its own place and 83 at (378, 161) -- 208 to the right, which is exactly 82's width, and 24 lower, which is
+the height of the Programmers heading. Side by side they read as one block.
 
 Cut out and looked at, every one of the eleven is a clean block of credits with nothing of its neighbours in
 it, which is what says the rectangles are read right. **The sheets are stored first row at the bottom** (as
