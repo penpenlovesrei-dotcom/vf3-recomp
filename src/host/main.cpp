@@ -1659,12 +1659,17 @@ int main(int argc, char **argv)
 		while (SDL_PollEvent(&e)) {}   // (the window answers while the game loads; nothing is acted on yet)
 		SDL_Surface *face = SDL_GetWindowSurface(win);
 		if (!face) return;
-		// It says what it is drawing ON, once: the picture is 3630 by 2048 and the window asks for 16:9, so
-		// anything but a hair of black at the edges means the surface is not the shape the window looks.
-		static bool said = false;
-		if (!said) {
-			said = true;
-			fprintf(stderr, "the loading screen draws on a %d by %d surface\n", face->w, face->h);
+		// IT SAYS WHAT IT IS DRAWING ON, and again whenever that changes. The picture is 3630 by 2048 and
+		// the window is asked for in 16:9, so it should cover all but a hair of it; bars of any width mean
+		// the surface is not the shape the window is showing, and a surface that changes size under us
+		// means the first one was taken before the window had settled.
+		static int said_w = -1, said_h = -1;
+		if (face->w != said_w || face->h != said_h) {
+			said_w = face->w; said_h = face->h;
+			int pw = 0, ph = 0;
+			SDL_GetWindowSizeInPixels(win, &pw, &ph);
+			fprintf(stderr, "the loading screen draws on a %d by %d surface (the window is %d by %d in pixels)\n",
+				face->w, face->h, pw, ph);
 		}
 		SDL_FillSurfaceRect(face, nullptr, SDL_MapSurfaceRGB(face, 0, 0, 0));
 		const float k = std::min(float(face->w) / float(splash_art->w), float(face->h) / float(splash_art->h));
@@ -1676,8 +1681,14 @@ int main(int argc, char **argv)
 	if (splash_art) {
 		SDL_ShowWindow(win);
 		SDL_RaiseWindow(win);
+		// THE WINDOW IS WAITED FOR BEFORE THE FIRST STROKE. Showing a window is a request to the system,
+		// not a fact: the size and the shape it ends up with -- a screen with its own scale, a title bar,
+		// a desktop that snaps it -- are known a moment later. A surface taken before that is the wrong
+		// size, and what is drawn on it is stretched into the real window with whatever was behind it
+		// showing where it falls short.
+		SDL_SyncWindow(win);
 		splash();
-		fprintf(stderr, "the loading screen is up, %d by %d\n", splash_art->w, splash_art->h);
+		fprintf(stderr, "the loading screen is up, the picture %d by %d\n", splash_art->w, splash_art->h);
 	}
 
 	static Game game;   // (large: not on the stack)
