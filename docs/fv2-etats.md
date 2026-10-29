@@ -1,28 +1,29 @@
-# Les états de Fighting Vipers 2, et l'écran titre
+# Fighting Vipers 2's states, and the title screen
 
-Rien ici n'est neuf. Tout a été mesuré sur la ROM entre le 2026-08-14 et le 2026-08-20, et consigné dans
-`Documents\SEGA Model 3\SupermodelSrc\Docs\MenuConsole.md` (§6, 6 bis, 6 quater, 6 sexies) ; les adresses sont
-dans `SupermodelSrc\Src\Menu\GameFV2.h`. Ce document les porte dans ce port pour qu'on cesse de les redécouvrir.
+Nothing here is new. All of it was measured on the ROM between 2026-08-14 and 2026-08-20, and recorded in
+`Documents\SEGA Model 3\SupermodelSrc\Docs\MenuConsole.md` (§6, 6 bis, 6 quater, 6 sexies); the addresses are
+in `SupermodelSrc\Src\Menu\GameFV2.h`. This document brings them into this port so that they stop being
+rediscovered.
 
-Rien n'est repris du code de Supermodel : ce sont des faits sur le jeu, pas du code.
+Nothing is taken from Supermodel's code: these are facts about the game, not code.
 
 
-## Le jeu dit lui-même où il en est
+## The game says itself where it has got to
 
-Quatre octets contigus, et c'est toute la machine :
+Four contiguous bytes, and that is the whole machine:
 
 ```
-MODE_MAIN       0x0058FD98   le mode
-MODE_SUB        0x0058FD99   le sous-état du mode courant
-MODE_REQUEST    0x0058FD9A   le mode demandé
-SUBMODE_REQUEST 0x0058FD9B   le sous-état demandé
+MODE_MAIN       0x0058FD98   the mode
+MODE_SUB        0x0058FD99   the current mode's sub-state
+MODE_REQUEST    0x0058FD9A   the mode asked for
+SUBMODE_REQUEST 0x0058FD9B   the sub-state asked for
 ```
 
-Les noms sont ceux de Sega, laissés en RAM : une suite contiguë de 80 chaînes à `0x00024494`, dont les 24
-premières sont les modes. **Une table contiguë ne dit pas où ses tranches commencent** — le découpage par les
-noms a été pris en défaut trois fois, et chaque tranche ci-dessous a fini par être mesurée à l'écran.
+The names are Sega's, left in RAM: a contiguous run of 80 strings at `0x00024494`, the first 24 of which are
+the modes. **A contiguous table does not say where its slices begin** — slicing it by the names was caught out
+three times, and every slice below ended up being measured on screen.
 
-### Les 24 modes
+### The 24 modes
 
 ```
  0 WARNING_INT     1 WARNING_DSP     2 ADV_INT         3 ADV_DSP
@@ -33,13 +34,13 @@ noms a été pris en défaut trois fois, et chaque tranche ci-dessous a fini par
 20 TEST_INT       21 TEST_DSP       22 RESULT_INT     23 RESULT_DSP
 ```
 
-`_INT` installe l'écran, `_DSP` le déroule.
+`_INT` installs the screen, `_DSP` runs it.
 
-**`MODE_SUB` n'a de sens que pour trois modes : `GAME`, `SEL` et `ADV`.** Tous les autres laissent l'octet à ce
-que le mode précédent y avait mis. Pour `CONTINUE`, `OVER`, `INTRUDE`, `ENDING` et `NAME`, il suffit de lire le
-mode.
+**`MODE_SUB` only means anything for three modes: `GAME`, `SEL` and `ADV`.** All the others leave the byte at
+whatever the previous mode had put there. For `CONTINUE`, `OVER`, `INTRUDE`, `ENDING` and `NAME`, reading the
+mode is enough.
 
-### Les douze sous-états de l'attraction (ADV), `0x0002455C`
+### The attract's twelve sub-states (ADV), `0x0002455C`
 
 ```
 0 DONT_RECYCLE_INT   1 DONT_RECYCLE_DSP   2 ADV_SEGA_INT     3 ADV_SEGA_DSP
@@ -47,16 +48,16 @@ mode.
 8 ADV_REPLAY_WAIT    9 ADV_REPLAY_INT    10 ADV_REPLAY_DSP  11 ADV_DEMO_DSP
 ```
 
-Douze, non dix : mesuré. Et la tranche commence à l'indice 50 de la table, non à 52 — les deux noms manquants
-étaient **avant**, pas après, donc rien de ce qui suit ne glisse. Vérifié en gelant le jeu sous-état par
-sous-état et en regardant :
+Twelve, not ten: measured. And the slice begins at index 50 of the table, not at 52 — the two missing names
+were **before**, not after, so nothing that follows slides. Verified by freezing the game sub-state by
+sub-state and looking:
 
-| gelé sur | à l'écran |
+| frozen on | on screen |
 |---|---|
-| 3 (`ADV_SEGA_DSP`) | le logo SEGA, 192 images |
-| 5 (`FV2_TITLE_DSP`) | **l'écran titre** |
+| 3 (`ADV_SEGA_DSP`) | the SEGA logo, 192 frames |
+| 5 (`FV2_TITLE_DSP`) | **the title screen** |
 
-### Les vingt sous-états d'un combat (GAME), `0x000244F4`
+### A fight's twenty sub-states (GAME), `0x000244F4`
 
 ```
  0 ROUND_MASK_INT   1 ROUND_MASK_IN   2 ROUND_MASK_DSP  3 ROUND_MASK_OUT
@@ -66,17 +67,17 @@ sous-état et en regardant :
 16 REPLAY_DSP      17 VIC_INT        18 VIC_DSP        19 NEXT_PROG_SEL
 ```
 
-Confirmés de bout en bout par la mesure. Le replay a ses propres états, donc **le jeu dit lui-même quand il a
-fini de montrer**, que le joueur l'ait coupé ou non — ce qu'aucun chronomètre ne pouvait remplacer.
+Confirmed end to end by measurement. The replay has states of its own, so **the game says itself when it has
+finished showing**, whether the player cut it short or not — which no stopwatch could replace.
 
-### Les six sous-états du choix (SEL), `0x00024544`
+### The select's six sub-states (SEL), `0x00024544`
 
 ```
 0 SEL_START        1 SELECT          2 STAGE_SEL_INT   3 STAGE_SEL_DSP
 4 DECIDE_INT       5 DECIDE_DSP
 ```
 
-### Les sept sous-états de la fin (ENDING), base 62
+### The ending's seven sub-states (ENDING), base 62
 
 ```
 0 ending_trans_init    1 ending_trans_wait    2 ending_replay_init
@@ -84,486 +85,487 @@ fini de montrer**, que le joueur l'ait coupé ou non — ce qu'aucun chronomètr
 6 ending_final_mask2
 ```
 
-**Ces noms-là disent ce qu'est la fin : des REDIFFUSIONS.** Trois des sept ne parlent que de ça — en initier
-une, la mener, passer à la suivante. Le générique n'est donc pas un film : c'est le défilé des crédits alternant
-avec les replays des combats que le joueur vient de gagner, sur leurs décors, avec le bandeau du lieu et la
-bande « v.s. NOM » que tout replay porte.
+**Those names say what the ending is: REPLAYS.** Three of the seven speak of nothing else — starting one,
+running it, moving to the next. So the credits are not a film: they are the credit roll alternating with
+replays of the fights the player has just won, on their scenery, with the place's banner and the "v.s. NAME"
+band every replay carries.
 
-C'est ce qui explique ce qu'on voit en demandant la fin depuis l'écran titre : il n'y a aucun match à rediffuser,
-donc le sol reste nu. Le détail est dans `docs/fv2-console-options.md`.
+That is what explains what is seen when the ending is asked for from the title screen: there is no match to
+replay, so the floor stays bare. The detail is in `docs/fv2-console-options.md`.
 
-### Les trois sous-états du nom (NAME), base 69
+### The name's three sub-states (NAME), base 69
 
 ```
 0 NAME_ENTRY_INIT   1 NAME_ENTRY_CTRL   2 NAME_ENTRY_DISP
 ```
 
-### Les huit sous-états du SUPER K.O. (SKO), base 72
+### The SUPER K.O.'s eight sub-states (SKO), base 72
 
 ```
 0 SKO_REPLAY_WAIT      1 SKO_SET_IMAGE_STAGE   2 SKO_WAZA_WAIT    3 SKO_TRANS_WAIT
 4 SKO_IMAGE_DISP       5 SKO_RESET_STAGE       6 SKO_TRANS_WAIT2  7 SKO_IMAGE_STAGE_END
 ```
 
-`waza` est 技, le coup. Un Super K.O. est donc une petite mise en scène à lui : on attend le coup, on change de
-décor (`SET_IMAGE_STAGE`), on montre, on remet le décor (`RESET_STAGE`). Utile à savoir pour les deux cases
-`SKO 1` et `SKO 2` du VS DIAGRAM, qu'aucun match n'a encore remplies.
+`waza` is 技, the move. So a Super K.O. is a little staging of its own: wait for the move, change the stage
+(`SET_IMAGE_STAGE`), show it, put the stage back (`RESET_STAGE`). Worth knowing for the VS DIAGRAM's two
+cells `SKO 1` and `SKO 2`, which no match has filled yet.
 
-## Comment ces quatre-vingts noms se lisent
+## How those eighty names read
 
-`0x00024494` n'est pas une suite de chaînes mais une **table de pointeurs** : quatre-vingts mots, chacun
-l'adresse d'un nom terminé par zéro. La table jumelle `0x00024354` donne, au même indice, l'adresse du
-gestionnaire. Lues dans un dépôt de RAM (`vf3run --ram-at`, l'octet du jeu à l'adresse A étant à l'indice
-`A^3`), les deux ensemble donnent le tableau ci-dessus et, pour chaque état, la fonction qui l'exécute :
+`0x00024494` is not a run of strings but a **table of pointers**: eighty words, each the address of a
+zero-terminated name. The twin table `0x00024354` gives, at the same index, the handler's address. Read in a
+RAM dump (`vf3run --ram-at`, the game's byte at address A being at index `A^3`), the two together give the
+table above and, for each state, the function that runs it:
 
-| état | gestionnaire | | état | gestionnaire |
+| state | handler | | state | handler |
 |---|---|---|---|---|
 | `ENDING_INT` | `0x0000E15C` | | `ending_trans_init` | `0x000725D0` |
 | `ENDING_DSP` | `0x0000E270` | | `ending_replay_init` | `0x000727B8` |
 | `NEXT_PROG_SEL` | `0x0000DB48` | | `ending_replay_ctrl` | `0x000728C8` |
 | `OVER_INT` | `0x0000E2F0` | | `ending_replay_next` | `0x00072958` |
 
-Et ces deux-là, `0x00072FD0` et `0x00073238`, sont les deux endroits de la fin que `docs/fv2-flux-de-match.md`
-avait déjà vus reconstruire un modèle de combattant : ce sont les replays qui remontent leurs acteurs.
+And those two, `0x00072FD0` and `0x00073238`, are the two places in the ending that
+`docs/fv2-flux-de-match.md` had already seen rebuilding a fighter's model: they are the replays bringing their
+actors back up.
 
 
-## « L'écran titre est-il à l'écran ? »
+## "Is the title screen on screen?"
 
 ```
-MODE_MAIN ∈ { 2 ADV_INT, 3 ADV_DSP }   et   MODE_SUB ∈ { 4 FV2_TITLE_INT, 5 FV2_TITLE_DSP }
+MODE_MAIN ∈ { 2 ADV_INT, 3 ADV_DSP }   and   MODE_SUB ∈ { 4 FV2_TITLE_INT, 5 FV2_TITLE_DSP }
 ```
 
-Mesuré à l'écran, pas déduit des noms.
+Measured on screen, not deduced from the names.
 
-À ne pas confondre avec `InAttract` (`[0x00700000] == 0`, l'état de la tâche `entry1`), qui répond à une tout
-autre question — « une partie tourne-t-elle » — et qui est vrai pendant l'avertissement, le logo, le titre, les
-présentations, les démos et les classements. Les deux servent, à des choses différentes.
+Not to be confused with `InAttract` (`[0x00700000] == 0`, the `entry1` task's state), which answers an
+altogether different question — "is a game running" — and which is true during the warning, the logo, the
+title, the presentations, the demos and the rankings. Both are useful, for different things.
 
 
-## Y aller : demander, ne pas forcer
+## Getting there: ask, do not force
 
 ```
 MODE_REQUEST    = 3   ADV_DSP
 SUBMODE_REQUEST = 4   FV2_TITLE_INT
 ```
 
-**Écrit une fois, jamais tenu.** Deux images. Le répartiteur de `0x0000ABC4` recopie `MODE_REQUEST` dans le mode
-*avant* de sauter : le mode n'est donc pas forcé, il est demandé, et c'est pour ça que ça marche. Tenir une
-demande est ce qui a cassé l'écran de sélection et son chrono, deux fois.
+**Written once, never held.** Two frames. The dispatcher at `0x0000ABC4` copies `MODE_REQUEST` into the mode
+*before* jumping: so the mode is not forced, it is asked for, and that is why it works. Holding a request is
+what broke the select screen and its clock, twice.
 
-Laisser passer **soixante images** avant de geler dessus : le gel coupe la voix de l'annonceur (à vingt images on
-entend « Fighting Vipers » sans le « 2 »), et sur la première image du sous-état 5 le fondu n'est pas fini, le
-logo SEGA s'y superpose encore. Trois cents sont déjà trop tard, l'écran est passé.
+Let **sixty frames** pass before freezing on it: the freeze cuts the announcer's voice off (at twenty frames
+one hears "Fighting Vipers" without the "2"), and on the first frame of sub-state 5 the fade is not finished,
+the SEGA logo still overlapping it. Three hundred is already too late, the screen has gone.
 
-Ces soixante images ne sont **pas** un chronomètre déguisé : l'état dit *quel* écran, c'est lui le signal ; les
-soixante n'écartent que le fondu.
+Those sixty frames are **not** a stopwatch in disguise: the state says *which* screen, and that is the signal;
+the sixty only clear the fade.
 
-### Depuis un combat, ce levier ne commande rien
+### From a fight, this lever commands nothing
 
-Et l'autre non plus. Les deux écritures du séquenceur d'attraction —
-
-```
-[0x00580DFC] = 14      la dernière entrée réelle de la liste
-[0x00580DD2] = 0x7FFF  son minuteur, expiré
-```
-
-— marchent **depuis l'attraction** et seulement là. Essayées depuis un combat, elles ne font rien, et la
-relecture dit pourquoi : elles étaient encore intactes une seconde après. Le séquenceur d'attraction ne tourne
-pas pendant un match, donc personne ne les lit. *Un essai négatif doit dire lequel des deux : le jeu a recouvert
-nos valeurs, ou le jeu ne les lit pas.*
-
-Forcer l'état de la tâche `entry1` fait dérailler le jeu — essayé, mesuré.
-
-Reste la route du jeu lui-même : **finir le match sans le montrer ni l'entendre**, puis poser l'écran titre une
-fois l'attraction revenue.
+Nor does the other. The attract sequencer's two writes —
 
 ```
-0x00581455 = MATCH COUNT − 1    la manche en cours devient la dernière
-0x00581406 = 64                 le chrono au bord : une seconde affichée
-vie du joueur 1 = 0             pour qu'au TIME UP l'issue ne se discute pas
+[0x00580DFC] = 14      the list's last real entry
+[0x00580DD2] = 0x7FFF  its timer, expired
 ```
 
-Le chrono est posé **une fois par manche, jamais tenu** — rechargé à chaque image il n'expire jamais. Le numéro
-de manche `0x00581456` dit quand une nouvelle commence, et c'est le seul moment où on le réécrit. La vie à zéro
-parce qu'au TIME UP c'est le moins pourvu qui perd, et qu'un nul ne se compte probablement pas comme une manche
-perdue : à zéro, il n'y a rien à supposer.
+— work **from the attract** and only there. Tried from a fight, they do nothing, and reading them back says
+why: they were still intact a second later. The attract sequencer does not run during a match, so nobody reads
+them. *A negative trial must say which of the two: the game overwrote our values, or the game does not read
+them.*
 
-Le K.O., le GAME OVER et le décompte du `CONTINUE` se déroulent par la route du jeu, derrière l'image du menu,
-le son coupé.
+Forcing the `entry1` task's state derails the game — tried, measured.
 
-### Mesuré ici le 2026-10-21 : la demande, elle, passe de partout — mais elle ne sort pas de la partie
+What is left is the game's own road: **end the match without showing or hearing it**, then put the title
+screen up once the attract has come back.
 
-Ce qui précède porte sur les deux écritures du **séquenceur d'attraction**. La demande de mode est un autre
-levier, et il n'avait jamais été essayé ailleurs que depuis l'attraction. Il l'est maintenant, avec
-`vf3run --modes --console-start N`, qui fait passer un appui sur Start par la décision de l'hôte et dit ce
-qu'elle a choisi, image par image.
+```
+0x00581455 = MATCH COUNT − 1    the current round becomes the last
+0x00581406 = 64                 the clock at the edge : one second displayed
+player 1's health = 0           so that at TIME UP the outcome is beyond dispute
+```
 
-| Start à l'image | le jeu était | ce qui a été décidé | ce qui est arrivé |
+The clock is set **once per round, never held** — reloaded on every frame it never expires. The round number
+`0x00581456` says when a new one begins, and that is the only moment it is rewritten. The health at zero
+because at TIME UP it is the one with less who loses, and a draw probably does not count as a round lost: at
+zero, there is nothing to suppose.
+
+The K.O., the GAME OVER and the `CONTINUE` countdown run by the game's road, behind the menu's picture, the
+sound cut.
+
+### Measured here on 2026-10-21: the request, for its part, gets through from anywhere — but it does not leave the game
+
+What precedes bears on the **attract sequencer**'s two writes. The mode request is another lever, and it had
+never been tried anywhere but from the attract. It is now, with `vf3run --modes --console-start N`, which puts
+a press of Start through the host's decision and says what it chose, frame by frame.
+
+| Start at frame | the game was | what was decided | what happened |
 |---|---|---|---|
-| 1100 | `ADV_DSP` 3, le logo SEGA | demander le titre | écran titre à **1101**, au lieu de 1193 |
-| 1255 | `ADV_DSP` 5, l'écran titre | ouvrir la liste | **rien d'écrit** ; la suite image pour image comme le témoin |
-| 1450 | `ADV_DSP` 11, la démonstration | demander le titre | écran titre à **1451** |
-| 2100 | `SEL_DSP` 1, l'écran de sélection | demander le titre | écran titre à **2101** |
-| 3100 | `GAME_DSP` 12, en plein combat | demander le titre | écran titre à **3101** |
+| 1100 | `ADV_DSP` 3, the SEGA logo | ask for the title | title screen at **1101**, instead of 1193 |
+| 1255 | `ADV_DSP` 5, the title screen | open the list | **nothing written**; what follows frame for frame like the control |
+| 1450 | `ADV_DSP` 11, the demonstration | ask for the title | title screen at **1451** |
+| 2100 | `SEL_DSP` 1, the select screen | ask for the title | title screen at **2101** |
+| 3100 | `GAME_DSP` 12, mid-fight | ask for the title | title screen at **3101** |
 
-Les trois derniers sont neufs. La demande commande donc **l'écran** depuis l'attraction, depuis la sélection
-et depuis un combat.
+The last three are new. So the request commands **the screen** from the attract, from the select screen and
+from a fight.
 
-**Et elle ne termine pas la partie.** C'est le même essai poussé d'un cran : la RAM relue après coup dit que la
-tâche `entry1` (`0x00700000`, « une partie tourne-t-elle ») est restée à sa valeur de jeu.
+**And it does not end the game.** That is the same trial pushed one notch further: the RAM read back
+afterwards says that the `entry1` task (`0x00700000`, "is a game running") stayed at its playing value.
 
 ```
-depuis un combat     entry1 = 0x2A avant, 0x2A après   (relu à l'image 4000)
-depuis la sélection  entry1 = 5 avant,    0x2D après   (relu à l'image 2600)
+from a fight          entry1 = 0x2A before, 0x2A after   (read back at frame 4000)
+from the select screen entry1 = 5 before,    0x2D after   (read back at frame 2600)
 ```
 
-L'écran titre revient donc par-dessus une partie qui, elle, court toujours. `fv2_in_attract()` reste faux, et
-tout ce qui s'y accroche — l'armement de Survival le premier — le voit. Sortir vraiment d'un combat reste la
-route du jeu décrite juste au-dessus, qui n'est pas câblée.
+So the title screen comes back over a game that is still running. `fv2_in_attract()` stays false, and
+everything that hangs on it — Survival's arming first of all — sees that. Really leaving a fight remains the
+game's road described just above, which is not wired.
 
-*Un essai négatif doit dire lequel des deux ; un essai positif doit dire jusqu'où il porte.*
+*A negative trial must say which of the two; a positive trial must say how far it reaches.*
 
 
-## Les tâches qui dessinent l'attraction — relevé du 2026-10-21
+## The tasks that draw the attract — measured on 2026-10-21
 
-Mesuré parce que demander l'écran titre laissait une scène sale derrière elle. Les blocs de tâches sont à
-`0x00700000`, **un tous les `0x100`** ; l'ordonnanceur lit deux mots de chacun soixante fois par seconde : le
-**bit 0 du premier mot** dit si la tâche tourne, le mot suivant est sa routine.
+Measured because asking for the title screen left a dirty scene behind it. The task blocks are at
+`0x00700000`, **one every `0x100`**; the scheduler reads two words of each sixty times a second: **bit 0 of
+the first word** says whether the task is running, the next word is its routine.
 
-Relevé aux trois moments de la boucle, par vidage de la RAM (`vf3run --ram-at`) :
+Measured at the loop's three moments, by dumping the RAM (`vf3run --ram-at`):
 
-| bloc | écran titre | démonstration | replay |
+| block | title screen | demonstration | replay |
 |---|---|---|---|
 | `0x00700200` | `00000000 00062144` | `00000000 00062144` | `00000001 00062390` |
 | `0x00700300` | `00000000 000621B0` | `00000000 000621B0` | `00000001 00062404` |
 | `0x00700400` | `00000000 00015A4C` | `00000000 00015A4C` | `00000001 00015A74` |
 | `0x00700500` | `00000000 0003F874` | `01018001 00040134` | `01010041 00040134` |
 
-**Sur l'écran titre, toutes sont éteintes.** La démonstration en fait tourner une, le replay quatre. Le reste
-de la région qui diffère est en flottants — des coordonnées, pas des blocs de tâches.
+**On the title screen, all of them are off.** The demonstration runs one, the replay four. The rest of the
+region that differs is in floats — coordinates, not task blocks.
 
-`0x00700000` et `0x00700100` sont `entry1` et `entry2`, les tâches d'une partie ; forcer `entry1` fait dérailler
-le jeu (essayé en août). Elles sont éteintes dans l'attraction de toute façon.
+`0x00700000` and `0x00700100` are `entry1` and `entry2`, a game's tasks; forcing `entry1` derails the game
+(tried in August). They are off in the attract anyway.
 
-### Qui éteint ces tâches, et quand — relevé au `--watch`
+### Who turns those tasks off, and when — measured with `--watch`
 
-`vf3run --watch 700200 --modes` nomme l'instruction qui écrit, sans rien décompiler :
-
-```
-store32 00700200 = 0 at PC FFF018DC (LR FFF0153C)     l'amorce, au démarrage
-store32 00700200 = 0 at PC 0000779C (LR 000076AC)     idem
-store32 00700200 = 0 at PC 000390F0 (LR 00038C38)     idem
-store32 00700200 = 0 at PC 0000B240 (LR 00039068)     entre les images 998 et 999
-```
-
-La quatrième est la seule qui compte : elle tombe **entre le sous-état 1 (`DONT_RECYCLE_DSP`) et le sous-état
-2 (`ADV_SEGA_INT`)**, c'est-à-dire au **redémarrage de la boucle d'attraction**. `LR 0x00039068` est le site
-d'appel de la machine à modes (`0x00039064` est `bl 0x0000ABC4`).
-
-**Le jeu n'éteint donc jamais ces tâches pendant une démonstration ni pendant un replay.** Il attend que la
-boucle reparte. C'est pour ça qu'un effacement à la main ne tient pas en plein replay : ce qui les rallume,
-c'est le replay lui-même, qui n'est pas fini.
-
-### Comment la boucle repart : la liste du séquenceur
-
-`vf3run --watch 580DFC` montre le séquenceur marcher :
+`vf3run --watch 700200 --modes` names the instruction that writes, without decompiling anything:
 
 ```
-store8 00580DFC = 0 at PC 00072EB4 (LR 00072E7C)      posé sur l'écran titre
-store8 00580DFC = 1..F at PC 00073178 (LR 00072E7C)   un pas à la fois, pendant la démonstration
-   5866  ADV_SEGA_INT                                 sorti de la liste : la boucle repart
+store32 00700200 = 0 at PC FFF018DC (LR FFF0153C)     the boot, at start-up
+store32 00700200 = 0 at PC 0000779C (LR 000076AC)     the same
+store32 00700200 = 0 at PC 000390F0 (LR 00038C38)     the same
+store32 00700200 = 0 at PC 0000B240 (LR 00039068)     between frames 998 and 999
 ```
 
-La liste va de 0 à 15, et c'est `0x00073178` qui l'avance. Écrire 14 et vider le minuteur fait franchir la fin
-au pas suivant — le levier de §6 bis, et on voit ici pourquoi il marche.
+The fourth is the only one that counts: it falls **between sub-state 1 (`DONT_RECYCLE_DSP`) and sub-state 2
+(`ADV_SEGA_INT`)**, which is to say at the **restart of the attract loop**. `LR 0x00039068` is the mode
+machine's call site (`0x00039064` is `bl 0x0000ABC4`).
 
-**Et pourquoi il ne marche pas depuis le replay** : pendant le replay (`sub 10`), plus aucune écriture de
-`0x00580DFC` n'apparaît. Le séquenceur n'avance plus sa liste là ; le replay court sur sa propre durée. Pousser
-la liste n'a donc rien à pousser.
+**So the game never turns those tasks off during a demonstration or during a replay.** It waits for the loop
+to start again. That is why clearing them by hand does not hold in mid-replay: what turns them back on is the
+replay itself, which is not finished.
 
-### Ce qui met fin au replay — et la route propre, enfin
+### How the loop starts again: the sequencer's list
 
-Relevé en surveillant le mot de la machine à états (`vf3run --watch 58FD98`). Le mode et son sous-état sont
-réécrits à chaque image par la machine à modes, mais **`SUBMODE_REQUEST` (`0x0058FD9B`) n'est écrit qu'une
-poignée de fois**, et ces écritures-là *sont* la boucle d'attraction :
-
-```
-a WARNING_DSP       = 0, = 1                    la boucle demarre
-a DONT_RECYCLE_*    = 2, = 3                    vers le logo SEGA
-a ADV_SEGA_DSP      = 4, = 5                    vers l ecran titre
-a FV2_TITLE_DSP     = B  ou  = 8                vers la demonstration, ou vers le replay
-a ADV_REPLAY_DSP    = 0 par 0x0000B7C0, puis 1  <- LE REPLAY DEMANDE LE REDEMARRAGE DE LA BOUCLE
-```
-
-**La façon dont le jeu sort d'un replay n'est pas de demander l'écran titre : c'est de demander que la boucle
-recommence** (`DONT_RECYCLE_INT`). Et ce redémarrage est précisément l'endroit où il éteint les tâches qui
-dessinent (`0x0000B240`, entre les sous-états 1 et 2).
-
-D'où la route propre, qui marche de partout dans l'attraction et en deux temps :
-
-1. `MODE_REQUEST = 3`, `SUBMODE_REQUEST = 0` — écrit **une fois** : la boucle redémarre et le jeu fait **son**
-   ménage ;
-2. une fois arrivé au logo SEGA (sous-état 2 ou 3), là où la scène est vide, demander l'écran titre.
-
-Mesuré avec la sonde d'images, depuis une démonstration **et** depuis un replay :
+`vf3run --watch 580DFC` shows the sequencer walking:
 
 ```
-appui image 1450 (demo)    sub 0, 1, 2 puis ECRAN TITRE a l image 1455 : 0 modele
-appui image 2100 (replay)  sub 0, 1, 2 puis ECRAN TITRE a l image 2105 : 0 modele
+store8 00580DFC = 0 at PC 00072EB4 (LR 00072E7C)      set on the title screen
+store8 00580DFC = 1..F at PC 00073178 (LR 00072E7C)   one step at a time, during the demonstration
+   5866  ADV_SEGA_INT                                 out of the list : the loop starts again
 ```
 
-**Cinq images, et 0 modèle** — le même écran titre que celui où le jeu arrive seul. Contre 397 modèles pour la
-demande directe, et 400 images d'attente pour le levier du séquenceur, qui lui ne commandait rien depuis un
-replay.
+The list goes from 0 to 15, and it is `0x00073178` that advances it. Writing 14 and emptying the timer makes
+it cross the end on the next step — §6 bis' lever, and here one sees why it works.
 
-### Ce que ça donne, et où ça bute
+**And why it does not work from the replay**: during the replay (`sub 10`), no write of `0x00580DFC` appears at
+all. The sequencer no longer advances its list there; the replay runs on its own duration. So pushing the list
+has nothing to push.
 
-Éteindre le bit 0 avant de demander l'écran titre **range presque tout, depuis la démonstration** : l'écran
-titre passe de **397 modèles à 4-19**, contre 0 pour celui où le jeu arrive seul.
+### What puts an end to the replay — and the clean road, at last
 
-**Mais pas depuis le replay** : relu dix images après la demande, les trois tâches `0x00700200`, `0x00700300`
-et `0x00700400` sont **rallumées par le jeu**. Un effacement écrit une fois ne tient pas, et le tenir est
-justement ce qu'il ne faut pas faire.
-
-Donc la vraie sortie n'est pas d'éteindre ces bits à la main : c'est de trouver **ce que le jeu exécute** quand
-son séquenceur installe l'écran titre, et qui arrête ces tâches pour de bon. C'est la prochaine mesure, et elle
-demande de décompiler cette branche du séquenceur.
-
-
-## La route fixe de l'arcade : une table, relevée le 2026-10-22
-
-Cherchée parce que le mode Training avait besoin de choisir son arène, et trouvée sans décompilateur : le
-`--watch` nomme qui écrit l'index de scène, et les douze instructions qui précèdent disent d'où il sort.
+Measured by watching the state machine's word (`vf3run --watch 58FD98`). The mode and its sub-state are
+rewritten on every frame by the mode machine, but **`SUBMODE_REQUEST` (`0x0058FD9B`) is only written a handful
+of times**, and those writes *are* the attract loop:
 
 ```
-000716B8  stb r0,-609(r9)      r9 = 0x00590000, donc 0x0058FD9F : l'index de scene
-000716B4  mr  r0,r30           et r30 vient de :
-
-000715F0  lbz    r9,5213(r11)  [0x0058145D], qui choisit la route
-000715F8  addi   r11,r11,16640 la table, 0x000B4100
-000715FC  addi   r0,r8,-1      le numero du combat, moins un
-00071600  rlwinm r0,r0,3,0,28  fois 8
-00071604  rlwinm r9,r9,1,0,30  la route, fois 2
-0007160C  lbzx   r30,r11,r9    <- L'ARENE
-00071614  lbz    r3,1(r9)      et l'octet suivant : l'adversaire
+at WARNING_DSP      = 0, = 1                    the loop starts
+at DONT_RECYCLE_*   = 2, = 3                    on to the SEGA logo
+at ADV_SEGA_DSP     = 4, = 5                    on to the title screen
+at FV2_TITLE_DSP    = B  or  = 8                on to the demonstration, or to the replay
+at ADV_REPLAY_DSP   = 0 by 0x0000B7C0, then 1   <- THE REPLAY ASKS FOR THE LOOP TO RESTART
 ```
 
-**Huit octets par combat, quatre paires (arène, adversaire), la paire choisie par `0x0058145D`.** Relevé dans
-un jeu en marche :
+**The way the game leaves a replay is not by asking for the title screen: it is by asking for the loop
+to start over** (`DONT_RECYCLE_INT`). And that restart is precisely where it turns the drawing tasks off
+(`0x0000B240`, between sub-states 1 and 2).
+
+Hence the clean road, which works from anywhere in the attract and in two steps:
+
+1. `MODE_REQUEST = 3`, `SUBMODE_REQUEST = 0` — written **once**: the loop restarts and the game does **its
+   own** tidying;
+2. once at the SEGA logo (sub-state 2 or 3), where the scene is empty, ask for the title screen.
+
+Measured with the frame probe, from a demonstration **and** from a replay:
 
 ```
-+00 : 09 0A 00 09 00 09 00 09      combat 1 : arene 9,  adversaire 0x0A
-+08 : 01 0B 00 09 00 09 00 09      combat 2 : arene 1,  adversaire 0x0B
+press at frame 1450 (demo)    sub 0, 1, 2 then TITLE SCREEN at frame 1455 : 0 models
+press at frame 2100 (replay)  sub 0, 1, 2 then TITLE SCREEN at frame 2105 : 0 models
+```
+
+**Five frames, and 0 models** — the same title screen as the one the game arrives at on its own. Against 397
+models for the direct request, and 400 frames of waiting for the sequencer's lever, which commanded nothing
+from a replay.
+
+### What that gives, and where it runs up
+
+Turning bit 0 off before asking for the title screen **tidies nearly everything, from the demonstration**: the
+title screen goes from **397 models to 4-19**, against 0 for the one the game arrives at on its own.
+
+**But not from the replay**: read back ten frames after the request, the three tasks `0x00700200`,
+`0x00700300` and `0x00700400` have been **turned back on by the game**. A clearing written once does not hold,
+and holding it is precisely what must not be done.
+
+So the real way out is not to turn those bits off by hand: it is to find **what the game runs** when its
+sequencer installs the title screen, and that stops those tasks for good. That is the next measurement, and it
+takes decompiling that branch of the sequencer.
+
+
+## The arcade's fixed route: a table, measured on 2026-10-22
+
+Looked for because Training mode needed to choose its arena, and found without a decompiler: `--watch` names
+who writes the scene index, and the twelve instructions before it say where it comes from.
+
+```
+000716B8  stb r0,-609(r9)      r9 = 0x00590000, so 0x0058FD9F : the scene index
+000716B4  mr  r0,r30           and r30 comes from :
+
+000715F0  lbz    r9,5213(r11)  [0x0058145D], which chooses the route
+000715F8  addi   r11,r11,16640 the table, 0x000B4100
+000715FC  addi   r0,r8,-1      the fight's number, minus one
+00071600  rlwinm r0,r0,3,0,28  times 8
+00071604  rlwinm r9,r9,1,0,30  the route, times 2
+0007160C  lbzx   r30,r11,r9    <- THE ARENA
+00071614  lbz    r3,1(r9)      and the next byte : the opponent
+```
+
+**Eight bytes per fight, four (arena, opponent) pairs, the pair chosen by `0x0058145D`.** Measured in a
+running game:
+
+```
++00 : 09 0A 00 09 00 09 00 09      fight 1 : arena 9,  opponent 0x0A
++08 : 01 0B 00 09 00 09 00 09      fight 2 : arena 1,  opponent 0x0B
 +10 : 07 00 0B 06 00 09 00 09
 +18 : 02 02 0A 07 00 09 00 09
 ```
 
-« 9 puis 1 pour le second adversaire » : c'est exactement ce que `docs/fv2-flux-de-match.md` avait mesuré de
-l'autre côté, sans savoir d'où ça venait.
+"9 then 1 for the second opponent": that is exactly what `docs/fv2-flux-de-match.md` had measured from the
+other side, without knowing where it came from.
 
-**Et ce n'est pas le même levier que `CHANGE STAGE`.** La fonction `0x0007111C`, que le menu d'août patche en
-`li r3,<scène> ; blr`, ne commande **pas** l'arène du premier combat : patchée et tenue, le jeu a choisi 9
-quand même. Elle n'est atteinte que par un rematch **passant par l'écran de sélection**. Pour un combat qui
-démarre, c'est la table.
+**And it is not the same lever as `CHANGE STAGE`.** The function `0x0007111C`, which August's menu patches to
+`li r3,<scene> ; blr`, does **not** command the first fight's arena: patched and held, the game picked 9 all
+the same. It is reached only by a rematch **going through the select screen**. For a fight that is starting,
+it is the table.
 
-Les douze arènes, numérotées par le propriétaire et mesurées à l'écran : 1 Old Armstone Town, 2 Deck of the
-Dark Royal, **3 Marble Arena**, 4 The Great B.M, 5 Terror Furnace, 6 Serpent's Cage, 7 Hanger of the Dark
-Royal, 8 Secret Chemical Plant, 9 Cross River Damsite, 10 Neo Armstone City Tower, 11 The Skies of Armstone,
+The twelve arenas, numbered by the owner and measured on screen: 1 Old Armstone Town, 2 Deck of the Dark
+Royal, **3 Marble Arena**, 4 The Great B.M, 5 Terror Furnace, 6 Serpent's Cage, 7 Hanger of the Dark Royal,
+8 Secret Chemical Plant, 9 Cross River Damsite, 10 Neo Armstone City Tower, 11 The Skies of Armstone,
 12 Great Museum.
 
 
-## La liste des modes, et sa géométrie
+## The list of modes, and its geometry
 
-`assets/menu-console/title_list.png`, 709 x 897, RGBA, sept lignes : ARCADE, V.S., RANDOM, SURVIVAL, NETWORK,
-TRAINING, OPTIONS. **Une seule version de chaque ligne** — aucun des 45 fichiers n'est une variante
-« sélectionnée », donc la ligne choisie doit être marquée autrement.
+`assets/menu-console/title_list.png`, 709 x 897, RGBA, seven lines: ARCADE, V.S., RANDOM, SURVIVAL, NETWORK,
+TRAINING, OPTIONS. **One version only of each line** — none of the 45 files is a "selected" variant, so the
+chosen line has to be marked some other way.
 
-L'image a été recadrée sur son encre (709 x 897 à partir de 1027 x 1024) ; sans ce recadrage le vide comptait
-dans la hauteur et le bloc entier se décalait.
+The image was cropped to its ink (709 x 897 out of 1027 x 1024); without that crop the empty space counted in
+the height and the whole block shifted.
 
-Les sept bandes sont coupées **au milieu des blancs**, pas en sept parts égales : les étiquettes font de 114 à
-118 pixels, et des parts égales rogneraient les plus hautes.
+The seven bands are cut **in the middles of the white**, not into seven equal parts: the labels are 114 to 118
+pixels, and equal parts would clip the taller ones.
 
 ```
-0, 124.5, 254, 381.5, 511.5, 640.5, 769, 897        (sur 897)
+0, 124.5, 254, 381.5, 511.5, 640.5, 769, 897        (out of 897)
 ```
 
-Les libellés sont peints **calés à gauche** — `V.S.` a son milieu à 0,17 quand `NETWORK` l'a à 0,50 — donc chaque
-ligne doit être glissée pour amener son encre au milieu du bloc.
+The labels are painted **flush left** — `V.S.` has its middle at 0.17 where `NETWORK` has it at 0.50 — so each
+line has to be slid to bring its ink to the middle of the block.
 
-| ligne | milieu de l'encre | demi-largeur | colonnes |
+| line | ink's middle | half-width | columns |
 |---|---|---|---|
-| ARCADE | 0,4006 | 0,3977 | 2..565 |
-| V.S. | 0,1728 | 0,1643 | 6..238 |
-| RANDOM | 0,4379 | 0,4320 | 4..616 |
-| SURVIVAL | 0,4732 | 0,4673 | 4..666 |
-| NETWORK | 0,5035 | 0,4908 | 9..704 |
-| TRAINING | 0,4746 | 0,4718 | 2..670 |
-| OPTIONS | 0,4281 | 0,4196 | 6..600 |
+| ARCADE | 0.4006 | 0.3977 | 2..565 |
+| V.S. | 0.1728 | 0.1643 | 6..238 |
+| RANDOM | 0.4379 | 0.4320 | 4..616 |
+| SURVIVAL | 0.4732 | 0.4673 | 4..666 |
+| NETWORK | 0.5035 | 0.4908 | 9..704 |
+| TRAINING | 0.4746 | 0.4718 | 2..670 |
+| OPTIONS | 0.4281 | 0.4196 | 6..600 |
 
-Et sa place sur l'écran titre, en fractions de la hauteur, relevée sur une capture 3840 x 2160 :
+And its place on the title screen, in fractions of the height, measured on a 3840 x 2160 capture:
 
 ```
-haut   0.26157      hauteur 0.35557      milieu 0.5
+top    0.26157      height 0.35557      middle 0.5
 ```
 
-Grossie de `7/6` (le bloc occupe la hauteur que sept lignes prendraient, pour six dessinées) et remontée de
-`50/1080`, les deux à la demande. Gardé comme un facteur appliqué à la mesure plutôt qu'en remplaçant celle-ci
-par le chiffre obtenu : les deux donnent la même image, mais l'un garde la mesure lisible et dit ce qui a été
-ajouté par-dessus.
+Grown by `7/6` (the block occupies the height seven lines would take, for six drawn) and lifted by `50/1080`,
+both on request. Kept as a factor applied to the measurement rather than replacing the measurement by the
+figure obtained: both give the same picture, but one keeps the measurement legible and says what was added on
+top of it.
 
-L'échelle verticale mesurée est 1,0013 et l'horizontale 1,1216 : cet écran est une image 4:3 montrée large, et
-l'étirement est celui de son affichage, pas celui du jeu. **Seul le placement vertical est pris de là**, la
-largeur suit les proportions de l'image.
-
-
-## Trois fautes, déjà payées là-bas
-
-- **Le style, pas le fond.** Le menu posé sur l'écran titre avait été basculé sur un style qui laisse voir le
-  jeu — ce qui contournait toute la branche où vivent les libellés peints, et les lignes retombaient à la police
-  du menu. Le remède n'est pas un style de plus, c'est une **soustraction** : même style, moins son illustration.
-- **Le masque des boutons.** Ce chemin n'ouvre pas le menu tout de suite, et c'est l'ouverture qui retenait les
-  entrées. Sans elle, Start arrivait au jeu, qui prenait son crédit et ouvrait l'écran de sélection pendant que
-  le voyage attendait un écran titre qui ne viendrait jamais.
-- **Deux changements livrés d'un coup**, sur un mécanisme dont le document disait lui-même qu'il n'avait jamais
-  été essayé. Frédéric n'avait aucun moyen de savoir lequel des deux cassait quoi, et il a fallu tout défaire.
+The measured vertical scale is 1.0013 and the horizontal 1.1216: that screen is a 4:3 picture shown wide, and
+the stretch is its display's, not the game's. **Only the vertical placement is taken from there**, the width
+follows the picture's proportions.
 
 
-## Le replay qui suit Start : les combattants sont sombres — 2026-10-23
+## Three mistakes, already paid for over there
 
-Rapporté par Frédéric : « *à la relance du replay, l'éclairage des personnages est anormalement sombre* ».
-Reproduit sans fenêtre, avec témoin, et **isolé**.
+- **The style, not the content.** The menu laid over the title screen had been switched to a style that lets
+  the game show through — which bypassed the whole branch where the painted labels live, and the lines fell
+  back to the menu's font. The remedy is not one more style, it is a **subtraction**: the same style, minus
+  its artwork.
+- **The button mask.** That path does not open the menu at once, and it is the opening that was withholding
+  the inputs. Without it, Start reached the game, which took its credit and opened the select screen while the
+  journey waited for a title screen that would never come.
+- **Two changes delivered at once**, on a mechanism the document itself said had never been tried. Frédéric
+  had no way of knowing which of the two was breaking what, and everything had to be undone.
 
-### Ce n'est pas un manque de modèles
 
-Le journal des images le dit tout de suite : le replay d'après dessine **457 à 532 modèles dans 16 à 18 vues**,
-autant que le témoin. Rien ne manque — tout est là et mal éclairé. C'est un défaut distinct de celui des
-modèles restés sur l'écran titre, même s'il vient du même geste.
+## The replay that follows Start: the fighters are dark — 2026-10-23
 
-### Ce n'est pas le menu non plus
+Reported by Frédéric: "*when the replay restarts, the characters' lighting is abnormally dark*". Reproduced
+without a window, with a control, and **isolated**.
 
-Trois captures, toutes dans le sous-état `0A` :
+### It is not a lack of models
 
-| | comment on y arrive | les combattants |
+The frame log says so at once: the replay afterwards draws **457 to 532 models in 16 to 18 views**, as many as
+the control. Nothing is missing — it is all there and badly lit. It is a flaw distinct from that of the models
+left on the title screen, even though it comes from the same gesture.
+
+### Nor is it the menu
+
+Three captures, all in sub-state `0A`:
+
+| | how it is reached | the fighters |
 |---|---|---|
-| témoin | le jeu seul, replay naturel à l'image 6284 | **éclairés** |
-| essai | Start coupe la démo, **la liste s'ouvre et on en ressort par B** | **sombres** |
-| essai sans liste | Start coupe la démo, **et rien d'autre** | **sombres** |
+| control | the game alone, natural replay at frame 6284 | **lit** |
+| trial | Start cuts the demo short, **the list opens and is left by B** | **dark** |
+| trial with no list | Start cuts the demo short, **and nothing else** | **dark** |
 
-La troisième est celle qui tranche : sans qu'aucun menu se soit ouvert, le défaut est là. **La cause est le
-redémarrage de la boucle d'attraction par Start**, pas la surface de la console. Le menu n'y est pour rien.
+The third is the one that settles it: with no menu having opened at all, the flaw is there. **The cause is
+Start restarting the attract loop**, not the console's surface. The menu has nothing to do with it.
 
-Les décors, eux, sont normalement éclairés dans les trois. Ce sont **les modèles des combattants seuls** qui
-sont sombres — des silhouettes bleutées.
+The scenery, for its part, is normally lit in all three. It is **the fighters' models alone** that are dark —
+bluish silhouettes.
 
-### Où ça rejoint ce qui était déjà écrit
+### Where this joins what was already written
 
-Le § « Ce que ça donne, et où ça bute » dit que la route propre range tout depuis la démonstration « mais pas
-depuis le replay », où le jeu rallume les trois tâches qu'on avait éteintes, et conclut qu'il faut trouver
-**ce que le jeu exécute quand son séquenceur installe l'écran titre**. Ce défaut-ci ajoute un symptôme à cette
-même question : ce n'est pas seulement ce qui reste à l'écran, c'est aussi **une lumière qui n'est pas
-reposée**.
+The § "What that gives, and where it runs up" says that the clean road tidies everything from the
+demonstration "but not from the replay", where the game turns back on the three tasks that had been turned
+off, and concludes that what must be found is **what the game runs when its sequencer installs the title
+screen**. This flaw adds a symptom to that same question: it is not only what stays on screen, it is also **a
+light that is not put back**.
 
-### La mesure suivante
+### The next measurement
 
-Trouver qui écrit les paramètres d'éclairage des modèles, et comparer ce qu'ils valent dans le témoin et dans
-l'essai à la même image du replay. La reproduction tient sans fenêtre, donc elle ne coûte rien à répéter :
-`tools/scripts` n'a pas encore ces trois scénarios, ils sont dans le bac à sable de la session.
+Find who writes the models' lighting parameters, and compare what they are worth in the control and in the
+trial at the same frame of the replay. The reproduction holds without a window, so it costs nothing to
+repeat: `tools/scripts` does not have those three scenarios yet, they are in the session's scratchpad.
 
 
-### Ce que portent les vues, témoin contre essai
+### What the views carry, control against trial
 
-`VF3_VIEW_LOG=<image>` imprime chaque vue de cette image avec la lumière que le jeu lui a mise. Au même
-sous-état `0A` des deux côtés :
+`VF3_VIEW_LOG=<frame>` prints every view of that frame with the light the game put on it. At the same
+sub-state `0A` on both sides:
 
-**Témoin — le jeu seul, 15 vues, et une seule lumière :**
-
-```
-view  0..14   ambient 0.800  sun 1.000 (0.02 0.85 -0.52)     (14 vues sur 15)
-view 11       ambient 0.227  sun 0.230 (-0.00 0.81 0.59)   73 modeles
-```
-
-**Essai — après Start, 17 vues, et TROIS lumières mélangées :**
+**Control — the game alone, 15 views, and one light only:**
 
 ```
-view  0..16   ambient 0.710  sun 1.000 (-0.43 0.83 0.36)     le fond
-view  6       ambient 1.000  sun 0.020 (0.15 0.10 0.98)    113 modeles
-view  5, 10   ambient 0.251  sun 1.000 (0.92 -0.38 -0.03)  104 modeles (vue 10)
-view 13, 14   ambient 0.710  sun 1.000 (-0.43 0.83 0.36)   162 et 171 modeles
+view  0..14   ambient 0.800  sun 1.000 (0.02 0.85 -0.52)     (14 views out of 15)
+view 11       ambient 0.227  sun 0.230 (-0.00 0.81 0.59)   73 models
 ```
 
-**Le témoin a une lumière et l'essai en a trois.** C'est là qu'est le défaut, et ça explique l'image : les
-décors sont dans les vues à `0.710` et sont bien éclairés ; une vue de 104 modèles est à `ambient 0.251` avec
-un soleil qui pointe de côté `(0.92 -0.38 -0.03)` — des silhouettes.
-
-L'hétérogénéité est le signal, et elle ne dépend pas de l'arène : que deux replays différents aient des
-ambiantes de base différentes (0.800 contre 0.710) est normal ; qu'une même scène en porte trois ne l'est pas.
-Le témoin n'a qu'une exception, l'essai en a trois et deux vues de plus.
-
-**La mesure suivante** : savoir dans quelle vue sont les combattants, et d'où vient le nœud de lumière qu'elle
-cite. L'hypothèse à vérifier — pas à croire — est que la liste d'affichage garde des nœuds de vue d'avant le
-redémarrage, et que les combattants tombent dans l'un d'eux.
-
-
-### La vue des combattants, et son soleil à l'envers
-
-Le relevé imprime aussi les adresses des modèles, parce qu'un compte ne dit pas **ce** qu'il y a dans une vue.
-Dans le même run, avant le Start, la démonstration montre les combattants correctement éclairés :
+**Trial — after Start, 17 views, and THREE lights mixed:**
 
 ```
-image 1400, sous-etat 0B (la demonstration)
-  view  6   ambient 0.098  sun 1.000 (-0.90  0.42  0.14)   89 modeles  7927A3 79149D 7911A5 791089
-  view 10   ambient 0.800  sun 1.000 (-0.08  0.94  0.34)  226 modeles  A02F03 A02EEC A02DEF A02DD8
+view  0..16   ambient 0.710  sun 1.000 (-0.43 0.83 0.36)     the background
+view  6       ambient 1.000  sun 0.020 (0.15 0.10 0.98)    113 models
+view  5, 10   ambient 0.251  sun 1.000 (0.92 -0.38 -0.03)  104 models (view 10)
+view 13, 14   ambient 0.710  sun 1.000 (-0.43 0.83 0.36)   162 and 171 models
+```
+
+**The control has one light and the trial has three.** That is where the flaw is, and it explains the picture:
+the scenery is in the views at `0.710` and is well lit; a view of 104 models is at `ambient 0.251` with a sun
+pointing sideways `(0.92 -0.38 -0.03)` — silhouettes.
+
+The unevenness is the signal, and it does not depend on the arena: that two different replays have different
+base ambients (0.800 against 0.710) is normal; that one scene carries three is not. The control has one
+exception, the trial has three and two views more.
+
+**The next measurement**: find out which view the fighters are in, and where the light node it cites comes
+from. The hypothesis to check — not to believe — is that the display list keeps view nodes from before the
+restart, and that the fighters fall into one of them.
+
+
+### The fighters' view, and its sun the wrong way up
+
+The log also prints the models' addresses, because a count does not say **what** is in a view. In the same
+run, before the Start, the demonstration shows the fighters correctly lit:
+
+```
+frame 1400, sub-state 0B (the demonstration)
+  view  6   ambient 0.098  sun 1.000 (-0.90  0.42  0.14)   89 models  7927A3 79149D 7911A5 791089
+  view 10   ambient 0.800  sun 1.000 (-0.08  0.94  0.34)  226 models  A02F03 A02EEC A02DEF A02DD8
 ```
 
 ```
-image 1800, sous-etat 0A (le replay, apres Start)
-  view 10   ambient 0.251  sun 1.000 ( 0.92 -0.38 -0.03)  104 modeles  7927A3 79149D 7911A5 791089
-  view 13   ambient 0.710  sun 1.000 (-0.43  0.83  0.36)  162 modeles  83CF98 83CD3C 931B5F 931A5B
+frame 1800, sub-state 0A (the replay, after Start)
+  view 10   ambient 0.251  sun 1.000 ( 0.92 -0.38 -0.03)  104 models  7927A3 79149D 7911A5 791089
+  view 13   ambient 0.710  sun 1.000 (-0.43  0.83  0.36)  162 models  83CF98 83CD3C 931B5F 931A5B
 ```
 
-**La famille `0x79xxxx` est la même des deux côtés** — `7927A3`, `79149D`, `7911A5`, `791089`, aux mêmes
-adresses. C'est elle, les combattants : des modèles refaits image par image, là où les décors vivent plus haut
-(`A02Fxx`, `83Cxxx`, `931xxx`) et ne bougent pas.
+**The `0x79xxxx` family is the same on both sides** — `7927A3`, `79149D`, `7911A5`, `791089`, at the same
+addresses. That is the fighters: models rebuilt frame by frame, where the scenery lives higher up (`A02Fxx`,
+`83Cxxx`, `931xxx`) and does not move.
 
-Et **ce n'est pas l'ambiante**. Dans la démonstration elle vaut `0.098`, plus basse encore que les `0.251` du
-replay sombre, et les combattants y sont très bien éclairés. Ce qui change est **la direction du soleil** :
+And **it is not the ambient**. In the demonstration it is `0.098`, lower still than the dark replay's `0.251`,
+and the fighters are very well lit there. What changes is **the sun's direction**:
 
-| | soleil | sa composante verticale |
+| | sun | its vertical component |
 |---|---|---|
-| la démonstration, combattants éclairés | `(-0.90  0.42  0.14)` | **+0,42, d'en haut** |
-| le témoin, replay naturel | `( 0.02  0.85 -0.52)` | **+0,85, d'en haut** |
-| le replay après Start | `( 0.92 -0.38 -0.03)` | **−0,38, D'EN BAS** |
+| the demonstration, fighters lit | `(-0.90  0.42  0.14)` | **+0.42, from above** |
+| the control, natural replay | `( 0.02  0.85 -0.52)` | **+0.85, from above** |
+| the replay after Start | `( 0.92 -0.38 -0.03)` | **−0.38, FROM BELOW** |
 
-**Le soleil éclaire les combattants par en dessous.** Leurs dessus ne reçoivent rien, et avec une ambiante de
-0,251 il ne reste que des silhouettes — exactement l'image. Dans le témoin, toutes les vues sans exception ont
-une composante verticale positive.
+**The sun lights the fighters from underneath.** Their tops receive nothing, and with an ambient of 0.251 only
+silhouettes are left — exactly the picture. In the control, every view without exception has a positive
+vertical component.
 
-### Ce qui reste à trouver
+### What remains to be found
 
-D'où vient ce nœud de vue. Il est dans la liste d'affichage que le jeu construit, donc la question est de
-savoir si le redémarrage de la boucle lui fait citer un nœud d'une autre scène, ou s'il en construit un neuf
-avec de mauvaises valeurs. Les deux se distinguent en surveillant qui écrit ces mots — et c'est la même
-branche du séquenceur que ce fichier cherche déjà depuis le 2026-10-21.
+Where that view node comes from. It is in the display list the game builds, so the question is whether
+restarting the loop makes it cite a node from another scene, or whether it builds a new one with wrong
+values. The two are told apart by watching who writes those words — and it is the same branch of the
+sequencer this file has already been looking for since 2026-10-21.
 
 
-### Remonter à ce qui écrit ce nœud : trois maillons, et le quatrième ouvert
+### Tracing back what writes that node: three links, and the fourth open
 
-**1. Le relevé nomme les nœuds.** `VF3_VIEW_LOG` imprime aussi l'adresse du nœud de chaque vue (champ `node`
-de `Viewport`, posé dans `SceneBuilder::viewport`). Dans un même run :
+**1. The log names the nodes.** `VF3_VIEW_LOG` also prints each view's node address (`Viewport`'s `node`
+field, set in `SceneBuilder::viewport`). Within one run:
 
 ```
-image 1400, la demonstration   node 80015C  ambient 0.098  sun (-0.90  0.42  0.14)   89 modeles  7927A3...
-                               node 800244  ambient 0.800  sun (-0.08  0.94  0.34)  226 modeles  A02F03...
-image 1800, le replay sombre   node 800244  ambient 0.251  sun ( 0.92 -0.38 -0.03)  104 modeles  7927A3...
+frame 1400, the demonstration  node 80015C  ambient 0.098  sun (-0.90  0.42  0.14)   89 models  7927A3...
+                               node 800244  ambient 0.800  sun (-0.08  0.94  0.34)  226 models  A02F03...
+frame 1800, the dark replay    node 800244  ambient 0.251  sun ( 0.92 -0.38 -0.03)  104 models  7927A3...
 ```
 
-**Les combattants ont changé de nœud** : `80015C` dans la démonstration, `800244` dans le replay — et `800244`
-était le nœud des décors dans la démonstration.
+**The fighters have changed node**: `80015C` in the demonstration, `800244` in the replay — and `800244` was
+the scenery's node in the demonstration.
 
-**2. La RAM de culling est remplie par DMA, pas par le processeur.** `vf3run --watch 8E000928` ne rapporte
-**rien** : `r3d_dma_write32` copie des blocs depuis la RAM principale avec `write32`, qui n'est pas le chemin
-de `Cpu::w32`. C'est un piège qui coûte une heure à qui l'ignore. `VF3_DMA_LOG=1` dit d'où vient chaque bloc :
+**2. The culling RAM is filled by DMA, not by the processor.** `vf3run --watch 8E000928` reports **nothing**:
+`r3d_dma_write32` copies blocks from the main RAM with `write32`, which is not `Cpu::w32`'s path. It is a trap
+that costs an hour to anyone who does not know it. `VF3_DMA_LOG=1` says where each block comes from:
 
 ```
 r3d dma: 007D8010 -> 8E000000, 464 words
@@ -571,183 +573,182 @@ r3d dma: 007E2A10 -> 8E00AA00,  24 words
 r3d dma: 007EB6B0 -> 8E0136A0,   8 words
 ```
 
-**3. Les nœuds sont recopiés d'un gabarit unique.** `--trace-pc 6348` donne `r5 = 0x005811C4` dans les deux
-runs, et `r6` la destination. La boucle `0x00006350`–`0x00006364` copie **48 mots** de ce gabarit vers chaque
-vue. Le gabarit lui-même est écrit en `0x0000624C`, et sa verticale est **positive des deux côtés** : ce n'est
-donc pas lui le coupable.
+**3. The nodes are copied from a single template.** `--trace-pc 6348` gives `r5 = 0x005811C4` in both runs,
+and `r6` the destination. The loop `0x00006350`–`0x00006364` copies **48 words** from that template to each
+view. The template itself is written at `0x0000624C`, and its vertical is **positive on both sides**: so it is
+not the culprit.
 
-### Le maillon ouvert, et l'hypothèse à vérifier
+### The open link, and the hypothesis to check
 
-Le bloc DMA couvre les mots **0 à 463**. Le nœud `0x800244` est le mot **580**, donc **hors du bloc**. Si aucun
-autre transfert ne le couvre, il n'est **pas réécrit de l'image** et ce que la scène y lit vient d'une scène
-précédente — ce qui expliquerait tout : un nœud resté là depuis avant le redémarrage, et des combattants
-accrochés dessus.
+The DMA block covers words **0 to 463**. The node `0x800244` is word **580**, so **outside the block**. If no
+other transfer covers it, it is **not rewritten for the frame** and what the scene reads there comes from a
+previous scene — which would explain everything: a node left there from before the restart, and fighters hung
+on it.
 
-**À vérifier avant d'y croire** : compter tous les transferts d'une image et voir si l'un couvre le mot 580.
-La même vérification sur le témoin dira si ce nœud y est écrit ou s'il y est aussi un reste — auquel cas
-l'explication est ailleurs. Rien ne doit être corrigé avant cette réponse.
+**To be checked before being believed**: count all of a frame's transfers and see whether one covers word 580.
+The same check on the control will say whether that node is written there or whether it is a leftover there
+too — in which case the explanation is elsewhere. Nothing should be corrected before that answer.
 
 
-### Le quatrième maillon, fermé : la liste d'affichage est tronquée
+### The fourth link, closed: the display list is truncated
 
-`VF3_DMA_LOG=1` date chaque transfert par son image. Tous ceux qui vont dans la RAM de culling (`0x8E...`),
-pour une image de replay de chaque côté :
+`VF3_DMA_LOG=1` dates each transfer by its frame. All those that go into the culling RAM (`0x8E...`), for one
+replay frame on each side:
 
 ```
-TEMOIN, replay naturel, image 6400        ESSAI, replay apres Start, image 1800
-  8E000000,  870 mots                       8E000000,  464 mots
-  8E00AA00,   24 mots                       8E00AA00,   24 mots
-  8E00B030, 3480 mots                       8E0136A0,    8 mots
-  8E002D00, 3240 mots
-  8E0136A0,  300 mots
-  ---------------------                     ---------------------
-  7 914 mots en tout                          496 mots en tout
+CONTROL, natural replay, frame 6400      TRIAL, replay after Start, frame 1800
+  8E000000,  870 words                     8E000000,  464 words
+  8E00AA00,   24 words                      8E00AA00,   24 words
+  8E00B030, 3480 words                      8E0136A0,    8 words
+  8E002D00, 3240 words
+  8E0136A0,  300 words
+  ---------------------                    ---------------------
+  7 914 words in all                          496 words in all
 ```
 
-**Le nœud des combattants est le mot 580.** Le témoin en écrit 870 d'un coup : il est dedans, réécrit à chaque
-image. L'essai en écrit 464 : il est **dehors**, et rien d'autre ne l'atteint. Ce que la scène y lit est donc
-ce qu'une scène précédente y a laissé — dont un soleil qui éclaire par en dessous.
+**The fighters' node is word 580.** The control writes 870 of them at a stroke: it is inside, rewritten on
+every frame. The trial writes 464: it is **outside**, and nothing else reaches it. So what the scene reads
+there is what a previous scene left there — including a sun that lights from underneath.
 
-Et il ne manque pas qu'un peu : l'essai écrit **496 mots** là où le témoin en écrit **7 914**, et les deux gros
-transferts du témoin (`8E00B030` et `8E002D00`) n'ont aucun équivalent. Pourtant la scène de l'essai cite
-**17 vues** et dessine **457 à 532 modèles**, autant que le témoin : elle a donc besoin de ces nœuds et lit
-au-delà de ce que le jeu a écrit.
+And it is not a little that is missing: the trial writes **496 words** where the control writes **7 914**, and
+the control's two large transfers (`8E00B030` and `8E002D00`) have no equivalent at all. Yet the trial's scene
+cites **17 views** and draws **457 to 532 models**, as many as the control: so it needs those nodes and reads
+beyond what the game wrote.
 
-**C'est la même cause que les modèles restés sur l'écran titre**, consignés le 2026-10-21 : après le
-redémarrage de la boucle, le jeu n'écrit plus sa liste en entier, et ce qui traîne est lu comme s'il l'avait
-écrit. Un seul défaut, deux symptômes.
+**It is the same cause as the models left on the title screen**, recorded on 2026-10-21: after the loop
+restarts, the game no longer writes its list in full, and what is lying about is read as if it had written it.
+One flaw, two symptoms.
 
-**Ce qu'il ne faut pas faire** : rapiécer le soleil. La valeur lue n'est pas fausse, elle est périmée. La
-sortie est celle que ce fichier cherche depuis le 2026-10-21 — ce que le jeu exécute quand son séquenceur
-installe l'écran titre, et qui remet son émetteur de liste en état.
+**What must not be done**: patch the sun. The value read is not wrong, it is stale. The way out is the one
+this file has been looking for since 2026-10-21 — what the game runs when its sequencer installs the title
+screen, and that puts its list sender back in order.
 
 
-### Qui émet la liste : le même, appelé trois fois moins
+### Who sends the list: the same one, called three times less often
 
-Le registre de longueur du DMA est à `0xC2000008`. `--watch` dessus nomme chaque émission, et comptées sur
-1805 images :
+The DMA's length register is at `0xC2000008`. `--watch` on it names each send, and counted over 1805 frames:
 
-| émetteur | témoin | essai |
+| sender | control | trial |
 |---|---|---|
-| `0x00009C64`, appelé de `0x00003CEC` | **9 642** | **3 428** |
-| `0x00009B04`, de `0x00033404` | 2 487 | 2 296 |
-| `0x00009B04`, de `0x00033468` | 2 461 | 1 918 |
-| `0x00009BCC`, de `0x00005214` | 1 128 | 1 118 |
-| `0x00009BCC`, de `0x00021F5C` | 419 | 67 |
+| `0x00009C64`, called from `0x00003CEC` | **9 642** | **3 428** |
+| `0x00009B04`, from `0x00033404` | 2 487 | 2 296 |
+| `0x00009B04`, from `0x00033468` | 2 461 | 1 918 |
+| `0x00009BCC`, from `0x00005214` | 1 128 | 1 118 |
+| `0x00009BCC`, from `0x00021F5C` | 419 | 67 |
 
-**Ce ne sont pas deux émetteurs différents** — c'était ma première lecture, et elle était fausse : les deux
-côtés se servent des quatre mêmes. Ce qui change est le **nombre d'appels** du principal, `0x00009C64` depuis
-`0x00003CEC` : un peu plus du tiers. Les trois autres bougent à peine.
+**These are not two different senders** — that was my first reading, and it was wrong: both sides use the same
+four. What changes is the **number of calls** to the main one, `0x00009C64` from `0x00003CEC`: a little over a
+third. The three others barely move.
 
-Le jeu ne change donc pas de façon d'écrire sa liste : **il a moins de choses à écrire**. Ce qui alimente la
-boucle de `0x00003CEC` est plus court après le redémarrage.
+So the game does not change the way it writes its list: **it has less to write**. What feeds `0x00003CEC`'s
+loop is shorter after the restart.
 
-**La mesure suivante** : ce que `0x00003CEC` parcourt — sa liste et son compte — et pourquoi elle est plus
-courte. `--trace-pc` sur son entrée donnera le pointeur et la longueur, et la comparaison témoin/essai au même
-sous-état dira ce qui manque.
+**The next measurement**: what `0x00003CEC` walks through — its list and its count — and why it is shorter.
+`--trace-pc` on its entry will give the pointer and the length, and comparing control and trial at the same
+sub-state will say what is missing.
 
 
-### La preuve par les mêmes modèles, et la cause isolée
+### The proof by the same models, and the cause isolated
 
-Le doute qui restait : les deux replays ne jouent pas la même arène, et un soleil bas pourrait être celui du
-décor. Écarté en comparant **les mêmes modèles**, reconnus à leurs adresses :
+The doubt that remained: the two replays do not play the same arena, and a low sun could be the stage's. Ruled
+out by comparing **the same models**, recognised by their addresses:
 
-| | nœud | ambiante | soleil | modèles |
+| | node | ambient | sun | models |
 |---|---|---|---|---|
-| témoin, image 6400 | `8000E8` | 0,800 | `(0.02 **0.85** -0.52)` | 139 : `6DA8A9 6DA4BD 6DA0D1 6D9E28` |
-| essai, image 2400 | `800122` | 0,251 | `(0.92 **-0.39** 0.08)` | 139 : `6DA8A9 6DA4BD 6DA0D1 6D9E28` |
+| control, frame 6400 | `8000E8` | 0.800 | `(0.02 **0.85** -0.52)` | 139: `6DA8A9 6DA4BD 6DA0D1 6D9E28` |
+| trial, frame 2400 | `800122` | 0.251 | `(0.92 **-0.39** 0.08)` | 139: `6DA8A9 6DA4BD 6DA0D1 6D9E28` |
 
-**Les mêmes 139 modèles, aux mêmes adresses**, éclairés d'en haut d'un côté et d'en bas de l'autre. Ce n'est
-pas l'arène. Et une seconde famille, `85243F 851AC7 A02796 A0273A`, se retrouve des deux côtés elle aussi, à
-des nœuds différents (`80027E` contre `8002F2`).
+**The same 139 models, at the same addresses**, lit from above on one side and from below on the other. It is
+not the arena. And a second family, `85243F 851AC7 A02796 A0273A`, is found on both sides too, at different
+nodes (`80027E` against `8002F2`).
 
-**Les modèles ont glissé de nœud.** Le témoin les range sur `800074, 8000E8, 800196, 80020A, 80027E, 8002B8` ;
-l'essai sur `800122, 80020A, 80027E, 8002F2, 80032C`. Chaque groupe se retrouve accroché à un nœud voisin —
-celui d'une autre partie de la scène, avec la lumière de celle-là.
+**The models have slipped node.** The control files them on `800074, 8000E8, 800196, 80020A, 80027E, 8002B8`;
+the trial on `800122, 80020A, 80027E, 8002F2, 80032C`. Each group ends up hung on a neighbouring node — the one
+belonging to another part of the scene, with that part's light.
 
-### Ce n'est pas le raccourci de l'écran titre
+### It is not the title screen shortcut
 
-`VF3_NO_SKIP=1` redémarre la boucle et **laisse le jeu marcher jusqu'à son propre écran titre**, logo compris,
-sans rien lui demander. Le replay qui suit est **tout aussi sombre** : mêmes `0.251`, même soleil à `-0.39`.
+`VF3_NO_SKIP=1` restarts the loop and **lets the game walk to its own title screen**, logo included, without
+asking it for anything. The replay that follows is **just as dark**: the same `0.251`, the same sun at `-0.39`.
 
-Donc ce n'est ni le menu, ni la demande d'écran titre : **c'est le redémarrage de la boucle d'attraction
-lui-même**, `MODE_REQUEST = 3, SUBMODE_REQUEST = 0`.
+So it is neither the menu nor the title screen request: **it is the restart of the attract loop itself**,
+`MODE_REQUEST = 3, SUBMODE_REQUEST = 0`.
 
-### L'hypothèse qui reste, et pourquoi elle tient
+### The hypothesis that remains, and why it holds
 
-Le jeu redémarre sa boucle tout seul en permanence — ce fichier le note plus haut : *« le replay demande le
-redémarrage de la boucle »*. Et il n'a pas de combattants sombres. Ce qui diffère chez nous est **le moment** :
-le jeu le fait à la fin d'un replay, nous le faisons **au milieu d'une démonstration**.
+The game restarts its loop by itself all the time — this file notes it above: *"the replay asks for the loop
+to restart"*. And it has no dark fighters. What differs with us is **the moment**: the game does it at the end
+of a replay, we do it **in the middle of a demonstration**.
 
-À vérifier : appuyer sur Start **pendant un replay** plutôt que pendant une démonstration, et regarder la
-scène suivante. Si elle est saine, la sortie est de ne pas couper une démonstration en plein milieu — soit
-en attendant qu'elle finisse, soit en la terminant comme le jeu la termine.
+To be checked: press Start **during a replay** rather than during a demonstration, and look at the next scene.
+If it is sound, the way out is not to cut a demonstration off in the middle — either by waiting for it to
+finish, or by ending it the way the game ends it.
 
 
-### Correction : c'est le rattachement, pas la direction du soleil
+### Correction: it is the attachment, not the sun's direction
 
-Un essai de plus — Start pendant un replay — a montré des scènes **saines** portant elles aussi des soleils à
-verticale négative : `(-0.32 -0.74 0.59)`, `(-0.27 -0.30 0.91)`. Le soleil est **propre à chaque vue**, et
-chaque vue a sa caméra : comparer deux vecteurs pris à deux moments ne prouve rien. **Ma formule « le soleil
-éclaire par en dessous » était une sur-interprétation**, et elle est retirée.
+One more trial — Start during a replay — showed **sound** scenes carrying suns with a negative vertical too:
+`(-0.32 -0.74 0.59)`, `(-0.27 -0.30 0.91)`. The sun is **particular to each view**, and each view has its
+camera: comparing two vectors taken at two moments proves nothing. **My phrase "the sun lights from
+underneath" was an over-reading**, and it is withdrawn.
 
-Ce qui reste, et qui ne dépend d'aucune caméra, c'est **l'ambiante**, un scalaire :
+What remains, and depends on no camera, is **the ambient**, a scalar:
 
-| les mêmes 139 modèles, `6DA8A9 6DA4BD 6DA0D1 6D9E28` | nœud | ambiante |
+| the same 139 models, `6DA8A9 6DA4BD 6DA0D1 6D9E28` | node | ambient |
 |---|---|---|
-| témoin, replay naturel | `8000E8` | **0,800** |
-| essai, après redémarrage | `800122` | **0,251** |
+| control, natural replay | `8000E8` | **0.800** |
+| trial, after the restart | `800122` | **0.251** |
 
-Et la seconde famille, `85243F 851AC7 A02796 A0273A` : nœud `80027E` à **0,227** chez le témoin, nœud `8002F2`
-à **0,478** chez l'essai.
+And the second family, `85243F 851AC7 A02796 A0273A`: node `80027E` at **0.227** in the control, node `8002F2`
+at **0.478** in the trial.
 
-**Le défaut est donc le rattachement** : un même groupe de modèles se retrouve sur un nœud voisin et hérite
-d'une lumière destinée à autre chose — ambiante comprise. Les combattants, qui devraient être sur une vue à
-ambiante pleine, tombent sur une vue à un quart, et c'est ça qu'on voit.
+**So the flaw is the attachment**: one group of models ends up on a neighbouring node and inherits a light
+meant for something else — ambient included. The fighters, which should be on a view at full ambient, land on
+a view at a quarter, and that is what is seen.
 
-### Où ça en est
+### Where it stands
 
-- **Établi** : mêmes modèles, nœuds différents, ambiantes différentes ; et ce n'est ni le menu, ni la demande
-  d'écran titre, puisque `VF3_NO_SKIP=1` donne le même défaut.
-- **Établi aussi** : après le redémarrage le jeu n'envoie que 496 mots de liste là où il en envoie 7 914,
-  parce qu'il ne construit que **trois descripteurs de DMA au lieu de cinq**.
-- **Non établi** : pourquoi. La piste qui reste est le **moment** du redémarrage — le jeu redémarre sa boucle
-  à la fin d'un replay, nous la coupons au milieu d'une démonstration. L'essai « Start pendant un replay »
-  n'a pas tranché : il retombe sur une démonstration, pas sur un replay, donc il ne compare pas ce qu'il
-  faut.
+- **Established**: the same models, different nodes, different ambients; and it is neither the menu nor the
+  title screen request, since `VF3_NO_SKIP=1` gives the same flaw.
+- **Established too**: after the restart the game sends only 496 words of list where it sends 7 914, because
+  it builds only **three DMA descriptors instead of five**.
+- **Not established**: why. The trail that remains is the **moment** of the restart — the game restarts its
+  loop at the end of a replay, we cut it off in the middle of a demonstration. The trial "Start during a
+  replay" did not settle it: it lands on a demonstration, not on a replay, so it does not compare the right
+  thing.
 
 
-### La chaîne complète, du symptôme au compteur
+### The complete chain, from the symptom to the counter
 
 ```
-des combattants sombres
-  └─ ils sont accrochés à un nœud de vue voisin, d'ambiante 0,251 au lieu de 0,800
-      └─ parce que la liste d'affichage envoyée ne couvre pas leur nœud
-          └─ parce que le jeu ne bâtit que 3 descripteurs de DMA au lieu de 5
-              └─ parce que deux d'entre eux tirent leur longueur de compteurs
-                 (0x00580FAC, 0x00580FB0) multipliés par 12, en 0x00005184 et 0x0000519C
-                  └─ et 0x00580FB0 vaut 33 au lieu de 323
-                      └─ parce que 0x00006C34 et 0x0000688C, qui l'incrémentent,
-                         tournent 1 206 fois au lieu de 69 151
+dark fighters
+  └─ they are hung on a neighbouring view node, of ambient 0.251 instead of 0.800
+      └─ because the display list sent does not cover their node
+          └─ because the game builds only 3 DMA descriptors instead of 5
+              └─ because two of them take their length from counters
+                 (0x00580FAC, 0x00580FB0) multiplied by 12, at 0x00005184 and 0x0000519C
+                  └─ and 0x00580FB0 is 33 instead of 323
+                      └─ because 0x00006C34 and 0x0000688C, which increment it,
+                         run 1 206 times instead of 69 151
 ```
 
-Chaque palier est mesuré avec son témoin, et chaque adresse est relevée, pas supposée.
+Every step is measured with its control, and every address is taken, not supposed.
 
-### Où ça s'arrête, et pourquoi
+### Where it stops, and why
 
-Le dernier palier dit **que** le jeu soumet cinquante fois moins de choses à dessiner, pas **pourquoi**. Les
-appelants des deux incrémenteurs sont `0x0001277C`, `0x00012CB4`, `0x00018DA0`, `0x00022C10` et `0x00023C94` ;
-le témoin se sert des cinq, l'essai pratiquement d'aucun. Savoir ce qui les commande demande de décompiler la
-soumission de scène — un chantier à lui, pas une mesure de plus.
+The last step says **that** the game submits fifty times less to be drawn, not **why**. The two incrementers'
+callers are `0x0001277C`, `0x00012CB4`, `0x00018DA0`, `0x00022C10` and `0x00023C94`; the control uses all
+five, the trial practically none. Knowing what commands them takes decompiling the scene submission — a job of
+its own, not one more measurement.
 
-Ce qui est acquis et qui ne sera pas à refaire :
+What is settled and will not have to be done again:
 
-- le défaut est **le redémarrage de la boucle d'attraction**, ni le menu ni la demande d'écran titre
-  (`VF3_NO_SKIP=1` le reproduit sans rien demander au jeu) ;
-- il frappe **la soumission**, pas le rendu : les modèles sont tous là, 457 à 532, correctement placés ;
-- il explique **les deux symptômes d'octobre et celui-ci** : ce qui n'est pas réécrit est lu tel qu'il était,
-  d'où les modèles restés sur l'écran titre et les combattants qui héritent d'une ambiante étrangère ;
-- et les instruments existent désormais : `VF3_VIEW_LOG`, `VF3_DMA_LOG`, `VF3_NO_SKIP`.
+- the flaw is **the restart of the attract loop**, neither the menu nor the title screen request
+  (`VF3_NO_SKIP=1` reproduces it without asking the game for anything);
+- it strikes **the submission**, not the rendering: the models are all there, 457 to 532, correctly placed;
+- it explains **October's two symptoms and this one**: what is not rewritten is read as it was, hence the
+  models left on the title screen and the fighters inheriting a foreign ambient;
+- and the instruments now exist: `VF3_VIEW_LOG`, `VF3_DMA_LOG`, `VF3_NO_SKIP`.
 
-**Ce qu'il ne faut pas faire** : forcer l'ambiante ou le soleil. Ce serait peindre par-dessus une scène qui
-n'a pas été soumise, et le reste — ce qui traîne à l'écran — resterait entier.
+**What must not be done**: forcing the ambient or the sun. That would be painting over a scene that was not
+submitted, and the rest — what is lying about on screen — would remain whole.

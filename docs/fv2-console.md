@@ -183,23 +183,23 @@ from the SEGA logo, from the demonstration, from the select screen and from insi
 (0x2A from a fight, 0x2D from the select screen). The title screen is back over a game that is still running,
 so `fv2_in_attract` stays false. Leaving a fight properly is the game's own road, and it is not wired.
 
-### Et ce que ça donnait à l'écran, mesuré le 2026-10-23
+### And what that gave on screen, measured on 2026-10-23
 
-Ce paragraphe était écrit depuis le 21 sans que personne ait regardé le résultat. Frédéric l'a trouvé en
-versus : **Start en plein combat, et l'écran titre revient déchiré.** Les couches de tuiles hachées les unes
-dans les autres, les noms du roster imprimés à travers le logo, toute l'image en rayures. Reproduit sans
-fenêtre sur la route `tools/scripts/fv2-console-vs-start.txt` — image 3001 d'un combat versus, le mode passe
-de `GAME_DSP / FIGHT_DSP` à `ADV_DSP / FV2_TITLE_DSP` et la photo est illisible.
+This paragraph had been written since the 21st without anybody having looked at the result. Frédéric found it
+in versus: **Start mid-fight, and the title screen comes back torn.** The tile layers hashed into one another,
+the roster's names printed through the logo, the whole picture in stripes. Reproduced without a window on the
+route `tools/scripts/fv2-console-vs-start.txt` — frame 3001 of a versus fight, the mode goes from
+`GAME_DSP / FIGHT_DSP` to `ADV_DSP / FV2_TITLE_DSP` and the photograph is unreadable.
 
-**Donc on ne demande plus rien depuis une partie.** Il n'y a pas de bon écran à demander de l'intérieur d'un
-combat : la demande déplace l'écran sans arrêter la partie, et c'est cette superposition qui déchire l'image.
-La règle devient `fv2_in_attract` — hors attraction, cette couche ne fait rien.
+**So nothing is asked for from inside a game any more.** There is no good screen to ask for from inside a
+fight: the request moves the screen without stopping the game, and it is that superposition that tears the
+picture. The rule becomes `fv2_in_attract` — outside the attract, this layer does nothing.
 
-**Et elle ne retient pas l'appui non plus** : il part au jeu comme le Start de la borne, ce qui est ce qui
-laisse un deuxième joueur s'inviter dans un match en cours. Vérifié : à la même image 3001, le combat
-continue, l'image est intacte, et le match va jusqu'à son `NEXT_PROG_SEL` et son round suivant.
+**And it does not withhold the press either**: it goes to the game like the cabinet's Start, which is what
+lets a second player invite himself into a match in progress. Verified: at the same frame 3001, the fight goes
+on, the picture is intact, and the match runs to its `NEXT_PROG_SEL` and its next round.
 
-Ce qui reste non résolu est ce qui l'était déjà : **sortir d'un combat proprement**, par la route du jeu.
+What remains unresolved is what already was: **leaving a fight properly**, by the game's own road.
 
 The press is withheld whichever way it went, and the next one is not read until this one has been let go --
 otherwise the button that opened the list would still be down on the frame the list hands the game a Start of
@@ -272,8 +272,8 @@ This is not a gap in what has been read: it is what the game is. Sega's own twen
 (`docs/fv2-etats.md`) are WARNING, ADV, SEL, GAME, CONTINUE, INTRUDE, ENDING, NAME, RANKING, OVER, TEST and
 RESULT. No training, no network, no options. And the owner's arcade notes say it in as many words:
 
-> Le mode Versus n'existe pas comme mode distinct : dans Fighting Vipers 2, c'est le mode arcade avec un
-> second joueur qui s'incruste. Il n'y a pas de mode Training.
+> Versus does not exist as a mode of its own: in Fighting Vipers 2 it is the arcade mode with a second player
+> inviting himself in. There is no Training mode.
 
 Which also says that V.S., as this port does it -- a second player's Start into an arcade game -- is not an
 approximation of a Versus mode. It **is** what Versus is on this board.
@@ -380,7 +380,7 @@ window, which is how the measurements above were taken.
   30 frames after that screen appears. Both need the select screen's own timing, which this page has not
   measured here, so neither is wired up. The hooks are in `console_play` (`inject_start_p2` is there and
   unused); what is missing is the measurement, not the plumbing.
-- **The pause menu** — **construit le 2026-10-24**, les modes étant finis. Voir plus bas.
+- **The pause menu** — **built on 2026-10-24**, the modes being finished. See below.
 - **The region.** The byte is readable and writable through `Model3::fv2_region`, and holds, but nothing calls
   it yet: it has to be written at the moment the settings have just been loaded from the NVRAM, or the NVRAM
   read overwrites it, and that moment has not been pinned down in this port.
@@ -396,571 +396,562 @@ window, which is how the measurements above were taken.
   `tools/scripts/fv2-fight.txt`.
 - The two measurements above, each against a control run that differs in one thing only.
 
-## Le menu de pause
+## The pause menu
 
-`src/host/fv2_pause.h`, construit le 2026-10-24. Start pendant un match l'ouvre par-dessus le combat, le jeu
-gelé derrière ; Start le referme. C'est la troisième surface de ce portage, après la liste des modes et la
-page OPTIONS, et elle est faite comme elles : elle gèle le jeu, prend le clavier et la manette, dit au seul
-hôte ce qu'elle veut entendre (`want_sound`), et ne connaît rien de RmlUi.
+`src/host/fv2_pause.h`, built on 2026-10-24. Start during a match opens it over the fight, the game frozen
+behind it; Start closes it. It is this port's third surface, after the list of modes and the OPTIONS page, and
+it is made like them: it freezes the game, takes the keyboard and the pad, tells the host alone what it wants
+to hear (`want_sound`), and knows nothing of RmlUi.
 
-### La forme est celle du disque
+### The shape is the disc's
 
-Frédéric a montré l'écran de la Dreamcast, et c'est lui qui est suivi, pas une page de lignes centrées :
+Frédéric showed the Dreamcast's screen, and it is the one followed, not a page of centred lines:
 
-- un **panneau** violet translucide sous une **barre pâle** qui porte `1P PAUSE`, avec un montant clair le
-  long de son bord gauche ;
-- **à gauche pour le joueur 1, à droite pour le joueur 2** — le panneau se range du côté de celui qui a mis
-  en pause, et l'hôte sait lequel c'est par le Start qui est arrivé ;
-- **l'écran assombri** derrière, et le combat qui reste lisible dessous ;
-- les lignes **alignées à gauche** dans le panneau, la choisie en jaune ;
-- les deux aides **séparées en bas**, à gauche et à droite, comme là-bas.
+- a translucent purple **panel** under a **pale bar** carrying `1P PAUSE`, with a light upright along its left
+  edge;
+- **on the left for player 1, on the right for player 2** — the panel sits on the side of whoever paused, and
+  the host knows which from the Start that arrived;
+- **the screen darkened** behind, and the fight still readable under it;
+- the lines **left-aligned** in the panel, the chosen one in yellow;
+- the two hints **apart at the bottom**, left and right, as over there.
 
-Toutes les mesures sont en fractions de l'écran 4:3 du jeu, comme partout ailleurs ici, donc le panneau garde
-sa place quelle que soit la fenêtre.
+Every measurement is in fractions of the game's 4:3 screen, as everywhere else here, so the panel keeps its
+place whatever the window.
 
-### Les quatre lignes, et ce qui leur manque
+### The four lines, and what they lack
 
-Ce sont celles d'août (`docs/fv2-menu-console-inventaire.md` §2). Une seule a un levier qui marche d'ici ;
-les trois autres sont **dessinées, en sourdine et enjambées**, la règle que la page OPTIONS suit déjà.
+They are August's (`docs/fv2-menu-console-inventaire.md` §2). Only one has a lever that works from here; the
+three others are **drawn, quiet and stepped over**, the rule the OPTIONS page already follows.
 
-| ligne | état |
+| line | state |
 |---|---|
-| `TITLE SCREEN` | **mesurée inopérante depuis un combat.** Le levier d'août est celui que ce portage appelle `fv2_attract_to_title` — pousser le séquenceur d'attraction au bout de sa liste, chrono expiré. Essayé depuis un combat : rien. Le séquenceur n'y tourne pas, il n'y a pas de liste à quitter ; le round s'est fini et le suivant a commencé |
-| `CHANGE YOUR VIPER` | la note d'août donne trois **adresses** — `0x00581455`, `0x00581406`, `0x0058FD56` — et pas les trois valeurs |
-| `REMATCH` | la note décrit ce qui a été observé, pas un levier |
-| `CHANGE STAGE` | **câblée** : le sélecteur de décor que TRAINING utilise déjà, tenu sur la scène choisie. Gauche et droite changent le numéro sur la ligne |
+| `TITLE SCREEN` | **measured inoperative from a fight.** August's lever is the one this port calls `fv2_attract_to_title` — pushing the attract sequencer to the end of its list, its timer expired. Tried from a fight: nothing. The sequencer is not running there, there is no list to leave; the round ended and the next one began |
+| `CHANGE YOUR VIPER` | August's note gives three **addresses** — `0x00581455`, `0x00581406`, `0x0058FD56` — and not the three values |
+| `REMATCH` | the note describes what was observed, not a lever |
+| `CHANGE STAGE` | **wired**: the stage picker TRAINING already uses, held on the chosen scene. Left and right change the number on the line |
 
-Ce qui bloque les trois est la même chose que ce que `docs/fv2-etats.md` appelle depuis le début **sortir d'un
-combat proprement**, par la route du jeu.
+What blocks the three is the same thing `docs/fv2-etats.md` has been calling **leaving a fight properly**, by
+the game's own road, from the start.
 
-### Vérifié
+### Verified
 
-En partie cachée, sur `tools/scripts/fv2-console-vs-start.txt` : Start à l'image 3000 d'un combat versus
-(`GAME_DSP`, `FIGHT_DSP`) ouvre le panneau, les flèches enjambent bien les lignes sans levier, Start referme,
-et le combat reprend intact. Les photographies sont prises à l'horloge et non à l'image, le jeu étant gelé —
-une image qui n'avance pas ne déclenche jamais une capture calée dessus.
+In a hidden session, on `tools/scripts/fv2-console-vs-start.txt`: Start at frame 3000 of a versus fight
+(`GAME_DSP`, `FIGHT_DSP`) opens the panel, the arrows do step over the lines with no lever, Start closes it,
+and the fight resumes intact. The photographs are taken by the clock and not by the frame, the game being
+frozen — a frame that does not advance never triggers a capture keyed to it.
 
-### Start a un quatrième sort : couper l'état, dans la présentation et la rediffusion
+### Start has a fourth fate: cutting the state short, in the presentation and the replay
 
-Frédéric, le 2026-10-24 : « la touche pause pendant l'état de présentation du combat et pendant le replay ne
-doit pas ouvrir le menu pause mais juste couper l'état en cours comme dans le jeu d'origine ».
+Frédéric, on 2026-10-24: "the pause key during the fight's presentation state and during the replay should not
+open the pause menu but just cut the current state short as in the original game".
 
-Les états concernés, par les noms que Sega a laissés (`docs/fv2-etats.md`, les vingt sous-états de GAME) :
+The states concerned, by the names Sega left (`docs/fv2-etats.md`, GAME's twenty sub-states):
 
 ```
- 0 ROUND_MASK_INT   1 ROUND_MASK_IN   2 ROUND_MASK_DSP   3 ROUND_MASK_OUT    l'ecran STAGE n / VS nom
- 4 ROUND_INT        5 ROUND_DSP                                              l'annonce du round
- 6 SET_INT          7 SET_INT_POSE    8 SET_DSP                              le decor et les combattants places
- 9 READY_INT       10 READY_DSP                                              « ready »
-15 REPLAY_INT      16 REPLAY_DSP                                             la rediffusion
+ 0 ROUND_MASK_INT   1 ROUND_MASK_IN   2 ROUND_MASK_DSP   3 ROUND_MASK_OUT    the STAGE n / VS name screen
+ 4 ROUND_INT        5 ROUND_DSP                                              the round's announcement
+ 6 SET_INT          7 SET_INT_POSE    8 SET_DSP                              the scenery and the fighters placed
+ 9 READY_INT       10 READY_DSP                                              "ready"
+15 REPLAY_INT      16 REPLAY_DSP                                             the replay
 ```
 
-`FIGHT_DSP`, `JUDGE` et `VIC` n'y sont **pas** : le menu de pause leur appartient.
+`FIGHT_DSP`, `JUDGE` and `VIC` are **not** there: the pause menu belongs to them.
 
-**Ce qui ne marche pas, et c'est la première chose mesurée.** Laisser la pression passer au jeu ne fait
-**rien du tout**. Un vrai Start à l'image 2360 de `tools/scripts/fv2-vic-banc.txt`, pendant `ROUND_MASK_DSP`
-qui court de 2319 à 2450 : la trace des états est identique, image par image, avec et sans. Le jeu ne lit pas
-ce bouton là. L'hypothèse « il suffit d'arrêter d'intercepter » est donc fausse, et elle a été écartée par la
-mesure avant d'écrire une ligne de correction.
+**What does not work, and it is the first thing measured.** Letting the press through to the game does
+**nothing at all**. A real Start at frame 2360 of `tools/scripts/fv2-vic-banc.txt`, during `ROUND_MASK_DSP`
+which runs from 2319 to 2450: the trace of the states is identical, frame by frame, with and without. The game
+does not read that button there. So the hypothesis "it is enough to stop intercepting" is false, and it was
+ruled out by measurement before a line of correction was written.
 
-**Ce qui marche, et c'est la route du jeu lui-même.** Les gestionnaires de sous-état se passent la main par
-une **demande de sous-état** — `docs/fv2-flux-de-match.md` le dit de `VIC_INT` : « simply asks for the next
-sub mode ». Une écriture d'une seule image de `SUBMODE_REQUEST` (`0x0058FD9B`) à 3 pendant `ROUND_MASK_DSP` :
+**What works, and it is the game's own road.** The sub-state handlers hand over to one another through a
+**sub-state request** — `docs/fv2-flux-de-match.md` says so of `VIC_INT`: "simply asks for the next sub mode".
+A single-frame write of `SUBMODE_REQUEST` (`0x0058FD9B`) to 3 during `ROUND_MASK_DSP`:
 
 ```
   2319  GAME_DSP   2 ROUND_MASK_DSP
-  2361  GAME_DSP   3 ROUND_MASK_OUT      <- au lieu de 2450
+  2361  GAME_DSP   3 ROUND_MASK_OUT      <- instead of 2450
   2362  GAME_DSP   4 ROUND_INT
   2364  GAME_DSP   6 SET_INT
   2366  GAME_DSP   8 SET_DSP
 ```
 
-89 images coupées, et la suite s'enchaîne normalement. C'est `Model3::fv2_cut_submode` : le sous-état courant
-plus un, écrit **une seule fois**, le mode laissé tranquille. Et c'est une correction à la note qui
-l'accompagne : la demande de mode « ne commande rien depuis l'intérieur d'un combat », mesuré dans
-`FIGHT_DSP` — mais pendant la présentation, elle est lue.
+89 frames cut, and what follows runs on normally. That is `Model3::fv2_cut_submode`: the current sub-state
+plus one, written **once only**, the mode left alone. And it is a correction to the note that goes with it:
+the mode request "commands nothing from inside a fight", measured in `FIGHT_DSP` — but during the
+presentation, it is read.
 
-Câblé dans `console_play::take_start`, qui a donc maintenant **quatre** sorts au lieu de trois :
-`list` sur l'écran titre, `cut` dans ces douze sous-états, `pause` partout ailleurs dans une partie, `title`
-dans l'attraction.
+Wired into `console_play::take_start`, which therefore now has **four** fates instead of three: `list` on the
+title screen, `cut` in those twelve sub-states, `pause` everywhere else in a game, `title` in the attract.
 
-**Mesuré** : `vf3run --console-start 2360`, trace ci-dessus, et la ligne de journal
-« Start in the presentation or the replay (mode 7, sub-state 2) -> the state is cut short ».
-**Pas encore mesuré** : la rediffusion elle-même (sous-état 16). Le levier est le même et la table est la
-même, mais aucune route hors-jeu n'atteint `REPLAY_DSP` pour l'instant — `fv2-vic-banc.txt` s'arrête dans
-`JUDGE_DSP`. C'est donc à vérifier en jouant, et c'est écrit ici pour que ça ne passe pas pour acquis.
+**Measured**: `vf3run --console-start 2360`, the trace above, and the log line "Start in the presentation or
+the replay (mode 7, sub-state 2) -> the state is cut short".
+**Not measured yet**: the replay itself (sub-state 16). The lever is the same and the table is the same, but
+no out-of-window route reaches `REPLAY_DSP` for now — `fv2-vic-banc.txt` stops in `JUDGE_DSP`. So it is to be
+checked by playing, and it is written here so that it does not pass for settled.
 
-### Un choix de décor pour le VERSUS : la table des routes ne le commande pas
+### A stage choice for VERSUS: the route table does not command it
 
-Frédéric, le 2026-10-24 : « sur le travail de la rom de cet été, il avait été introduit le stage select pour
-le mode versus ». Avant d'écrire une page, mesuré — et la mesure dit non à l'évidence.
+Frédéric, on 2026-10-24: "in the work on the rom this summer, a stage select had been brought in for versus
+mode". Before writing a page, measured — and the measurement says no, plainly.
 
-Les deux leviers connus du décor, et ce que chacun fait :
+The stage's two known levers, and what each one commands:
 
-| levier | ce qu'il commande | mesuré |
+| lever | what it commands | measured |
 |---|---|---|
-| le sélecteur `0x0007111C`, patché en `li r3,<scene> ; blr` | rien pour un match qui démarre : il n'est atteint **que par un rematch passant par l'écran de choix**, et c'est ainsi que le `CHANGE STAGE` d'août l'utilise | 2026-10 : patché et tenu, le jeu a choisi le décor 9 quand même |
-| la table des routes, `0x000B4100` | le décor du premier combat **d'une route en solo** | l'octet à 3 met le combat dans MARBLE ARENA, l'index de scène lit 3 où il lisait 9 |
+| the picker `0x0007111C`, patched to `li r3,<scene> ; blr` | nothing for a match that starts: it is reached **only by a rematch going through the select screen**, and that is how August's `CHANGE STAGE` uses it | 2026-10: patched and held, the game picked stage 9 all the same |
+| the route table, `0x000B4100` | the stage of the first fight **of a solo route** | the byte at 3 puts the fight in MARBLE ARENA, the scene index reads 3 where it read 9 |
 
-**Et il ne commande pas un versus.** Sur `tools/scripts/fv2-vic-banc.txt`, un versus mené jusqu'au combat
-(`GAME_DSP`, `FIGHT_DSP`) :
+**And it does not command a versus match.** On `tools/scripts/fv2-vic-banc.txt`, a versus match carried
+through to the fight (`GAME_DSP`, `FIGHT_DSP`):
 
-| | index de scène `0x0058FD9F` | octet de route `0x000B4100` |
+| | scene index `0x0058FD9F` | route byte `0x000B4100` |
 |---|---|---|
-| sans rien écrire | **8** | 09 |
-| l'octet tenu à 3 des images 1990 à 2900 | **8** | 3 (l'écriture a bien tenu, relue dans le vidage) |
+| writing nothing | **8** | 09 |
+| the byte held at 3 from frames 1990 to 2900 | **8** | 3 (the write did hold, read back in the dump) |
 
-Deux faits s'additionnent : sans écriture, l'index de scène (8) **diverge déjà** du premier octet de la table
-(09), alors qu'en solo les deux concordaient ; et tenu à 3 pendant toute la mise en place du match — qui
-commence à `ROUND_MASK_INT`, image 2316 — le décor ne bouge pas. Le versus choisit son décor ailleurs.
+Two facts add up: with no write, the scene index (8) **already diverges** from the table's first byte (09),
+where in solo play the two agreed; and held at 3 throughout the match's set-up — which begins at
+`ROUND_MASK_INT`, frame 2316 — the stage does not move. Versus picks its stage elsewhere.
 
-**Où, probablement : dans les états que le jeu saute.** Les six sous-états du choix (`docs/fv2-etats.md`) sont
-`0 SEL_START  1 SELECT  2 STAGE_SEL_INT  3 STAGE_SEL_DSP  4 DECIDE_INT  5 DECIDE_DSP`. **Le jeu a son propre
-choix de décor**, et la trace du versus montre qu'il l'enjambe :
+**Where, probably: in the states the game skips.** The select's six sub-states (`docs/fv2-etats.md`) are
+`0 SEL_START  1 SELECT  2 STAGE_SEL_INT  3 STAGE_SEL_DSP  4 DECIDE_INT  5 DECIDE_DSP`. **The game has a stage
+choice of its own**, and the versus trace shows it stepping over it:
 
 ```
   1963  SEL_DSP   0 SEL_START
   2035  SEL_DSP   1 SELECT
-  2305  SEL_DSP   4 DECIDE_INT      <- 2 STAGE_SEL_INT et 3 STAGE_SEL_DSP sautes
+  2305  SEL_DSP   4 DECIDE_INT      <- 2 STAGE_SEL_INT and 3 STAGE_SEL_DSP skipped
   2306  SEL_DSP   5 DECIDE_DSP
   2316  GAME_INT  0 ROUND_MASK_INT
 ```
 
-C'est très probablement ce que le travail d'été « a introduit » : non pas une page à dessiner, mais faire
-**entrer le jeu dans `STAGE_SEL`**, qui existe déjà et qui a ses propres images. Ce qu'il reste à trouver est
-ce qui décide, à la sortie de `SELECT`, d'aller en 2 plutôt qu'en 4 — un drapeau, un réglage d'opérateur, ou
-le nombre de joueurs. C'est une lecture de `fv2_sel_SELECT` dans Ghidra, pas une mesure.
+That is very probably what the summer's work "brought in": not a page to be drawn, but making the game
+**enter `STAGE_SEL`**, which exists already and has pictures of its own. What remains to be found is what
+decides, on the way out of `SELECT`, to go to 2 rather than to 4 — a flag, an operator setting, or the number
+of players. That is a reading of `fv2_sel_SELECT` in Ghidra, not a measurement.
 
-**Un piège d'outillage rencontré ici, et qui a coûté deux courses** : dans `VF3_POKE`, un `b` en tête d'une
-adresse signifie « la RAM de sauvegarde » (`tools/vf3run.cpp`, `const bool bk = *q == 'b'`). Donc
-`VF3_POKE=b4103=3` n'écrit **pas** à l'index `0x0B4103` de la RAM : il écrit dans la sauvegarde à l'offset
-`0x4103`, sans rien dire. Les adresses dont le premier chiffre hexadécimal est `b` s'écrivent avec un zéro
-devant : `0b4103`.
+**A tooling trap met here, and it cost two runs**: in `VF3_POKE`, a leading `b` on an address means "the
+backup RAM" (`tools/vf3run.cpp`, `const bool bk = *q == 'b'`). So `VF3_POKE=b4103=3` does **not** write at
+index `0x0B4103` of the RAM: it writes into the backup at offset `0x4103`, without saying so. Addresses whose
+first hexadecimal digit is `b` are written with a leading zero: `0b4103`.
 
-#### Lu dans le code : `STAGE_SEL` est une SOUCHE VIDE sur la borne
+#### Read in the code: `STAGE_SEL` is an EMPTY STUB on the cabinet
 
-Ghidra, le 2026-10-24, et ça ferme la question. La table des modes est à `0x00024354` ; son indice 5,
-`SEL_DSP`, donne `0x0000BA74`, le repartiteur du choix. Il fait trois choses :
+Ghidra, on 2026-10-24, and it closes the question. The mode table is at `0x00024354`; its index 5, `SEL_DSP`,
+gives `0x0000BA74`, the select's dispatcher. It does three things:
 
 ```
 0000ba88  lbz r6, 0x0058FD9B      SUBMODE_REQUEST
-0000ba94  stb r6, 0x0058FD99      MODE_SUB = la demande      <- il la recopie a chaque tour
-0000bac8  addi r2, r2, 0x4404     la table des gestionnaires du choix, 0x00024404
-0000bad4  bctr                    il saute dans le sous-gestionnaire
+0000ba94  stb r6, 0x0058FD99      MODE_SUB = the request     <- it copies it every round
+0000bac8  addi r2, r2, 0x4404     the select's handler table, 0x00024404
+0000bad4  bctr                    it jumps into the sub-handler
 ```
 
-(La deuxieme ligne est la preuve directe de ce sur quoi `Model3::fv2_cut_submode` repose : le repartiteur
-recopie la demande dans le sous-etat, donc ecrire la demande suffit.)
+(The second line is the direct proof of what `Model3::fv2_cut_submode` rests on: the dispatcher copies the
+request into the sub-state, so writing the request is enough.)
 
-Et la table `0x00024404` :
+And the table `0x00024404`:
 
-| indice | sous-etat | gestionnaire |
+| index | sub-state | handler |
 |---|---|---|
 | 0 | `SEL_START` | `0x0000BADC` |
 | 1 | `SELECT` | `0x0000BB10` |
 | 2 | `STAGE_SEL_INT` | **`0x0000BBB4`** |
-| 3 | `STAGE_SEL_DSP` | **`0x0000BBB4`** — la meme adresse |
-| 4 | `DECIDE_INT` | `0x0000BBB8` — quatre octets plus loin |
+| 3 | `STAGE_SEL_DSP` | **`0x0000BBB4`** — the same address |
+| 4 | `DECIDE_INT` | `0x0000BBB8` — four bytes further on |
 | 5 | `DECIDE_DSP` | `0x0000BC1C` |
 
-Et ces quatre octets sont :
+And those four bytes are:
 
 ```
-0000bbb4   b 0x0000bad8        la sortie commune du repartiteur
+0000bbb4   b 0x0000bad8        the dispatcher's common exit
 ```
 
-**Les deux etats du choix de decor sont une souche vide.** Une seule instruction, partagee, qui ne fait que
-revenir. La borne n'a jamais eu de choix de decor : Sega a laisse les deux noms dans sa table de deboguage et
-les deux emplacements dans la table des gestionnaires, et rien dedans.
+**The stage choice's two states are an empty stub.** A single instruction, shared, that only returns. The
+cabinet never had a stage choice: Sega left both names in its debugging table and both slots in the handler
+table, and nothing inside them.
 
-Donc le travail de l'ete n'a pas « atteint » un ecran qui existait : il a fallu en **ecrire** un, ou detourner
-autre chose — ce qui explique que son `CHANGE STAGE` finisse sur le selecteur `0x0007111C` par le chemin du
-rematch, le seul endroit ou le jeu redemande un decor. Et ca double la premiere mesure : ni la table des
-routes (mesuree ici) ni les etats `STAGE_SEL` (lus ici) ne donnent un choix de decor en versus.
+So the summer's work did not "reach" a screen that existed: one had to be **written**, or something else
+diverted — which explains why its `CHANGE STAGE` ends up on the picker `0x0007111C` by the rematch path, the
+only place where the game asks for a stage again. And that doubles the first measurement: neither the route
+table (measured here) nor the `STAGE_SEL` states (read here) give a stage choice in versus.
 
-Pour memoire, pendant qu'on y etait : `DECIDE_INT` finit par `li r0,5 ; stb r0,0x0058FD9B` — il demande
-`DECIDE_DSP` —, et `DECIDE_DSP` lit `0x00581892` et, s'il est nul, ecrit `6` dans `MODE_REQUEST`
-(`0x0058FD9A`), ce qui est le passage a GAME.
+For the record, while we were there: `DECIDE_INT` ends with `li r0,5 ; stb r0,0x0058FD9B` — it asks for
+`DECIDE_DSP` — and `DECIDE_DSP` reads `0x00581892` and, if it is zero, writes `6` into `MODE_REQUEST`
+(`0x0058FD9A`), which is the move to GAME.
 
-### La page de choix du décor : garer le jeu, pas le geler (2026-10-25)
+### The stage choice page: parking the game, not freezing it (2026-10-25)
 
-La page existe, elle s'ouvre après le choix des combattants, et sa première version **gelait** le jeu comme
-les trois autres surfaces de ce portage. Frédéric l'a essayée le 2026-10-25 et a relevé trois défauts qui
-n'en font qu'un :
+The page exists, it opens after the fighters are chosen, and its first version **froze** the game like this
+port's three other surfaces. Frédéric tried it on 2026-10-25 and noted three flaws that are only one:
 
-> « les personnages disparaissent, la musique s'arrête, aucun bruitage lors du déplacement ou de la
-> validation du décor »
+> "the characters disappear, the music stops, no sound effect when moving or confirming the stage"
 
-Un jeu gelé ne dessine plus rien de neuf : l'écran de sélection qu'il venait de faire s'est vidé de ses deux
-combattants, sa musique s'est arrêtée faute de carte son tournée, et les bruitages — qui passent par cette
-même carte — n'avaient personne pour les jouer.
+A frozen game draws nothing new any more: the select screen it had just made emptied of its two fighters, its
+music stopped for want of a sound board being run, and the sound effects — which go through that same board —
+had nobody to play them.
 
-**La méthode d'août dit le contraire, et elle est dans son propre `.cmd`** (`FV2 - Choix du decor.cmd`,
-`C:\Users\frede\Documents\SEGA Model 3`) : tenir `S-MODE_REQUEST` (`0x0058FD9B`) à **2**, c'est-à-dire garer
-le jeu dans `STAGE_SEL_INT` — l'état dont Sega a gardé le nom et vidé le corps (lu plus haut : une seule
-instruction, `b 0x0000bad8`). Le jeu y tourne sa frame entière, ses tâches de dessin comprises, et n'avance
-rien. « L'écran figé n'est donc pas une pause : c'est le jeu lui-même au ralenti. »
+**August's method says the opposite, and it is in his own `.cmd`** (`FV2 - Choix du decor.cmd`,
+`C:\Users\frede\Documents\SEGA Model 3`): hold `S-MODE_REQUEST` (`0x0058FD9B`) at **2**, that is to say park
+the game in `STAGE_SEL_INT` — the state whose name Sega kept and whose body it emptied (read above: a single
+instruction, `b 0x0000bad8`). The game runs its whole frame there, its drawing tasks included, and advances
+nothing. "So the frozen screen is not a pause: it is the game itself in slow motion."
 
-C'est ce que fait maintenant `Model3::fv2_park_stage_select` :
+That is what `Model3::fv2_park_stage_select` does now:
 
-| | gelé (première version) | garé (celle-ci) |
+| | frozen (the first version) | parked (this one) |
 |---|---|---|
-| le PowerPC | arrêté | tourne |
-| les combattants choisis | disparaissent | restent dessinés par `entry1` |
-| la musique | s'arrête | continue |
-| les bruitages du carrousel | muets | joués par la carte, comme en jeu |
-| les manettes | prises par la surface | prises par la surface (effacées avant d'atteindre le jeu) |
+| the PowerPC | stopped | runs |
+| the chosen fighters | disappear | stay drawn by `entry1` |
+| the music | stops | goes on |
+| the carousel's sound effects | silent | played by the board, as in play |
+| the pads | taken by the surface | taken by the surface (cleared before they reach the game) |
 
-**Et la demande est lue, pas l'état.** `SELECT` écrit `DECIDE_INT` dans `SUBMODE_REQUEST` et le répartiteur
-`0x0000BA74` ne l'applique qu'au tic suivant. La page s'ouvre donc sur `fv2_submode_request`, dans l'unique
-tic où `DECIDE_INT` est demandé sans avoir tourné, et écrase la demande par 2 : `DECIDE_INT` ne tourne alors
-**qu'une fois**, quand la page rend la main. Lire `MODE_SUB` le prenait un tic trop tard et le faisait tourner
-deux fois.
+**And it is the request that is read, not the state.** `SELECT` writes `DECIDE_INT` into `SUBMODE_REQUEST` and
+the dispatcher `0x0000BA74` only applies it on the next tick. So the page opens on `fv2_submode_request`, in
+the one tick where `DECIDE_INT` is requested without having run, and overwrites the request with 2:
+`DECIDE_INT` then runs **once only**, when the page hands back. Reading `MODE_SUB` caught it one tick too late
+and made it run twice.
 
-**Tenir une demande est ici volontaire**, contrairement à l'avertissement de `fv2_request_title` : une demande
-écrite une fois est lue une fois et le jeu repart ; ici le but est justement qu'il ne reparte pas, donc elle
-est renouvelée à chaque image tant que la page est levée.
+**Holding a request is deliberate here**, contrary to `fv2_request_title`'s warning: a request written once
+is read once and the game moves on; here the point is precisely that it should not move on, so it is renewed
+on every frame while the page is up.
 
-#### La forme, après l'essai du 2026-10-25
+#### The shape, after the trial of 2026-10-25
 
-Reprise de `CMenuOverlay::DrawStages` (le Supermodel modifié d'août), avec trois changements demandés :
+Taken from `CMenuOverlay::DrawStages` (August's modified Supermodel), with three changes asked for:
 
-* les **flèches aux deux bords de la fenêtre**, et non centrées sur la rangée : chez août la troisième
-  vignette de chaque côté passait sous une flèche, qui se lisait alors comme une étiquette collée sur un
-  décor. La bande est élargie à toute la fenêtre pour qu'elles aient un fond ;
-* **deux vignettes de côté au lieu de trois**, et un peu plus étroites, pour que la rangée dégage les flèches ;
-* **plus de ligne d'instructions** : les deux phrases d'août (« USE THE DIRECTION BUTTON TO SELECT », « A TO
-  DECIDE, START TO LET THE GAME CHOOSE ») sont retirées.
+* the **arrows at the window's two edges**, and not centred on the row: in August's the third thumbnail on
+  each side passed under an arrow, which then read as a label stuck on a stage. The band is widened to the
+  whole window so that they have a background;
+* **two side thumbnails instead of three**, and a little narrower, so that the row clears the arrows;
+* **no instruction line any more**: August's two sentences ("USE THE DIRECTION BUTTON TO SELECT", "A TO
+  DECIDE, START TO LET THE GAME CHOOSE") are removed.
 
-### Le tirage du décor, lu dans le code — et la rustine remplacée (2026-10-25)
+### The stage draw, read in the code — and the stopgap replaced (2026-10-25)
 
-La page de choix du décor tenait jusqu'ici le levier d'août : la fonction `0x0007111C` patchée en
-`li r3,<décor> ; blr`. **C'est le bon levier pour Supermodel et le mauvais pour ce portage** — ce portage est
-une recompilation, un mot de RAM en désaccord avec ce dont le code natif a été fait éteint le recompilateur
-en entier, et tout le PowerPC repasse à l'interpréteur. Mesuré : **48,8 images/s contre 57,5** pour le même
-versus sans rien de tenu, et Frédéric a relevé 60 contre moins de 50 dans sa fenêtre.
+The stage choice page had been holding August's lever until now: the function `0x0007111C` patched to
+`li r3,<stage> ; blr`. **That is the right lever for Supermodel and the wrong one for this port** — this port
+is a recompilation, and a word of RAM disagreeing with what the native code was made from switches the
+recompiler off entirely, and the whole PowerPC falls back to the interpreter. Measured: **48.8 frames/s
+against 57.5** for the same versus match with nothing held, and Frédéric noted 60 against under 50 in his
+window.
 
-Alors on a lu la fonction, avec `tools/fv2/desas_ppc.py` sur un vidage de RAM d'une partie en cours — vingt
-instructions :
+So the function was read, with `tools/fv2/desas_ppc.py` on a RAM dump of a game in progress — twenty
+instructions:
 
 ```
-0007111C  bl 0x000083BC            un nombre au hasard
-00071140  r3 = hasard % 27         par la multiplication haute sur 0x2F684BDB
-00071160  r29 = 0x004836FF         une table de 27 octets
-00071170  si table[r3] == 0 : table[r3] = 1 ; retourner r3      la premiere libre, et elle est prise
-          sinon r3 = (r3 + 1) mod 27, 27 essais au plus
-000711A0  puis 0x00071098 reconstruit la table
+0007111C  bl 0x000083BC            a random number
+00071140  r3 = random % 27         by the high multiply on 0x2F684BDB
+00071160  r29 = 0x004836FF         a table of 27 bytes
+00071170  if table[r3] == 0 : table[r3] = 1 ; return r3      the first free one, and it is taken
+          otherwise r3 = (r3 + 1) mod 27, 27 tries at most
+000711A0  then 0x00071098 rebuilds the table
 ```
 
-Et `0x00071098` dit **quelles arènes peuvent sortir** : indice 0 verrouillé, 1 à 3 libres, 4 libre seulement
-si un octet de réglage et un mot de `0x00580E28` s'accordent, 5 à 12 libres, 13 à 26 verrouillés. **Relu dans
-trois vidages**, la table dit exactement ça : `01 00 00 00 01 00 00 00 00 00 00 00 00` puis quatorze `01`.
-Les indices libres sont donc les douze arènes du propriétaire moins *The Great B.M.*, qui a sa condition.
+And `0x00071098` says **which arenas can come out**: index 0 locked, 1 to 3 free, 4 free only if a setting
+byte and a word at `0x00580E28` agree, 5 to 12 free, 13 to 26 locked. **Read back in three dumps**, the table
+says exactly that: `01 00 00 00 01 00 00 00 00 00 00 00 00` then fourteen `01`. So the free indices are the
+owner's twelve arenas less *The Great B.M.*, which has its condition.
 
-**Le levier est donc la table** : laisser un seul indice libre et le tirage le renvoie, quel que soit le
-hasard. Une écriture dans des **données**. Plus de désaccord avec le code natif, plus de reconstruction de
-100 ms, plus de trou dans le son. La table est tenue — le tirage marque son choix comme pris en le prenant —
-et **rendue telle qu'elle a été trouvée** plutôt que reconstruite depuis la règle : l'indice 4 porte une
-condition que ce portage n'évalue pas, et une table écrite d'après une règle à moitié connue est fausse le
-jour où cette moitié compte.
+**So the lever is the table**: leave one index free and the draw returns it, whatever the random number. A
+write into **data**. No more disagreement with the native code, no more 100 ms rebuild, no more hole in the
+sound. The table is held — the draw marks its choice as taken in taking it — and **given back as it was
+found** rather than rebuilt from the rule: index 4 carries a condition this port does not evaluate, and a
+table written from a half-known rule is wrong the day that half matters.
 
-### Quitter un match : par le point de branchement du jeu (2026-10-25)
+### Leaving a match: by the game's own branch point (2026-10-25)
 
-`TITLE SCREEN` et `CHANGE YOUR VIPER` attendaient une façon de **finir** un match. August la faisait de
-l'extérieur — dernière manche armée, chrono au bord, vie du joueur 1 tenue à zéro — parce que son fork
-n'avait pas la décompilation. Ce portage l'a (`docs/fv2-flux-de-match.md`), donc il demande au lieu de
-pousser. Deux mots, et les deux sont des conditions que le jeu teste lui-même à chaque image :
+`TITLE SCREEN` and `CHANGE YOUR VIPER` were waiting for a way to **end** a match. August did it from the
+outside — the last round armed, the clock at the edge, player 1's health held at zero — because his fork did
+not have the decompilation. This port does (`docs/fv2-flux-de-match.md`), so it asks instead of pushing. Two
+words, and both are conditions the game itself tests on every frame:
 
-| mot | ce que le jeu en fait |
+| word | what the game does with it |
 |---|---|
-| `GAME_TIMER` `0x00581404` ← 1 | `fv2_game_FIGHT_DSP` : `if (... \|\| --GAME_TIMER > 0) return;` — l'image suivante il pose lui-même son drapeau TIME OVER et demande `JUDGE` |
-| `ADV_INFO_STATUS` `0x005813F0` \|= `0x40000000` | `fv2_game_NEXT_PROG_SEL` : `if (!(STATUS & 0x40000000)) { ++ROUND_NO; S-MODE_REQUEST = 6; return; }` — le bit fait la différence entre « une manche de plus » et « ce match est décidé » |
+| `GAME_TIMER` `0x00581404` ← 1 | `fv2_game_FIGHT_DSP`: `if (... \|\| --GAME_TIMER > 0) return;` — on the next frame it sets its own TIME OVER flag and asks for `JUDGE` |
+| `ADV_INFO_STATUS` `0x005813F0` \|= `0x40000000` | `fv2_game_NEXT_PROG_SEL`: `if (!(STATUS & 0x40000000)) { ++ROUND_NO; S-MODE_REQUEST = 6; return; }` — the bit makes the difference between "one more round" and "this match is settled" |
 
-Puis le jugement, le replay et la pose du vainqueur sont écourtés **une fois chacun** avec `fv2_cut_submode`,
-qui ne fait que demander le sous-état suivant — ce que les gestionnaires du jeu font entre eux.
-`NEXT_PROG_SEL` est laissé tranquille : c'est la décision qu'on vient d'écrire. Il ne reste d'août que le
-compteur d'écran `0x0058FD56`, et pour une raison précise : `CONTINUE` et `GAME OVER` sont des **modes** et
-pas des sous-états, donc la demande de sous-état ne les atteint pas.
+Then the judgement, the replay and the winner's pose are each cut short **once** with `fv2_cut_submode`,
+which only asks for the next sub-state — what the game's handlers do among themselves. `NEXT_PROG_SEL` is
+left alone: it is the decision that has just been written. All that is left of August's is the screen counter
+`0x0058FD56`, and for a precise reason: `CONTINUE` and `GAME OVER` are **modes** and not sub-states, so the
+sub-state request does not reach them.
 
-**Mesuré le 2026-10-25**, choisi à l'image 2100 d'une manche en cours : le match est fini en **203 images
-(3,5 s)**, la fin de partie passe en **12 images (0,2 s)**, et le jeu arrive — écran titre pour l'un,
-écran de sélection à deux joueurs et un nouveau combat pour l'autre, photographié.
+**Measured on 2026-10-25**, chosen at frame 2100 of a round in progress: the match is over in **203 frames
+(3.5 s)**, the end of the session passes in **12 frames (0.2 s)**, and the game arrives — the title screen
+for one, a two-player select screen and a new fight for the other, photographed.
 
-## La couche console a un état, comme le jeu (2026-10-26)
+## The console layer has a state, like the game (2026-10-26)
 
-Frédéric, le 2026-10-25 : « *de tout le jeu, aucun état ou sous état n'empiète sur les autres, sauf celui
-que l'on a intégré. On dirait encore du bricolage, comme sur la rom.* » Il avait raison, et le défaut est
-nommable : la carte tient **un état à la fois** — vingt-quatre modes, chacun son INT qui l'installe et son
-DSP qui le déroule, une table de gestionnaires, un octet qui dit où on est (`docs/fv2-etats.md`). Rien
-n'empiète parce que rien ne coexiste. Notre couche console, elle, n'avait pas d'état du tout : une douzaine
-de booléens (`swallow_start`, `want_list`, `want_stage_page`, `mode_wanted`, `versus_trip`,
-`stage_page_done`, `seen_select`, `stage_from_pause`, `training_on`, `leaving`, `leave_for`) qui encodaient
-ensemble une machine à états que personne n'avait écrite, et un gel décidé par un booléen `stopped` avec
-des exceptions ajoutées une par une.
+Frédéric, on 2026-10-25: "*of the whole game, no state or sub-state encroaches on the others, except the one
+we brought in. It still looks like patchwork, as on the rom.*" He was right, and the flaw can be named: the
+board holds **one state at a time** — twenty-four modes, each with its INT that installs it and its DSP that
+runs it, a handler table, a byte that says where one is (`docs/fv2-etats.md`). Nothing encroaches because
+nothing coexists. Our console layer, for its part, had no state at all: a dozen booleans (`swallow_start`,
+`want_list`, `want_stage_page`, `mode_wanted`, `versus_trip`, `stage_page_done`, `seen_select`,
+`stage_from_pause`, `training_on`, `leaving`, `leave_for`) that together encoded a state machine nobody had
+written, and a freeze decided by a boolean `stopped` with exceptions added one by one.
 
-### La table (`src/host/console_state.h`)
+### The table (`src/host/console_state.h`)
 
-Huit états, et chacun **déclare quatre choses**. Rien d'autre ne les décide.
+Eight states, and each one **declares four things**. Nothing else decides them.
 
-| état | le jeu tourne | l'écran | le son | les commandes |
+| state | the game runs | the screen | the sound | the controls |
 |---|---|---|---|---|
-| `PLAY` | oui | au jeu | au jeu | au jeu |
-| `PAUSE` | non | par-dessus l'image du jeu | aux deux | au port |
-| `STAGE` | oui, garé dans `STAGE_SEL` | par-dessus | aux deux | au port |
-| `STAGE_HELD` | non | par-dessus | aux deux | au port |
-| `GOING` | oui | au port (le rideau) | **au port** | au port |
-| `MENU_IN` | oui | au port (le fond de la liste) | **au port** | au port |
-| `MENU` | non | au port | aux deux | au port |
-| `OPTIONS` | non | au port | aux deux | au port |
+| `PLAY` | yes | the game's | the game's | the game's |
+| `PAUSE` | no | over the game's picture | both | the port's |
+| `STAGE` | yes, parked in `STAGE_SEL` | over it | both | the port's |
+| `STAGE_HELD` | no | over it | both | the port's |
+| `GOING` | yes | the port's (the curtain) | **the port's** | the port's |
+| `MENU_IN` | yes | the port's (the list's backdrop) | **the port's** | the port's |
+| `MENU` | no | the port's | both | the port's |
+| `OPTIONS` | no | the port's | both | the port's |
 
-- **l'écran « au port »** veut dire que l'image du jeu **n'est pas dessinée** : ni couverte, ni assombrie,
-  pas dessinée. C'est la différence entre une surface qui cache ce qu'il y a derrière et un état qui
-  possède l'écran ;
-- **le son « au port »** veut dire que ce que le **jeu** dit à sa carte est jeté à l'endroit unique où le
-  jeu dit quelque chose (`Model3::mute_game_midi`, le seul `midi.push_back`). Ce que le port met dans la
-  même file passe : le menu bipe sur un jeu devenu muet ;
-- **là où le jeu est figé et où le port n'est pas muet**, c'est le port qui tourne la carte son — sinon
-  aucune image de son n'est faite. Le menu pause et le carrousel n'étaient pas dans cet ensemble : leurs
-  bruitages attendaient dans la file que le jeu reparte, et la musique du combat s'arrêtait sous eux.
+- **the screen being "the port's"** means that the game's picture is **not drawn**: not covered, not
+  darkened, not drawn. That is the difference between a surface that hides what is behind it and a state that
+  owns the screen;
+- **the sound being "the port's"** means that what the **game** says to its board is thrown away at the one
+  place where the game says anything (`Model3::mute_game_midi`, the only `midi.push_back`). What the port
+  puts into the same queue goes through: the menu beeps over a game gone silent;
+- **where the game is frozen and the port is not muted**, it is the port that runs the sound board — without
+  which no frame of sound is made. The pause menu and the carousel were not in that set: their sound effects
+  waited in the queue for the game to resume, and the fight's music stopped under them.
 
-`MENU_IN` et `GOING` sont la forme INT/DSP de Sega là où elle a un sens : la surface est installée pendant
-que le jeu finit ce qu'il faisait **derrière elle**, ni vu ni entendu. C'est ce qui a réglé d'un coup les
-trois défauts du 25 octobre — `GAME OVER` entendu, l'image noire sous la liste, le titre glitché — qui
-étaient trois symptômes d'une même règle absente.
+`MENU_IN` and `GOING` are Sega's INT/DSP shape where it makes sense: the surface is installed while the game
+finishes what it was doing **behind it**, neither seen nor heard. That is what settled at a stroke the three
+flaws of 25 October — `GAME OVER` heard, the black picture under the list, the glitched title — which were
+three symptoms of one missing rule.
 
-### Un seul endroit ouvre, un seul endroit écrit
+### One place opens, one place writes
 
-`enter(état, pourquoi)` est le seul endroit qui ouvre ou ferme une surface, et il porte les trois lignes
-qui doivent toujours accompagner un tel changement (retenir le Start du joueur, le noter non relâché,
-régler le périphérique son). Quatorze endroits le faisaient à la main ; ceux qui en oubliaient une étaient
-les défauts.
+`enter(state, why)` is the only place that opens or closes a surface, and it carries the three lines that
+must always accompany such a change (withhold the player's Start, note it as not released, set the sound
+device). Fourteen places did it by hand; the ones that forgot one of them were the flaws.
 
-`console_play::ask_for()` est le seul endroit qui écrit dans la RAM du jeu pour le compte du port : une
-surface dit ce qu'elle veut (finir le match, une revanche, l'écran titre, lâcher l'écran de sélection) et
-`console_play` l'exécute en tête de son `step` — après l'image qui a tourné, avant celle qui va tourner,
-c'est-à-dire au moment où le répartiteur du jeu lit une demande. **Une exception, écrite plutôt que
-laissée à découvrir** : la page OPTIONS écrit les réglages de la borne, parce qu'elle *est* les réglages,
-et son état déclare que le jeu ne tourne pas dessous.
+`console_play::ask_for()` is the only place that writes into the game's RAM on the port's behalf: a surface
+says what it wants (end the match, a rematch, the title screen, let go of the select screen) and
+`console_play` carries it out at the head of its `step` — after the frame that has run, before the one that
+is going to run, which is to say at the moment the game's dispatcher reads a request. **One exception,
+written down rather than left to be discovered**: the OPTIONS page writes the cabinet's settings, because it
+*is* the settings, and its state declares that the game is not running underneath.
 
-### Ce que la table a sorti d'elle-même
+### What the table brought out by itself
 
-- le menu pause et le carrousel tenus sur un combat ne faisaient entendre ni leurs bruitages ni la musique
-  du combat (mesuré après : **1714 images de son à 57,6/s** sous le menu pause, le pic jamais à zéro) ;
-- les faire entrer dans cet ensemble a révélé une **corruption de tas** : la carte est au jeu, et la
-  tourner pendant que le fil d'émulation finit l'image en vol, c'est l'écrire à deux. Une attente à
-  l'endroit où ça tourne couvre les quatre surfaces ;
-- `CHANGE YOUR VIPER` avait le même défaut que `MAIN MENU` et aucune réponse, faute d'avoir une image à
-  mettre devant : c'est le rideau (`loading.png`, l'image de chargement de la Dreamcast), mesuré 52 images
-  de bout en bout ;
-- un training qui se terminait tout seul laissait son mode allumé ;
-- les coups de pied et gardes d'un **script** n'étaient pas routés en training, là où ceux d'une main
-  l'étaient.
+- the pause menu and the carousel held over a fight made neither their own sound effects nor the fight's
+  music heard (measured afterwards: **1714 frames of sound at 57.6/s** under the pause menu, the peak never
+  at zero);
+- bringing them into that set revealed a **heap corruption**: the board is the game's, and running it while
+  the emulation thread is finishing the frame in flight means writing it from two places. A wait at the place
+  where it runs covers all four surfaces;
+- `CHANGE YOUR VIPER` had the same flaw as `MAIN MENU` and no answer, for want of a picture to put in front:
+  it is the curtain (`loading.png`, the Dreamcast's loading picture), measured at 52 frames end to end;
+- a training session that ended by itself left its mode switched on;
+- a **script**'s kicks and guards were not routed in training, where a hand's were.
 
-### Ce que la mise en table a entraîné ensuite (2026-10-27)
+### What putting it in a table led to next (2026-10-27)
 
-**Une machine totale.** `enter()` supposait que la surface nommée par l'état existe. Une image qui n'aurait
-pas chargé aurait laissé l'état du carrousel levé sans carrousel — le jeu garé dans le `STAGE_SEL` vide
-pour toujours. Il demande maintenant d'abord : refus, la raison dans le journal, retour en `PLAY`, et pour
-le carrousel seul l'écran de sélection est lâché (le jeu y a été garé sur le tick même de la demande).
-Mesuré avec `VF3_CONSOLE_STAGE=none` : « *STAGE was asked for (the fighters are chosen) and its page is
-not there -- staying in play* », puis « *the select screen let go of* », et le versus continue.
+**A total machine.** `enter()` assumed that the surface the state names exists. A picture that had failed to
+load would have left the carousel's state up with no carousel — the game parked in the empty `STAGE_SEL` for
+ever. It now asks first: refused, the reason in the log, back to `PLAY`, and for the carousel alone the
+select screen is let go of (the game was parked there on the very tick of the request). Measured with
+`VF3_CONSOLE_STAGE=none`: "*STAGE was asked for (the fighters are chosen) and its page is not there --
+staying in play*", then "*the select screen let go of*", and the versus match goes on.
 
-**Un état se demande, comme une écriture.** `console_play::ask_state()` : la couche dit quel état elle
-veut, l'hôte y entre. C'est ce qui a fait disparaître les deux derniers drapeaux de signal
-(`want_list`, `want_stage_page`) et les deux `if` par lesquels l'hôte redevinait la fin d'une sortie.
+**A state is asked for, like a write.** `console_play::ask_state()`: the layer says which state it wants, the
+host enters it. That is what made the last two signal flags disappear (`want_list`, `want_stage_page`) along
+with the two `if`s by which the host re-guessed the end of an exit.
 
-**Ce que le jeu sait, on ne le garde plus.** « Est-ce un versus » était deux booléens, dont un dont le
-seul travail était de retarder l'effacement de l'autre. Le jeu le dit dans l'octet que son propre point
-de branchement lit en premier : `Model3::fv2_players`, **1 pour un joueur, 3 pour deux**, mesuré sur les
-trois routes. Cela répond en plus à un cas que ce portage ne pouvait pas connaître : une partie rejointe
-en cours par la règle INTRUDE de la borne est un versus, et rien ici ne l'avait choisi.
+**What the game knows, we no longer keep.** "Is this a versus match" was two booleans, one of whose only job
+was to delay clearing the other. The game says it in the byte its own branch point reads first:
+`Model3::fv2_players`, **1 for one player, 3 for two**, measured on all three routes. That also answers a
+case this port could not have known: a game joined mid-way by the cabinet's INTRUDE rule is a versus match,
+and nothing here had chosen it.
 
-**Ce qui est prêté est rendu.** L'état écrit quatre choses qui vivent en dehors de lui — le muet de la
-carte, la voix du logo, celle de l'annonceur, `VS FINISH` — et elles ne sont écrites que tant que la voie
-console est allumée. Changer de style de jeu au mauvais moment les laissait en place : le jeu serait resté
-muet pour le reste de la session. Les quatre sont rendues là où le style change, et `VS FINISH` **avant**
-que l'emprunteur soit remplacé.
+**What is borrowed is given back.** The state writes four things that live outside it — the board's mute, the
+logo's voice, the announcer's, `VS FINISH` — and they are only written while the console way is on. Changing
+play style at the wrong moment left them in place: the game would have stayed silent for the rest of the
+session. All four are given back where the style changes, and `VS FINISH` **before** the borrower is
+replaced.
 
-### Le filet : `verifier-console.cmd`
+### The net: `verifier-console.cmd`
 
-Trois routes jouées sans fenêtre et sans les mains, et **comparées par la machine** à la suite d'états
-attendue (`tools/fv2/verifier_console.py`) :
+Three routes played without a window and without hands, and **compared by machine** with the expected
+sequence of states (`tools/fv2/verifier_console.py`):
 
-| route | la suite attendue |
+| route | the expected sequence |
 |---|---|
 | VERSUS | `PLAY MENU PLAY STAGE PLAY PAUSE MENU_IN MENU` |
 | ARCADE | `PLAY MENU PLAY PAUSE MENU_IN MENU` |
-| TRAINING | la même qu'ARCADE, plus les lignes de ses leviers |
+| TRAINING | the same as ARCADE, plus the lines of its levers |
 
-TRAINING est là parce que c'est la route qui met en marche ce qu'aucune autre ne touche : l'horloge
-arrêtée, les vies tenues, les sept états d'annonce coupés, l'annonceur jeté, et la sortie d'un match à
-deux joueurs. Ses trois lignes sont cherchées dans le journal à côté des états.
+TRAINING is there because it is the route that starts up what no other touches: the clock stopped, the
+health held, the seven announcement states cut short, the announcer thrown away, and the exit from a
+two-player match. Its three lines are looked for in the log next to the states.
 
-Deux pièges, payés et corrigés : la sortie se comptait en **images du jeu**, et la route finit sur `MENU`,
-qui fige le PowerPC — le processus tournait encore vingt-six minutes après avoir fini (il y a une sortie à
-la montre à côté, maintenant) ; et une trace imprimée n'est pas une vérification, parce qu'une ligne
-disparue au milieu ne saute pas aux yeux le lendemain.
+Two traps, paid for and corrected: the exit was counted in **the game's frames**, and the route ends on
+`MENU`, which freezes the PowerPC — the process was still running twenty-six minutes after finishing (there
+is a clock-based exit beside it now); and a printed trace is not a verification, because a line that has
+disappeared in the middle does not leap out at you the next day.
 
-### La porte de sortie d'un VERSUS : `VS FINISH`, le réglage de la borne (2026-10-27)
+### A VERSUS match's way out: `VS FINISH`, the cabinet's setting (2026-10-27)
 
-`verifier-console.cmd` joue tout le chemin sans les mains et imprime la trace des états. Il allait au bout
-**en ARCADE** et **restait coincé en VERSUS** : quatre parties cachées, le jeu rechargeant une manche vingt
-images après `MAIN MENU`, la sonde disant « the match says decided » à chaque image. Voici la lecture qui a
-trouvé la porte, et les deux fausses pistes qu'elle a écartées.
+`verifier-console.cmd` plays the whole path without hands and prints the trace of the states. It was going
+all the way **in ARCADE** and **getting stuck in VERSUS**: four hidden sessions, the game reloading a round
+twenty frames after `MAIN MENU`, the probe saying "the match says decided" on every frame. Here is the
+reading that found the way out, and the two false trails it ruled out.
 
-#### Ce que le point de branchement fait vraiment
+#### What the branch point really does
 
-`NEXT_PROG_SEL` (`0x0000DB48`), désassemblé d'un vidage de RAM avec `tools/fv2/desas_ppc.py` :
+`NEXT_PROG_SEL` (`0x0000DB48`), disassembled from a RAM dump with `tools/fv2/desas_ppc.py`:
 
 ```
 lis r10,0x0058 ; lwz r10,5104(r10)      ADV_INFO_STATUS
-rlwinm. r0,r10,28,0,0 ; bne 0x0000DD4C  bit 0x00000008 : l'échelle est finie -> mode 12, la fin du jeu
-rlwinm. r0,r10,1,0,0  ; beq 0x0000DD28  bit 0x40000000 ABSENT -> une manche de plus
-lbz r3,[0x0058145A]                     combien jouent
-  == 3 -> 0x0000DBD0                    DEUX JOUEURS : la route du versus
+rlwinm. r0,r10,28,0,0 ; bne 0x0000DD4C  bit 0x00000008 : the ladder is finished -> mode 12, the game's end
+rlwinm. r0,r10,1,0,0  ; beq 0x0000DD28  bit 0x40000000 ABSENT -> one more round
+lbz r3,[0x0058145A]                     how many are playing
+  == 3 -> 0x0000DBD0                    TWO PLAYERS : the versus route
   == 0 -> 0x0000DC9C
-  != [0x00581457] + 1 -> 0x0000DC9C     « tous sauf un sont sortis » ? sinon le dernier continue l'échelle
+  != [0x00581457] + 1 -> 0x0000DC9C     "all but one have dropped out" ? otherwise the last one carries the ladder on
 ```
 
-et les quatre modes que ces routes demandent : `8` CONTINUE, `12` ENDING, `18` GAME OVER, `22` RESULT.
+and the four modes those routes ask for: `8` CONTINUE, `12` ENDING, `18` GAME OVER, `22` RESULT.
 
-#### La route du versus, et la porte
+#### The versus route, and the way out
 
-`0x0000DBD0` est la route des deux joueurs, et sa **première question** est un réglage :
+`0x0000DBD0` is the two-player route, and its **first question** is a setting:
 
 ```
-0000DBE0  lis r3,0x0012 ; addi r3,r3,1312      0x00120520, le bloc vivant des réglages
+0000DBE0  lis r3,0x0012 ; addi r3,r3,1312      0x00120520, the live block of settings
 0000DBE8  lbz r4,56(r3)                        0x00120558 = VS FINISH
-0000DBEC  cmplwi r4,0 ; bne 0x0000DD60         s'il est ON -> mode 18 : GAME OVER
+0000DBEC  cmplwi r4,0 ; bne 0x0000DD60         if it is ON -> mode 18 : GAME OVER
 ```
 
-**`VS FINISH` est la porte**, et c'est la borne qui la fournit : réglage à ON, la fin d'un match à deux
-joueurs **finit la partie** ; à OFF, le gagnant hérite de l'échelle et le jeu continue — exactement ce que
-les quatre parties cachées montraient. Il est déjà dans la page OPTIONS de ce portage (`fv2_options.h`,
-ligne `VS FINISH`).
+**`VS FINISH` is the way out**, and it is the cabinet that provides it: with the setting ON, the end of a
+two-player match **ends the session**; OFF, the winner inherits the ladder and the game goes on — exactly
+what the four hidden sessions were showing. It is already in this port's OPTIONS page (`fv2_options.h`, the
+`VS FINISH` line).
 
-Le portage l'**emprunte** le temps de la sortie : `borrow_vs_finish` le lit et le pose à 1 quand une sortie
-de match commence, `return_vs_finish` le rend à l'arrivée (et aussi si la sortie abandonne). **Seule la
-copie vivante est touchée** — pas le réglage rangé — donc ce que le joueur a choisi dans OPTIONS n'est pas
-changé.
+The port **borrows** it for the duration of the exit: `borrow_vs_finish` reads it and sets it to 1 when a
+match exit begins, `return_vs_finish` gives it back on arrival (and also if the exit gives up). **Only the
+live copy is touched** — not the stored setting — so what the player chose in OPTIONS is not changed.
 
-**Mesuré** sur le chemin complet en versus : `VS FINISH was 0, lent as 1`, le match est fini en **203
-images (3,5 s)**, l'écran titre atteint en **12 images**, `VS FINISH given back as 0`, `MENU_IN -> MENU`.
-C'est le même chiffre que la route arcade, et c'est la même route.
+**Measured** over the complete path in versus: `VS FINISH was 0, lent as 1`, the match is over in **203
+frames (3.5 s)**, the title screen reached in **12 frames**, `VS FINISH given back as 0`, `MENU_IN -> MENU`.
+That is the same figure as the arcade route, and it is the same route.
 
-#### Les deux fausses pistes, écartées par la mesure
+#### The two false trails, ruled out by measurement
 
-- **le compte des joueurs sortis** (`0x00581457` posé au nombre de joueurs) et **un point de vie d'écart**
-  pour que le chrono ait un vainqueur : les deux ensemble ne changeaient rien qu'une partie puisse voir.
-  Retirés ; le commentaire de `fv2_end_match` dit qu'ils l'ont été et pourquoi ;
-- `fv2_restart_attract()` depuis le combat met bien le jeu en `ADV`, mais **la tâche du match reste
-  vivante**, donc `fv2_in_attract()` continue de dire qu'une partie tourne ;
-- écrire 0 dans les deux vies **n'est pas un K.O.** : le jeu le décide dans son gestionnaire de dégâts.
+- **the count of players who dropped out** (`0x00581457` set to the number of players) and **a point of
+  health's difference** so that the clock has a winner: the two together changed nothing a session could
+  see. Removed; `fv2_end_match`'s comment says that they were and why;
+- `fv2_restart_attract()` from the fight does put the game into `ADV`, but **the match's task stays alive**,
+  so `fv2_in_attract()` goes on saying that a game is running;
+- writing 0 into both health bars **is not a K.O.**: the game decides that in its damage handler.
 
-## La fin d'un match à deux est un état, pas un écran de borne (2026-10-28)
+## The end of a two-player match is a state, not a cabinet screen (2026-10-28)
 
-Frédéric, le 2026-10-28 : « MODE VERSUS : à la fin de combat, à la place du sous état GAME OVER, créer un
-sous état propre au mode versus qui propose REMATCH, CHANGE VIPERS, CHANGE STAGE, MAIN MENU. »
+Frédéric, on 2026-10-28: "VERSUS MODE: at the end of the fight, in place of the GAME OVER sub-state, create a
+sub-state of versus mode's own offering REMATCH, CHANGE VIPERS, CHANGE STAGE, MAIN MENU."
 
-### Le jeu dit lui-même quand un match est décidé
+### The game says itself when a match is settled
 
-Une route a été écrite pour le regarder : `tools/scripts/fv2-vs-fin.txt`, un versus où le joueur 1 frappe
-sans arrêt et le 2 ne bouge pas, donc chaque round finit par un K.O. Jouée cachée avec `VF3_VS_TRACE=1`,
-elle imprime une ligne par changement de sous-état à partir du jugement. La fin de chaque round lit les
-mêmes quatre états, puis **se sépare en deux** :
+A route was written to watch it: `tools/scripts/fv2-vs-fin.txt`, a versus match where player 1 hits without
+stopping and 2 does not move, so every round ends in a K.O. Played hidden with `VF3_VS_TRACE=1`, it prints
+one line per sub-state change from the judgement on. The end of each round reads the same four states, then
+**splits in two**:
 
 ```
-round qui ne décide rien   13 JUDGE  14 JUDGE_DSP  15 REPLAY_INT  16 REPLAY_DSP
-                           17 VIC_INT -> demande 19      (VIC_DSP est sauté)
-                           19 NEXT_PROG_SEL -> demande 6  (un round de plus)
+a round that settles nothing  13 JUDGE  14 JUDGE_DSP  15 REPLAY_INT  16 REPLAY_DSP
+                              17 VIC_INT -> asks for 19      (VIC_DSP is skipped)
+                              19 NEXT_PROG_SEL -> asks for 6  (one more round)
 
-le round qui décide        13 14 15 16
-                           17 VIC_INT -> demande 18
-                           18 VIC_DSP tourne
+the round that settles it     13 14 15 16
+                              17 VIC_INT -> asks for 18
+                              18 VIC_DSP runs
 ```
 
-**`VIC_DSP`, sous-état 18, n'arrive qu'à la fin d'un match décidé.** Ce n'est pas un seuil ni un compte de
-rounds tenu par ce portage : c'est un état que Sega a nommé et qu'il n'atteint nulle part ailleurs. C'est
-la porte, et elle est du jeu.
+**`VIC_DSP`, sub-state 18, only comes at the end of a settled match.** It is not a threshold nor a round
+count kept by this port: it is a state Sega named and that it reaches nowhere else. That is the door, and it
+is the game's.
 
-### Et le panneau monte à sa fin, pas à son début
+### And the panel comes up at its end, not at its start
 
-Le moment pris est celui où `VIC_DSP` a **demandé** `NEXT_PROG_SEL` et où le répartiteur n'a pas encore
-agi — le même tic que le carrousel (`step_select`). La pose du vainqueur se joue donc entière, et
-`NEXT_PROG_SEL` ne tourne pas du tout. Une image plus tard il aurait déjà décidé : `GAME OVER` si le
-réglage `VS FINISH` de la borne est à ON, le vainqueur emmené dans l'échelle arcade s'il est à OFF —
-mesuré dans cette même partie, où il est à OFF : le 19 a tourné, l'octet des joueurs est tombé de 3 à 1,
-et le jeu a enchaîné un combat d'échelle. **Aucune des deux routes n'est prise maintenant.**
+The moment taken is the one where `VIC_DSP` has **asked for** `NEXT_PROG_SEL` and the dispatcher has not
+acted yet — the same tick as the carousel (`step_select`). So the winner's pose plays in full, and
+`NEXT_PROG_SEL` does not run at all. One frame later it would already have decided: `GAME OVER` if the
+cabinet's `VS FINISH` setting is ON, the winner taken into the arcade ladder if it is OFF — measured in that
+same session, where it is OFF: 19 ran, the players byte fell from 3 to 1, and the game ran straight into a
+ladder fight. **Neither of the two routes is taken now.**
 
-Comme rien ne doit rester en attente derrière le panneau, la demande de sous-état est remise à 18 —
-`Model3::fv2_hold_submode`, l'inverse exact de `fv2_cut_submode`, et la valeur que le jeu lui-même tient
-là à toutes les autres images.
+Since nothing must be left pending behind the panel, the sub-state request is put back to 18 —
+`Model3::fv2_hold_submode`, the exact inverse of `fv2_cut_submode`, and the value the game itself holds there
+on every other frame.
 
-### Ce que l'état déclare
+### What the state declares
 
-`VS_OVER` est une ligne de la table de `console_state.h`, exactement comme `PAUSE` :
+`VS_OVER` is one row of `console_state.h`'s table, exactly like `PAUSE`:
 
-| état | tourne | écran | son | commandes |
+| state | runs | screen | sound | controls |
 |---|---|---|---|---|
-| `PAUSE` | non | par-dessus | les deux | le portage |
-| `VS_OVER` | non | par-dessus | les deux | le portage |
+| `PAUSE` | no | over it | both | the port's |
+| `VS_OVER` | no | over it | both | the port's |
 
-La surface est **le même panneau** (`fv2_pause.h`), parce que les quatre lignes y étaient déjà. Trois
-choses diffèrent, et pas une de plus : `RESUME` n'est pas affichée (il n'y a pas de combat où revenir), le
-joueur ne peut pas sortir par Start ou B (même raison), et la barre dit `VS` `BATTLE OVER` au lieu de qui
-a mis en pause.
+The surface is **the same panel** (`fv2_pause.h`), because the four lines were already in it. Three things
+differ, and not one more: `RESUME` is not shown (there is no fight to come back to), the player cannot leave
+with Start or B (the same reason), and the bar says `VS` `BATTLE OVER` instead of who paused.
 
-`chose_pause` sert les deux : la seule différence est que le match est **déjà** fini, donc `MAIN MENU` et
-`CHANGE YOUR VIPER` ne demandent pas `end_match` — `fv2_end_match` refuse ailleurs que pendant un round
-joué, ce qui est juste, ses deux mots ne voulant rien dire à `VIC_DSP`. Tout le reste de la sortie se lit
-pareil depuis là : le bit tenu, les états coupés, `VS FINISH` emprunté, les écrans de fin raccourcis
-derrière l'image du portage.
+`chose_pause` serves both: the only difference is that the match is **already** over, so `MAIN MENU` and
+`CHANGE YOUR VIPER` do not ask for `end_match` — `fv2_end_match` refuses anywhere but during a round being
+played, which is right, its two words meaning nothing to `VIC_DSP`. All the rest of the exit reads the same
+from there: the bit held, the states cut short, `VS FINISH` borrowed, the ending screens shortened behind the
+port's picture.
 
-### Seulement à deux, et jamais en training
+### Only with two players, and never in training
 
-`fv2_players()` lit 3 quand deux joueurs sont en lice : les matchs de l'échelle arcade finissent aussi à
-`VIC_DSP`, et là la fin d'un match est l'affaire de l'échelle, pas du joueur. Le TRAINING est un versus à
-deux sur cette carte et il est écarté par son nom — le mannequin n'a pas de revanche à demander, et le
-menu pause de ce mode est la sortie.
+`fv2_players()` reads 3 when two players are in contention: the arcade ladder's matches also end at
+`VIC_DSP`, and there the end of a match is the ladder's business, not the player's. TRAINING is a two-player
+versus match on this board and it is ruled out by its name — the dummy has no rematch to ask for, and that
+mode's pause menu is the way out.
 
-### Sortir de ce panneau : un deuxième prêt, et c'est la mesure qui l'a imposé
+### Leaving this panel: a second loan, and it is measurement that imposed it
 
-`REMATCH` a marché du premier coup (`VS_OVER -> PLAY`, `a rematch asked for, the game says 1`, et le match
-suivant se joue). `MAIN MENU` **non** : le jeu repartait dans un combat et la sortie abandonnait au bout de
-sa minute. Le point de branchement entier, relu d'un vidage pris à l'image 5000 (`VF3_RAM_DUMP`, nouveau
-crochet, et `tools/fv2/desas_ppc.py`) :
+`REMATCH` worked first time (`VS_OVER -> PLAY`, `a rematch asked for, the game says 1`, and the next match is
+played). `MAIN MENU` **did not**: the game went back into a fight and the exit gave up after its minute. The
+whole branch point, read again from a dump taken at frame 5000 (`VF3_RAM_DUMP`, a new hook, and
+`tools/fv2/desas_ppc.py`):
 
 ```
 0000DB4C  lwz r10,[0x005813F0]        ADV_INFO_STATUS
-0000DB50  bit 0x00000008              -> DD4C : mode 12, la fin du jeu
-0000DB58  bit 0x40000000 absent       -> DD28 : ++ROUND_NO, sous-mode 6, une manche de plus
-0000DB64  lbz r3,[0x0058145A]         COMBIEN JOUENT
-0000DB70    == 3                      -> DBD0 : la route des deux joueurs, qui lit VS FINISH
+0000DB50  bit 0x00000008              -> DD4C : mode 12, the game's end
+0000DB58  bit 0x40000000 absent       -> DD28 : ++ROUND_NO, sub-mode 6, one more round
+0000DB64  lbz r3,[0x0058145A]         HOW MANY ARE PLAYING
+0000DB70    == 3                      -> DBD0 : the two-player route, which reads VS FINISH
 0000DB74    == 0                      -> DC9C
-0000DB88    != [0x00581457] + 1       -> DC9C : 145F -> mode 22 RESULT, sinon mode 8 CONTINUE
-0000DB8C    sinon                     le dernier debout continue l'echelle : ++145C, sous-mode 0
+0000DB88    != [0x00581457] + 1       -> DC9C : 145F -> mode 22 RESULT, otherwise mode 8 CONTINUE
+0000DB8C    otherwise                 the last one standing carries the ladder on : ++145C, sub-mode 0
 ```
 
-**`VS FINISH` est la deuxième question, pas la première.** Et l'octet qui commande la première tombe sous
-nos pieds : `VF3_RAM_WATCH=00581454:12` sur la route du panneau donne
+**`VS FINISH` is the second question, not the first.** And the byte that commands the first falls away under
+our feet: `VF3_RAM_WATCH=00581454:12` on the panel's route gives
 
 ```
 frame 6659  VS_OVER -> MENU_IN (MAIN MENU)
 frame 6660  mode 7 sub 19 : 0058145A 03->01
-frame 6661  mode 7 sub 19 : 0058145C 01->02      <- la route de l'echelle, pas celle du versus
+frame 6661  mode 7 sub 19 : 0058145C 01->02      <- the ladder's route, not the versus one
 ```
 
-Le `3` tient tout le match et tombe à `1` **dans la trame même** où `NEXT_PROG_SEL` tourne : c'est la règle
-`INTRUDE` de la borne — le gagnant hérite de la partie — appliquée à la fin de la pose du vainqueur. Un
-versus décidé a donc **cessé d'être un versus** avant que le branchement ne le regarde, et il prend la
-route de l'échelle quoi qu'on fasse de `VS FINISH`.
+The `3` holds for the whole match and falls to `1` **on the very frame** `NEXT_PROG_SEL` runs: it is the
+cabinet's `INTRUDE` rule — the winner inherits the session — applied at the end of the winner's pose. So a
+settled versus match has **stopped being a versus match** before the branch looks at it, and it takes the
+ladder's route whatever is done with `VS FINISH`.
 
-**Prêter le 3 a été essayé et ne prend pas** : la main passe au vainqueur dans la trame même du
-branchement, donc après l'écriture du prêt, qui se fait en haut de l'image. Mesuré, pas supposé.
+**Lending the 3 was tried and does not take**: the hand passes to the winner on the branch's own frame, so
+after the loan's write, which is done at the top of the frame. Measured, not supposed.
 
-Ce qui marche est plus court et plus honnête : la route des deux joueurs finit en trois instructions,
-`li r0,18 ; stb r0,[0x0058FD9A]`, et **le portage écrit ce qu'elle écrit, là où elle l'écrit**
-(`Model3::fv2_request_game_over`). Depuis le panneau, `MAIN MENU` et `CHANGE YOUR VIPER` ne demandent donc
-pas la fin du match — il est fini — mais `GAME OVER`, et la sortie part directement sur les écrans de fin,
-que le rideau du portage couvre déjà. Les routes arcade, survival et le menu pause en plein combat ne sont
-pas touchées : elles gardent la leur, qui marche.
+What works is shorter and more honest: the two-player route ends in three instructions,
+`li r0,18 ; stb r0,[0x0058FD9A]`, and **the port writes what it writes, where it writes it**
+(`Model3::fv2_request_game_over`). From the panel, `MAIN MENU` and `CHANGE YOUR VIPER` therefore do not ask
+for the end of the match — it is over — but for `GAME OVER`, and the exit goes straight to the ending
+screens, which the port's curtain already covers. The arcade and survival routes and the pause menu
+mid-fight are not touched: they keep theirs, which works.
