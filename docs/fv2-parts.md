@@ -472,8 +472,12 @@ What this does **not** show:
 - **A square of the sheet this game leaves alone.** Section 9 pays for a foreign part's colours with the
   host's at the same coordinates; which squares are free was not looked for.
 - **The joint a part should hang from.** The placement above is by hand, not from the game's own skeleton.
-- **Virtua Fighter 3's own part tables and where its sheet is uploaded from.** Without them a character can
-  only be lifted as the snapshot above.
+- **The arithmetic inside each step.** The chain is named end to end; which matrix comes from which float of
+  the ROM block, and what the blend's weight is weighted by, are not read.
+- **What the byte blocks index**, and how the floats of `0281`/`0282` attach to them.
+- **The conversion** from this to Real3D polygons, which is what carrying a character across means.
+- **The conversion.** Nothing here turns those floats into Real3D polygons, which is what carrying a
+  character across now means.
 - **Virtua Fighter 3's own part tables** -- its equivalent of section 5's directory -- were not looked for.
 
 ### A whole character does not come out of the ROM half
@@ -544,7 +548,414 @@ So the whole of it, for a part that is not this game's: **its words in polygon R
 its vertices fitted, its texels in the sheet, a directory entry, and a slot that names it.** Six things, none
 of them in the ROM.
 
-## 10. What is not settled
+## 10. Where Virtua Fighter 3 keeps its own, in the ROM
+
+Section 9 ends on a snapshot. The question it leaves -- what the ROM holds, rather than what one frame holds
+-- is answered here, and the answer has the same shape as section 5's.
+
+### Step 1.0 has no Real3D DMA: the SCSI controller moves everything
+
+`VF3_DMA_LOG` prints nothing on Virtua Fighter 3. What moves its data is the 53C810's SCRIPTS memory move
+(`Scsi::exec`), which this port already implements and which `VF3_SCSI_LOG=1` now reports. Over a run to a
+fight, **45,021 moves**, and every one of them reads main RAM:
+
+| to | moves | bytes |
+|---|---|---|
+| `8C……` culling RAM, low | 1,984 | 974 KB |
+| `8E……` culling RAM, high | 8,077 | 30.7 MB |
+| `94……` the texture port | 85 | 14.7 MB |
+| `98……` polygon RAM | 34,873 | 69.3 MB |
+
+So the CPU stages everything in main RAM -- the big moves all come from `0x000A0000` -- and the SCSI pushes
+it to the three memories of the Real3D.
+
+### Who fills the staging buffer, and from where
+
+`vf3run --watch A0000` names the writers; the one that matters is at PC `0x00054934`, and the loop around it
+is a copy straight out of the ROM:
+
+```
+00054920  lis   r10,0xFF00
+00054924  addi  r10,r10,-4        r10 = 0xFEFFFFFC, the banked ROM less a word
+0005490C  lis   r8,0xFFA1         the table
+00054910  rlwinm r5,r16,3,0,28    the id, times eight
+00054914  lwzux r6,r8,r5          the entry's first word: how many words    (and r8 now points at it)
+00054918  lwz   r7,4(r8)          its second: where
+0005492C  add   r7,r7,r10
+00054930  lwzu  r8,4(r7)          a word of the ROM
+00054934  stwu  r8,4(r17)         into the staging buffer
+```
+
+`0x7C82286E` is **`lwzux`**, not `lwzx`: it advances the pointer, which is what makes the `lwz r7,4(r8)` after
+it read the same entry's second word. Read as `lwzx` the table looks like one length and one fixed offset,
+which is how that mistake announces itself.
+
+### The directory, read in the ROM
+
+**7,310 entries at banked CROM `0xFFA10000`**, eight bytes each -- a length in words and an offset -- with
+the blocks laid end to end from `0xFF002000` to `0xFF7FA3CC`: **8 MB of resources**. 3,595 of the entries
+carry a length; the smallest block is 23 words, the median 310, the biggest 20,183.
+
+A second table of the same shape sits at `0xFFFFE000` in the fixed ROM, with its blocks at
+`0xFFFE0000 + offset * 4`; in this set every one of its entries is `FFFFFFFF`.
+
+### Which blocks are one fighter's: Akira is id 0x1057
+
+The port's own `--trace-pc` lists what the program asks for, without any new code: the id is in `r3` at the
+loader's door, and a run to a fight makes **1,434 calls for 1,240 distinct ids, from `0x0000` to `0x1C88`** --
+the table's own range.
+
+Crossing the ids with the move log's destinations says less than it promises: of 45,021 moves only 11,331 are
+fed straight from a ROM block, and they carry **46 ids, all geometry**. The rest of the traffic comes from
+buffers the CPU fills itself. So the ids are mostly **data the program reads**, which is what a deformed
+fighter needs.
+
+The ids a fighter costs are found the way `docs/fv2-two-kuhn.md` finds anything: by changing one thing.
+
+**And the first attempt measured nothing**, which is worth keeping: `tools/scripts/vf3-match.txt` puts its
+coin in at frame 600, and at frame 600 Virtua Fighter 3 is still showing its export warning. Its "select" and
+"fight" marks are labels, not places; the run reaches the **attract mode**, and the two fighters found in its
+culling RAM at frame 1500 are the demo's. Paid at frame 1600 instead, the select screen is there at 1890 with
+the cursor on Akira.
+
+From there, one cursor move at a time, with `--trace-pc 54890` naming every id the program asks the ROM for:
+
+| the cursor | ids asked for |
+|---|---|
+| one cell right | `1051` (13,609 words), `1052` (2,980) |
+| two cells right | those, and `104F` (20,183), `1050` (3,354) |
+| three cells right | those, and `1053` (17,751), `1054` (1,971) |
+| **two right, then two left, back on Akira** | **`1057` (15,547 words)** |
+
+A fighter is **a pair of blocks**, and the pairs sit together in the directory -- `1049`/`104A`, `104B`/`104C`
+and so on, each a big block and a small one. The cursor's order is not the ROM's, which is why the pairs come
+out of order.
+
+**Akira Yuki is id `0x1057`: 15,547 words, 60.7 KB, at banked CROM `0xFF48A7F0`** (his partner `1058` is
+empty). The picture taken at that frame has him under the cursor, named on screen.
+
+That is the thing section 9 said was missing: a character, in the ROM, at an address. What his 60.7 KB are
+made of -- limbs, skeleton, the skinning the program applies -- is not read here.
+
+### What is inside Akira's block, and the window that decides it
+
+**Read through the wrong window, a block is a mirage.** The banked ROM is 128 MB seen through an 8 MB
+window, `crom_bank = banked.data() + ((~v) & 0xF) * 0x800000`, and a dump read at window 0 gave id `0x1057`
+the shape of a tidy tree: 6,691 addresses into one 56 KB range, records of {count, four addresses, a unit
+axis}, and under them 1,581 points spanning 38 by 11 by 37 with most normals pointing up. It read as terrain,
+and it was written down here as such.
+
+`VF3_BANK_LOG` crossed with the trace says the program was never in that window: of **1,244 asks, 1,238 were
+made with window 6**. The directory itself reads the same through either (it is duplicated), which is exactly
+what made the mistake comfortable.
+
+Read through window 6, Akira's nine blocks are:
+
+| id | words | what the words are |
+|---|---|---|
+| `1057` | 15,547 | **53 % plausible floats, 32 % zero**, no addresses -- `-0.010`, `-0.060`, `-0.140` |
+| `0281`, `0282` | 912 each | **74 % floats**, all small: `0.077`, `0.004`, `-0.012` |
+| `0285`, `0286` | 128 each | packed bytes, not floats |
+| `10C8`-`10CB` | 23 each | packed bytes: `2A 06 0C 11 | 19 20 2A 11 | 19 1C 20 2A` -- small, repeating, **indices** |
+
+Floats for positions and normals, bytes for indices: the shape of a **skinned mesh**, which is what the
+census above would expect of a fighter the program deforms every frame. Read as plain triples the big block
+does not come out as a point cloud (its box runs to ±9,600), so it is not a flat array of vertices: something
+-- a header, a stride, a per-limb division -- is in there that this page has not read.
+
+**The lesson is the one that cost the terrain.** A resource's address is not enough; it takes the window the
+program had chosen when it asked. Anything read out of this ROM without `VF3_BANK_LOG` beside it is a guess.
+
+### The shape of the block: metres and degrees, and nothing else
+
+There is no header and no table of offsets: swept for a word that could be an offset into itself, the first
+256 give **none**, and there is no increasing run anywhere in them. Swept for a small integer -- a count, an
+index, a length -- the whole 15,547 words give **not one** below 4,096.
+
+What they are is **floats, and only floats**. 5,074 zeros, and of the 10,473 words left:
+
+- **7,163 are small**, between -98.8 and 99.8, and read in threes they are body-scale points: the head of the
+  block climbs `1.2997, 1.3739, 1.3800, 1.4400, 1.5100, 1.5300` with its other two components near zero,
+  which is a column going up. Swept in stretches of 300 words, most of the block reads as such points, with
+  y reaching 2.6 and never leaving ±4.
+- **3,280 are big**, and they are **angles**: a third of them, 1,067, are a whole number of degrees at 65,536
+  to the turn, and the commonest are **90°, -90°, 10°, 360°, 180°, -5°, -45°, -30°**. The values that stood
+  out as odd constants -- 16384, 32768, 65536, 1820.44 -- are a quarter turn, a half, a whole, and ten
+  degrees.
+
+So Akira's 60.7 KB are **positions in metres and rotations in sixteen-bit degrees, written as floats**: the
+numbers that move a skeleton, not a mesh and not polygons. Which agrees with the census that opened this
+section -- the program turns these into geometry every frame, and the ROM holds no geometry of him for the
+renderer to read.
+
+What this does **not** say is which float belongs to which joint. There is no structure inside the block to
+tell: the order is known only to the code that reads it, and that code was not followed here. The byte blocks
+of his set (`0285`, `0286`, `10C8`-`10CB`) are the only indices in sight, and what they index was not read
+either.
+
+### Following the code: as far as the record, not yet as far as the joint
+
+The block says nothing about its own order, so the order has to come from the code that reads it. Walked from
+the other end -- from what the renderer is given, back towards the data -- the chain is:
+
+**The matrix table is not where the animation is.** The viewport's word `0x16` points at it, and the SCSI log
+says it is 144 bytes moved from main RAM `0x000EEC90`, once a frame, 1,563 times in a run. But
+`vf3run --watch EEC90` catches **two stores in the whole run**: the table is written at startup and never
+again. Twelve floats a matrix, 144 bytes, three matrices -- a fixed frame of reference, not a pose.
+
+**What moves every frame is the node tree.** Five fixed addresses in main RAM feed the culling RAM, each
+moved exactly once a frame: `000E0010`, `000EEC90`, `000EF680`, `000E3D90`, `000FA810`. So a fighter's pose
+reaches the Real3D as nodes, rebuilt from nothing each frame, which is the same thing the census said from
+the other side.
+
+**And the builder is at PC `0x00020408`**, caught 1,563 times by `--watch E0010` -- once a frame, like the
+move:
+
+```
+00020400  li   r9,48            forty-eight words
+00020404  lwz  r0,0(r10)        from wherever r5 pointed
+00020408  stw  r0,0(r2)         into the staging area
+0002040C  addi r10,r10,4
+00020410  addi r2,r2,4
+00020418  bne  0x00020404
+0002041C  addi r6,r6,48         and the next record forty-eight on
+```
+
+A record is **48 words**, which is six of this board's eight-word nodes. What the loop copies is already made;
+what makes it sits above, in a dispatcher at `0x00020380` whose conditional calls are `0x0001FEB0`,
+`0x00020224`, `0x00020268` and `0x0002027C`.
+
+**That is where the floats become a pose, and this page stops at its door.** The chain is named end to end --
+ROM block, directory, loader, staging, builder, record, node -- with one link unread: which of those four
+routines takes which float, and for which joint.
+
+### The four routines, and the one instrument that is missing
+
+Opened, the four do not compute a pose. They **move floats out of the small-data area into the record**:
+
+| | what it does |
+|---|---|
+| `0x00020268` | `lfs f1,-31900(r13)` then `stfs f1,0(r19)`, and a word at `+28` of another record -- one float, copied |
+| `0x0002027C` | `lfs f5,-31896(r13)`, `lfs f6,-31892(r13)`, `lfs f7,-31888(r13)` -- **three consecutive floats**, then float arithmetic |
+| `0x0001FEB0` | saves five floating registers on entry (`stfs f12`..`f16`): the heavy one |
+| `0x00020224` | two helper calls (`0x2C20`, `0x2C8C`) and more of the same globals |
+
+Three consecutive floats at `-31896`, `-31892`, `-31888` is an *x, y, z*. So a joint's value is a triple in a
+**block of globals addressed from `r13`**, the small-data pointer, and these routines carry triples from there
+into the 48-word records the builder then copies.
+
+Which closes the shape of it: the ROM block holds metres and degrees; something fills the globals from it;
+these four write the globals into records; `0x00020408` copies the records; the SCSI moves them to the culling
+RAM; the Real3D draws them.
+
+**And `r13` did not need an instrument after all**: the program sets it once, and the instruction is in the
+image. Swept for `addis r13,r0` followed by `addi r13,r13`, the whole program gives **one** place, at
+`0x001540`: **`r13 = 0x00108000`**. So the triple those routines read is at **`0x00100368`, `0x0010036C`,
+`0x00100370`**.
+
+Watched, that address is written **7,817 times in a run, by three writers through seven call sites, with five
+distinct values**, 1,563 times each -- once a frame, five times over. It is **a scratch slot**, and the five
+sites that fill it (`0x00015738`, `0x00015850`, `0x00015A08`, `0x00015AA0`, `0x00015ABC`) all do the same
+thing:
+
+```
+li    r3,2
+lwz   r2,-31960(r13)
+oris  r2,r2,0x2000
+stw   r2,-31960(r13)
+stw   r3,-31956(r13)
+lis   r3,0x0014
+addi  r3,r3,4352        (and 4608, and 6144, one constant each)
+bl    0x0001BE44
+```
+
+Each hands the same routine **an address in `0x0014xxxx`**, one per site. And those addresses hold, all three
+of them, the same six floats: `0.0, 1.0, 0.7957, -0.5556, -0.2414, 0.55`, where
+`0.7957² + 0.5556² + 0.2414² = 1.000` -- **a unit direction**. The whole 64 KB around them holds 88 non-zero
+words, 85 of them floats.
+
+**So this path is the lighting, and the 48-word records are viewports, not joints.** Five sites, five
+viewports -- the same five the census at the top of this section walked from (`8000A0`, `8000D8`, `800110`,
+`800148`, `800180`). The chain followed from the renderer backwards reaches the scene's furniture and stops
+there; a fighter's joints are built on another path, which this page has not found.
+
+### The other path: where a fighter becomes polygons
+
+The viewport path above is the furniture. The fighter's own is found the same way, from the other end.
+
+The census named the models a fighter has built in polygon RAM -- word `0x1A800` and its neighbours, bus
+`0x9806A000`. The move log says what fills that address: **922 moves**, from main RAM `0x000ABC70` (449
+times), `0x000A9210` (320) and `0x000AC0D0` (149). So a fighter's geometry is assembled in main RAM, in three
+buffers, and pushed over.
+
+`vf3run --watch ABC70` names the assembler: **PC `0x00035B68`, 321 times** (the ROM loader shows up there
+too, 20 times, because the same area is also loaded into). And the instructions around it say what it is:
+
+```
+00035B44  stbx   r15,r31,r26
+00035B58  stwbrx r3,r31,r26      a word, byte-reversed
+00035B5C  addi   r26,r26,4
+00035B60  stwbrx r4,r31,r26
+00035B68  stwbrx r5,r31,r26
+00035B6C  addi   r26,r26,8
+```
+
+A run of **`stwbrx`** -- store word byte-reversed -- stepping by 4, 8 and 16 through a buffer. Byte-reversed is
+how everything bound for the Real3D is written (`docs/fv2-colours.md` found the same on the colour table), and
+the strides are a polygon's.
+
+And what feeds it, immediately above, is **floating-point arithmetic**: `0x00035A80` onwards is an unbroken
+run of `fmadds`, `fmuls`, `fadds` (`EDED05B2`, `EC2F03F2`, `EC300C3A`...), ending in a call to `0x00034DA0`.
+
+**So the conversion is at `0x00034DA0`-`0x00035B80`: floats in, Real3D polygons out, three buffers, once a
+frame.** That is the routine a port would have to understand to carry a Virtua Fighter 3 character anywhere --
+not a copy, as section 8 could do with one model, but this.
+
+### The conversion, read
+
+The floating-point instructions this port's disassembler prints as `.long` were decoded for this (opcodes 48
+to 55, 59 and 63, and group 31's `stfiwx`). Read that way, `0x00035A50` onwards is not obscure at all:
+
+```
+lfs     f12,0(r27)   f13,4(r27)   f14,8(r27)     three floats: a vertex
+lfs     f15,0(r28)   f16,4(r28)   f17,8(r28)     another
+lfs     f20,0(r29)   f21,4(r29)   f22,8(r29)     a third
+
+fsubs   f13,f13,f16     f22,f22,f17     f14,f14,f17      two edges, A-B and C-B
+fsubs   f20,f20,f15     f12,f12,f15     f21,f21,f16
+
+fmuls   f15,f13,f22     f16,f14,f20     f17,f12,f21      and their cross product
+fnmsubs f15,f14,f21,f15
+fnmsubs f16,f12,f22,f16
+fnmsubs f17,f13,f20,f17
+
+fmuls   f1,f15,f15                                        its length, squared
+fmadds  f1,f16,f16,f1
+fmadds  f1,f17,f17,f1
+bl      0x00034DA0                                        and the reciprocal root
+
+fmuls   f2,f2,f18                                         scaled
+fmadds  f15,f15,f2,f29                                    and biased
+fmadds  f16,f16,f2,f29
+fnmadds f17,f17,f2,f29                                    (z negated: the board's handedness)
+
+fctiw   f15 f16 f17                                       rounded to integers
+stfiwx  f15,r19,r27     at +72, +76, +80
+```
+
+**It is a face normal**, taken from three vertices by cross product, normalised, scaled, biased and rounded.
+
+Then the packing, and it names the rest:
+
+```
+lwz    r3,12(r27)  r4,16(r27)  r5,20(r27)      three words of vertex A
+lwz    r6,12(r28)  ...                          of B
+lwz    r19,12(r29) ...                          of C
+lwz    r22,12(r30) ...                          of D          -- four vertices: a quad
+lwz    r28,72(r27) r29,76 r30,80                the normal just computed
+
+stwbrx r28,r31,r26                              the normal's x, byte-reversed
+stbx   r14,r31,r26                              a byte put back over its low eight bits
+addi   r26,r26,4
+stwbrx r29,r31,r26                              y, and the same
+```
+
+Which is **the Real3D polygon header, word for word**: the port reads its words 1 to 3 as
+`float(int32(h[k]) >> 8) / 4194304` -- a 24-bit normal with a low byte that carries flags, and here is the
+code that writes exactly that, normal in the top 24 bits and the byte put back underneath.
+
+So the answer to "which float becomes which vertex" is: **the floats are vertex positions, taken four at a
+time, and the first thing the conversion makes of them is the polygon's normal**; the vertices' own packed
+words are carried from `+12` to `+20` of each vertex record and written after it.
+
+What is read here is the head of the routine. The rest of `0x00034DA0`-`0x00035B80` -- what fills those vertex
+records in the first place, and where the ROM's metres and degrees enter -- is not.
+
+### What feeds it: a record, an index list, and vertices of 224 bytes
+
+The head of the same routine, at `0x000359F8`, says where its four vertices come from:
+
+```
+lhz   r3,42(r12)        how many polygons, from a record at r12
+mtctr r3
+lwz   r31,24(r12)       where the polygons go
+lwz   r16,20(r12)       where the vertices are
+lwz   r18,64(r12)       and the list of indices
+lfs   f18,32000(r2)     a scale, from 0x00077D00
+lfs   f29,5376(r0)      a bias, from 0x00001500
+lhzu  r22,2(r18)        four sixteen-bit indices, one after the other
+lhzu  r21,2(r18)
+lhzu  r20,2(r18)
+lhzu  r19,2(r18)
+mulli r27,r19,224       each one times 224
+mulli r28,r20,224
+mulli r29,r21,224
+mulli r30,r22,224
+add   r27,r27,r16       added to the vertices' base
+```
+
+So the whole shape of it:
+
+| | |
+|---|---|
+| a record at `r12` | `+20` the vertices, `+24` the output, `+42` the polygon count, `+64` the index list |
+| the index list | **sixteen-bit, four per polygon** |
+| a vertex | **224 bytes**, indexed by multiplication |
+| two constants | a scale at `0x00077D00`, a bias at `0x00001500`, both read as floats |
+
+Two hundred and twenty-four bytes is not a position: it is a **working record** -- the three floats the
+cross product reads at `+0`, the packed words carried at `+12` to `+20`, the normal parked at `+72`, and
+whatever else the game keeps per vertex.
+
+Which leaves exactly one question where this page stops: **what fills those 224-byte records**, and where
+the ROM's metres and degrees enter them. That is the skinning, one floor above, and it is not read here.
+
+### One floor up: the vertices are blended, not placed
+
+The vertex records had to be found before they could be watched. Swept for runs of 224-byte records whose
+first three words are body-scale floats, main RAM gives **293 records at `0x00150FF8`, 277 at `0x001A5AD8`**,
+and smaller runs after them. Watched:
+
+- `0x00150FF8` and `0x001BDE9C` are written **once**, at the startup clear. They are rest geometry, left
+  alone.
+- `0x001A5AE4` is written **900 times in a run**, 447 by PC `0x00035F8C` and 447 by `0x000357E8`. That one is
+  a fighter.
+
+And the two writers say what the deformation is:
+
+```
+00035F50  fmadds f15,f16,f17        a matrix times a vector, row by row
+00035F64  lfs    f12,0(r17)         where the vertex is now
+00035F70  fsubs  f15,f15,f12        how far that is from where the matrix puts it
+00035F7C  fmadds f12,f18,f15,f12    position += f18 x (target - position)
+00035F88  stfs   f12,0(r17)
+```
+
+**A weighted blend**, not a placement: each vertex is moved a fraction `f18` of the way towards a
+matrix-transformed target. The other writer does the same shape of thing and keeps more of it:
+
+```
+000357A0  lfs   f0,92(r12)          a scale out of the object record
+000357A8  fsubs f20,f12,f15         the difference between two positions
+000357B4  fmuls f20,f31,f20         scaled
+000357C0  fmadds f1,f7,f8,f29       and its two sides, plus and minus a bias
+000357CC  fnmadds f4,f7,f8,f29
+000357E4  stfs  f12,0(r18)          the position at +0
+000357F0  stfs  f20,24(r17)         the difference kept at +24
+```
+
+So a 224-byte record carries a position at `+0`, a difference at `+24`, the packed words the polygon takes at
+`+12`-`+20`, the normal's scratch at `+72`, and more at `+108`-`+116`.
+
+**Which closes the chain, floor by floor:** the ROM block's metres and degrees, the joints, a matrix, a
+weighted blend into the vertex records, the cross product that makes each polygon's normal, the `stwbrx` run
+that writes the Real3D header, the SCSI move into polygon RAM, and the renderer. Every step is named, with
+the address and the measurement that named it.
+
+What is still not read is the arithmetic inside each step -- which matrix comes from which float of the ROM
+block, and what `f18` is weighted by.
+
+## 11. What is not settled
 
 - **The model's own format** was not read here, only its place. Nothing on this page parses a model; the port's
   renderer does (`src/video/r3d_scene.cpp`).

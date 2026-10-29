@@ -105,7 +105,7 @@ int main(int argc, char **argv)
 	// the same way the host takes the player's; the injections of --console-mode are not, which is how a mode
 	// chosen from the list hands the game a Start of its own.
 	std::vector<long> console_start;
-	std::string hd_dump, hd_pack, vrom_out, tex_out;
+	std::string hd_dump, hd_pack, vrom_out, tex_out, crom_out;
 	bool hd_flats = false;
 	int tile_scale = 1;   // HD 2D: 1 is the hardware's own, and then nothing of it runs (src/video/tilehd.h)
 	std::string tile_pack_dir, tile_dump_dir;
@@ -132,6 +132,7 @@ int main(int argc, char **argv)
 		else if (a == "--cull-at" && i + 1 < argc) cull_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--vrom-out" && i + 1 < argc) vrom_out = argv[++i];
 		else if (a == "--tex-out" && i + 1 < argc) tex_out = argv[++i];
+		else if (a == "--crom-out" && i + 1 < argc) crom_out = argv[++i];
 		else if (a == "--modes") modes_log = true;
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
 		else if (a == "--trace-pc" && i + 1 < argc) trace_pc = uint32_t(strtoul(argv[++i], nullptr, 16));
@@ -1369,6 +1370,19 @@ int main(int argc, char **argv)
 				if (!quiet) printf("--tex-out: %zu texels written to %s\n", board.tex_ram.size(), tex_out.c_str());
 			}
 			tex_out.clear();
+		}
+		// --crom-out FILE writes the program ROMs, fixed then banked, in one file at their own addresses:
+		// 0xFF000000 is the banked one's start and 0xFF800000 the fixed one's, which is how the game's own
+		// code reaches them.
+		if (!crom_out.empty()) {
+			if (FILE *cf = fopen(crom_out.c_str(), "wb")) {
+				fwrite(board.banked.data(), 1, board.banked.size(), cf);
+				fwrite(board.crom.data(), 1, board.crom.size(), cf);
+				fclose(cf);
+				if (!quiet) printf("--crom-out: banked %zu + fixed %zu bytes written to %s\n",
+				                   board.banked.size(), board.crom.size(), crom_out.c_str());
+			}
+			crom_out.clear();
 		}
 		// --vrom-out FILE writes the Real3D's model ROM once, so a model of one game can be read and tried in
 		// another (docs/fv2-parts.md section 7).

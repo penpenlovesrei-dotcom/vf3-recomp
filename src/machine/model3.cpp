@@ -282,6 +282,12 @@ bool Scsi::exec()
 	if ((dcmd & 0xE0) == 0xC0) {        // memory move
 		uint32_t src = dsps, dst = temp = fetch(8);
 		uint32_t n = dbc;
+		// (tests: VF3_SCSI_LOG=1 says where each move comes from and goes. Step 1.0 has no Real3D DMA --
+		// Virtua Fighter 3 moves its geometry and its textures through the SCSI controller instead, so this
+		// is the only place that says what the ROM hands the renderer.)
+		if (static const bool say = getenv("VF3_SCSI_LOG") != nullptr; say && n)
+			fprintf(stderr, "scsi move: frame %llu  %08X -> %08X, %u bytes\n",
+			        (unsigned long long)board->frame, src, dst, n);
 		for (uint32_t i = 0; i < n / 4; i++, src += 4, dst += 4)
 			board->write32(dst, board->read32(src));
 		for (n &= 3; n; n--)
