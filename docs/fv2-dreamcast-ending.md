@@ -105,3 +105,32 @@ Within a page, nothing moves: n is 0 on all eight records of scenes 4 and 6. Wha
 pages — y 187, then 158, then 137 — so the text does walk up the screen, a page at a time, and the eye reads
 that as a roll. The movement the code animates is the ILLUSTRATIONS', and it is sideways: in from one edge,
 40 pixels a frame, a quarter of a second.
+
+## The zones, read out of the pattern list
+
+The façade's resource record at `0x8C0E5BC8` says: TEX entry **16**, its descriptor array at `0x8C0E56C8`,
+its pattern list at `0x8C0E5808`. Descriptors 3, 4 and 5 are three 512 × 512 VQ textures at `0x0A1000`,
+`0x0B1800` and `0x0C2000` of that entry -- the three sheets the credits are painted on.
+
+The eleven patterns the staff roll draws from, each a rectangle in its sheet:
+
+| rank | sheet | x | y | w | h | what it holds |
+|---|---|---|---|---|---|---|
+| 79 | 3 | 0 | 0 | 272 | 64 | the heading |
+| 80 | 3 | 0 | 64 | 304 | 112 | Chief Programmer, Chief Designer, Sound Director |
+| 81 | 3 | 0 | 184 | 304 | 168 | Director, Game Coordinator and the names under them |
+| 82 | 3 | 304 | 0 | 208 | 192 | the Programmers column |
+| 83 | 3 | 304 | 216 | 144 | 168 | the rest of that column -- drawn over page i = 3 at (378, 161) |
+| 84 | 4 | 0 | 336 | 360 | 168 | Character Designers, Original Character Designer |
+| 85 | 4 | 0 | 0 | 384 | 168 | Motion Designers |
+| 86 | 4 | 0 | 168 | 328 | 168 | Stage Designers, Visual Effect Designer |
+| 87 | 5 | 0 | 368 | 328 | 144 | Publicity by, Assistant Companies |
+| 88 | 5 | 0 | 0 | 360 | 312 | Presented by, Special Thanks to |
+| 89 | 5 | 0 | 312 | 408 | 56 | Half HP Studio, SEGA DIGITAL STUDIO |
+
+Cut out and looked at, every one of the eleven is a clean block of credits with nothing of its neighbours in
+it, which is what says the rectangles are read right. **The sheets are stored first row at the bottom** (as
+`textures_dc.py` says of this format), so a rectangle at y in the table is at `512 - y - h` in the file.
+
+The script of the two roll scenes asks for pages i = 1 to 8, which is ranks 80 to 88. Ranks 79 and 89 are
+drawn by params 21 and 30, which no scene in this table uses.
