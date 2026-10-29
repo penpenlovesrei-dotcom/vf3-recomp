@@ -274,6 +274,6 @@ int main()
 		printf("et pas le test.\n");
 		return 1;
 	}
-	printf("tous les cas passent\n");
+	printf("all cases pass\n");
 	return 0;
 }

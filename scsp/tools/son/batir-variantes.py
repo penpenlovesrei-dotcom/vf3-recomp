@@ -1,20 +1,19 @@
 # -*- coding: utf-8 -*-
-# batir-variantes.py : un exe par variante du DSP, chacune VERIFIEE avant d'etre gardee.
+# batir-variantes.py: one exe per DSP variant, each one VERIFIED before being kept.
 #
 #     python tools/son/batir-variantes.py
 #
-# Les variantes sont dans tools/son/variantes-dsp.py, qui dit ce que chacune attaque. Celui-ci les applique
-# une par une a src/sound/dsp_maison.{h,cpp}, construit, lance LES DIX TESTS, et ne garde l'exe que si les
-# 24 fichiers sont au vert. src/ est restaure a la fin, et mesurer-coeur reconstruit depuis l'original.
+# The variants live in tools/son/variantes-dsp.py, which says what each one attacks. This script applies
+# them one by one to src/sound/dsp_maison.{h,cpp}, builds, runs ALL TEN TESTS, and keeps the exe only if
+# all 24 files are green. src/ is restored at the end, and mesurer-coeur rebuilt from the original.
 #
-# POURQUOI LA VERIFICATION EST DANS CE SCRIPT ET NON A COTE. Le 2026-10-28, la variante `sortie_groupee`
-# groupait les quatre tests de sortie d'un pas dans un seul masque -- et englobait au passage les ecritures
-# de FRCL et d'ADRL, qui vivent entre celle de TWT et celle d'EWT. Elle passait TOUS les autres tests,
-# aurait passe le rejoueur et rendu le WAV identique a l'octet, parce qu'AUCUN jeu ne pose ces deux champs.
-# Seuls les cas 9 a 13 de tools/son/test_scsp_dsp.cpp l'ont arretee. Une variante non verifiee qui gagne est
-# pire qu'une variante qui perd.
+# WHY THE VERIFICATION IS IN THIS SCRIPT AND NOT BESIDE IT. On 2026-10-28, the `sortie_groupee` variant
+# grouped a step's four output tests into a single mask -- and swept up along the way the writes of FRCL
+# and ADRL, which live between TWT's and EWT's. It passed ALL the other tests, would have passed the
+# replayer and produced a byte-identical WAV, because NO game sets those two fields. Only cases 9 to 13 of
+# tools/son/test_scsp_dsp.cpp stopped it. An unverified variant that wins is worse than one that loses.
 #
-# Le jugement, lui, demande une fenetre administrateur : tools/son/mesurer-variantes.cmd.
+# The judging itself needs an administrator window: tools/son/mesurer-variantes.cmd.
 import io, os, re, shutil, subprocess, sys
 
 SP = os.path.dirname(os.path.abspath(__file__))
@@ -48,7 +47,7 @@ def applique(patches):
         cible = H if (len(p) > 2 and p[2] == 'h') else CPP
         s = io.open(cible, encoding='utf-8').read()
         if s.count(vieux) != 1:
-            return f"morceau introuvable dans {os.path.basename(cible)} ({s.count(vieux)} fois)"
+            return f"fragment not found in {os.path.basename(cible)} ({s.count(vieux)} times)"
         io.open(cible, 'w', encoding='utf-8', newline='').write(s.replace(vieux, neuf))
     return None
 
@@ -57,29 +56,29 @@ def construit(cibles):
                        capture_output=True, text=True, errors='replace')
     return r.returncode == 0, (r.stdout + r.stderr)
 
-print("UN EXE PAR VARIANTE, chacune verifiee par les dix tests avant d'etre gardee.\n")
+print("ONE EXE PER VARIANT, each verified by the ten tests before being kept.\n")
 gardees, refusees = [], []
 for nom, quoi, patches in VARIANTES:
     err = applique(patches)
     if err:
-        refusees.append((nom, err)); print(f"  {nom:<20} REFUSEE : {err}"); continue
+        refusees.append((nom, err)); print(f"  {nom:<20} REFUSED: {err}"); continue
     ok, journal = construit(['build/bin/mesurer-coeur', 'test'])
     if not ok:
-        bout = [l for l in journal.split('\n') if 'rror' in l or 'ECHEC' in l][:2]
-        refusees.append((nom, 'construction ou test en echec')); print(f"  {nom:<20} REFUSEE : {bout}")
+        bout = [l for l in journal.split('\n') if 'rror' in l or 'FAILED' in l][:2]
+        refusees.append((nom, 'build or test failed')); print(f"  {nom:<20} REFUSED: {bout}")
         continue
-    verts = journal.count('tous les cas passent')
+    verts = journal.count('all cases pass')
     if verts < 24:
-        refusees.append((nom, f'{verts} fichiers au vert au lieu de 24'))
-        print(f"  {nom:<20} REFUSEE : {verts} fichiers au vert au lieu de 24"); continue
+        refusees.append((nom, f'{verts} files green instead of 24'))
+        print(f"  {nom:<20} REFUSED: {verts} files green instead of 24"); continue
     exe = os.path.join(SORTIE, f'mc-{nom}.exe')
     shutil.copyfile(os.path.join(DEPOT, 'build', 'bin', 'mesurer-coeur.exe'), exe)
     gardees.append((nom, quoi))
-    print(f"  {nom:<20} ok, 24 fichiers au vert  ->  build/bin/variantes/mc-{nom}.exe")
+    print(f"  {nom:<20} ok, 24 files green  ->  build/bin/variantes/mc-{nom}.exe")
 
 restaure()
 construit(['build/bin/mesurer-coeur'])
-print(f"\n  gardees : {len(gardees)} ; refusees : {len(refusees)}")
-print("  (src/ est restaure, et mesurer-coeur reconstruit depuis l'original)")
+print(f"\n  kept: {len(gardees)}; refused: {len(refusees)}")
+print("  (src/ is restored, and mesurer-coeur rebuilt from the original)")
 io.open(os.path.join(DEPOT, 'build', 'variantes-gardees.txt'), 'w', encoding='utf-8').write(
     '\n'.join(f"{n}\t{q}" for n, q in gardees))

@@ -189,6 +189,6 @@ int main()
 		printf("%d echec(s).\n", echecs);
 		return 1;
 	}
-	printf("tous les cas passent\n");
+	printf("all cases pass\n");
 	return 0;
 }

@@ -168,12 +168,17 @@ $(BIN)/mesurer-coeur: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/s
 MAISON_SEUL = scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_maison.cpp scsp/src/sound/dsp_maison.cpp
 SANS_MAME = test_scsp_regs test_scsp_fentes test_scsp_adsr test_scsp_lfo test_scsp_irq test_scsp_mix test_scsp_dsp
 
-$(BIN)/sans-mame/%: $(call objs,$(MAISON_SEUL)) $(OBJ)/tools/son/%.o
+# THE PREFIX IS scsp/, AND A WRONG ONE IS SILENT. A pattern rule whose prerequisite cannot be made is
+# REJECTED, not reported: make then finds the exe already there, has no other rule for it, and declares it
+# up to date. These seven stayed at their 2026-10-28 build for a whole day after the git mv, passing every
+# time, testing code that had moved. `make clean` would not have said it either -- only the exe's timestamp
+# did. Nothing else in this file names a tools/son object, which is why this one line was the only victim.
+$(BIN)/sans-mame/%: $(call objs,$(MAISON_SEUL)) $(OBJ)/scsp/tools/son/%.o
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 test-sans-mame: $(addprefix $(BIN)/sans-mame/,$(SANS_MAME))
-	@echo "---- les memes tests, lies SANS une ligne du coeur de MAME ----"
+	@echo "---- the same tests, linked WITHOUT a line of MAME's core ----"
 	@for t in $(SANS_MAME); do $(BIN)/sans-mame/$$t maison || exit 1; done
 
 test: $(BIN)/test_scsp_dsp $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_fentes $(BIN)/test_scsp_adsr $(BIN)/test_scsp_lfo $(BIN)/test_scsp_irq $(BIN)/test_scsp_mix

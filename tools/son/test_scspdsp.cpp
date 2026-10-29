@@ -556,6 +556,6 @@ int main()
 	check_decode_gains_a_bit("Decode ajoute un bit");
 	check_start_recomputes_uses("Start recalcule uses");
 
-	printf("\n%s\n", failures ? "*** DES CAS ONT ECHOUE ***" : "tous les cas passent");
+	printf("\n%s\n", failures ? "*** SOME CASES FAILED ***" : "all cases pass");
 	return failures ? 1 : 0;
 }

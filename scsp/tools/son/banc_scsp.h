@@ -1,19 +1,19 @@
-// banc_scsp.h : de quoi keyer une voix et lire ce qui sort, pour les tests de bloc du SCSP.
+// banc_scsp.h: what it takes to key a voice and read what comes out, for the SCSP's block tests.
 //
-// Les blocs de docs/scsp_architecture.md §3 se testent tous de la meme facon -- un coeur neuf, une RAM, une
-// fente posee par la table du contrat, et n echantillons lus -- et il y en a sept. Ce fichier existe pour
-// que la deuxieme version de ce montage soit la derniere : test_scsp_fentes.cpp (bloc 2) l'avait en propre,
-// test_scsp_adsr.cpp (bloc 3) en avait besoin a l'identique.
+// The blocks of docs/scsp_architecture.md §3 are all tested the same way -- a fresh core, a RAM, a slot
+// laid down through the contract's table, and n samples read -- and there are seven of them. This file
+// exists so that the second version of that rig is the last: test_scsp_fentes.cpp (block 2) had it of its
+// own, test_scsp_adsr.cpp (block 3) needed it identically.
 //
-// IL NE CONTIENT AUCUNE ATTENTE. Ce qu'on attend d'un bloc appartient au test de ce bloc ; ici il n'y a que
-// le moyen de mesurer. Un banc qui porterait des references deviendrait un deuxieme endroit ou la verite
-// sur la puce est ecrite.
+// IT CONTAINS NO EXPECTATION. What is expected of a block belongs to that block's test; here there is only
+// the means of measuring. A bench carrying references would become a second place where the truth about
+// the chip is written.
 #pragma once
 
-// AUCUNE CLASSE CONCRETE ICI, et c'est le point : le contrat, l'interface et le selecteur suffisent.
-// Ce fichier incluait scsp_maison.h ET scsp_mame.h pour les deux aiguillages du bas, si bien que les
-// huit tests de bloc liaient le coeur de MAME par lui -- sans aucune raison de fond, leurs references
-// etant des nombres geles. Coupe le 2026-10-28 ; `make test-sans-mame` est la mesure que c'est fini.
+// NO CONCRETE CLASS HERE, and that is the point: the contract, the interface and the selector are enough.
+// This file used to include scsp_maison.h AND scsp_mame.h for the two switches at the bottom, so that the
+// eight block tests linked MAME's core through it -- for no substantive reason, their references being
+// frozen numbers. Cut on 2026-10-28; `make test-sans-mame` is the measurement that it is over.
 #include "../../src/sound/scsp_contract.h"
 #include "../../src/sound/scsp_select.h"
 
@@ -26,24 +26,24 @@
 
 namespace banc {
 
-// Un puits qui n'ecoute rien : les interruptions, le MIDI et les timers sont d'autres blocs.
+// A sink that listens to nothing: the interrupts, the MIDI and the timers are other blocks.
 struct Muet final : scsp::sink {
 	void irq(int, bool) override {}
 	void midi_out(std::uint8_t) override {}
 	void timer(int, std::uint32_t, std::uint32_t) override {}
 };
 
-inline constexpr std::uint32_t RAM_OCTETS = 0x100000;   // 1 Mo, comme une puce de la carte
+inline constexpr std::uint32_t RAM_OCTETS = 0x100000;   // 1 MB, like one chip on the board
 
-// Un coeur neuf avec sa RAM.
+// A fresh core with its RAM.
 //
-// UN BANC NEUF PAR CAS, et c'est une obligation et non une precaution : une fente SDIR ne s'eteint pas. Le
-// key-off ne fait que passer l'enveloppe en RELEASE (StopSlot), et SDIR saute l'enveloppe -- la fente
-// continuerait de sonner dans les cas suivants. Construire un coeur par cas coute une page de memoire et
-// garantit qu'aucun cas ne depend de l'etat laisse par le precedent.
-// LE NOM DU COEUR QUE LES BANCS CONSTRUISENT. Un seul endroit, pose par le main() de chaque test depuis
-// son premier argument : c'est ce qui permet au meme test de juger le coeur de MAME et celui du projet. Par
-// defaut "mame", pour qu'un test lance sans argument mesure la reference.
+// A FRESH BENCH PER CASE, and it is an obligation and not a precaution: an SDIR slot does not go out. Key-
+// off only moves the envelope into RELEASE (StopSlot), and SDIR skips the envelope -- the slot would go on
+// sounding into the following cases. Building one core per case costs a page of memory and guarantees that
+// no case depends on the state the previous one left.
+// THE NAME OF THE CORE THE BENCHES BUILD. One single place, set by each test's main() from its first
+// argument: that is what lets the same test judge MAME's core and the project's. "mame" by default, so
+// that a test run without an argument measures the reference.
 inline const char *&nom_du_coeur()
 {
 	static const char *n = "mame";
@@ -51,7 +51,7 @@ inline const char *&nom_du_coeur()
 }
 
 struct Banc {
-	// Parentheses et non accolades : `{n, 0}` construirait un vecteur de DEUX elements.
+	// Parentheses and not braces: `{n, 0}` would build a vector of TWO elements.
 	std::vector<std::uint16_t> ram = std::vector<std::uint16_t>(RAM_OCTETS / 2, 0);
 	Muet muet;
 	std::unique_ptr<scsp::core> tenu = scsp::make(nom_du_coeur(), 45158400 / 2, ram.data(), RAM_OCTETS, muet);
@@ -59,34 +59,34 @@ struct Banc {
 
 	Banc()
 	{
-		if (!tenu) { fprintf(stderr, "banc_scsp: coeur inconnu\n"); std::exit(2); }
+		if (!tenu) { fprintf(stderr, "banc_scsp: unknown core\n"); std::exit(2); }
 		coeur.reset();
-		// 0x400 comme le pilote l'ecrit au demarrage (MEM4MB, DAC18B), MVOL a fond. MEM4B n'a aucun effet
-		// sur ce coeur -- read_byte/read_word masquent a 0xFFFFF en dur, sans le consulter -- mais on l'ecrit
-		// quand meme pour que la puce soit dans l'etat ou le jeu la met.
+		// 0x400 as the driver writes it at startup (MEM4MB, DAC18B), MVOL at full. MEM4B has no effect on
+		// this core -- read_byte/read_word mask to 0xFFFFF outright, without consulting it -- but it is
+		// written all the same so that the chip is in the state the game puts it in.
 		coeur.write_reg(0x400 / 2, 0x0300 | 0x000F, 0xFFFF);
 	}
 
-	// Une rampe d'echantillons 16 bits a l'adresse octet `sa` : l'echantillon k vaut k * pas.
+	// A ramp of 16-bit samples at byte address `sa`: sample k is k * pas.
 	void rampe(std::uint32_t sa, unsigned n, int pas)
 	{
 		for (unsigned k = 0; k < n; k++)
 			ram[(sa / 2) + k] = std::uint16_t(std::int16_t(int(k) * pas));
 	}
 
-	// Un continu : n echantillons de meme valeur. C'est le vehicule des blocs qui mesurent un GAIN
-	// (enveloppe, LFO d'amplitude, TL) -- la sortie vaut alors le gain, a un facteur pres.
+	// A constant: n samples of the same value. It is the vehicle for the blocks that measure a GAIN
+	// (envelope, amplitude LFO, TL) -- the output is then the gain, up to a factor.
 	void continu(std::uint32_t sa, unsigned n, int valeur)
 	{
 		for (unsigned k = 0; k < n; k++)
 			ram[(sa / 2) + k] = std::uint16_t(std::int16_t(valeur));
 	}
 
-	// Pose les 16 mots d'une fente, puis tire la gachette. KYONEX passe en DERNIER et seul, parce qu'il
-	// declenche un balayage des 32 fentes (UpdateSlotReg case 0) et non la seule qu'on ecrit.
+	// Lays down a slot's 16 words, then pulls the trigger. KYONEX goes LAST and alone, because it sets off
+	// a sweep of all 32 slots (UpdateSlotReg case 0) and not just the one being written.
 	void keye(unsigned fente, const std::uint16_t mot[16])
 	{
-		const std::uint32_t base = fente * 0x10;   // 0x20 octets par fente, donc 0x10 mots
+		const std::uint32_t base = fente * 0x10;   // 0x20 bytes per slot, hence 0x10 words
 		for (unsigned w = 1; w < 16; w++)
 			coeur.write_reg(base + w, mot[w], 0xFFFF);
 		coeur.write_reg(base + 0, mot[0], 0xFFFF);
@@ -95,11 +95,11 @@ struct Banc {
 		coeur.write_reg(base + 0, std::uint16_t(mot[0] | dec[0]), 0xFFFF);
 	}
 
-	// n echantillons, canal gauche seul (la sortie est entrelacee L,R).
+	// n samples, left channel only (the output is interleaved L,R).
 	//
-	// ATTENTION : cet appel FAIT AVANCER la puce. Garder son resultat dans une variable plutot que
-	// l'appeler deux fois -- une fois pour comparer, une fois pour afficher -- sinon le message montre
-	// l'echantillon suivant a cote d'un test qui passe. C'est arrive.
+	// CAREFUL: this call ADVANCES the chip. Keep its result in a variable rather than calling it twice --
+	// once to compare, once to print -- otherwise the message shows the next sample beside a test that
+	// passes. It has happened.
 	std::vector<std::int32_t> gauche(unsigned n)
 	{
 		std::vector<std::int32_t> out(std::size_t(n) * 2, 0);
@@ -109,8 +109,8 @@ struct Banc {
 		return g;
 	}
 
-	// Les deux canaux, pour le bloc qui mesure le panoramique : la moitie des faits de DIPAN et d'EFPAN sont
-	// sur le canal que `gauche()` jette.
+	// Both channels, for the block that measures the pan: half of DIPAN's and EFPAN's facts are on the
+	// channel `gauche()` throws away.
 	std::pair<std::int32_t, std::int32_t> stereo(unsigned n)
 	{
 		std::vector<std::int32_t> out(std::size_t(n) * 2, 0);
@@ -119,17 +119,17 @@ struct Banc {
 	}
 };
 
-// Pose un champ de fente, et meurt si le nom n'existe pas : un nom absent de la table du contrat est une
-// faute de frappe, pas une condition a gerer.
+// Lays down a slot field, and dies if the name does not exist: a name absent from the contract's table is
+// a typo, not a condition to handle.
 inline void pose(std::uint16_t mot[16], const char *nom, unsigned valeur)
 {
 	if (!scsp_contract::pose(mot, nom, valeur)) {
-		fprintf(stderr, "banc_scsp: le contrat n'a pas de champ nomme %s\n", nom);
+		fprintf(stderr, "banc_scsp: the contract has no field named %s\n", nom);
 		std::exit(2);
 	}
 }
 
-// Une suite de valeurs divisees par un pas connu, les non-multiples montres tels quels plutot qu'arrondis.
+// A sequence of values divided by a known step, the non-multiples shown as they are rather than rounded.
 inline std::string suite(const std::vector<std::int32_t> &v, int diviseur)
 {
 	std::string s;
@@ -141,14 +141,14 @@ inline std::string suite(const std::vector<std::int32_t> &v, int diviseur)
 	return s;
 }
 
-// LES DEUX CHOSES QUI NE SONT PAS DANS scsp::core, et que les tests doivent pourtant atteindre : le miroir
-// MADRS et le volume maitre. scsp_core.h dit pourquoi elles n'y sont pas -- elles appartiennent au portage
-// et non a la puce -- et ces deux aiguilleurs sont la MESURE de ce qui manque encore a l'interface. Le jour
-// ou ils disparaissent, la dette est payee.
+// THE TWO THINGS THAT ARE NOT IN scsp::core, and that the tests nevertheless have to reach: the MADRS
+// mirror and the master volume. scsp_core.h says why they are not in it -- they belong to the port and not
+// to the chip -- and these two switches are the MEASUREMENT of what the interface still lacks. The day
+// they disappear, the debt is paid.
 //
-// ILS NE SONT PLUS ECRITS ICI. Les voici passes a scsp_select.h, qui les fait repondre par le COEUR INSCRIT
-// et non par un dynamic_cast ecrit sur place : c'est ce qui permet a ce banc de ne nommer aucune classe
-// concrete. Les deux noms restent, parce que les tests les emploient et que ce fichier est leur vocabulaire.
+// THEY ARE NO LONGER WRITTEN HERE. They have moved to scsp_select.h, which makes them answer through the
+// REGISTERED CORE and not through a dynamic_cast written on the spot: that is what lets this bench name no
+// concrete class. Both names remain, because the tests use them and this file is their vocabulary.
 inline bool pose_miroir(scsp::core &c, bool on) { return scsp::regle_miroir_madrs(c, on); }
 inline float gain_expose(const scsp::core &c) { return scsp::gain_expose(c); }
 

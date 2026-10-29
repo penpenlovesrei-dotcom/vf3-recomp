@@ -1,18 +1,18 @@
-// rejouer : rejoue une trace d'acces au SCSP dans un ou deux coeurs, et dit la premiere divergence.
+// rejouer: replays a trace of SCSP accesses through one or two cores, and names the first divergence.
 //
-// Point 2 de l'etape 2 de docs/scsp_migration_plan.md, le dernier prealable : "la meme sequence d'acces
-// rejouee dans les deux [...] et la comparaison des PCM, des etats observables, des interruptions et des
-// timers -- pas seulement du WAV."
+// Point 2 of step 2 of docs/scsp_migration_plan.md, the last prerequisite: "the same sequence of accesses
+// replayed through both [...] and the comparison of the PCM, the observable state, the interrupts and the
+// timers -- not just the WAV."
 //
-//   tools/son/rejouer <trace>                 un coeur, et ce qu'il a rendu
-//   tools/son/rejouer <trace> <coeur> <coeur> deux coeurs, et leur premiere divergence
-//   tools/son/rejouer <trace> --pcm <fichier> ecrit le PCM brut (s32 entrelace) pour comparaison externe
-//   tools/son/rejouer <trace> --contre <pcm>  contre la reference PCM gardee a l'enregistrement
+//   tools/son/rejouer <trace>                 one core, and what it produced
+//   tools/son/rejouer <trace> <core> <core>   two cores, and their first divergence
+//   tools/son/rejouer <trace> --pcm <file>    writes the raw PCM (interleaved s32) for external comparison
+//   tools/son/rejouer <trace> --contre <pcm>  against the PCM reference kept at recording time
 //
-// LE PREMIER CONTROLE A PASSER EST "mame contre mame", et il n'est pas une formalite : il prouve que le
-// rejeu est DETERMINISTE, c'est-a-dire que la trace porte vraiment tout ce dont la puce depend. Si deux
-// rejeux du meme coeur sur la meme trace divergent, c'est qu'un etat entre par une porte que la trace ne
-// note pas -- et il faut le trouver avant de comparer quoi que ce soit d'autre.
+// THE FIRST CHECK TO PASS IS "mame against mame", and it is not a formality: it proves the replay is
+// DETERMINISTIC, that is, that the trace really carries everything the chip depends on. If two replays of
+// the same core over the same trace diverge, then some state is coming in through a door the trace does
+// not record -- and that has to be found before comparing anything else.
 #include "../../src/sound/scsp_select.h"
 #include "../../src/sound/scsp_trace.h"
 
@@ -23,15 +23,15 @@
 
 namespace {
 
-constexpr std::uint32_t RAM_OCTETS = 0x100000;   // 1 Mo, comme une puce de la carte
+constexpr std::uint32_t RAM_OCTETS = 0x100000;   // 1 MB, like one chip on the board
 
-// Un rejeu complet : sa propre RAM, son propre coeur, sa propre sortie.
+// One complete replay: its own RAM, its own core, its own output.
 bool un_rejeu(const char *trace, const char *nom, scsp::sortie &s, std::string &erreur)
 {
 	std::vector<std::uint16_t> ram(RAM_OCTETS / 2, 0);
 	scsp::puits_notant puits(s);
 	std::unique_ptr<scsp::core> c = scsp::make(nom, 45158400 / 2, ram.data(), RAM_OCTETS, puits);
-	if (!c) { erreur = std::string("coeur inconnu : ") + nom; return false; }
+	if (!c) { erreur = std::string("unknown core: ") + nom; return false; }
 	puits.suit(c.get());
 	c->reset();
 	return scsp::rejoue(trace, *c, ram, s, &erreur);
@@ -39,7 +39,7 @@ bool un_rejeu(const char *trace, const char *nom, scsp::sortie &s, std::string &
 
 void resume(const char *nom, const scsp::sortie &s)
 {
-	printf("  %-6s %zu echantillons, %zu interruptions, %zu armements, %zu lectures, %zu octets MIDI\n",
+	printf("  %-6s %zu samples, %zu interrupts, %zu arms, %zu reads, %zu MIDI bytes\n",
 	       nom, s.pcm.size() / 2, s.irqs.size(), s.armes.size(), s.lues.size(), s.midis.size());
 }
 
@@ -48,21 +48,21 @@ void resume(const char *nom, const scsp::sortie &s)
 int main(int argc, char **argv)
 {
 	if (argc < 2) {
-		printf("rejouer : rejoue une trace d'acces au SCSP (src/sound/scsp_trace.h pour le format)\n\n"
-		       "  rejouer <trace>                      un coeur, et ce qu'il a rendu\n"
-		       "  rejouer <trace> <coeur> <coeur>      deux coeurs, et leur premiere divergence\n"
-		       "  rejouer <trace> --pcm <fichier>      ecrit le PCM brut (s32 entrelace)\n"
-		       "  rejouer <trace> --contre <pcm>       contre la reference gardee a l'enregistrement\n\n"
-		       "coeurs connus : %s\n\n"
-		       "Une trace s'obtient avec VF3_SCSP_TRACE=f (src/sound/soundboard.cpp) : elle commence a la\n"
-		       "remise a zero de la carte, et porte les ecritures de RAM sans lesquelles un rejeu n'a aucun\n"
-		       "echantillon a jouer.\n", scsp::noms_connus());
+		printf("rejouer: replays a trace of SCSP accesses (src/sound/scsp_trace.h for the format)\n\n"
+		       "  rejouer <trace>                      one core, and what it produced\n"
+		       "  rejouer <trace> <core> <core>        two cores, and their first divergence\n"
+		       "  rejouer <trace> --pcm <file>         writes the raw PCM (interleaved s32)\n"
+		       "  rejouer <trace> --contre <pcm>       against the reference kept at recording time\n\n"
+		       "known cores: %s\n\n"
+		       "A trace is obtained with VF3_SCSP_TRACE=f (src/sound/soundboard.cpp): it begins at the\n"
+		       "board's reset, and carries the RAM writes without which a replay has no sample to play\n"
+		       "at all.\n", scsp::noms_connus());
 		return 2;
 	}
 
 	const char *trace = argv[1];
 
-	// --- un rejeu, avec ou sans PCM ecrit
+	// --- one replay, with or without the PCM written out
 	if (argc == 2 || (argc == 4 && !strcmp(argv[2], "--pcm"))) {
 		scsp::sortie s;
 		std::string erreur;
@@ -70,72 +70,72 @@ int main(int argc, char **argv)
 			fprintf(stderr, "rejouer: %s\n", erreur.c_str());
 			return 1;
 		}
-		printf("rejeu de %s par le coeur mame :\n", trace);
+		printf("replay of %s by the mame core:\n", trace);
 		resume("mame", s);
 		if (argc == 4) {
 			FILE *f = fopen(argv[3], "wb");
-			if (!f) { fprintf(stderr, "rejouer: impossible d'ecrire %s\n", argv[3]); return 1; }
+			if (!f) { fprintf(stderr, "rejouer: cannot write %s\n", argv[3]); return 1; }
 			fwrite(s.pcm.data(), sizeof(std::int32_t), s.pcm.size(), f);
 			fclose(f);
-			printf("  PCM ecrit dans %s (%zu octets)\n", argv[3], s.pcm.size() * sizeof(std::int32_t));
+			printf("  PCM written to %s (%zu bytes)\n", argv[3], s.pcm.size() * sizeof(std::int32_t));
 		}
 		return 0;
 	}
 
-	// --- un rejeu contre la reference PCM que l'enregistrement a gardee
-	// C'EST LE CONTROLE QUI VALIDE LA TRACE ELLE-MEME, et il doit passer avant qu'une comparaison entre
-	// deux coeurs veuille dire quoi que ce soit : si le rejeu ne retrouve pas le PCM que la carte a produit,
-	// c'est que la trace ne porte pas tout ce dont la puce depend, et une divergence entre deux coeurs
-	// deviendrait impossible a attribuer.
+	// --- one replay against the PCM reference the recording kept
+	// THIS IS THE CHECK THAT VALIDATES THE TRACE ITSELF, and it has to pass before a comparison between
+	// two cores means anything: if the replay does not find the PCM the board produced, then the trace
+	// does not carry everything the chip depends on, and a divergence between two cores would become
+	// impossible to attribute.
 	if (argc == 4 && !strcmp(argv[2], "--contre")) {
 		scsp::sortie s;
 		std::string erreur;
 		if (!un_rejeu(trace, "mame", s, erreur)) { fprintf(stderr, "rejouer: %s\n", erreur.c_str()); return 1; }
 		FILE *f = fopen(argv[3], "rb");
-		if (!f) { fprintf(stderr, "rejouer: %s ne s'ouvre pas\n", argv[3]); return 1; }
+		if (!f) { fprintf(stderr, "rejouer: %s does not open\n", argv[3]); return 1; }
 		std::vector<std::int32_t> ref;
 		std::int32_t tampon[4096];
 		for (std::size_t lu; (lu = fread(tampon, sizeof(std::int32_t), 4096, f)) > 0; )
 			ref.insert(ref.end(), tampon, tampon + lu);
 		fclose(f);
-		printf("rejeu de %s contre la reference %s :\n", trace, argv[3]);
-		resume("rejeu", s);
-		printf("  %-6s %zu echantillons\n", "ref", ref.size() / 2);
+		printf("replay of %s against the reference %s:\n", trace, argv[3]);
+		resume("replay", s);
+		printf("  %-6s %zu samples\n", "ref", ref.size() / 2);
 		if (ref.size() != s.pcm.size()) {
-			printf("\nDIVERGENCE -- %zu echantillons rejoues contre %zu enregistres\n",
+			printf("\nDIVERGENCE -- %zu samples replayed against %zu recorded\n",
 			       s.pcm.size() / 2, ref.size() / 2);
 			return 1;
 		}
 		for (std::size_t i = 0; i < ref.size(); i++)
 			if (ref[i] != s.pcm[i]) {
-				printf("\nDIVERGENCE -- echantillon %zu %s : rejeu %d, enregistre %d\n",
-				       i / 2, (i & 1) ? "droite" : "gauche", s.pcm[i], ref[i]);
+				printf("\nDIVERGENCE -- sample %zu %s: replay %d, recorded %d\n",
+				       i / 2, (i & 1) ? "right" : "left", s.pcm[i], ref[i]);
 				return 1;
 			}
-		printf("\nIDENTIQUE A L'OCTET sur %zu echantillons : la trace porte tout ce dont la puce depend.\n",
+		printf("\nBYTE-IDENTICAL over %zu samples: the trace carries everything the chip depends on.\n",
 		       ref.size() / 2);
 		return 0;
 	}
 
-	// --- deux rejeux, et la comparaison
+	// --- two replays, and the comparison
 	if (argc == 4) {
 		scsp::sortie a, b;
 		std::string erreur;
 		if (!un_rejeu(trace, argv[2], a, erreur)) { fprintf(stderr, "rejouer: %s\n", erreur.c_str()); return 1; }
 		if (!un_rejeu(trace, argv[3], b, erreur)) { fprintf(stderr, "rejouer: %s\n", erreur.c_str()); return 1; }
-		printf("rejeu de %s dans deux coeurs :\n", trace);
+		printf("replay of %s through two cores:\n", trace);
 		resume(argv[2], a);
 		resume(argv[3], b);
 		const std::string d = scsp::compare(a, b);
 		if (d.empty()) {
-			printf("\nIDENTIQUES : le PCM, les interruptions, les armements de timer, les lectures de\n"
-			       "registre et le MIDI sortant concordent, echantillon par echantillon.\n");
+			printf("\nIDENTICAL: the PCM, the interrupts, the timer arms, the register reads and the\n"
+			       "outgoing MIDI agree, sample by sample.\n");
 			return 0;
 		}
 		printf("\nDIVERGENCE -- %s\n", d.c_str());
 		return 1;
 	}
 
-	fprintf(stderr, "rejouer: arguments inattendus ; lancer sans argument pour l'aide\n");
+	fprintf(stderr, "rejouer: unexpected arguments; run with no argument for help\n");
 	return 2;
 }
