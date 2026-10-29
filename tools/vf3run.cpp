@@ -19,7 +19,7 @@
 // three of them (6, 9, 11) load an extra DSP program on chip 0 around frame 2730, and the coefficients come
 // in five distinct sets -- so the effect DOES vary with the arena. Two arenas alone had said the opposite,
 // because 2 and 7 are both in the group of nine that loads nothing more: the lesson of
-// docs/fv2-son-programme.md §4 sexies, which keeps that mistake with the measurement that corrected it.
+// docs/fv2-sound-program.md §4 sexies, which keeps that mistake with the measurement that corrected it.
 // VF3_FICHES=file prints, every frame, each live voice record with its flags, its channel object's index,
 // its MIDI channel and its serial. It settled by correlation which of the driver's two voice categories is
 // the music -- B is, A is the effects -- over 1807 allocations, with no counter-example (§5 quinquies). The
@@ -55,7 +55,7 @@
 // from an approximate event. Sega left these names in RAM, eighty strings in one run at 0x00024494, and the
 // slices below were settled by freezing the game one sub-state at a time and looking at the screen: a
 // contiguous table does not say where its slices begin, and taking them from the names was wrong three times.
-// See docs/fv2-etats.md.
+// See docs/fv2-states.md.
 static const char *FV2_MODES[24] = {
 	"WARNING_INT", "WARNING_DSP", "ADV_INT", "ADV_DSP", "SEL_INT", "SEL_DSP", "GAME_INT", "GAME_DSP",
 	"CONTINUE_INT", "CONTINUE_DSP", "INTRUDE_INT", "INTRUDE_DSP", "ENDING_INT", "ENDING_DSP", "NAME_INT",
@@ -394,7 +394,7 @@ int main(int argc, char **argv)
 		}
 		// VF3_FICHES=file: every frame, each of the 32 voice records of each sound RAM whose +4 is not
 		// zero, with the four bytes that matter. Written to settle ONE question the program's code cannot
-		// answer (docs/fv2-son-programme.md §5 ter): the driver sorts a voice into one of two categories
+		// answer (docs/fv2-sound-program.md §5 ter): the driver sorts a voice into one of two categories
 		// at note-on -- counter 0xEE1 with +0xB bit 7 forced and +4 bit 3 set, or counter 0xEE0 with
 		// neither -- and three stop commands act on one category each, but NOTHING says which category is
 		// the music. The MIDI channel does: +6 carries it, and group_of() knows the music plays on 0x00 to
@@ -1246,7 +1246,7 @@ int main(int argc, char **argv)
 			std::string p = "ram_" + std::to_string(board.frame) + ".bin";
 			if (FILE *rf = fopen(p.c_str(), "wb")) { fwrite(board.ram.data(), 1, board.ram.size(), rf); fclose(rf); }
 		}
-		// --poly-at : la RAM de polygones, ou vit la table de couleurs des
+		// --poly-at : la RAM de polygones, ou vit la table de colours des
 		// polygones sans texture (src/video/r3d_scene.cpp).
 		if (long(board.frame) == poly_at) {
 			std::string p = "poly_" + std::to_string(board.frame) + ".bin";

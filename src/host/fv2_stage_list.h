@@ -2,7 +2,7 @@
 // their fighters -- which is where the summer's patched ROM put it, and where Sega left room for it.
 //
 // WHERE IT GOES, and the measurement that puts it there. The game's six SEL sub-states are SEL_START, SELECT,
-// STAGE_SEL_INT, STAGE_SEL_DSP, DECIDE_INT, DECIDE_DSP (docs/fv2-etats.md), and the arcade board jumps
+// STAGE_SEL_INT, STAGE_SEL_DSP, DECIDE_INT, DECIDE_DSP (docs/fv2-states.md), and the arcade board jumps
 // straight from SELECT to DECIDE_INT -- its two STAGE_SEL states are an EMPTY STUB, one `b` to the
 // dispatcher's exit, read in Ghidra the 2026-10-24. The characters are chosen at exactly that step, so this
 // page opens there: the game is PARKED in that empty sub-state, the page is answered, and the fight starts in
@@ -32,7 +32,7 @@
 #include <string>
 #include <vector>
 #include "controls.h"
-#include "fv2_texte.h"
+#include "fv2_text.h"
 #include "png.h"
 
 struct fv2_stage_list

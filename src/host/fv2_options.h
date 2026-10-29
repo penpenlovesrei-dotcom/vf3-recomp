@@ -22,7 +22,7 @@
 //     with option_cursor.png's rule under it, from 0.2913 to 0.7295. The rule does not cross the screen, and
 //     nothing blinks: the blink in fv2_mode_list.h is the owner's Supermodel menu, not the disc;
 //   - the settings rows lean 7.5 degrees and the title does not, and the title is a condensed bold. Both are
-//     done in fv2_texte.h, which says how.
+//     done in fv2_text.h, which says how.
 //
 // TWO THINGS THE DISC DOES THAT THIS PAGE DOES NOT, said here so nobody takes the resemblance for identity.
 // Its OPTIONS is not the arcade's thirteen: it shows seven settings, three sub-screens (SOUNDS, CONTROLLER,
@@ -38,7 +38,7 @@
 #include <vector>
 #include "../machine/model3.h"
 #include "controls.h"
-#include "fv2_texte.h"
+#include "fv2_text.h"
 #include "png.h"
 
 struct fv2_options
@@ -551,7 +551,7 @@ private:
 	// A win that counts as none of the three ordinary endings and lands in one of the two gaps IS the Super
 	// K.O., and that settles the pitch for the pair.
 	//
-	// AND WHAT SEPARATES THE TWO IS NOT TWO MOVES. Read in Ghidra afterwards (docs/fv2-flux-de-match.md
+	// AND WHAT SEPARATES THE TWO IS NOT TWO MOVES. Read in Ghidra afterwards (docs/fv2-match-flow.md
 	// section 8): FUN_000701C8 is the routine that files a match, and both columns count THE SAME ending --
 	// 0x00581452 == 3 either way. What picks the column is the SUPER K.O. SETTING itself:
 	//

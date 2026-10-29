@@ -17,7 +17,7 @@
 // that a filter which silently drops lines looks exactly like a test that passes.
 //
 // PART 2 is skipped, with a visible line, when build/fv2-son-68000.bin is absent -- it is extracted from a
-// ROM the repository does not carry (tools/sound/extraire-son.py). PART 1 always runs.
+// ROM the repository does not carry (tools/sound/extract-sound.py). PART 1 always runs.
 #include "scsp_contract.h"
 
 #include <cstdio>
@@ -186,7 +186,7 @@ void partie2()
 	printf("\n-- PARTIE 2 : les constantes du pilote contre la ROM --\n");
 	const std::string rom = read("build/fv2-son-68000.bin");
 	if (rom.size() < 0x80000) {
-		printf("  passee build/fv2-son-68000.bin absente : tools/sound/extraire-son.py la fabrique\n");
+		printf("  passee build/fv2-son-68000.bin absente : tools/sound/extract-sound.py la fabrique\n");
 		printf("        depuis une ROM que le depot ne porte pas. La partie 1 a tourne.\n");
 		return;
 	}

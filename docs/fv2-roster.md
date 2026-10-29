@@ -135,7 +135,7 @@ It is permanent: it is the cursor handler's own mode, not a one-shot.
 
 Past cursor 10 the names and portraits are wrong or missing. The routine that draws them stops there, and its
 table of positions holds eleven entries. The fighters load and play; the label above them is somebody else's.
-**Corrected 2026-10-23, see `docs/fv2-noms-selection.md`:** cursors 11 and 12 draw the RIGHT name,
+**Corrected 2026-10-23, see `docs/fv2-select-names.md`:** cursors 11 and 12 draw the RIGHT name,
 the routine does not stop, and there is no table overrun. Cursor 13 is blank because of an explicit
 `cmpwi cr1,r3,13` at `0x0006045C`; without it, it would read MAHLER.
 
@@ -149,7 +149,7 @@ vf3.exe fvipers2.zip --full-roster
 ```
 
 or `full_roster = 1` in `settings.ini`, which is where `--full-roster` saves it. `--no-full-roster` turns it off
-again. `jouer-fv2-roster.cmd` is the launcher.
+again. `play-fv2-roster.cmd` is the launcher.
 
 `tools/vf3run --full-roster` does the same thing without a window, which is how the measurements above were
 taken.
@@ -167,5 +167,5 @@ and the game reports it rather than doing nothing silently.
 - `tools/scripts/fv2-fight.txt`, 4200 frames, `--full-roster` on, interpreter against recompiled: CPU state
   every frame and the 8 MB of RAM at the end, both byte-identical.
 - The windowed host's picture at the select screen, byte-identical to the headless run's.
-- `verifier-vf3.cmd`: Virtua Fighter 3 untouched. It has to be -- `unlock_roster()` is never called unless the
+- `verify-vf3.cmd`: Virtua Fighter 3 untouched. It has to be -- `unlock_roster()` is never called unless the
   player asks for it, and it returns at once for any game but `fvipers2`.

@@ -184,8 +184,8 @@ one line; this one stacks them around a centre.
 Three consequences, and they are clear-cut:
 
 - proportional rendering has to go through **each cell's ink box**, not through the cell, since the glyphs are
-  not flush left. Hence the table of 96 boxes in `src/host/fv2_texte.h`, measured by
-  `tools/fv2/mesurer_police.py`;
+  not flush left. Hence the table of 96 boxes in `src/host/fv2_text.h`, measured by
+  `tools/fv2/measure_font.py`;
 - **vertically, there is nothing to compute**: the whole cell is drawn, and the glyphs keep the alignment the
   sheet already gives them. For a page in **capitals and digits** — which is what the thirteen settings and
   their values are — that is *exact*, since all 35 share the same box;
@@ -229,7 +229,7 @@ should be noted here rather than supposed.
    verified by a trial against a control.
 2. ~~**Question 2**.~~ **Closed on 2026-10-22**: `police.png`, measured above.
 3. The page, the thirteen lines, the ranges as the guard.
-4. `verifier-vf3.cmd`, and a game played.
+4. `verify-vf3.cmd`, and a game played.
 
 ## What this plan does not do
 
@@ -258,7 +258,7 @@ And the **Dreamcast has exactly that shape**: seven settings, then `SOUNDS`, `CO
 `INITIALIZE`. The three sources agree — the page carries settings *and* doors.
 
 Our page has only the thirteen and `INITIALIZE`. What is missing is the doors, and they lead nowhere today:
-the sound layer was undone (`docs/fv2-console-son.md`), and the VS DIAGRAM is not drawn here.
+the sound layer was undone (`docs/fv2-console-sound.md`), and the VS DIAGRAM is not drawn here.
 
 ### The density, which the owner had measured before me
 
@@ -289,7 +289,7 @@ page can breathe, and `OPTIONS` becomes a short list of doors again, as on the d
 
 His list also carried: "*an italic font: the Dreamcast reference is in italics, our atlas is not. A second
 atlas would allow it.*" A second one was not needed: the slant is measured at 7.5° and applied by shearing at
-draw time (`src/host/fv2_texte.h`).
+draw time (`src/host/fv2_text.h`).
 
 
 ## The tree, redone on August's — on 2026-10-22
@@ -393,7 +393,7 @@ are filled, line for line after `Src/OSD/SDL/Main.cpp` of 20 August.
 | `INITIALIZE` | **real**, puts both volumes back to full |
 
 `SOUNDS`' four stepped-over lines all require **handing a note to the sound board**, which is to say the layer
-undone on 2026-10-21 and waiting for `docs/fv2-console-son.md` to be approved. They are drawn and skipped,
+undone on 2026-10-21 and waiting for `docs/fv2-console-sound.md` to be approved. They are drawn and skipped,
 never removed: "*a line with nothing to toggle is stepped over rather than removed*".
 
 The gauges are `option_vol_up_on.png` and `option_vol_up_off.png`, twenty segments, **in his own colours**:
@@ -621,7 +621,7 @@ before time was up (reset to 1280 at frame 3401), the second expired at frame 48
 Two things read out in passing:
 
 - **`0x00581404` counts frames, not seconds.** 1280 for twenty seconds: sixty-four a second, the same count
-  as the conversion. The `5, 4, 3, 2, 1` noted in `fv2-flux-de-match.md` were its last five frames, not
+  as the conversion. The `5, 4, 3, 2, 1` noted in `fv2-match-flow.md` were its last five frames, not
   seconds.
 - **`ROUND TIME VS` stayed at 45**, the backup's value, which nothing touched. The write does not spill over
   onto the neighbouring setting.
@@ -638,7 +638,7 @@ corrected the description along the way.
 The previous section's verification round moved **fourteen bytes**, all elsewhere. The table is a record of
 **versus** play: a versus match is what is needed. The routes are in `tools/scripts/`:
 `fv2-console-vs-diagram.txt` (nobody moves), `fv2-console-vs-decide.txt` (player 1 hits without stopping),
-`fv2-console-vs-juge.txt` (he hits for eight seconds then lets the clock run out) and
+`fv2-console-vs-judge.txt` (he hits for eight seconds then lets the clock run out) and
 `fv2-console-vs-sko.txt` (punch and kick alternating). All go through `ROUND TIME VS` at its minimum, so that
 the rounds expire quickly.
 
@@ -684,7 +684,7 @@ KO, JUDGE and DRAW do not move at all
 A win that counts as none of the three ordinary endings and that falls into one of the two holes **is** the
 Super K.O. So both cells are filled, and the table has none empty left.
 
-**And what separates the two columns was read in the code** (`docs/fv2-flux-de-match.md`, section 8), because
+**And what separates the two columns was read in the code** (`docs/fv2-match-flow.md`, section 8), because
 Frédéric asked for it to be checked there rather than on screen. It is not two moves: `FUN_000701C8`, the
 routine that files a match away, counts **the same ending** in both cases — `0x00581452` is 3 either way —
 and what decides the column is **the `SUPER K.O.` setting itself**:
@@ -778,7 +778,7 @@ flight.
 ### Why there is no scenery: the ending is made of replays
 
 Sega left its states' names in the clear, and it is they that answer. The ending's seven sub-states
-(`docs/fv2-etats.md`, which also says how to read them):
+(`docs/fv2-states.md`, which also says how to read them):
 
 ```
 ending_trans_init   ending_trans_wait   ending_replay_init

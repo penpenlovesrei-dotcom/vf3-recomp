@@ -17,7 +17,7 @@
 #   4200  Start in the fight                  -> the pause menu          (PLAY -> PAUSE)
 #         VF3_CONSOLE_PAUSE=4                  -> MAIN MENU              (PAUSE -> MENU_IN -> MENU)
 #
-# Run it with verifier-console.cmd, which sets those three hooks and prints the trace. What the trace must
+# Run it with verify-console.cmd, which sets those three hooks and prints the trace. What the trace must
 # say, in this order (docs/fv2-console.md, "La couche console a un etat"):
 #
 #   PLAY -> MENU -> PLAY -> STAGE -> PLAY -> PAUSE -> MENU_IN -> MENU

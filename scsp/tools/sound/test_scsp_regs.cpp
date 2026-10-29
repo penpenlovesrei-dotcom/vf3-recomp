@@ -193,7 +193,7 @@ int main(int argc, char **argv)
 
 	// ---- 5. the disputed range 0x7C0-0x7FF, described and not judged
 	// This port and MAME do not do the same thing with it (docs/scsp_references.md), and no reading of the
-	// program can settle what the CHIP does (docs/fv2-son-programme.md §5). So we record what today's core
+	// program can settle what the CHIP does (docs/fv2-sound-program.md §5). So we record what today's core
 	// returns, without making it a truth.
 	//
 	// AND WE MEASURE BOTH SETTINGS, not only the default one. m_madrs_mirror comes up `true`, so that a

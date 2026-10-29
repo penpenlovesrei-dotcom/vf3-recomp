@@ -1,5 +1,5 @@
 # Virtua Fighter 3: a coin, the fighter select and two pictures in a fight, for comparing
-# renders between builds (verifier-vf3.cmd).
+# renders between builds (verify-vf3.cmd).
 600 press p1.coin
 +30 press p1.coin
 +30 press p1.start

@@ -137,7 +137,7 @@ vf3.exe fvipers2.zip --portraits "C:\my portraits"
 ```
 
 or `portraits_folder = C:\my portraits` in `settings.ini`, which is where `--portraits` saves it.
-`--no-portraits` turns it off again and forgets the folder. `jouer-fv2-portraits.cmd` is the launcher: with no
+`--no-portraits` turns it off again and forgets the folder. `play-fv2-portraits.cmd` is the launcher: with no
 argument it uses the test cases, and with a folder as its first argument it uses that one.
 
 `tools/vf3run --portraits DIR` does the same thing without a window, which is how the measurements above were
@@ -149,7 +149,7 @@ laid out the same, and the code says so rather than writing at an address that m
 
 ## Verified
 
-- `verifier-vf3.cmd`: Virtua Fighter 3 untouched, all five checks IDENTICAL. It has to be -- `replace_portraits`
+- `verify-vf3.cmd`: Virtua Fighter 3 untouched, all five checks IDENTICAL. It has to be -- `replace_portraits`
   is never called unless the player names a folder, and it returns at once for any set but `fvipers2`.
 - Fighting Vipers 2 **without** the option, against this branch's base commit, on `tools/scripts/fv2-fight.txt`,
   4200 frames: the CPU state every frame, the 8 MB of RAM at the end, and all 16 rendered pictures, byte-identical.

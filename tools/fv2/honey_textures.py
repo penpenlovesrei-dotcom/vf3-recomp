@@ -117,7 +117,7 @@ def main():
     print("Le costume, une fois le temoin retire")
     print("   couleur-1               %4d textures" % len(h1))
     print("   couleur-2               %4d textures" % len(h2))
-    print("   communes aux deux       %4d  (identiques au pixel dans les deux couleurs)" % len(h1 & h2))
+    print("   communes aux deux       %4d  (identiques au pixel dans les deux colours)" % len(h1 & h2))
     print("   propres a couleur-1     %4d" % len(h1 - h2))
     print("   propres a couleur-2     %4d" % len(h2 - h1))
     print()
@@ -129,7 +129,7 @@ def main():
 
     releve = os.path.join(sortie, "RELEVE.txt")
     with open(releve, "w", encoding="utf-8") as fh:
-        fh.write("Honey, costume de base, ses deux couleurs\n")
+        fh.write("Honey, costume de base, ses deux colours\n")
         fh.write("=========================================\n\n")
         fh.write("Textures tirees de Fighting Vipers 2 par le portage de Desktop\\fv2-recomp,\n")
         fh.write("capture passive du moteur 3D (vf3run --hd-dump, docs\\fv2-hd-3d.md).\n")
@@ -158,7 +158,7 @@ def main():
         fh.write("  communes aux deux       %4d\n" % len(h1 & h2))
         fh.write("  propres a couleur-1     %4d\n" % len(h1 - h2))
         fh.write("  propres a couleur-2     %4d\n" % len(h2 - h1))
-        fh.write("\nLes textures communes aux deux couleurs sont dans les DEUX dossiers : ce\n")
+        fh.write("\nLes textures communes aux deux colours sont dans les DEUX dossiers : ce\n")
         fh.write("sont les parties du modele que le changement de couleur ne touche pas.\n")
         fh.write("\nLe textures.csv de chaque dossier donne, pour chaque image, sa taille, son\n")
         fh.write("format, et la page et la position ou le jeu l'avait chargee.\n")

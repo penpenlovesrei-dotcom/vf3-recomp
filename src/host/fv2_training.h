@@ -27,7 +27,7 @@
 #include <SDL3/SDL.h>
 #include <string>
 #include <vector>
-#include "fv2_texte.h"
+#include "fv2_text.h"
 #include "png.h"
 
 struct fv2_training

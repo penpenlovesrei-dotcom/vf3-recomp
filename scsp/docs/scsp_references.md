@@ -81,7 +81,7 @@ So:
 
 1. **On the write side**, MAME `master` and this repository's "separate" mode do the same thing in what
    matters: the zeros the sound program writes over the top no longer erase the delay lines' addresses. It
-   is the setting the measurement forced for **Fighting Vipers 2** (`docs/fv2-console-son.md`: the victory
+   is the setting the measurement forced for **Fighting Vipers 2** (`docs/fv2-console-sound.md`: the victory
    screen's sound feeding itself, mean peak of the state 22831 → 6532 when they are kept apart). The
    repository and MAME arrived at the same answer, by two separate paths and for two different games (`doa`
    there, `fvipers2` here).
@@ -92,7 +92,7 @@ So:
    because without it the reverb held for several seconds where the reference cuts it in one
    (`src/sound/scsp.h`).
 
-   **Measured since, and it changes the reading** (`docs/fv2-son-programme.md` §5): **both** games' sound
+   **Measured since, and it changes the reading** (`docs/fv2-sound-program.md` §5): **both** games' sound
    program loads MADRS and then writes **32 zeros into `0x7C0-0x7FF`**, in that order. With the mirror,
    those zeros overwrite MADRS: **878 addresses lost on Fighting Vipers 2, 176 on Virtua Fighter 3**, and
    only the 53 and 19 written after the erasure survive. So the mirror folds the DSP's delay lines onto

@@ -73,7 +73,7 @@ here, on this cabinet):
 1. **The mirroring of MADRS at 0x7C0-0x7FF**, per game: true for Virtua Fighter 3, **false** for Fighting
    Vipers 2, where it makes all the DSP's delay lines fold onto one address and where the victory screen's
    sound feeds itself (+24 dB up to the limiter). MAME has since corrected that on its side
-   (mamedev/mame#16527). See `src/sound/scsp.h` and `docs/fv2-console-son.md`.
+   (mamedev/mame#16527). See `src/sound/scsp.h` and `docs/fv2-console-sound.md`.
 2. **The FM modulation depth** as Supermodel's (MDL's low bit ignored, range 24 and not 26).
 3. **The timers A-C counted in samples**, due on a round sample, like Supermodel's.
 4. **The per-group volumes** (music / effects) and the effects leveller: that is not the chip, it is a host

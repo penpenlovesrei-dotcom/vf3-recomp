@@ -1,11 +1,11 @@
 @echo off
 rem Les deux sons de la MEME scene, avec et sans le miroir de MADRS, SANS FENETRE, puis la mesure.
 rem
-rem   tools\son\compare-madrs.cmd [jeu] [script] [images]
+rem   tools\sound\compare-madrs.cmd [jeu] [script] [images]
 rem     defaut : vf3  tools\scripts\vf3-match.txt  2400
 rem
 rem Pourquoi : le miroir replie les lignes de retard du DSP sur une adresse (mesure du 2026-10-24,
-rem docs/fv2-son-programme.md section 5 : le pilote ecrit 32 zeros dans 0x7C0-0x7FF APRES avoir
+rem docs/fv2-sound-program.md section 5 : le pilote ecrit 32 zeros dans 0x7C0-0x7FF APRES avoir
 rem charge MADRS, ce qui ecrase 176 adresses sur Virtua Fighter 3). Le reglage a ete garde pour VF3
 rem sur la seule LONGUEUR de la reverberation ; ceci donne les chiffres des deux cotes.
 rem
@@ -23,7 +23,7 @@ set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\%JEU%.zip
 cd /d "%~dp0..\.."
 
 if not exist "build\bin\vf3run.exe" (
-  echo build\bin\vf3run.exe is missing: run construire.cmd first.
+  echo build\bin\vf3run.exe is missing: run build-tools.cmd first.
   goto :fin
 )
 if not exist "%ROM%" (
@@ -43,7 +43,7 @@ build\bin\vf3run.exe "%ROM%" --script "%SCRIPT%" --frames %IMAGES% --wav "build\
 set VF3_SCSP_MADRS_SEPARATE=
 
 echo.
-py -3 tools\son\mesurer-madrs.py "build\son-%JEU%-miroir.wav" "build\son-%JEU%-separe.wav" --noms "miroir,separe" --scene %JEU%
+py -3 tools\sound\measure-madrs.py "build\son-%JEU%-miroir.wav" "build\son-%JEU%-separe.wav" --noms "miroir,separe" --scene %JEU%
 echo.
 echo ---- les deux WAV sont dans build\ : son-%JEU%-miroir.wav et son-%JEU%-separe.wav ----
 :fin

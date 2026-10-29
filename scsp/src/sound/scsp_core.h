@@ -55,7 +55,7 @@ struct sink {
 	//
 	// NOTE, measured 2026-10-25/26 and worth knowing before implementing this: the driver uses MIDI out in
 	// three places -- a 0xF0 every ten timer-A ticks, a per-track echo of every sequencer byte, and a MIDI
-	// thru that returns every received byte (docs/fv2-son-programme.md). THIS PORT DISCARDS ALL THREE
+	// thru that returns every received byte (docs/fv2-sound-program.md). THIS PORT DISCARDS ALL THREE
 	// (soundboard.cpp: h.midi_out = [](int) {}). Whether the main board reads them back has never been
 	// checked, so an implementation should carry the byte rather than assume it is unwanted.
 	virtual void midi_out(u8 byte) = 0;

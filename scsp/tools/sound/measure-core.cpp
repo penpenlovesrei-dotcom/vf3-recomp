@@ -14,7 +14,7 @@
 //
 // The synthetic DSP program's shape follows the one the `dspprog` probe read off the game: 112 steps, and
 // within them about 87 COEF reads, 108 inputs from MEMS, 39 TEMP writes, 23 memory reads, 10 writes, 5
-// effects outputs (docs/fv2-son-programme.md §4). It is not the game's program -- it is its shape, which
+// effects outputs (docs/fv2-sound-program.md §4). It is not the game's program -- it is its shape, which
 // is enough to locate a cost.
 //
 // AND ONE NOTCH FINER, `--dsp`: the DSP by CHARACTERISTIC, both cores side by side. The "DSP" item above is

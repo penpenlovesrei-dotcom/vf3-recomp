@@ -38,7 +38,7 @@ public:
 	// then the channel the voice plays for. The music plays on channels 0x00 to 0x0E; the game's effects, voices
 	// and announcer ask for channels 0x0F to 0x13, on the second SCSP.
 	//
-	// All three of those were deductions until the sound program was read (docs/fv2-son-programme.md): the
+	// All three of those were deductions until the sound program was read (docs/fv2-sound-program.md): the
 	// record's first long is written at reset by a loop over 32 slots, stride 0x20, from 0x00100000 for the
 	// first chip and 0x00300000 for the second, which is exactly what group_of() tests. And byte +5 is not a
 	// MIDI channel at all -- it is (A0 - 0xC40) / 0x20, the index of an entry in a table of 0x20-byte channel
@@ -63,7 +63,7 @@ public:
 	// Whether the DSP's MADRS table is mirrored at 0x7C0-0x7FF (scsp.h: m_madrs_mirror). Measured right
 	// for Virtua Fighter 3, where it keeps the reverb as short as the reference's, and measured WRONG for
 	// Fighting Vipers 2, where it collapses the DSP's delay lines onto one address and the victory
-	// screen's sound feeds itself (docs/fv2-console-son.md). Set from the set, like driver_known.
+	// screen's sound feeds itself (docs/fv2-console-sound.md). Set from the set, like driver_known.
 	bool madrs_mirror = true;
 
 	uint64_t cycles() const { return now; }

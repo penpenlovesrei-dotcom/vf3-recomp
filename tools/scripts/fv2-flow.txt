@@ -2,7 +2,7 @@
 #
 # fv2-fight.txt stops in the first round (it quits at 4200). This one carries on
 # with the stick moving until the match is decided and the game has gone back to
-# the attract, which is what docs/fv2-flux-de-match.md needs to see: the round
+# the attract, which is what docs/fv2-match-flow.md needs to see: the round
 # end, the next round, the match end, the continue countdown, and the return.
 #
 # A coin, start, two places along the portrait strip, the pick confirmed with

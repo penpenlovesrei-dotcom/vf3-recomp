@@ -38,7 +38,7 @@ without compiling anything. The address is an index into `--ram-at`'s dump, whic
 host's order: **the byte of guest address A is at index A^3**. Every address on this page is a *guest* address;
 every address in a `VF3_POKE` is the index, which is why the bytes look reversed there.
 
-`montrer-honey.cmd` runs the whole measurement twice and leaves the two folders of pictures side by side.
+`show-honey.cmd` runs the whole measurement twice and leaves the two folders of pictures side by side.
 
 
 ## Sega named these variables themselves, and nobody had read that table yet
@@ -228,7 +228,7 @@ Diffed frame by frame, **armure** against **trente**:
 5300 the two are the same pose in the same camera: one still in her skirt, one not. That is the whole claim,
 and it needed no instruction patched -- only the flag Sega's own `ARMOR_INFO` page names, and the counter.
 
-`montrer-honey.cmd` runs the three and leaves the two folders that matter open.
+`show-honey.cmd` runs the three and leaves the two folders that matter open.
 
 Two more, taken before the round end was understood, which pin the mechanism rather than the behaviour:
 
@@ -310,7 +310,7 @@ reset. **The CPU ladder does not count.** The gate did its job.
 - `*1P COLOR` (`0x007005B9`) **is the costume colour**, but it is read when a round loads and not after. Poked to 1 or 3 *during* a
   fight it only repaints the name plate (382 and 816 pixels, all inside the plate); poked to 2 the CPU stops
   with an invalid instruction at `0x00020908`; poked to 4 the whole screen changes. **That is now run down**
-  (`docs/fv2-couleurs.md`): a fighter's colour list holds exactly two pairs of eight bytes, so `*1P COLOR = 2`
+  (`docs/fv2-colours.md`): a fighter's colour list holds exactly two pairs of eight bytes, so `*1P COLOR = 2`
   reads the next fighter's, and further out the pointer it builds is not a pointer. None of it touches the model -- which is the whole point: by then the model and its textures are already
   loaded, so a poke cannot reach them. **Chosen at the select screen it does reach them.** One press of **up**
   on the fighter's cell before confirming takes the byte from 0 to 1, measured 2026-10-21 at frame 3300 of
@@ -321,7 +321,7 @@ reset. **The CPU ladder does not count.** The gate did its job.
   behaves the same. The confirming button makes no difference either -- punch, kick and guard all give 0 without
   up and 1 with it -- and neither does confirming with two or three buttons at once, nor with escape alone,
   nor holding a button through the selection (the held button confirms by itself). Twenty-six runs, each read
-  at frame 3300. `tools/fv2/mk_couleurs.py` writes the scripts.
+  at frame 3300. `tools/fv2/mk_colours.py` writes the scripts.
 
   This matters because the Dreamcast port has **four** colour sets for Kuhn -- grey and gold, each with an
   alternative -- obtained there by holding R while selecting. Nothing in this arcade build reaches a third
@@ -330,7 +330,7 @@ reset. **The CPU ladder does not count.** The gate did its job.
   at all is not settled. The second player was never brought in here, and distinguishing two players who
   pick the same fighter is the usual job of an alternative colour -- that is where to look next.
 
-  What the two colours actually are, captured with `extraire-textures-honey.cmd` (three runs, the third being
+  What the two colours actually are, captured with `extract-honey-textures.cmd` (three runs, the third being
   another fighter to subtract the stage, the opponent and the effects): **53 textures** for colour 0 and
   **51** for colour 1. Of the 48 places in texture memory the two runs have in common, **29 hold a different
   image** and 19 hold the same one. Honey's hair and her hair-wings go from brown to gold, her dress from navy
@@ -342,7 +342,7 @@ reset. **The CPU ladder does not count.** The gate did its job.
 
 Two ways, both measured above.
 
-**Without changing the port.** `montrer-honey.cmd`, or by hand:
+**Without changing the port.** `show-honey.cmd`, or by hand:
 
 ```
 VF3_POKE=58143B=0,58143A=0,581439=0,581438=40   0x00581438 = 40 consecutive wins

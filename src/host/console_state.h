@@ -4,7 +4,7 @@
 // l'on a integre. On dirait encore du bricolage, comme sur la rom." He is right, and the fault is nameable.
 //
 // Sega's board holds one state at a time: twenty-four modes, each with an INT that installs it and a DSP that
-// runs it, a table of handlers, and ONE byte that says where the game is (docs/fv2-etats.md). Nothing overlaps
+// runs it, a table of handlers, and ONE byte that says where the game is (docs/fv2-states.md). Nothing overlaps
 // because nothing coexists.
 //
 // This port's console layer had no state at all. It had a dozen booleans -- swallow_start, want_list,

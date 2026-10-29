@@ -26,7 +26,7 @@
 //      Reassembling bytes needs the transmitter's baud timing, which lives inside the old core. So this
 //      adapter does NOT bridge it: it COUNTS the bits and exposes the count, so the gap is visible instead of
 //      silent. It costs nothing today -- the board discards MIDI out anyway -- but the driver does use it in
-//      three places (docs/fv2-son-programme.md), so an autonomous core must carry bytes properly.
+//      three places (docs/fv2-sound-program.md), so an autonomous core must carry bytes properly.
 #pragma once
 
 #include "scsp.h"

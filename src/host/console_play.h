@@ -112,8 +112,8 @@ struct console_play
 	// ---- RANDOM and VERSUS: both hang off the select screen's own timing ----
 	// Which is why neither could be wired until the game's state machine was read: what was missing was not
 	// the lever but knowing WHEN the select screen comes up and WHEN the fighter is chosen. Both are states:
-	// the mode is SEL (4 or 5), and the choice is its sub-state reaching SEL_SUB_DECIDE, 4 (fv2-etats.md,
-	// fv2-flux-de-match.md).
+	// the mode is SEL (4 or 5), and the choice is its sub-state reaching SEL_SUB_DECIDE, 4 (fv2-states.md,
+	// fv2-match-flow.md).
 	//
 	// The levers themselves are the owner's, recorded by hand in August and not deduced (MenuConsole.md §8):
 	//
@@ -165,7 +165,7 @@ struct console_play
 	// AND THE SENTENCE THAT USED TO FOLLOW WAS TOO WIDE, corrected the 2026-10-24: it said the picker "is
 	// reached only by a rematch THROUGH the select screen". That is true of the first fight of a solo route,
 	// which is what was measured. It is NOT true of a VERSUS, where the picker commands the arena outright --
-	// held at scene 3 from frame 1990 to 2900 of tools/scripts/fv2-vic-banc.txt, both patched words read back
+	// held at scene 3 from frame 1990 to 2900 of tools/scripts/fv2-vic-bench.txt, both patched words read back
 	// out of the dump, the versus fought in scene 3 where it fought in scene 8 untouched. That is what the
 	// stage select below rests on, and it is why the route table is NOT used for it: held at 3, a versus
 	// still fought in scene 8.
@@ -249,7 +249,7 @@ struct console_play
 	// SCREEN with nothing on it but the HUD, three times over: all four cut, ROUND_MASK_DSP alone, and
 	// ROUND_MASK_DSP at its forty-first frame, which is where this port's own note had cut it.
 	//
-	// So the four were READ, out of a RAM dump with tools/fv2/desas_ppc.py, the handler table being at
+	// So the four were READ, out of a RAM dump with tools/fv2/disasm_ppc.py, the handler table being at
 	// 0x000243B4 (0x000244F4 is the table of NAMES, which is not the same thing):
 	//
 	//   ROUND_MASK_INT  0x0000BD2C  clears three fields, plays three sounds, sets the round's health
@@ -278,7 +278,7 @@ struct console_play
 	// thirty frames in. That is the overlapping Frederic named: two readings of one screen, neither of
 	// them the game's.
 	//
-	// The game's own reading is three moments, and both jobs hang off them (docs/fv2-etats.md):
+	// The game's own reading is three moments, and both jobs hang off them (docs/fv2-states.md):
 	//
 	//   AWAY   not on SEL at all (modes 4 and 5 are SEL_INT and SEL_DSP);
 	//   SEEN   the screen is up and has been SEEN up -- sub-state 0 or 1, SEL_START or SELECT. That
@@ -485,7 +485,7 @@ struct console_play
 	// ---- what Start does, and it is two jobs told apart by one question ----
 	// Is the game's own title screen on screen? Model3::fv2_on_title answers it: the mode is ADV and the
 	// sub-state is FV2_TITLE_INT or FV2_TITLE_DSP, measured by freezing the game one sub-state at a time and
-	// looking at the screen (docs/fv2-etats.md). That is NOT the question fv2_in_attract above answers -- "is a
+	// looking at the screen (docs/fv2-states.md). That is NOT the question fv2_in_attract above answers -- "is a
 	// game running" is true of the warning, the SEGA logo, the title, the presentations, the demos and the
 	// rankings alike, and all but one of those are the wrong screen for a list of modes.
 	//
@@ -508,15 +508,15 @@ struct console_play
 	// But a request moves the SCREEN, not the game: read back afterwards the entry1 task is still in its
 	// playing state (0x2A from a fight, 0x2D from the select screen), so the title screen comes back over a
 	// game that is still running and fv2_in_attract stays false. Leaving a fight properly is the game's own
-	// road -- finish the match off screen -- which is written down in docs/fv2-etats.md and is not wired here.
+	// road -- finish the match off screen -- which is written down in docs/fv2-states.md and is not wired here.
 	// cut: the sub-state the game is in was ended early instead of the menu opening, which is what the
 	// original does with this button during the fight's presentation and during the replay (take_start)
 	enum class start_for { none, list, title, pause, cut };
 
 	// THE MENU IS THE FIGHT'S AND NOTHING ELSE'S. Frederic, the 2026-10-24: "le menu ne doit etre
 	// accessible uniquement pendant la phase de combat", and everywhere else Start is the game's own
-	// button again. So of the twenty GAME sub-states Sega named (docs/fv2-etats.md, 0x000244F4):
-	// (docs/fv2-etats.md, the twenty GAME sub-states at 0x000244F4):
+	// button again. So of the twenty GAME sub-states Sega named (docs/fv2-states.md, 0x000244F4):
+	// (docs/fv2-states.md, the twenty GAME sub-states at 0x000244F4):
 	//
 	//   0 ROUND_MASK_INT  1 ROUND_MASK_IN  2 ROUND_MASK_DSP  3 ROUND_MASK_OUT   the STAGE n / VS name screen
 	//   4 ROUND_INT       5 ROUND_DSP                                           the round's own announcement
@@ -594,7 +594,7 @@ struct console_play
 			// it as "pas de continue". Both are the same mistake and both gave the same torn title.
 			//
 			// Sega's own answer is the mode: ADV, 2 and 3, IS the attract loop and nothing else is
-			// (docs/fv2-etats.md). Everywhere else the game is showing something of its own and the button is
+			// (docs/fv2-states.md). Everywhere else the game is showing something of its own and the button is
 			// its own, exactly as it already was for the judgement, the replay and the select screen.
 			const int now_mode = b.fv2_mode();
 			if (now_mode != 2 && now_mode != 3) {
@@ -618,7 +618,7 @@ struct console_play
 			// drawing: 397 models still on a screen the game draws with none, and the demonstrations that
 			// follow come out with fighters missing or blackened. Elsewhere -- the select screen, a fight --
 			// the sequencer is not running, so the request is all there is, and it does not end the game
-			// either (docs/fv2-etats.md).
+			// either (docs/fv2-states.md).
 			if (what == start_for::title) {
 				// From the attract loop, the game's own way out of whatever is drawing: ask the loop to start
 				// over. That is what the replay itself does when it ends (0x0000B7C0 writes SUBMODE_REQUEST =
@@ -766,7 +766,7 @@ struct console_play
 			train_pick_arm = false;
 		}
 		// THE PHASES BEFORE THE FIGHT, CUT -- and these are not the load. GAME's twenty sub-states
-		// (docs/fv2-etats.md) are ROUND_MASK_INT, _IN, _DSP, _OUT (0..3), then ROUND_INT, ROUND_DSP,
+		// (docs/fv2-states.md) are ROUND_MASK_INT, _IN, _DSP, _OUT (0..3), then ROUND_INT, ROUND_DSP,
 		// SET_INT, SET_INT_POSE, SET_DSP, READY_INT, READY_DSP (4..10), then FIGHT_INT and FIGHT_DSP.
 		// The first four are the arena arriving, and cutting them gave the black screen written down
 		// above; the seven that follow are the announcement -- ROUND X, the pose, READY -- and nothing
@@ -911,7 +911,7 @@ struct console_play
 			}
 			// AND THE END OF THE GAME IS WALKED THROUGH, NOT JUMPED OVER, and that is a correction of this
 			// same evening. Asking for the title from CONTINUE, RANKING, OVER or RESULT -- modes of their own,
-			// docs/fv2-etats.md -- does take those screens away, and it takes their housekeeping with them: the
+			// docs/fv2-states.md -- does take those screens away, and it takes their housekeeping with them: the
 			// title came up GLITCHED, which Frederic saw at once. Those modes are left to run and are made
 			// SHORT instead, by the game's own lever, below.
 			return;
@@ -1133,7 +1133,7 @@ struct console_play
 	// un sous etat propre au mode versus qui propose REMATCH, CHANGE VIPERS, CHANGE STAGE, MAIN MENU."
 	//
 	// WHEN, and it is the game's own answer rather than a count of rounds kept here. Measured the 2026-10-28
-	// on tools/scripts/fv2-vs-fin.txt -- a versus fought to its end with VF3_VS_TRACE=1 -- where the end of
+	// on tools/scripts/fv2-vs-end.txt -- a versus fought to its end with VF3_VS_TRACE=1 -- where the end of
 	// every round reads the same four states and then parts in two:
 	//
 	//   a round that settles nothing   13 JUDGE, 14 JUDGE_DSP, 15 REPLAY_INT, 16 REPLAY_DSP, then 17 VIC_INT

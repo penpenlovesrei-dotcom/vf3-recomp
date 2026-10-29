@@ -5,7 +5,7 @@ rem Hidden runs do not reproduce it. Measured there, the device queue holds 2.5 
 rem surface up, every core loaded, and the audio handed over has neither a repeated block nor a sample
 rem discontinuity. So whatever it is lives in the real session: a window, vsync, a real device.
 rem
-rem This is jouer-fv2-console.cmd with two instruments on, and nothing else:
+rem This is play-fv2-console.cmd with two instruments on, and nothing else:
 rem   VF3_MENU_SOUND  one line a pass while a surface is up -- sound frames made, their rate, the peak,
 rem                   and HOW DEEP THE DEVICE QUEUE IS. A queue falling under one frame is a device
 rem                   about to rasp, and that is the figure that would name the fault.

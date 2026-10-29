@@ -36,7 +36,7 @@
 //   13 adds what no game gave either: that the second body, the one the four trigger, agrees with the
 //   first. The count comes from the `dspprog` probe, and it carries its control in the same line --
 //   `frcl 0 adrl 0 yrl 0 negb 0` next to `iwt 23 twt 39 mrd 23 mwt 10 ewt 5`, counted by the same code at
-//   the same moment (docs/fv2-son-programme.md §4). So those four are WRITTEN but never EXERCISED: another
+//   the same moment (docs/fv2-sound-program.md §4). So those four are WRITTEN but never EXERCISED: another
 //   game, or an arena nobody visited, would be the first to try them.
 // -----------------------------------------------------------------------------------------------------
 //

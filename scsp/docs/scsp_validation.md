@@ -125,7 +125,7 @@ every replay, these five by nothing but themselves.
 
 | | what it compares |
 |---|---|
-| `verifier-vf3.cmd` | the PowerPC's state frame by frame and the 8 MB of RAM, this branch against `main`, on Virtua Fighter 3 — the port's non-regression contract |
+| `verify-vf3.cmd` | the PowerPC's state frame by frame and the 8 MB of RAM, this branch against `main`, on Virtua Fighter 3 — the port's non-regression contract |
 | `tools/statecmp.py` | two state files (the instrumented Supermodel's and `vf3run --state`'s) |
 | `build/bin/vf3lock` | the interpreter against the recompiled code |
 | `VF3_SCSP_WLOG` | every SCSP register write, frame by frame — an access trail already usable |

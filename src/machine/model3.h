@@ -339,7 +339,7 @@ public:
 	// LEAVING A MATCH, and by the GAME'S OWN BRANCH POINT rather than from outside it: the round ends
 	// because fv2_game_FIGHT_DSP's own timer ran out, and the match ends because fv2_game_NEXT_PROG_SEL was
 	// told the match was decided. Two words, both of them conditions the game tests every frame, read out of
-	// docs/fv2-flux-de-match.md. Nobody's life is touched and nothing is held. Call it only while a round is
+	// docs/fv2-match-flow.md. Nobody's life is touched and nothing is held. Call it only while a round is
 	// being fought; it says so if it is called anywhere else. It is TITLE SCREEN's and CHANGE YOUR VIPER's
 	// road both, and the host drives it (console_play.h).
 	int fv2_end_match();
@@ -411,7 +411,7 @@ public:
 	int fv2_region() const;              // -1: not this game
 	void fv2_set_region(int r);
 
-	// ---- The game's own state machine (docs/fv2-etats.md) ----
+	// ---- The game's own state machine (docs/fv2-states.md) ----
 	// Four contiguous bytes that Sega's own code reads and writes every frame: the mode, that mode's sub-state,
 	// and the two that REQUEST a mode and a sub-state. The names are the game's own, left in RAM as eighty
 	// strings in one run at 0x00024494, the first twenty-four of them the modes.
@@ -434,7 +434,7 @@ public:
 	// failure: the bytes were still intact a second later, so nobody had read them.
 	void fv2_request_title();
 	// CUTS THE SUB-STATE THE GAME IS IN SHORT, by asking for the next one -- which is exactly what its own
-	// handlers do between themselves ("simply asks for the next sub mode", docs/fv2-flux-de-match.md).
+	// handlers do between themselves ("simply asks for the next sub mode", docs/fv2-match-flow.md).
 	// Measured on the fight's presentation: ROUND_MASK_DSP runs 2319-2450 of its own accord on the bench
 	// road, and a ONE-FRAME write of 3 at image 2360 brought ROUND_MASK_OUT to 2361, with ROUND_INT,
 	// SET_INT and SET_DSP following normally. So the request IS read there -- unlike inside a fight, where

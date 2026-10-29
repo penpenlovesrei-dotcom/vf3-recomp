@@ -14,7 +14,7 @@ Two reasons, and the second is recent.
 
 1. **The rule laid down on 2026-10-22**: for any "why does the game do that" question, read what is already
    decompiled first, measure afterwards. It was paid for with a whole evening spent recovering by RAM
-   differencing what `docs/fv2-flux-de-match.md` already named.
+   differencing what `docs/fv2-match-flow.md` already named.
 2. **A first probe into the Dreamcast binary gave a false conclusion**, on 2026-10-22: I read there "the
    selected line is drawn with a different pattern", which was a misreading on two counts — the `jsr`'s
    delay slot (see below) and the identity of rows 34-44, which are the **font** and not labels. A binary
@@ -91,7 +91,7 @@ lever for those lines" but "what should the list of a console menu laid over a c
 ### 1. What is the Dreamcast menus' state machine?
 
 On the arcade side we have the machine Sega names — `MODE_MAIN` / `MODE_SUB` and the 24 modes
-(`docs/fv2-etats.md`). The question is whether the Dreamcast port has one of its own, on top, or whether it
+(`docs/fv2-states.md`). The question is whether the Dreamcast port has one of its own, on top, or whether it
 reuses the game's.
 
 **The measurement that settles it**: set a GDB breakpoint on `dessine` in Flycast, navigate the menu by
@@ -176,7 +176,7 @@ thickening does not touch the height, hence a system with two unknowns:
 ```
 
 that is `c = 0.6698` and `s = 0.1241*cap`. Rendered that way, the port's title measures 4.129 capitals wide
-for a weight of 0.258, against 4.143 and 0.254 on the disc. `tools/fv2/maquette_options.py` does it.
+for a weight of 0.258, against 4.143 and 0.254 on the disc. `tools/fv2/options_mockup.py` does it.
 
 #### The layout
 

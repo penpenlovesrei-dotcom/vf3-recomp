@@ -20,12 +20,12 @@
 //
 // ---- WHERE IT REALLY IS, read from the code and then measured ----
 //
-// 0x00279668 is player 1's roster cursor, read at 0x00060458 (docs/fv2-noms-selection.md). Asking
+// 0x00279668 is player 1's roster cursor, read at 0x00060458 (docs/fv2-select-names.md). Asking
 // tools/fv2/xrefs_ppc.py who else that neighbourhood touches shows the byte beside it read in the same
 // breath everywhere -- 0x0005FCB4 and 0x0005FD10, 0x0005FFEC and 0x00060074 -- and both written together by
 // the same initialisation at 0x00060D64 and 0x00060D80. That is player 2's: 0x00279669.
 //
-// Then it was MEASURED rather than believed. tools/scripts/fv2-curseur-2p.txt drives the cursor across the
+// Then it was MEASURED rather than believed. tools/scripts/fv2-cursor-2p.txt drives the cursor across the
 // roster in training and photographs it; the byte steps 0x00, 0x01, 0x02 ... one per column, on SEL, and the
 // arrow follows:
 //
@@ -56,7 +56,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
-#include "fv2_texte.h"
+#include "fv2_text.h"
 
 struct fv2_cpu_label
 {

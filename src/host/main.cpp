@@ -153,8 +153,8 @@
 #include "fv2_training.h"
 #include "fv2_cpu_label.h"
 #include "fv2_curtain.h"
-#include "fv2_fin.h"
-#include "fv2_texte.h"
+#include "fv2_ending.h"
+#include "fv2_text.h"
 #include "menu.h"
 #include "controls.h"
 #include "sysinfo.h"
@@ -570,7 +570,7 @@ struct settings
 	bool full_roster = false;   // Fighting Vipers 2's hidden fighters, selectable (Model3::unlock_roster)
 	bool honey_costume = false; // Honey's other costume, without the thirty wins (Model3::honey_costume)
 	// Which ending the staff roll shows: the arcade's replays of the matches just won, or the Dreamcast's
-	// illustrations in their place (src/host/fv2_fin.h). The arcade's is what the board does, so it is what
+	// illustrations in their place (src/host/fv2_ending.h). The arcade's is what the board does, so it is what
 	// this starts at.
 	bool ending_dc = false;
 	// The console way: the PC way's boot and free play, plus a console's own menu over the game (Start in the
@@ -1130,7 +1130,7 @@ struct Game
 	// exactly finish_frame's sound half, with nothing touching the board's state.
 	//
 	// Safe only where the game says nothing to its sound board, which is where these surfaces open: between
-	// frames 1247 and 1385 -- the whole title screen -- the game sends not one byte (docs/fv2-console-son.md
+	// frames 1247 and 1385 -- the whole title screen -- the game sends not one byte (docs/fv2-console-sound.md
 	// step 2). It is not an interrupted conversation, it is a prolonged silence. During a FIGHT it would be
 	// another matter, 55 blocks in 1700 frames, and that is noted there for the day a pause menu is written.
 	void sound_only_frame()
@@ -1601,10 +1601,87 @@ int main(int argc, char **argv)
 		else fprintf(stderr, "ROM folder: %s\n", (std::filesystem::path(data) / "roms").string().c_str());
 		if (!first_launch(data, keep_data, roms_folder, zip)) return hidden ? 1 : 0;
 	}
+	// ---- THE WINDOW COMES FIRST, so the forty seconds of loading have something to show ----
+	//
+	// Frederic, the 2026-10-29: "je voudrais ne plus voir cet ecran noir au lancement du jeu [...] on peut
+	// afficher autre chose que ce qui vient du jeu, il serait totalement independant".
+	//
+	// It used to open after game.load AND after boot() -- the game run unseen until it is past its own
+	// start-up -- so nothing at all was on screen for the whole of it. Now SDL's video and the window are
+	// started here, before either, and what fills them is the port's own picture, which owes the game
+	// nothing.
+	//
+	// Only the WINDOW is hoisted. The renderer stays where it was, because choosing it probes the GPU with
+	// the game's own texture memory -- it cannot run before the game is loaded. The loading screen
+	// therefore uses the window's own SURFACE, which needs no renderer at all.
+#ifdef _WIN32
+	SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
+#endif
+	if (!SDL_Init(SDL_INIT_VIDEO)) return fail(std::string("Couldn't start the video: ") + SDL_GetError());
+	if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) fprintf(stderr, "no gamepads: %s\n", SDL_GetError());
+	if (sound && !SDL_InitSubSystem(SDL_INIT_AUDIO)) fprintf(stderr, "no sound: %s\n", SDL_GetError());
+	int win_w = 1366, win_h = 768;
+	const bool fixed_window = getenv("VF3_WINDOW") && sscanf(getenv("VF3_WINDOW"), "%dx%d", &win_w, &win_h) == 2;
+	if (!fixed_window) {
+		SDL_Rect usable;
+		if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable) && usable.w > 0 && usable.h > 0) {
+			const float k = std::min({ 1.0f, usable.w * 0.9f / win_w, usable.h * 0.9f / win_h });
+			win_w = int(win_w * k); win_h = int(win_h * k);
+		}
+	}
+	// The window's name is the game's, but the game is not loaded yet: it is put on at the end of
+	// the loading screen below, so a second game does not say it is the first.
+	std::string game_name = "Fighting Vipers 2";   // (the game's own, set once it is loaded)
+	SDL_Window *win = SDL_CreateWindow(game_name.c_str(), win_w, win_h,
+		SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | (cfg.fullscreen ? SDL_WINDOW_FULLSCREEN : 0) | SDL_WINDOW_HIDDEN);
+	if (!win) return fail(std::string("Couldn't open the window: ") + SDL_GetError());
+	SDL_HideCursor();
+	// the window's icon (the Mac app and the Windows exe carry their own)
+	if (SDL_Surface *icon = SDL_LoadPNG((find_assets() + "/icon/icon.png").c_str())) {
+		SDL_SetWindowIcon(win, icon);
+		SDL_DestroySurface(icon);
+	}
+
+
+	// ---- THE LOADING SCREEN, which is the port's own and owes the game nothing ----
+	//
+	// Drawn on the WINDOW'S SURFACE, not through a renderer: the renderer cannot exist yet, choosing it
+	// probing the GPU with the game's own texture memory. A surface needs none. The picture is the
+	// Dreamcast's loading art the curtain already uses, scaled to fit with black around it.
+	//
+	// `splash` is called again from the boot below, which runs the game unseen for hundreds of frames: a
+	// window that neither draws nor reads its events for forty seconds is one Windows paints over with
+	// "not responding". Each call pumps the events and puts the picture back.
+	SDL_Surface *splash_art = hidden ? nullptr : SDL_LoadPNG((find_assets() + "/menu-console/loading.png").c_str());
+	auto splash = [&] {
+		if (!splash_art) return;
+		SDL_Event e;
+		while (SDL_PollEvent(&e)) {}   // (the window answers while the game loads; nothing is acted on yet)
+		SDL_Surface *face = SDL_GetWindowSurface(win);
+		if (!face) return;
+		SDL_FillSurfaceRect(face, nullptr, SDL_MapSurfaceRGB(face, 0, 0, 0));
+		const float k = std::min(float(face->w) / float(splash_art->w), float(face->h) / float(splash_art->h));
+		SDL_Rect to = { int((face->w - splash_art->w * k) * 0.5f), int((face->h - splash_art->h * k) * 0.5f),
+			int(splash_art->w * k), int(splash_art->h * k) };
+		SDL_BlitSurfaceScaled(splash_art, nullptr, face, &to, SDL_SCALEMODE_LINEAR);
+		SDL_UpdateWindowSurface(win);
+	};
+	if (splash_art) {
+		SDL_ShowWindow(win);
+		SDL_RaiseWindow(win);
+		splash();
+		fprintf(stderr, "the loading screen is up, %d by %d\n", splash_art->w, splash_art->h);
+	}
+
 	static Game game;   // (large: not on the stack)
 	{
 		std::string err;
 		if (!game.load(zip, err, arg_interp)) return fail(err);
+	}
+	// the window's name is the game's, now that there is one
+	game_name = game.board.title.empty() ? std::string("Virtua Fighter 3") : game.board.title;
+	SDL_SetWindowTitle(win, game_name.c_str());
+	{
 	}
 	m3::Model3 &board = game.board;
 	// HD 2D (docs/fv2-hd-2d.md). The pack is read once the scale is known, because every image in it has to be
@@ -1799,32 +1876,6 @@ int main(int argc, char **argv)
 	};
 	boot();
 
-#ifdef _WIN32
-	SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
-#endif
-	if (!SDL_Init(SDL_INIT_VIDEO)) return fail(std::string("Couldn't start the video: ") + SDL_GetError());
-	if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) fprintf(stderr, "no gamepads: %s\n", SDL_GetError());
-	if (sound && !SDL_InitSubSystem(SDL_INIT_AUDIO)) fprintf(stderr, "no sound: %s\n", SDL_GetError());
-	int win_w = 1366, win_h = 768;
-	const bool fixed_window = getenv("VF3_WINDOW") && sscanf(getenv("VF3_WINDOW"), "%dx%d", &win_w, &win_h) == 2;
-	if (!fixed_window) {
-		SDL_Rect usable;
-		if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable) && usable.w > 0 && usable.h > 0) {
-			const float k = std::min({ 1.0f, usable.w * 0.9f / win_w, usable.h * 0.9f / win_h });
-			win_w = int(win_w * k); win_h = int(win_h * k);
-		}
-	}
-	// the window's name is the game's (board.title), so a second game doesn't say it is the first
-	const std::string game_name = board.title.empty() ? std::string("Virtua Fighter 3") : board.title;
-	SDL_Window *win = SDL_CreateWindow(game_name.c_str(), win_w, win_h,
-		SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | (cfg.fullscreen ? SDL_WINDOW_FULLSCREEN : 0) | SDL_WINDOW_HIDDEN);
-	if (!win) return fail(std::string("Couldn't open the window: ") + SDL_GetError());
-	SDL_HideCursor();
-	// the window's icon (the Mac app and the Windows exe carry their own)
-	if (SDL_Surface *icon = SDL_LoadPNG((find_assets() + "/icon/icon.png").c_str())) {
-		SDL_SetWindowIcon(win, icon);
-		SDL_DestroySurface(icon);
-	}
 	// The 3D on the GPU (Display > 3D renderer: Auto or GPU, or VF3_3D=cpu|gpu|auto): SDL's "gpu" renderer
 	// (Vulkan, Direct3D 12 or Metal), whose device the 3D shares, its pictures the renderer's textures. Else, or if
 	// it can't start here, SDL's usual one and the CPU's 3D.
@@ -2086,7 +2137,7 @@ int main(int argc, char **argv)
 	// down once -- the two gaps 217..221 and 270..274 are the cuts -- and what the timer draws inside it is
 	// no longer anyone's business.
 	static constexpr int HUD_MID_L = 217, HUD_MID_R = 275;
-	// The Dreamcast's ending, its pictures standing in for the roll's replays (fv2_fin.h). Declared here
+	// The Dreamcast's ending, its pictures standing in for the roll's replays (fv2_ending.h). Declared here
 	// with the renderer's own state because the picture is composed where the 3D and the 2D are.
 	fv2_fin fin;
 	uint32_t side_colour[2] = { 0xFF000000u, 0xFF000000u };   // widescreen's bars beside the 2D (left, right)
@@ -2426,7 +2477,7 @@ int main(int argc, char **argv)
 			// what a CPU label in training has to follow. Addresses are the game's own (the dump's indexing is
 			// elsewhere); the range is read through Model3::fv2_option, a byte at a time.
 			// VF3_RAM_DUMP=bytes@frame -- THE GAME'S MEMORY FROM ZERO, written once to the data folder as
-			// ram.bin, in the HOST's word order, which is the order tools/fv2/desas_ppc.py reads (the byte of
+			// ram.bin, in the HOST's word order, which is the order tools/fv2/disasm_ppc.py reads (the byte of
 			// address A sits at index A^3). Written the 2026-10-28, because reading thirty instructions of
 			// Sega's own code is how every door of this layer was found -- VS FINISH, the branch point, the
 			// four ROUND_MASK handlers -- and until now each of those readings needed a dump made by hand
@@ -2769,7 +2820,7 @@ int main(int argc, char **argv)
 				if (bar.w > 0) SDL_RenderFillRect(ren, &bar);
 			}
 		// THE DREAMCAST'S ENDING stands in for the replay: its picture covers the whole window, and the 2D
-		// of that moment -- the replay's own banners -- goes with it (fv2_fin.h). Not an early return: the
+		// of that moment -- the replay's own banners -- goes with it (fv2_ending.h). Not an early return: the
 		// CRT filter below owns the render target and has to be let finish.
 		bool fin_on = false;
 		if (fin.want && cplay.fin_art >= 0 && fin.have()) {
@@ -3710,7 +3761,7 @@ int main(int argc, char **argv)
 			// arcade ou version console quand on fini le mode arcade". It is August's own line again --
 			// his fork's said DREAMCAST or ARCADE -- and the difference is what stands in for the roll's
 			// REPLAYS: the arcade shows the matches just won, the Dreamcast its illustrations. Eight of
-			// them, chosen and ordered by Frederic out of a rip of the disc (fv2_fin.h).
+			// them, chosen and ordered by Frederic out of a rip of the disc (fv2_ending.h).
 			//
 			// Watching the roll from here has gone with it. It was a way to see a thing nobody had seen
 			// running, and it has been seen; a settings line that STARTS something is not a setting.
@@ -4512,7 +4563,7 @@ int main(int argc, char **argv)
 		// The list and the OPTIONS tree are one surface: the music stops on going in and is decided on coming
 		// out, so moving about inside -- a line, a door, a screen backed out of, a value changed -- decides
 		// nothing, because nothing has been left. Without that, every move the tree added would have wanted a
-		// case of its own in the table of docs/fv2-console-son.md, and the table is held over.
+		// case of its own in the table of docs/fv2-console-sound.md, and the table is held over.
 		//
 		// What happens on the way out is that table, and each cell was measured there:
 		//   a mode chosen      NOTHING. The select screen lays its own (A0 00 01 then A0 10 00, frame 1257),
@@ -4584,7 +4635,7 @@ int main(int argc, char **argv)
 		// Drained here, once a pass, rather than where the events are dispatched: those blocks `continue` on
 		// every key and pad event, so a note handed over inside them would not leave until the event after.
 		//
-		// This is step 4 of docs/fv2-console-son.md and nothing more -- the EFFECTS, with the music left
+		// This is step 4 of docs/fv2-console-sound.md and nothing more -- the EFFECTS, with the music left
 		// exactly alone. The step before it, the table of what the music does on each of the four ways out,
 		// is deliberately skipped for now and will be filled in later.
 		{

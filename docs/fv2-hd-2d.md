@@ -94,7 +94,7 @@ vf3.exe fvipers2.zip --tile-dump <folder>
 tools/vf3run fvipers2.zip --script tools/scripts/fv2-shots.txt --tile-dump <folder>
 ```
 
-`releve-tuiles-fv2.cmd` is the launcher. It is **entirely passive**: nothing to press, no period. Play through
+`survey-fv2-tiles.cmd` is the launcher. It is **entirely passive**: nothing to press, no period. Play through
 the screens you want to redraw and everything that is drawn is written once, deduplicated by content. A tile is
 only taken if it was really drawn -- that is why it is the drawing hook and not a sweep of the tile RAM.
 
@@ -153,7 +153,7 @@ Memory, at scale 4: the three HD surfaces are about 50 MB together (the widened 
 --no-tile-pack             ignore the settings' pack, for comparing
 ```
 
-`jouer-fv2-hd2d.cmd` is the launcher. The folder holds `tiles/` and `layers/` in exactly the shape the dump
+`play-fv2-hd2d.cmd` is the launcher. The folder holds `tiles/` and `layers/` in exactly the shape the dump
 wrote them.
 
 **There is no manifest. The file name is the key**, and it is the name the dump wrote. The gesture is: take a
@@ -233,7 +233,7 @@ back. With `--shots`, `vf3run` writes its pictures at the HD size.
 
 ## 8. Verified
 
-- **`verifier-vf3.cmd`: all five checks IDENTICAL** -- the PowerPC state frame by frame over 3000 frames, the
+- **`verify-vf3.cmd`: all five checks IDENTICAL** -- the PowerPC state frame by frame over 3000 frames, the
   8 MB of RAM, the rendered pictures, the windowed host's picture, and the interpreter against the recompiled
   code over 2231 frames.
 - **With no option, byte for byte what it was.** 22 Fighting Vipers 2 pictures (`fv2-shots.txt`) and 3 Virtua

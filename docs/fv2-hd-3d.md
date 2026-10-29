@@ -99,7 +99,7 @@ not as a colour, so a replacement image would be multiplied out of range.
 ## 4. The dump
 
 ```
-dumper-textures-3d-fv2.cmd                      into Textures3D-dump\fvipers2
+dump-fv2-textures-3d.cmd                      into Textures3D-dump\fvipers2
 vf3.exe fvipers2.zip --hd-3d-dump [folder]
 vf3run fvipers2.zip --script ... --hd-dump folder
 ```
@@ -252,8 +252,8 @@ vf3.exe fvipers2.zip --no-hd-3d               off again
 vf3.exe fvipers2.zip --hd-3d-dump [<folder>]  capture
 ```
 
-`--hd-3d` saves itself in `settings.ini` as `hd_3d = 1`, as `--full-roster` does. `jouer-fv2-hd3d.cmd` and
-`dumper-textures-3d-fv2.cmd` are the launchers. `tools/vf3run --hd-pack <folder>` and `--hd-dump <folder>` do
+`--hd-3d` saves itself in `settings.ini` as `hd_3d = 1`, as `--full-roster` does. `play-fv2-hd3d.cmd` and
+`dump-fv2-textures-3d.cmd` are the launchers. `tools/vf3run --hd-pack <folder>` and `--hd-dump <folder>` do
 the same without a window, which is how everything above was measured.
 
 `tools/tex3d_proof_pack.py` makes a pack out of a dump -- every image twice the size with its red and blue
@@ -263,7 +263,7 @@ Nothing it makes belongs in the repository: it is the game's own pictures, alter
 
 ## 10. Verified
 
-- `verifier-vf3.cmd`: the five checks IDENTICAL. Virtua Fighter 3 cannot feel any of this -- with no pack and no
+- `verify-vf3.cmd`: the five checks IDENTICAL. Virtua Fighter 3 cannot feel any of this -- with no pack and no
   dump, `Raster::hd` stays empty and both rasterisers take the paths they always took.
 - With the option off, Fighting Vipers 2's 22 pictures over `fv2-shots.txt` and Virtua Fighter 3's three over
   `vf3-shots.txt` are **byte-identical** to the build before this change.

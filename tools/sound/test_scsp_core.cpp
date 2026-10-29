@@ -73,7 +73,7 @@ int main()
 	printf("test_scsp_core : le coeur de MAME pilote UNIQUEMENT par scsp::core\n\n");
 
 	std::vector<std::uint16_t> ram(RAM_BYTES / 2, 0);
-	// Une onde d'un cycle a 0x2000, comme la banque que le pilote y charge (docs/fv2-son-programme.md
+	// Une onde d'un cycle a 0x2000, comme la banque que le pilote y charge (docs/fv2-sound-program.md
 	// §4 septies) : 128 mots de sinusoide, pleine echelle.
 	constexpr std::uint32_t WAVE = 0x2000;
 	// Un CARRE et non une sinusoide, et c'est delibere : une sinusoide commence a zero, donc une fente qui

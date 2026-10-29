@@ -9,11 +9,11 @@ rem chiffre dur.
 rem
 rem IL FAUT UNE FENETRE ADMINISTRATEUR : xperf ne peut pas programmer les compteurs autrement, et il le dit
 rem ("Failed to configure counters"). Rien d'autre n'est demande -- les exes sont deja construits et deja
-rem verifies par les dix tests : python tools\son\build-variants.py les fabrique.
+rem verifies par les dix tests : python tools\sound\build-variants.py les fabrique.
 rem
 rem   Win+X, "Terminal (administrateur)", puis :
 rem     cd /d C:\Users\frede\Desktop\fv2-recomp
-rem     tools\son\measure-variants.cmd jeu       (ou `socle`, qui est le defaut)
+rem     tools\sound\measure-variants.cmd jeu       (ou `socle`, qui est le defaut)
 rem
 rem Ferme le jeu avant : une capture a deja ete perdue parce que vf3.exe prenait les cycles.
 rem
@@ -45,7 +45,7 @@ if not exist "%XPERF%" (
 )
 if not exist "%VAR%" (
   echo Les exes des variantes manquent : %VAR%
-  echo Les fabriquer : python tools\son\build-variants.py
+  echo Les fabriquer : python tools\sound\build-variants.py
   goto :fin
 )
 if not exist "%OUT%" mkdir "%OUT%" 2> nul

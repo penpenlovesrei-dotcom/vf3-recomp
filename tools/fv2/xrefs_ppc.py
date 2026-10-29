@@ -1,6 +1,6 @@
 """Qui touche cette adresse ? Les references a une adresse dans le programme du jeu.
 
-Pourquoi cet outil existe, et pourquoi il manquait. `desas_ppc.py` sait lire trente
+Pourquoi cet outil existe, et pourquoi il manquait. `disasm_ppc.py` sait lire trente
 instructions A UNE ADRESSE DONNEE ; il ne sait pas repondre a « qui ecrit cet octet ».
 Or c'est la question qu'on se pose en premier chaque fois qu'on part d'une donnee :
 l'octet bouge quand le curseur bouge, et apres ? Sans reponse, on se rabat sur les
@@ -40,7 +40,7 @@ trouve le programme de Fighting Vipers 2 une fois depaquete.
 
 Le vidage se fait avec VF3_RAM_DUMP=octets@image (main.cpp), qui ecrit ram.bin dans le
 dossier de donnees, dans l'ordre des mots de l'HOTE -- l'octet d'adresse A est a
-l'indice A^3. desas_ppc.py est importe pour relire les mots et les imprimer, donc les
+l'indice A^3. disasm_ppc.py est importe pour relire les mots et les imprimer, donc les
 deux outils lisent le meme fichier de la meme facon.
 """
 

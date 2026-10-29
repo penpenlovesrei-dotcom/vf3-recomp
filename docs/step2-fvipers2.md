@@ -409,7 +409,7 @@ to look at, and nothing is wrong with the picture meanwhile.
 Writing the host changes above broke Virtua Fighter 3, badly: an `else if` added to the coin block swallowed the
 `game.reset()` that followed it, so the board was never reset after its coin settings were applied, and the
 picture came out in torn bands. **None of the checks that existed caught it** -- the state, the RAM, the
-rendered shots and the lockstep were all still identical, because none of them runs the host. `verifier-vf3.cmd`
+rendered shots and the lockstep were all still identical, because none of them runs the host. `verify-vf3.cmd`
 now runs five checks, the last two new:
 
 | Check | |
@@ -420,7 +420,7 @@ now runs five checks, the last two new:
 | **The game frame the windowed host draws** | `host_last.png`, which is reproducible run to run (`host_window.png` is not: it follows the real-time pacing) |
 | The lockstep, interpreter against recompiled | 2231 frames |
 
-All five say IDENTICAL. `jouer-fv2.cmd` opens the game in a window.
+All five say IDENTICAL. `play-fv2.cmd` opens the game in a window.
 
 ## 15. Widescreen in a fight, and two things the GPU was not doing
 
@@ -456,7 +456,7 @@ Rebuilding `src/gpu/r3d_shaders.h` needs `tools/gpu/shaders.sh` with SPIRV-Cross
 can generate SPIR-V -- the one in the Windows Kits cannot, the release from
 `microsoft/DirectXShaderCompiler` can.
 
-Virtua Fighter 3 is untouched by all of it, measured: the five checks of `verifier-vf3.cmd` and, since the
+Virtua Fighter 3 is untouched by all of it, measured: the five checks of `verify-vf3.cmd` and, since the
 shader changed, its picture on the GPU as well -- all byte-identical to the upstream build.
 
 That the two rasterizers reach a texture through the same six numbers, and that `Raster::prepare` already holds
@@ -624,13 +624,13 @@ identical to the reference over the whole fight script's 4201 frames.
 ## Building and running here
 
 SDL 3 comes from MSYS2 (`pacman -S mingw-w64-x86_64-sdl3`); FreeType is already there. With it the windowed
-`build/bin/vf3` builds too, and `jouer-fv2.cmd` opens the game. Note that SDL's pkg-config adds `-mwindows`, so
+`build/bin/vf3` builds too, and `play-fv2.cmd` opens the game. Note that SDL's pkg-config adds `-mwindows`, so
 the binary has no console and its messages go to `log.txt` in the data folder, not the terminal.
 
 MSYS2's g++ (16.1.0) builds `vf3run` and `vf3lock` unchanged, but `make` must be handed a writable temp directory
 or the compiler tries `C:\WINDOWS` and stops with "Cannot create temporary file"; passing `TMP`, `TEMP` and
-`TMPDIR` as make command-line variables is what gets through to the recipes. `construire.cmd` and
-`lancer-fv2.cmd` in the repository root do that, and `verifier-vf3.cmd` runs the whole regression above in one go
+`TMPDIR` as make command-line variables is what gets through to the recipes. `build-tools.cmd` and
+`run-fv2.cmd` in the repository root do that, and `verify-vf3.cmd` runs the whole regression above in one go
 (it makes the upstream worktree and builds it the first time, then compares the state dumps and the RAM and runs
 the lockstep). All three take an optional frame count.
 

@@ -1,0 +1,10 @@
+# Fighting Vipers 2, the console way: Start on the game's OWN title screen, which is where the list of modes
+# opens. For the windowed host (VF3_SCRIPT), with VF3_QUIT_AFTER_S to end the run and VF3_KEYS_S to work the
+# list, because the game is frozen behind it and nothing that goes by the game's frames arrives any more.
+#
+# The title screen runs from frame 1193 to 1385, measured (docs/fv2-states.md). 1255 is sixty frames in: past
+# the fade the SEGA logo leaves behind, and past the announcer's "Fighting Vipers 2".
+#
+# There is no "quit" here, and there cannot be: a script's quit goes by the game's frames, and the list stops
+# them. The run is ended from outside, by the clock.
+1255 press p1.start

@@ -168,7 +168,7 @@ and the screen says `SURVIVAL MODE` next to the fighter.
 
 Added the 2026-10-21. In the console way Start is the console's button and the game never sees it. What it does
 is decided by one question -- is the game's OWN title screen on screen? -- and `Model3::fv2_on_title` answers
-it from the game's state machine (`docs/fv2-etats.md`), which is not the question `fv2_in_attract` answers.
+it from the game's state machine (`docs/fv2-states.md`), which is not the question `fv2_in_attract` answers.
 
     on the title screen   ->  the list of modes opens over that screen
     elsewhere in the attract loop  ->  the game is asked for its title screen
@@ -176,7 +176,7 @@ it from the game's state machine (`docs/fv2-etats.md`), which is not the questio
 
 The decision is `console_play::take_start`, so the windowed host and `vf3run` make it the same way, and
 `vf3run --modes --console-start N` measures it without a window. What that measured, with the game's own mode
-log beside it, is the table in `docs/fv2-etats.md`: the title screen comes back one frame after the request
+log beside it, is the table in `docs/fv2-states.md`: the title screen comes back one frame after the request
 from the SEGA logo, from the demonstration, from the select screen and from inside a fight alike.
 
 **But a request does not end a game.** Read back afterwards, the entry1 task is still in its playing state
@@ -215,7 +215,7 @@ whatever is written in it. This draws the owner's own picture of the seven lines
 game made, on the game's real title screen, with nothing else on it.
 
 The picture is `assets/menu-console/title_list.png` (709 x 897, outside the repository), and every number in
-the drawing is the measurement written down in `docs/fv2-etats.md`: the seven bands cut in the middles of the
+the drawing is the measurement written down in `docs/fv2-states.md`: the seven bands cut in the middles of the
 white, each slid sideways to bring its own left-aligned ink to the middle, the block at 0.26157 of the
 picture's height and 0.35557 of it tall, the width following the picture's proportions. On top of the
 measurement are the two things the owner asked for, kept as factors applied to it rather than as the figures
@@ -238,10 +238,10 @@ where it was; and Escape still opens this port's menu, which closes the list. On
 backing out are the player's own punch and kick bindings, because that is where A and B sit on the pad here.
 
 **The list has no sounds of its own, and that is on purpose for now.** A first attempt at them was taken out
-the same day it was written (see the journal in REPRISE.md): it ran the sound board under a frozen game, sent
+the same day it was written (see the journal in RESUMPTION.md): it ran the sound board under a frozen game, sent
 the MIDI reset behind the game's back and put the music back by hand, and it was put together in three patches
 on three reports rather than from a plan. What a second attempt has to answer, before a line of it is written,
-is in `docs/fv2-console-son.md`.
+is in `docs/fv2-console-sound.md`.
 
 ARCADE, SURVIVAL, **RANDOM** and **V.S.** act, and that is every mode the arcade game has. **TRAINING** acts
 too, as far as it has been built: it fights in Marble Arena. NETWORK and OPTIONS are drawn and leave the list
@@ -259,7 +259,7 @@ running game -- the game picked stage 9 all the same. That picker is reached onl
 the select screen, which is how `CHANGE STAGE` uses it.
 
 What commands a game's first arena is the game's own **route table**, found by watching who writes the scene
-index and reading the dozen instructions above that write (`docs/fv2-etats.md`): eight bytes a match, four
+index and reading the dozen instructions above that write (`docs/fv2-states.md`): eight bytes a match, four
 (arena, opponent) pairs, the pair chosen by `0x0058145D`. One byte of it -- `0x000B4100`, route 0, first
 match -- set to 3 puts the fight in Marble Arena, and it is put back when the game ends.
 
@@ -269,7 +269,7 @@ the dam.
 ### NETWORK, TRAINING and OPTIONS do not exist on the arcade board
 
 This is not a gap in what has been read: it is what the game is. Sega's own twenty-four modes
-(`docs/fv2-etats.md`) are WARNING, ADV, SEL, GAME, CONTINUE, INTRUDE, ENDING, NAME, RANKING, OVER, TEST and
+(`docs/fv2-states.md`) are WARNING, ADV, SEL, GAME, CONTINUE, INTRUDE, ENDING, NAME, RANKING, OVER, TEST and
 RESULT. No training, no network, no options. And the owner's arcade notes say it in as many words:
 
 > Versus does not exist as a mode of its own: in Fighting Vipers 2 it is the arcade mode with a second player
@@ -298,7 +298,7 @@ frames clear the transition and the Start that opened the screen.
 
 Measured: the select screen comes up with **two players on it**, 1P and 2P with their own cursors, and the
 player-2 task `0x00700100` reads 5 -- the select screen's value -- where it reads 0 in every run before this
-one. That closes a hole open since August: `docs/fv2-menu-console-inventaire.md` called the second player a
+one. That closes a hole open since August: `docs/fv2-console-menu-inventory.md` called the second player a
 harness gap, not a knowledge one, and said it needed a coin and a Start at the right moment. It did.
 
 ### RANDOM: the game's own flag, after the hand manoeuvre refused to work
@@ -310,7 +310,7 @@ not this port's doing -- an input script holding Start over the same window give
 reaches the game, and the game ignores it.
 
 So the question was asked the other way round, which is what the decompilation is for: **what does the game
-set when it goes into that mode?** Section 5 of `docs/fv2-flux-de-match.md` lists the variables under Sega's
+set when it goes into that mode?** Section 5 of `docs/fv2-match-flow.md` lists the variables under Sega's
 own names, and there it is, one line below Survival's flag:
 
 ```
@@ -341,7 +341,7 @@ VF3_QUIT_AFTER_S=N    end the run after N seconds of real time
 VF3_KEYS_S=k@sec,...  press key k at that many seconds
 ```
 
-With those, `capturer-fv2-liste.cmd` takes the three pictures in `build\`, hidden, without a hand on a pad:
+With those, `capture-fv2-list.cmd` takes the three pictures in `build\`, hidden, without a hand on a pad:
 
 | picture | what it shows |
 |---|---|
@@ -363,7 +363,7 @@ vf3.exe fvipers2.zip --console
 or Escape > Game > Play style, which now goes round three ways: PC, Arcade, Console. The third is only offered
 for `fvipers2` -- everything above was measured on the Japan Revision A set, and offering it for another game
 would be offering nothing. It is kept in `settings.ini` as `console_mode`; `--pc` puts it back.
-`jouer-fv2-console.cmd` is the launcher.
+`play-fv2-console.cmd` is the launcher.
 
 In the console way, Start opens the console's own list of modes on the game's title screen, and brings that
 title screen back from anywhere else (above). The same choices are also under Escape as *Fighting Vipers 2*,
@@ -390,7 +390,7 @@ window, which is how the measurements above were taken.
 
 ## Verified
 
-- `verifier-vf3.cmd`: Virtua Fighter 3 untouched on all five counts. It has to be -- every call is gated on the
+- `verify-vf3.cmd`: Virtua Fighter 3 untouched on all five counts. It has to be -- every call is gated on the
   console way being set *and* the set being `fvipers2`.
 - Fighting Vipers 2 without `--console`: unchanged, interpreter against recompiled on
   `tools/scripts/fv2-fight.txt`.
@@ -420,7 +420,7 @@ place whatever the window.
 
 ### The four lines, and what they lack
 
-They are August's (`docs/fv2-menu-console-inventaire.md` §2). Only one has a lever that works from here; the
+They are August's (`docs/fv2-console-menu-inventory.md` §2). Only one has a lever that works from here; the
 three others are **drawn, quiet and stepped over**, the rule the OPTIONS page already follows.
 
 | line | state |
@@ -430,7 +430,7 @@ three others are **drawn, quiet and stepped over**, the rule the OPTIONS page al
 | `REMATCH` | the note describes what was observed, not a lever |
 | `CHANGE STAGE` | **wired**: the stage picker TRAINING already uses, held on the chosen scene. Left and right change the number on the line |
 
-What blocks the three is the same thing `docs/fv2-etats.md` has been calling **leaving a fight properly**, by
+What blocks the three is the same thing `docs/fv2-states.md` has been calling **leaving a fight properly**, by
 the game's own road, from the start.
 
 ### Verified
@@ -445,7 +445,7 @@ frozen — a frame that does not advance never triggers a capture keyed to it.
 Frédéric, on 2026-10-24: "the pause key during the fight's presentation state and during the replay should not
 open the pause menu but just cut the current state short as in the original game".
 
-The states concerned, by the names Sega left (`docs/fv2-etats.md`, GAME's twenty sub-states):
+The states concerned, by the names Sega left (`docs/fv2-states.md`, GAME's twenty sub-states):
 
 ```
  0 ROUND_MASK_INT   1 ROUND_MASK_IN   2 ROUND_MASK_DSP   3 ROUND_MASK_OUT    the STAGE n / VS name screen
@@ -458,13 +458,13 @@ The states concerned, by the names Sega left (`docs/fv2-etats.md`, GAME's twenty
 `FIGHT_DSP`, `JUDGE` and `VIC` are **not** there: the pause menu belongs to them.
 
 **What does not work, and it is the first thing measured.** Letting the press through to the game does
-**nothing at all**. A real Start at frame 2360 of `tools/scripts/fv2-vic-banc.txt`, during `ROUND_MASK_DSP`
+**nothing at all**. A real Start at frame 2360 of `tools/scripts/fv2-vic-bench.txt`, during `ROUND_MASK_DSP`
 which runs from 2319 to 2450: the trace of the states is identical, frame by frame, with and without. The game
 does not read that button there. So the hypothesis "it is enough to stop intercepting" is false, and it was
 ruled out by measurement before a line of correction was written.
 
 **What works, and it is the game's own road.** The sub-state handlers hand over to one another through a
-**sub-state request** — `docs/fv2-flux-de-match.md` says so of `VIC_INT`: "simply asks for the next sub mode".
+**sub-state request** — `docs/fv2-match-flow.md` says so of `VIC_INT`: "simply asks for the next sub mode".
 A single-frame write of `SUBMODE_REQUEST` (`0x0058FD9B`) to 3 during `ROUND_MASK_DSP`:
 
 ```
@@ -486,7 +486,7 @@ title screen, `cut` in those twelve sub-states, `pause` everywhere else in a gam
 **Measured**: `vf3run --console-start 2360`, the trace above, and the log line "Start in the presentation or
 the replay (mode 7, sub-state 2) -> the state is cut short".
 **Not measured yet**: the replay itself (sub-state 16). The lever is the same and the table is the same, but
-no out-of-window route reaches `REPLAY_DSP` for now — `fv2-vic-banc.txt` stops in `JUDGE_DSP`. So it is to be
+no out-of-window route reaches `REPLAY_DSP` for now — `fv2-vic-bench.txt` stops in `JUDGE_DSP`. So it is to be
 checked by playing, and it is written here so that it does not pass for settled.
 
 ### A stage choice for VERSUS: the route table does not command it
@@ -501,7 +501,7 @@ The stage's two known levers, and what each one commands:
 | the picker `0x0007111C`, patched to `li r3,<scene> ; blr` | nothing for a match that starts: it is reached **only by a rematch going through the select screen**, and that is how August's `CHANGE STAGE` uses it | 2026-10: patched and held, the game picked stage 9 all the same |
 | the route table, `0x000B4100` | the stage of the first fight **of a solo route** | the byte at 3 puts the fight in MARBLE ARENA, the scene index reads 3 where it read 9 |
 
-**And it does not command a versus match.** On `tools/scripts/fv2-vic-banc.txt`, a versus match carried
+**And it does not command a versus match.** On `tools/scripts/fv2-vic-bench.txt`, a versus match carried
 through to the fight (`GAME_DSP`, `FIGHT_DSP`):
 
 | | scene index `0x0058FD9F` | route byte `0x000B4100` |
@@ -513,7 +513,7 @@ Two facts add up: with no write, the scene index (8) **already diverges** from t
 where in solo play the two agreed; and held at 3 throughout the match's set-up — which begins at
 `ROUND_MASK_INT`, frame 2316 — the stage does not move. Versus picks its stage elsewhere.
 
-**Where, probably: in the states the game skips.** The select's six sub-states (`docs/fv2-etats.md`) are
+**Where, probably: in the states the game skips.** The select's six sub-states (`docs/fv2-states.md`) are
 `0 SEL_START  1 SELECT  2 STAGE_SEL_INT  3 STAGE_SEL_DSP  4 DECIDE_INT  5 DECIDE_DSP`. **The game has a stage
 choice of its own**, and the versus trace shows it stepping over it:
 
@@ -637,7 +637,7 @@ recompiler off entirely, and the whole PowerPC falls back to the interpreter. Me
 against 57.5** for the same versus match with nothing held, and Frédéric noted 60 against under 50 in his
 window.
 
-So the function was read, with `tools/fv2/desas_ppc.py` on a RAM dump of a game in progress — twenty
+So the function was read, with `tools/fv2/disasm_ppc.py` on a RAM dump of a game in progress — twenty
 instructions:
 
 ```
@@ -664,7 +664,7 @@ table written from a half-known rule is wrong the day that half matters.
 
 `TITLE SCREEN` and `CHANGE YOUR VIPER` were waiting for a way to **end** a match. August did it from the
 outside — the last round armed, the clock at the edge, player 1's health held at zero — because his fork did
-not have the decompilation. This port does (`docs/fv2-flux-de-match.md`), so it asks instead of pushing. Two
+not have the decompilation. This port does (`docs/fv2-match-flow.md`), so it asks instead of pushing. Two
 words, and both are conditions the game itself tests on every frame:
 
 | word | what the game does with it |
@@ -687,7 +687,7 @@ for one, a two-player select screen and a new fight for the other, photographed.
 Frédéric, on 2026-10-25: "*of the whole game, no state or sub-state encroaches on the others, except the one
 we brought in. It still looks like patchwork, as on the rom.*" He was right, and the flaw can be named: the
 board holds **one state at a time** — twenty-four modes, each with its INT that installs it and its DSP that
-runs it, a handler table, a byte that says where one is (`docs/fv2-etats.md`). Nothing encroaches because
+runs it, a handler table, a byte that says where one is (`docs/fv2-states.md`). Nothing encroaches because
 nothing coexists. Our console layer, for its part, had no state at all: a dozen booleans (`swallow_start`,
 `want_list`, `want_stage_page`, `mode_wanted`, `versus_trip`, `stage_page_done`, `seen_select`,
 `stage_from_pause`, `training_on`, `leaving`, `leave_for`) that together encoded a state machine nobody had
@@ -774,10 +774,10 @@ play style at the wrong moment left them in place: the game would have stayed si
 session. All four are given back where the style changes, and `VS FINISH` **before** the borrower is
 replaced.
 
-### The net: `verifier-console.cmd`
+### The net: `verify-console.cmd`
 
 Three routes played without a window and without hands, and **compared by machine** with the expected
-sequence of states (`tools/fv2/verifier_console.py`):
+sequence of states (`tools/fv2/verify_console.py`):
 
 | route | the expected sequence |
 |---|---|
@@ -796,14 +796,14 @@ disappeared in the middle does not leap out at you the next day.
 
 ### A VERSUS match's way out: `VS FINISH`, the cabinet's setting (2026-10-27)
 
-`verifier-console.cmd` plays the whole path without hands and prints the trace of the states. It was going
+`verify-console.cmd` plays the whole path without hands and prints the trace of the states. It was going
 all the way **in ARCADE** and **getting stuck in VERSUS**: four hidden sessions, the game reloading a round
 twenty frames after `MAIN MENU`, the probe saying "the match says decided" on every frame. Here is the
 reading that found the way out, and the two false trails it ruled out.
 
 #### What the branch point really does
 
-`NEXT_PROG_SEL` (`0x0000DB48`), disassembled from a RAM dump with `tools/fv2/desas_ppc.py`:
+`NEXT_PROG_SEL` (`0x0000DB48`), disassembled from a RAM dump with `tools/fv2/disasm_ppc.py`:
 
 ```
 lis r10,0x0058 ; lwz r10,5104(r10)      ADV_INFO_STATUS
@@ -856,7 +856,7 @@ sub-state of versus mode's own offering REMATCH, CHANGE VIPERS, CHANGE STAGE, MA
 
 ### The game says itself when a match is settled
 
-A route was written to watch it: `tools/scripts/fv2-vs-fin.txt`, a versus match where player 1 hits without
+A route was written to watch it: `tools/scripts/fv2-vs-end.txt`, a versus match where player 1 hits without
 stopping and 2 does not move, so every round ends in a K.O. Played hidden with `VF3_VS_TRACE=1`, it prints
 one line per sub-state change from the judgement on. The end of each round reads the same four states, then
 **splits in two**:
@@ -919,7 +919,7 @@ mode's pause menu is the way out.
 `REMATCH` worked first time (`VS_OVER -> PLAY`, `a rematch asked for, the game says 1`, and the next match is
 played). `MAIN MENU` **did not**: the game went back into a fight and the exit gave up after its minute. The
 whole branch point, read again from a dump taken at frame 5000 (`VF3_RAM_DUMP`, a new hook, and
-`tools/fv2/desas_ppc.py`):
+`tools/fv2/disasm_ppc.py`):
 
 ```
 0000DB4C  lwz r10,[0x005813F0]        ADV_INFO_STATUS

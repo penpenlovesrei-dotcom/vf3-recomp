@@ -4,7 +4,7 @@ rem d'une reference (par defaut le commit HEAD d'avant les modifications, dans u
 rem a part), puis compare les deux WAV octet par octet. Un son qui bouge d'un seul echantillon est
 rem une regression a expliquer, pas une tolerance a elargir.
 rem
-rem   tools\son\compare-sound.cmd <jeu> <script> <images> [ref-commit]
+rem   tools\sound\compare-sound.cmd <jeu> <script> <images> [ref-commit]
 rem
 rem   jeu     : fvipers2 ou vf3 (le nom du zip dans Documents\SEGA Model 3\ROMs)
 rem   script  : un fichier de tools\scripts
@@ -12,11 +12,11 @@ rem   images  : combien d'images jouer
 rem   ref     : le commit de reference (defaut : HEAD)
 rem
 rem Exemples :
-rem   tools\son\compare-sound.cmd fvipers2 tools\scripts\fv2-fight.txt 4200
-rem   tools\son\compare-sound.cmd vf3      tools\scripts\vf3-match.txt 4200
+rem   tools\sound\compare-sound.cmd fvipers2 tools\scripts\fv2-fight.txt 4200
+rem   tools\sound\compare-sound.cmd vf3      tools\scripts\vf3-match.txt 4200
 rem
 rem Les deux runs ecrivent dans %TEMP%\son-cmp\<jeu>\, chacun dans son dossier : le meme endroit a
-rem chaque fois, donc UN SEUL comparateur a la fois (la lecon de verifier-vf3.cmd).
+rem chaque fois, donc UN SEUL comparateur a la fois (la lecon de verify-vf3.cmd).
 setlocal
 set MINGW=C:\msys64\mingw64\bin
 set MAKE=C:\msys64\usr\bin\make.exe
@@ -40,7 +40,7 @@ if not exist "%ROM%" (
   goto :fin
 )
 if not exist "build\bin\vf3run.exe" (
-  echo build\bin\vf3run.exe is missing: run construire.cmd first.
+  echo build\bin\vf3run.exe is missing: run build-tools.cmd first.
   goto :fin
 )
 

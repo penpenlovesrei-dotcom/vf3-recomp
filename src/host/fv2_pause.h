@@ -1,6 +1,6 @@
 // The console's PAUSE MENU: Start during a match, over the fight, with the game frozen behind it.
 //
-// August had this menu and measured its four levers (docs/fv2-menu-console-inventaire.md section 2); this
+// August had this menu and measured its four levers (docs/fv2-console-menu-inventory.md section 2); this
 // port never had it, and docs/fv2-console.md said why -- "Escape already does everything that menu would, so
 // this was left until the modes are finished". The modes were finished on the 2026-10-23, so here it is.
 //
@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 #include "controls.h"
-#include "fv2_texte.h"
+#include "fv2_text.h"
 #include "png.h"
 
 struct fv2_pause

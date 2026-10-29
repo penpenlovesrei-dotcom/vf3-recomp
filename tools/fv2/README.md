@@ -57,7 +57,7 @@ python tools/fv2/mkbodies.py           # -> bodies.csv, needs fnames.csv and cal
 The match flow is a switch, not a set of functions. `mkfnames.py` names all 81 of its
 state handlers out of the game's own two parallel 80-entry tables -- the jump table at
 `0x00024354` and the name table at `0x00024494` -- and `mkbodies.py` works out where
-each handler ends. `docs/fv2-flux-de-match.md` is what came of reading them.
+each handler ends. `docs/fv2-match-flow.md` is what came of reading them.
 
 ## 5. Into Ghidra
 

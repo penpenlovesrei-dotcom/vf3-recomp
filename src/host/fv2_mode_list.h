@@ -8,7 +8,7 @@
 //
 // The picture is assets/menu-console/title_list.png, 709 x 897 RGBA, one band a line: ARCADE, V.S., RANDOM,
 // SURVIVAL, NETWORK, TRAINING, OPTIONS. Every number below was measured and is written down in
-// docs/fv2-etats.md; none of it is a guess:
+// docs/fv2-states.md; none of it is a guess:
 //
 //   - the seven bands are cut in the middles of the white, not into seven equal parts: the labels are 114 to 118
 //     pixels tall, and equal parts would crop the tallest;
@@ -51,7 +51,7 @@ struct fv2_mode_list
 		return line >= 0 && line < LINES ? NAMES[line] : "?";
 	}
 
-	// The file, and the measured geometry (docs/fv2-etats.md)
+	// The file, and the measured geometry (docs/fv2-states.md)
 	static constexpr int IMG_W = 709, IMG_H = 897;
 	// the bands' edges in the file's own rows, cut in the middles of the white
 	static constexpr float BANDS[LINES + 1] = { 0, 124.5f, 254, 381.5f, 511.5f, 640.5f, 769, 897 };

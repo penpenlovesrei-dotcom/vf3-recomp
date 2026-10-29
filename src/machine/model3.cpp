@@ -1441,7 +1441,7 @@ void Model3::show_free_play_text()
 // The routine that draws them stops there and its table of positions holds eleven entries.
 // WHICH ARENA THE GAME FIGHTS IN, and this is the DRAW'S OWN TABLE, not a patch on its code.
 //
-// 0x0007111C is the stage draw. Read with tools/fv2/desas_ppc.py the 2026-10-25, out of a RAM dump of a
+// 0x0007111C is the stage draw. Read with tools/fv2/disasm_ppc.py the 2026-10-25, out of a RAM dump of a
 // running game, it is twenty instructions long and it does this:
 //
 //     bl 0x000083BC                  a random number
@@ -1665,7 +1665,7 @@ constexpr uint32_t FV2_SURVIVAL_SETTING = 0x00120550;
 constexpr uint32_t FV2_REGION = 0x00120557;
 }
 
-// ---- The game's own state machine (docs/fv2-etats.md) ----
+// ---- The game's own state machine (docs/fv2-states.md) ----
 //
 // Four contiguous bytes, and the twenty-four mode numbers Sega named in RAM. Measured on the ROM, on
 // Supermodel, and carried here rather than rediscovered: this port had none of it.
@@ -1694,11 +1694,11 @@ constexpr uint8_t FV2_ADV_TITLE_INT = 4, FV2_ADV_TITLE_DSP = 5;
 constexpr uint8_t FV2_MODE_ENDING_INT = 12;   // the staff roll: see fv2_request_ending below
 // GAME OVER, which is where NEXT_PROG_SEL's two-player road sends a decided versus (fv2_request_game_over)
 constexpr uint8_t FV2_MODE_OVER_INT = 18;
-// SEL's six, by Sega's own names (docs/fv2-etats.md): 0 SEL_START, 1 SELECT, 2 STAGE_SEL_INT,
+// SEL's six, by Sega's own names (docs/fv2-states.md): 0 SEL_START, 1 SELECT, 2 STAGE_SEL_INT,
 // 3 STAGE_SEL_DSP, 4 DECIDE_INT, 5 DECIDE_DSP. The two in the middle are the empty stub the console's stage
 // page parks the game in (fv2_park_stage_select below).
 constexpr uint8_t FV2_SEL_STAGE_SEL_INT = 2, FV2_SEL_DECIDE_INT = 4;
-constexpr uint32_t FV2_ADV_INFO_STATUS = 0x005813F0;   // the match's own word (docs/fv2-flux-de-match.md)
+constexpr uint32_t FV2_ADV_INFO_STATUS = 0x005813F0;   // the match's own word (docs/fv2-match-flow.md)
 constexpr uint32_t FV2_LADDER_DONE = 0x00000008;       // "the ladder is finished": NEXT_PROG_SEL branches to the ending
 constexpr uint32_t FV2_MATCH_OVER = 0x40000000;        // set when the match, not merely the round, is decided
 // The match's own counters and the two fighters' life, all of them August's, measured one by one in August
@@ -1708,7 +1708,7 @@ constexpr uint32_t FV2_MATCH_OVER = 0x40000000;        // set when the match, no
 constexpr uint32_t FV2_ROUNDS_LOST_1P = 0x00581455;
 constexpr uint32_t FV2_ROUND_NUMBER = 0x00581456;
 // THE TWO BYTES THE MATCH'S BRANCH POINT COUNTS WITH, read at 0x0000DB60 out of a RAM dump the
-// 2026-10-26 (tools/fv2/desas_ppc.py). HOW MANY ARE PLAYING is already named elsewhere in this file --
+// 2026-10-26 (tools/fv2/disasm_ppc.py). HOW MANY ARE PLAYING is already named elsewhere in this file --
 // 0x0000C2EC picks the round's length on it -- and the byte beside it is HOW MANY ARE OUT: the branch
 // point asks whether the players out are one fewer than the players, which is "all but one", and sends
 // the last one on to the next opponent. Anything else and the game is over for everybody.
@@ -1727,7 +1727,7 @@ constexpr uint16_t FV2_LIFE_PLAUSIBLE = 2000;          // a starting life above 
 //     lis r3,0x0012 ; lwz r3,-4020(r3) ; rlwinm. r0,r3,31,0,0 ; bne <skip the whole countdown>
 // so bit 0 of the word at 0x0011F04C -- Sega's CONFIG_CB_DISP, in the CONFIG block beside *PLAY KUHN --
 // makes the handler not decrement the timer at all. Read out of the code the 2026-10-25 with
-// tools/fv2/desas_ppc.py. Holding the timer's value instead would raise the question August had to leave
+// tools/fv2/disasm_ppc.py. Holding the timer's value instead would raise the question August had to leave
 // open (does the game read this word or write it?); this one is a condition, so there is no question.
 constexpr uint32_t FV2_CB_DISP = 0x0011F04C;
 // THE ENDING'S OWN TWO BYTES, both August's, measured in August 2026 (MenuConsole.md section 6 septies).
@@ -1770,7 +1770,7 @@ void Model3::fv2_set_survival(bool on)
 // RANDOM: the game's own flag, and it is Sega's own name for it.
 //
 // Found by reading rather than by playing: the game's debug tables name 0x0058145E `RANDOM_CHARA` on the
-// `MODE_INFO` page, right beside `SURVIVAL FLAG` at 0x0058145F (docs/fv2-flux-de-match.md, section 5). Set,
+// `MODE_INFO` page, right beside `SURVIVAL FLAG` at 0x0058145F (docs/fv2-match-flow.md, section 5). Set,
 // the select screen prints RANDOM MODE beside the fighter -- which is exactly what the owner's recorded
 // manoeuvre produced in August by HOLDING Start across the fighter's validation.
 //
@@ -1922,7 +1922,7 @@ int Model3::fv2_submode_request() const
 }
 
 // THE GAME'S OWN ENDING, asked for the same way. ENDING is mode 12, and MODE_SUB means nothing to it -- the
-// state machine's own rule for every mode but GAME, SEL and ADV (docs/fv2-etats.md) -- so the mode alone is
+// state machine's own rule for every mode but GAME, SEL and ADV (docs/fv2-states.md) -- so the mode alone is
 // the whole request, and the sub-state is left where the title screen had it.
 //
 // Measured before it was wired, from the title screen, which is the only place the console's page can be
@@ -2015,7 +2015,7 @@ int Model3::fv2_rematch(uint32_t entry1_live, uint32_t entry2_live)
 // NOT by August's road, and the difference is the whole point. His fork had to end a match from outside,
 // with no decompilation to lean on: he armed the last round, put the round clock at its edge and held
 // player 1's life at zero until the attract loop came back -- a match ended by making a player lose.
-// THIS PORT HAS READ THE CODE (docs/fv2-flux-de-match.md), so it can ask the game instead of pushing it.
+// THIS PORT HAS READ THE CODE (docs/fv2-match-flow.md), so it can ask the game instead of pushing it.
 //
 // Two words, and both of them are conditions the game's own handlers test every frame:
 //
@@ -2224,7 +2224,7 @@ void Model3::fv2_restart_attract()
 // the missing and the blackened fighters. The request changes what is displayed; it does not stop what was
 // drawing. Only the game's own road does that.
 //
-// It works from the attract loop and only there -- the sequencer does not run during a game (docs/fv2-etats.md).
+// It works from the attract loop and only there -- the sequencer does not run during a game (docs/fv2-states.md).
 void Model3::fv2_attract_to_title()
 {
 	constexpr uint32_t FV2_ADV_LIST_AT = 0x00580DFC;     // where the attract sequencer is in its list

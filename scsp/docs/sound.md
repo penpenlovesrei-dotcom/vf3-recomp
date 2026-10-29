@@ -29,9 +29,9 @@ this work is **knowledge**, and knowledge that cannot be found again is lost. He
 | know what the driver expects of the chip | **`src/sound/scsp_contract.h`** — the hardware contract, checked by a test |
 | know how an implementation plugs in | `scsp_architecture.md` — the C++ interface |
 | replace MAME's SCSP | `scsp_migration_plan.md`, which lists the prerequisites and says which exist |
-| understand what the 68000 program does | `fv2-son-programme.md` — 3 062 lines, the 168 functions read |
+| understand what the 68000 program does | `fv2-sound-program.md` — 3 062 lines, the 168 functions read |
 | know whether a measurement is reliable | `scsp_validation.md`, and the provenance noted beside every figure |
-| not repeat a mistake already made | `fv2-son-programme.md` keeps the false trails **beside** the measurements that corrected them |
+| not repeat a mistake already made | `fv2-sound-program.md` keeps the false trails **beside** the measurements that corrected them |
 
 ## 2. The code
 
@@ -53,19 +53,19 @@ this work is **knowledge**, and knowledge that cannot be found again is lost. He
 
 | | |
 |---|---|
-| `tools/sound/extraire-son.py` | extracts the 68000's ROM from a `.zip` **and swaps the bytes** — without which nothing disassembles. It is the prerequisite for all the rest |
-| `tools/sound/desas_son.py` | **searches** the 512 KB: `--cherche`, `--at`, `--fonctions`, `--carte`. It seeds the eleven computed jumps, without which it sees only half the program |
+| `tools/sound/extract-sound.py` | extracts the 68000's ROM from a `.zip` **and swaps the bytes** — without which nothing disassembles. It is the prerequisite for all the rest |
+| `tools/sound/disasm_sound.py` | **searches** the 512 KB: `--cherche`, `--at`, `--fonctions`, `--carte`. It seeds the eleven computed jumps, without which it sees only half the program |
 | `tools/sound/import-sound.cmd` | imports the ROM into Ghidra, with no interface |
-| `tools/ghidra/FV2SonSetup.java` | seeds the entry points **before** the analysis (as `-preScript`) |
-| `tools/ghidra/FV2SonTablesDeSaut.java` | opens the four jump tables — 41 functions to 90 |
-| `tools/ghidra/FV2SonSautsIndirects.java` | resolves the last five `jmp (An)` |
-| `tools/ghidra/FV2SonDonnees.java` | declares the data, and **recounts** what is left outside |
-| `tools/ghidra/FV2SonListe.java` | lists the functions and their ranges, changing nothing — the control for the previous three |
+| `tools/ghidra/FV2SoundSetup.java` | seeds the entry points **before** the analysis (as `-preScript`) |
+| `tools/ghidra/FV2SoundJumpTables.java` | opens the four jump tables — 41 functions to 90 |
+| `tools/ghidra/FV2SoundIndirectJumps.java` | resolves the last five `jmp (An)` |
+| `tools/ghidra/FV2SoundData.java` | declares the data, and **recounts** what is left outside |
+| `tools/ghidra/FV2SoundList.java` | lists the functions and their ranges, changing nothing — the control for the previous three |
 | `tools/sound/dsp-variants.py`, `build-variants.py` | **the DSP variants to be judged**, and one exe per variant: each applied, built, put through the ten tests, kept only if all 24 files are green. An unverified variant that wins is worse than one that loses |
 | `tools/sound/measure-variants.cmd` | **the judging on the hardware counter**: one capture of instructions retired per variant. Needs an **administrator** window, and checks for it before entering the loop |
 | `tools/sound/compare-sound.cmd` | **the differential harness**: two WAVs, the same scene, compared byte for byte |
-| `tools/sound/audibilite.py` | if two WAVs differ, **is it audible**: Bark bands, masking, absolute threshold, ambient floor |
-| `tools/sound/compare-madrs.cmd`, `mesurer-madrs.py` | the special case of the MADRS mirror |
+| `tools/sound/audibility.py` | if two WAVs differ, **is it audible**: Bark bands, masking, absolute threshold, ambient floor |
+| `tools/sound/compare-madrs.cmd`, `measure-madrs.py` | the special case of the MADRS mirror |
 
 ## 4. The probes, and where each one lives
 
@@ -125,8 +125,8 @@ is not there — it comes from a ROM the repository does not carry.
 | `scsp_migration_plan.md` | 231 | the plan for getting out of MAME's SCSP, and what is done |
 | `scsp_validation.md` | 199 | what validates what, and what is missing — including **how far the trace is complete** |
 | `scsp_references.md` | 162 | the sources read, and the rule: **never consensus between emulators as proof** |
-| `fv2-son-programme.md` | 3 062 | the 68000 program, read — the 168 functions, the RAM map, the mistakes kept |
-| `fv2-console-son.md` | 643 | the sound of the mode list |
+| `fv2-sound-program.md` | 3 062 | the 68000 program, read — the 168 functions, the RAM map, the mistakes kept |
+| `fv2-console-sound.md` | 643 | the sound of the mode list |
 | `sound.md` | 144 | this file |
 
 ## 7. Why this was not a separate repository

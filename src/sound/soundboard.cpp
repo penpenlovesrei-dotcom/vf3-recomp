@@ -53,7 +53,7 @@ struct SoundBoard::Bus : m68000_bus
 		a &= 0xFFFFFE;
 		// VF3_SCSP_DSPLOG=file: every write to either chip's DSP registers (0x700 and up), with the
 		// frame. Written to settle one question the sound program's own code cannot answer: its
-		// effects-preset loader (snd_charger_preset_dsp at 0x602B32, see docs/fv2-son-programme.md)
+		// effects-preset loader (snd_charger_preset_dsp at 0x602B32, see docs/fv2-sound-program.md)
 		// writes COEF at +0x700 and MADRS at +0x780 from a TABLE of commands, each carrying a byte
 		// offset -- so whether anything ever lands in 0x7C0-0x7FF, the range this port and MAME
 		// disagree about (scsp/docs/scsp_references.md), depends on data and not on the instructions.
@@ -71,7 +71,7 @@ struct SoundBoard::Bus : m68000_bus
 			// nibble of word 0x0, bits 15-0 in word 0x2. Logged to answer one question the 68000's code
 			// cannot: 0x600524 loads a bank of sixteen one-cycle waveforms into 0x2000-0x2FFF of each
 			// sound RAM, and NOTHING in the program names an address in that range, nor does any of the
-			// 659 sample records point there (docs/fv2-son-programme.md §4 septies). If the chips play
+			// 659 sample records point there (docs/fv2-sound-program.md §4 septies). If the chips play
 			// the bank, a slot's SA says so -- and that is a measurement, not a reading.
 			const bool slotsa = off < 0x400 && (off & 0x1E) <= 0x02;   // words 0x0 and 0x2 of a slot
 			const char *zone = off >= 0x700
@@ -293,7 +293,7 @@ void SoundBoard::Sink::irq(int level, bool on)
 void SoundBoard::Sink::midi_out(std::uint8_t)
 {
 	// La carte n'en fait rien -- mais le pilote s'en sert en TROIS endroits (un 0xF0 tous les dix tics, une
-	// recopie par piste, un MIDI thru : docs/fv2-son-programme.md), donc on COMPTE plutot que de taire.
+	// recopie par piste, un MIDI thru : docs/fv2-sound-program.md), donc on COMPTE plutot que de taire.
 	++b->midi_out_jetes;
 }
 

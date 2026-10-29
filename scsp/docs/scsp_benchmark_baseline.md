@@ -12,7 +12,7 @@ figures stop meaning anything.
 
 ```bash
 # build
-./construire.cmd                       # or: make CXX=g++ build/bin/vf3run -j8
+./build-tools.cmd                       # or: make CXX=g++ build/bin/vf3run -j8
 
 # the time of each part of a frame
 VF3_PROF=1 build/bin/vf3run.exe "$ROMS/fvipers2.zip" \

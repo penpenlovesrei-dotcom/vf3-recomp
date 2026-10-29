@@ -198,7 +198,7 @@ private:
 	// then silent sound" -- and Supermodel kept ElSemi's older DSP for this very game until it made its DSP's
 	// memory access follow the manual. So: the mirror for the game it was measured right on, apart for the
 	// other. The board sets it per game (soundboard.h); VF3_SCSP_MADRS_SEPARATE=1 and VF3_SCSP_MADRS_MIRROR=1
-	// force it either way, for comparing. See docs/fv2-console-son.md.
+	// force it either way, for comparing. See docs/fv2-console-sound.md.
 	bool m_madrs_mirror = true;
 	// VF3_SCSP_MSLC_LATCH=1: MAME's MSLC status latched once a sample (for comparisons)
 	const bool m_latch_mslc_per_sample = [] { const char *e = getenv("VF3_SCSP_MSLC_LATCH"); return e && *e == '1'; }();

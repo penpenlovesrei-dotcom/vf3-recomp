@@ -219,7 +219,7 @@ Taken from the specification, and made checkable here:
 | | criterion | how it is seen |
 |---|---|---|
 | 1 | it compiles in the configurations served | `make build/bin/vf3run build/bin/vf3lock build/bin/vf3` with no error |
-| 2 | the existing tests pass, or the difference is explained and isolated | `verifier-vf3.cmd` says IDENTICAL everywhere |
+| 2 | the existing tests pass, or the difference is explained and isolated | `verify-vf3.cmd` says IDENTICAL everywhere |
 | 3 | the reference sound scenes can be redone | `tools/sound/compare-sound.cmd` on both games |
 | 4 | the audio differences are measured, classified, documented | for an optimisation: **no difference**, byte-identical WAV. For a new core: the list of differences, each with its measurement (max error, RMS, correlation, spectrum) and its cause |
 | 5 | the processor cost is measured against the baseline | `VF3_PROF=1`, the same scene, the same machine, and the breakdown with `VF3_SND_PROF=1` |
@@ -228,7 +228,7 @@ Taken from the specification, and made checkable here:
 | 8 | the fallback stays usable during the validation | step 2's selector, and the old core behind it. Since 2026-10-28 **each core registers itself in its own `.cpp`**: the selector no longer names any concrete class, so what is linked decides what exists, and `make test-without-mame` builds the seven block tests **without a line of MAME's core** — the last prerequisite for a separate repository |
 
 **State as of 2026-10-28:** **all eight are satisfied.** 1 ✔. **2 ✔, run that day** after all the sound
-work: `verifier-vf3.cmd 3000` says **IDENTICAL** on all four checks — the PowerPC's state frame by frame,
+work: `verify-vf3.cmd 3000` says **IDENTICAL** on all four checks — the PowerPC's state frame by frame,
 the 8 MB of RAM, the frames rendered, the whole host — and the step-by-step interpreter against recompiled
 code agrees over 2 231 frames. 3 ✔ on both games. 4 ✔: **no difference**, the footprint
 `9A2310F8AF000E09EB18BD114852B003` held by both cores over the 4 200 frames. 5 ✔, and two notches finer

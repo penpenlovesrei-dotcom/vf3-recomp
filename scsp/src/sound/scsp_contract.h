@@ -7,7 +7,7 @@
 //
 // WHAT IT IS AND IS NOT. Every number here comes from one of three places, and each is named at the line:
 //
-//   (a) the sound driver's own 68000 code, read instruction by instruction (docs/fv2-son-programme.md);
+//   (a) the sound driver's own 68000 code, read instruction by instruction (docs/fv2-sound-program.md);
 //   (b) a measurement on this port, with the probe and the scene said;
 //   (c) the implementation this port runs today (src/sound/scsp.cpp), for field positions.
 //
@@ -169,7 +169,7 @@ inline constexpr unsigned MCIRE   = 0x42E;
 //
 // WHAT THIS COSTS VF3: nothing measurable, and that is itself a measurement rather than a hope. All 28
 // accesses to the SCSP's common registers in the whole reached program are absolute long addresses
-// (desas_son.py --cherche 100400 1005ff), and not one of them names 0x42C or 0x42E; the only other form is
+// (disasm_sound.py --cherche 100400 1005ff), and not one of them names 0x42C or 0x42E; the only other form is
 // the `lea $100418, a0` at 0x60028C, whose loop copies exactly the ten words 0x418-0x42A that section 3's
 // table holds. So the driver never touches MCIPD or MCIRE. A rewrite may reproduce the asymmetry or fix it
 // deliberately -- but it should not discover it by ear, and it should not "clean it up" believing it is
