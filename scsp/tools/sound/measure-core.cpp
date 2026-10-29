@@ -1,35 +1,35 @@
-// measure-core : ce qu'un coeur de SCSP coute, par partie, sans rien d'autre dans la mesure.
+// measure-core: what an SCSP core costs, item by item, with nothing else inside the measurement.
 //
-// POURQUOI PAS LE REJOUEUR. tools/sound/replay compare deux coeurs a l'octet, et c'est son travail -- mais
-// son temps est domine par l'analyse de 81 Mo de texte, identique dans les deux et comptee deux fois. Il
-// donne donc un ECART juste et une part fausse : on y lit "5 % de plus" sans savoir de quoi.
+// WHY NOT THE REPLAYER. tools/sound/replay compares two cores byte for byte, and that is its job -- but
+// its time is dominated by parsing 81 MB of text, identical in both and counted twice. So it gives a right
+// GAP and a wrong share: one reads "5% more" there without knowing of what.
 //
-// Ce banc-ci ne chronometre que `run()`, et il SEPARE les postes, parce qu'un chiffre global ne dit pas ou
-// aller :
+// This bench times `run()` and nothing else, and it SEPARATES the items, because a global figure does not
+// say where to go:
 //
-//     a vide         aucune voix, aucun programme DSP -- le plancher de la boucle
-//     fentes         32 voix qui jouent, pas de programme DSP
-//     DSP            aucune voix, un programme de 112 pas
-//     les deux       ce que le jeu fait vraiment
+//     idle           no voice, no DSP program -- the loop's floor
+//     slots          32 voices playing, no DSP program
+//     DSP            no voice, a program of 112 steps
+//     both           what the game actually does
 //
-// La forme du programme DSP synthetique suit celle que la sonde `dspprog` a relevee sur le jeu : 112 pas,
-// et dans ces pas environ 87 lectures de COEF, 108 entrees depuis MEMS, 39 ecritures de TEMP, 23 lectures
-// memoire, 10 ecritures, 5 sorties d'effets (docs/fv2-son-programme.md §4). Ce n'est pas le programme du
-// jeu -- c'en est la forme, ce qui suffit pour situer un cout.
+// The synthetic DSP program's shape follows the one the `dspprog` probe read off the game: 112 steps, and
+// within them about 87 COEF reads, 108 inputs from MEMS, 39 TEMP writes, 23 memory reads, 10 writes, 5
+// effects outputs (docs/fv2-son-programme.md §4). It is not the game's program -- it is its shape, which
+// is enough to locate a cost.
 //
-// ET UN CRAN PLUS FIN, `--dsp` : le DSP par CARACTERISTIQUE, les deux coeurs cote a cote. Le poste "DSP"
-// ci-dessus est un seul nombre pour un jeu d'instructions entier, et il dit que le coeur du projet y est
-// +20 % sans dire de quoi. Des programmes de 112 pas ou tous les pas ne font qu'une chose repondent a ca.
-// Son en-tete est plus bas, juste avant la table.
+// AND ONE NOTCH FINER, `--dsp`: the DSP by CHARACTERISTIC, both cores side by side. The "DSP" item above is
+// a single number for a whole instruction set, and it says the project's core is +20% there without saying
+// of what. Programs of 112 steps where every step does only one thing answer that. Its header is further
+// down, just before the table.
 //
-//   tools/sound/measure-core [coeur] [echantillons]      les quatre postes
-//   tools/sound/measure-core --dsp [echantillons]        le DSP par caracteristique, les deux coeurs
-//   tools/sound/measure-core --baseline [echantillons]      le socle seul, sept passages : de quoi entrelacer
-//                                                       une reference et une variante du meme fichier
-//   tools/sound/measure-core --baseline <coeur> [n]         UN seul coeur, et le processus ne fait que ca :
-//                                                       de quoi qu'un compteur materiel l'attribue
-//   tools/sound/measure-core --game <coeur> [n]           le meme, sur le programme de la FORME DU JEU --
-//                                                       le socle est artificiel, celui-ci est ce qui compte
+//   tools/sound/measure-core [core] [samples]          the four items
+//   tools/sound/measure-core --dsp [samples]           the DSP by characteristic, both cores
+//   tools/sound/measure-core --baseline [samples]      the baseline alone, seven passes: enough to
+//                                                      interleave a reference and a variant of one file
+//   tools/sound/measure-core --baseline <core> [n]     ONE core only, and the process does nothing else:
+//                                                      enough for a hardware counter to attribute it
+//   tools/sound/measure-core --game <core> [n]         the same, on the program of the GAME'S SHAPE --
+//                                                      the baseline is artificial, this is what counts
 #include "../../src/sound/scsp_contract.h"
 #include "../../src/sound/scsp_select.h"
 
@@ -53,18 +53,18 @@ struct Silent final : scsp::sink {
 	void timer(int, std::uint32_t, std::uint32_t) override {}
 };
 
-// Un pas de programme DSP, par ses champs (meme encodage que tools/sound/test_scsp_dsp.cpp).
+// One DSP program step, by its fields (the same encoding as tools/sound/test_scsp_dsp.cpp).
 struct DecodedStep {
 	unsigned tra = 0, twt = 0, twa = 0, xsel = 0, ysel = 0, ira = 0, iwt = 0, iwa = 0;
 	unsigned table = 0, mwt = 0, mrd = 0, ewt = 0, ewa = 0, shift = 0, zero = 0, bsel = 0;
 	unsigned nofl = 0, coef = 0, masa = 0;
 
-	// Les six champs que le programme du jeu ne pose jamais, et qu'il faut pourtant pouvoir poser pour les
-	// MESURER : les quatre rares (ADRL, FRCL, YRL, NEGB -- docs/scsp_audit.md §5) et les deux modificateurs
-	// d'adresse. Ils valent zero partout ailleurs, donc les ajouter ne change aucun cas existant.
+	// The six fields the game's program never sets, and that nevertheless have to be settable in order to
+	// MEASURE them: the four rare ones (ADRL, FRCL, YRL, NEGB -- docs/scsp_audit.md §5) and the two address
+	// modifiers. They are zero everywhere else, so adding them changes no existing case.
 	unsigned adrl = 0, frcl = 0, yrl = 0, negb = 0, adreb = 0, nxadr = 0;
 
-	void mots(std::uint16_t m[4]) const
+	void words(std::uint16_t m[4]) const
 	{
 		m[0] = std::uint16_t(((tra & 0x7F) << 8) | ((twt & 1) << 7) | (twa & 0x7F));
 		m[1] = std::uint16_t(((xsel & 1) << 15) | ((ysel & 3) << 13) | ((ira & 0x3F) << 6)
@@ -86,14 +86,14 @@ struct Bench {
 	explicit Bench(const char *name)
 	{
 		c = scsp::make(name, 45158400 / 2, ram.data(), RAM_BYTES, silent);
-		if (!c) { fprintf(stderr, "coeur inconnu : %s\n", name); std::exit(2); }
+		if (!c) { fprintf(stderr, "unknown core: %s\n", name); std::exit(2); }
 		c->reset();
-		c->write_reg(0x400 / 2, 0x0300 | 0x000F, 0xFFFF);   // MEM4MB, DAC18B, MVOL a fond
-		// Une onde a 0x1000 : un carre, qui n'a aucun echantillon nul.
+		c->write_reg(0x400 / 2, 0x0300 | 0x000F, 0xFFFF);   // MEM4MB, DAC18B, MVOL at full
+		// A wave at 0x1000: a square, which has no zero sample.
 		for (int k = 0; k < 256; k++) ram[0x1000 / 2 + k] = std::uint16_t(k < 128 ? 12000 : -12000);
 	}
 
-	void voix(unsigned n)
+	void voices(unsigned n)
 	{
 		for (unsigned f = 0; f < n; f++) {
 			const std::uint32_t base = f * 0x10;
@@ -111,7 +111,7 @@ struct Bench {
 			for (unsigned w = 1; w < 16; w++) c->write_reg(base + w, word[w], 0xFFFF);
 			c->write_reg(base + 0, word[0], 0xFFFF);
 		}
-		// KYONEX en dernier : il balaie les trente-deux fentes d'un coup.
+		// KYONEX last: it sweeps all thirty-two slots in one go.
 		std::uint16_t dec[16] = {};
 		scsp_contract::put(dec, "KYONEX", 1);
 		std::uint16_t word0 = 0;
@@ -119,35 +119,35 @@ struct Bench {
 		c->write_reg(0, std::uint16_t(c->read_reg(0) | dec[0]), 0xFFFF);
 	}
 
-	// Pose un programme quelconque : MPRO, les 64 COEF, les 32 MADRS, puis le mot qui declenche Start.
-	// Sort de programme_dsp() pour que le banc par caracteristique s'en serve aussi.
+	// Lays down any program: MPRO, the 64 COEF, the 32 MADRS, then the word that triggers Start. Factored
+	// out of dsp_program() so that the per-characteristic bench uses it too.
 	void program(const std::vector<DecodedStep> &step)
 	{
 		for (unsigned i = 0; i < 128; i++) {
 			std::uint16_t m[4] = { 0, 0, 0, 0 };
-			if (i < step.size()) step[i].mots(m);
+			if (i < step.size()) step[i].words(m);
 			for (unsigned k = 0; k < 4; k++) c->write_reg((0x800 + i * 8 + k * 2) / 2, m[k], 0xFFFF);
 		}
 		for (unsigned i = 0; i < 64; i++) c->write_reg((0x700 + i * 2) / 2, std::uint16_t(0x2000 + i * 13), 0xFFFF);
 		for (unsigned i = 0; i < 32; i++) c->write_reg((0x780 + i * 2) / 2, std::uint16_t(i * 64), 0xFFFF);
-		c->write_reg(0xBF0 / 2, 0, 0xFFFF);   // le mot qui declenche Start
+		c->write_reg(0xBF0 / 2, 0, 0xFFFF);   // the word that triggers Start
 	}
 
-	void programme_dsp()
+	void dsp_program()
 	{
-		// 112 pas, de la forme que la sonde a relevee sur le jeu.
+		// 112 steps, of the shape the probe read off the game.
 		std::vector<DecodedStep> step(112);
 		for (unsigned i = 0; i < 112; i++) {
 			DecodedStep &p = step[i];
-			p.ira = i % 32;                 // l'entree vient de MEMS : 108 pas sur 112
+			p.ira = i % 32;                 // the input comes from MEMS: 108 steps out of 112
 			p.xsel = 1;
-			p.ysel = 1;                     // COEF : 87 pas sur 112
+			p.ysel = 1;                     // COEF: 87 steps out of 112
 			p.coef = i % 64;
 			p.tra = i % 128;
-			if (i % 3)       p.twt = 1, p.twa = (i * 7) % 128;   // ~39 ecritures de TEMP
-			if (i % 5 == 0)  p.mrd = 1, p.masa = i % 32;         // ~23 lectures memoire
-			if (i % 11 == 0) p.mwt = 1, p.masa = i % 32;         // ~10 ecritures
-			if (i % 22 == 0) p.ewt = 1, p.ewa = i % 16;          // ~5 sorties d'effets
+			if (i % 3)       p.twt = 1, p.twa = (i * 7) % 128;   // ~39 TEMP writes
+			if (i % 5 == 0)  p.mrd = 1, p.masa = i % 32;         // ~23 memory reads
+			if (i % 11 == 0) p.mwt = 1, p.masa = i % 32;         // ~10 writes
+			if (i % 22 == 0) p.ewt = 1, p.ewa = i % 16;          // ~5 effects outputs
 			if (i % 2)       p.iwt = 1, p.iwa = i % 32;
 			if (i % 3 == 0)  p.zero = 1;
 			if (i % 3 == 1)  p.bsel = 1;
@@ -157,14 +157,14 @@ struct Bench {
 	}
 };
 
-// Le temps de run(), et rien d'autre. Le puits volatil empeche le compilateur de tout jeter.
+// run()'s time, and nothing else. The volatile sink stops the compiler throwing it all away.
 double stopwatch(scsp::core &c, unsigned samples, volatile std::int64_t &snk)
 {
-	constexpr unsigned TRANCHE = 256;
-	std::vector<std::int32_t> buffer(TRANCHE * 2);
+	constexpr unsigned CHUNK = 256;
+	std::vector<std::int32_t> buffer(CHUNK * 2);
 	const auto t0 = std::chrono::steady_clock::now();
-	for (unsigned fait = 0; fait < samples; fait += TRANCHE) {
-		const unsigned n = std::min(TRANCHE, samples - fait);
+	for (unsigned done = 0; done < samples; done += CHUNK) {
+		const unsigned n = std::min(CHUNK, samples - done);
 		c.run(n, buffer.data());
 		std::int64_t s = 0;
 		for (unsigned i = 0; i < n * 2; i++) s += buffer[i];
@@ -174,85 +174,86 @@ double stopwatch(scsp::core &c, unsigned samples, volatile std::int64_t &snk)
 }
 
 // -----------------------------------------------------------------------------------------------------
-// LE BANC PAR CARACTERISTIQUE (`--dsp`), ET POURQUOI IL EXISTE.
+// THE PER-CHARACTERISTIC BENCH (`--dsp`), AND WHY IT EXISTS.
 //
-// Mesure du 2026-10-28 : le DSP du projet coute +19,8 % par pas a celui de MAME -- 11,50 contre 9,60 cycles,
-// dans le jeu (docs/scsp_audit.md §4 sexies), et +20 % au banc des quatre postes ci-dessus. Les deux
-// instruments s'accordent sur l'ECART et ni l'un ni l'autre ne dit DE QUOI il est fait : le poste "DSP" est
-// encore un seul nombre pour un jeu d'instructions entier.
+// Measured on 2026-10-28: the project's DSP costs +19.8% per step against MAME's -- 11.50 against 9.60
+// cycles, in the game (docs/scsp_audit.md §4 sexies), and +20% on the four-item bench above. The two
+// instruments agree on the GAP and neither says WHAT it is made of: the "DSP" item is still a single number
+// for a whole instruction set.
 //
-// Et c'est exactement l'erreur que docs/scsp_audit.md §4 quinquies raconte -- avoir specialise le DSP en
-// visant le mauvais poste, faute d'un instrument qui separe. Donc un cran plus fin, et de la meme facon :
-// des programmes de 112 pas ou TOUS LES PAS NE FONT QU'UNE CHOSE, chronometres sur les deux coeurs. La
-// difference entre le socle et le socle + une caracteristique EST le cout de cette caracteristique, par pas.
+// And that is exactly the mistake docs/scsp_audit.md §4 quinquies recounts -- having specialised the DSP
+// aiming at the wrong item, for want of an instrument that separates. So one notch finer, and in the same
+// way: programs of 112 steps where EVERY STEP DOES ONLY ONE THING, timed on both cores. The difference
+// between the baseline and the baseline plus one characteristic IS that characteristic's cost, per step.
 //
-// CE QUE CE BANC NE PEUT PAS DIRE, et il vaut mieux l'ecrire que le decouvrir : un programme ou les 112 pas
-// font la meme chose n'a pas le melange d'instructions du jeu, donc ni ses defauts de cache ni ses
-// dependances entre pas. Il SITUE un cout, il ne le predit pas. Le temoin est la derniere ligne : le
-// programme de la forme du jeu, mesure par le meme chronometre -- si la somme des caracteristiques en etait
-// loin, c'est le banc qu'il faudrait croire le moins.
+// WHAT THIS BENCH CANNOT SAY, and it is better written than discovered: a program whose 112 steps all do
+// the same thing does not have the game's instruction mix, hence neither its cache misses nor its
+// dependencies between steps. It LOCATES a cost, it does not predict it. The control is the last line: the
+// program of the game's shape, measured by the same stopwatch -- if the sum of the characteristics were far
+// from it, it is the bench that should be believed least.
 //
-// LES QUATRE RARES SONT DANS LA TABLE, et ils y repondent a une autre question : le jeu ne les pose jamais
-// (§5), donc c'est le seul endroit du depot ou leur cout se lit. Chez le coeur du projet ils font en plus
-// basculer dsp_own vers son second corps (`template <bool RARES>`), et la ligne le mesure donc aussi.
+// THE FOUR RARE ONES ARE IN THE TABLE, and there they answer another question: the game never sets them
+// (§5), so this is the only place in the repository where their cost reads. On the project's core they also
+// switch dsp_own over to its second body (`template <bool RARES>`), and so the line measures that too.
 // -----------------------------------------------------------------------------------------------------
 
-constexpr unsigned STEPS_PER_PROGRAM = 112;   // la longueur relevee sur le jeu (docs/scsp_audit.md §5)
+constexpr unsigned STEPS_PER_PROGRAM = 112;   // the length read off the game (docs/scsp_audit.md §5)
 
-struct Caracteristique {
+struct Characteristic {
 	const char *name;
 	const char *what;
 	void (*put)(DecodedStep &p, unsigned i);
 };
 
-// Le socle : 112 pas qui font le moins possible. ZERO met B a zero, rien n'entre, rien ne sort.
+// The baseline: 112 steps that do as little as possible. ZERO sets B to zero, nothing comes in, nothing
+// goes out.
 void baseline(DecodedStep &p, unsigned) { p.zero = 1; }
 
-const Caracteristique CHARACTERISTICS[] = {
-	{ "socle", "112 pas qui ne font rien : le plancher de la boucle de pas",
+const Characteristic CHARACTERISTICS[] = {
+	{ "baseline", "112 steps that do nothing: the step loop's floor",
 	  [](DecodedStep &, unsigned) {} },
-	{ "IRA -> MEMS", "l'entree depuis la fenetre memoire, 108 pas sur 112 dans le jeu",
+	{ "IRA -> MEMS", "the input from the memory window, 108 steps out of 112 in the game",
 	  [](DecodedStep &p, unsigned i) { p.ira = i % 32; p.xsel = 1; } },
-	{ "COEF", "la lecture du coefficient, 87 pas sur 112 dans le jeu",
+	{ "COEF", "the coefficient read, 87 steps out of 112 in the game",
 	  [](DecodedStep &p, unsigned i) { p.ysel = 1; p.coef = i % 64; } },
-	{ "le produit", "B + X * Y : l'entree, le coefficient et l'accumulation ensemble",
+	{ "the product", "B + X * Y: the input, the coefficient and the accumulation together",
 	  [](DecodedStep &p, unsigned i) { p.ira = i % 32; p.xsel = 1; p.ysel = 1; p.coef = i % 64;
 	                           p.tra = i % 128; p.bsel = 1; } },
-	{ "TWT", "l'ecriture dans TEMP, 39 pas sur 112 dans le jeu",
+	{ "TWT", "the write into TEMP, 39 steps out of 112 in the game",
 	  [](DecodedStep &p, unsigned i) { p.twt = 1; p.twa = (i * 7) % 128; } },
-	{ "IWT", "l'ecriture dans MEMS",
+	{ "IWT", "the write into MEMS",
 	  [](DecodedStep &p, unsigned i) { p.iwt = 1; p.iwa = i % 32; } },
-	{ "MRD (NOFL)", "la lecture memoire SANS empaquetage, 23 pas sur 112 dans le jeu",
+	{ "MRD (NOFL)", "the memory read WITHOUT packing, 23 steps out of 112 in the game",
 	  [](DecodedStep &p, unsigned i) { p.mrd = 1; p.nofl = 1; p.masa = i % 32; } },
-	{ "MRD + UNPACK", "la meme, EMPAQUETEE : la difference est le cout de UNPACK",
+	{ "MRD + UNPACK", "the same, PACKED: the difference is UNPACK's cost",
 	  [](DecodedStep &p, unsigned i) { p.mrd = 1; p.nofl = 0; p.masa = i % 32; } },
-	{ "MWT (NOFL)", "l'ecriture memoire sans empaquetage, 10 pas sur 112 dans le jeu",
+	{ "MWT (NOFL)", "the memory write without packing, 10 steps out of 112 in the game",
 	  [](DecodedStep &p, unsigned i) { p.mwt = 1; p.nofl = 1; p.masa = i % 32; } },
-	{ "MWT + PACK", "la meme, EMPAQUETEE : la difference est le cout de PACK",
+	{ "MWT + PACK", "the same, PACKED: the difference is PACK's cost",
 	  [](DecodedStep &p, unsigned i) { p.mwt = 1; p.nofl = 0; p.masa = i % 32; } },
-	{ "ADREB + NXADR", "les deux modificateurs d'adresse, par-dessus une lecture",
+	{ "ADREB + NXADR", "the two address modifiers, on top of a read",
 	  [](DecodedStep &p, unsigned i) { p.mrd = 1; p.nofl = 1; p.masa = i % 32; p.adreb = 1; p.nxadr = 1; } },
-	{ "EWT", "la sortie vers EFREG, 5 pas sur 112 dans le jeu",
+	{ "EWT", "the output to EFREG, 5 steps out of 112 in the game",
 	  [](DecodedStep &p, unsigned i) { p.ewt = 1; p.ewa = i % 16; } },
-	{ "SHIFT 1 (ecrete)", "le decalage qui sature",
+	{ "SHIFT 1 (clamps)", "the shift that saturates",
 	  [](DecodedStep &p, unsigned i) { p.ira = i % 32; p.xsel = 1; p.shift = 1; } },
-	{ "SHIFT 3 (reboucle)", "le decalage qui reboucle",
+	{ "SHIFT 3 (wraps)", "the shift that wraps",
 	  [](DecodedStep &p, unsigned i) { p.ira = i % 32; p.xsel = 1; p.shift = 3; } },
-	{ "FRCL", "un des quatre que le jeu ne pose JAMAIS (§5)",
+	{ "FRCL", "one of the four the game NEVER sets (§5)",
 	  [](DecodedStep &p, unsigned) { p.frcl = 1; } },
-	{ "ADRL", "idem",
+	{ "ADRL", "likewise",
 	  [](DecodedStep &p, unsigned) { p.adrl = 1; } },
-	{ "YRL", "idem",
+	{ "YRL", "likewise",
 	  [](DecodedStep &p, unsigned) { p.yrl = 1; } },
-	{ "NEGB", "idem",
+	{ "NEGB", "likewise",
 	  [](DecodedStep &p, unsigned i) { p.tra = i % 128; p.bsel = 1; p.negb = 1; } },
-	{ "les quatre rares", "les quatre ensemble : chez le coeur du projet, c'est le second corps",
+	{ "the four rare ones", "all four together: on the project's core, that is the second body",
 	  [](DecodedStep &p, unsigned i) { p.tra = i % 128; p.bsel = 1;
 	                           p.frcl = 1; p.adrl = 1; p.yrl = 1; p.negb = 1; } },
 };
 
-// Le temps par pas de DSP, mediane de trois passages : une seule mesure se fait porter par le voisinage.
-double ns_par_pas(const char *the_core, const Caracteristique &k, unsigned n, volatile std::int64_t &snk)
+// The time per DSP step, median of three passes: a single measurement is carried along by its neighbours.
+double ns_per_step(const char *the_core, const Characteristic &k, unsigned n, volatile std::int64_t &snk)
 {
 	double v[3];
 	for (int trial = 0; trial < 3; trial++) {
@@ -266,30 +267,30 @@ double ns_par_pas(const char *the_core, const Caracteristique &k, unsigned n, vo
 	return v[1];
 }
 
-// Le temoin : le programme de la forme du jeu, par le meme chronometre et la meme unite.
-double ns_par_pas_du_jeu(const char *the_core, unsigned n, volatile std::int64_t &snk)
+// The control: the program of the game's shape, by the same stopwatch and the same unit.
+double ns_per_step_of_game(const char *the_core, unsigned n, volatile std::int64_t &snk)
 {
 	double v[3];
 	for (int trial = 0; trial < 3; trial++) {
 		Bench b(the_core);
-		b.programme_dsp();
+		b.dsp_program();
 		v[trial] = stopwatch(*b.c, n, snk) * 1e9 / (double(n) * STEPS_PER_PROGRAM);
 	}
 	std::sort(v, v + 3);
 	return v[1];
 }
 
-// LE SOCLE EST-IL PAR PAS OU PAR ECHANTILLON ? La question decide ou l'on repare, et une seule longueur de
-// programme ne peut pas y repondre : un cout par echantillon (la remise a zero d'EFREG, le branchement vers
-// l'un des deux corps, ce que Start laisse derriere lui) se divise par le nombre de pas et se deguise en
-// cout par pas. Trois longueurs le separent -- la PENTE est le cout d'un pas, l'ORDONNEE A L'ORIGINE est ce
-// que l'echantillon coute avant son premier pas.
+// IS THE BASELINE PER STEP OR PER SAMPLE? The question decides where one repairs, and a single program
+// length cannot answer it: a per-sample cost (clearing EFREG, the branch to one of the two bodies, what
+// Start leaves behind it) divides by the number of steps and disguises itself as a per-step cost. Three
+// lengths separate them -- the SLOPE is a step's cost, the INTERCEPT is what the sample costs before its
+// first step.
 void baseline_by_length(unsigned n, volatile std::int64_t &snk)
 {
-	const unsigned longueurs[3] = { 16, 48, 112 };
-	printf("\nLE SOCLE, PAR LONGUEUR DE PROGRAMME : par pas ou par echantillon ?\n\n");
-	printf("  %-8s %12s %12s %12s\n", "coeur", "16 pas", "48 pas", "112 pas");
-	printf("  %-8s %12s %12s %12s\n", "", "ns/ech", "ns/ech", "ns/ech");
+	const unsigned lengths[3] = { 16, 48, 112 };
+	printf("\nTHE BASELINE, BY PROGRAM LENGTH: per step or per sample?\n\n");
+	printf("  %-8s %12s %12s %12s\n", "core", "16 steps", "48 steps", "112 steps");
+	printf("  %-8s %12s %12s %12s\n", "", "ns/smp", "ns/smp", "ns/smp");
 	double ns[2][3] = {};
 	const char *cores[2] = { "mame", "own" };
 	for (int ic = 0; ic < 2; ic++) {
@@ -297,8 +298,8 @@ void baseline_by_length(unsigned n, volatile std::int64_t &snk)
 			double v[3];
 			for (int trial = 0; trial < 3; trial++) {
 				Bench b(cores[ic]);
-				std::vector<DecodedStep> step(longueurs[il]);
-				for (unsigned i = 0; i < longueurs[il]; i++) baseline(step[i], i);
+				std::vector<DecodedStep> step(lengths[il]);
+				for (unsigned i = 0; i < lengths[il]; i++) baseline(step[i], i);
 				b.program(step);
 				v[trial] = stopwatch(*b.c, n, snk) * 1e9 / double(n);
 			}
@@ -307,75 +308,74 @@ void baseline_by_length(unsigned n, volatile std::int64_t &snk)
 		}
 		printf("  %-8s %12.1f %12.1f %12.1f\n", cores[ic], ns[ic][0], ns[ic][1], ns[ic][2]);
 	}
-	// La pente entre 16 et 112 pas, et ce qui reste quand on la retire : deux points suffisent, le troisieme
-	// est la pour dire si c'est bien une droite.
-	printf("\n  %-8s %14s %18s %14s\n", "coeur", "ns par pas", "ns par echantillon", "(controle)");
+	// The slope between 16 and 112 steps, and what is left when it is taken away: two points are enough,
+	// the third is there to say whether it really is a straight line.
+	printf("\n  %-8s %14s %18s %14s\n", "core", "ns per step", "ns per sample", "(control)");
 	for (int ic = 0; ic < 2; ic++) {
-		const double pente = (ns[ic][2] - ns[ic][0]) / double(longueurs[2] - longueurs[0]);
-		const double origine = ns[ic][0] - pente * double(longueurs[0]);
-		const double expected48 = origine + pente * double(longueurs[1]);
-		printf("  %-8s %14.3f %18.1f %14s\n", cores[ic], pente, origine,
-		       (std::abs(expected48 - ns[ic][1]) < 0.06 * ns[ic][1]) ? "droite" : "PAS DROITE");
+		const double slope = (ns[ic][2] - ns[ic][0]) / double(lengths[2] - lengths[0]);
+		const double intercept = ns[ic][0] - slope * double(lengths[0]);
+		const double expected48 = intercept + slope * double(lengths[1]);
+		printf("  %-8s %14.3f %18.1f %14s\n", cores[ic], slope, intercept,
+		       (std::abs(expected48 - ns[ic][1]) < 0.06 * ns[ic][1]) ? "straight" : "NOT STRAIGHT");
 	}
-	const double pente_a = (ns[0][2] - ns[0][0]) / 96.0, pente_b = (ns[1][2] - ns[1][0]) / 96.0;
-	const double orig_a = ns[0][0] - pente_a * 16.0, orig_b = ns[1][0] - pente_b * 16.0;
-	printf("\n  ecart par pas        %+.3f ns  (%.0f %%)\n", pente_b - pente_a,
-	       pente_a > 0 ? 100.0 * (pente_b / pente_a - 1.0) : 0.0);
-	printf("  ecart par echantillon %+.1f ns  (%.0f %%)\n", orig_b - orig_a,
-	       orig_a > 0 ? 100.0 * (orig_b / orig_a - 1.0) : 0.0);
-	printf("  et sur un programme de 112 pas, l'ecart par echantillon pese %+.3f ns par pas,\n"
-	       "  soit %.0f %% de l'ecart du socle -- c'est la part qu'on reparerait HORS de la boucle de pas.\n",
-	       (orig_b - orig_a) / 112.0,
-	       (ns[1][2] - ns[0][2]) != 0 ? 100.0 * (orig_b - orig_a) / (ns[1][2] - ns[0][2]) : 0.0);
-	printf("  (controle : le troisieme point doit dire `droite` des deux cotes, sinon ces deux nombres ne\n"
-	       "  separent rien et il faut plus de longueurs.)\n");
+	const double slope_a = (ns[0][2] - ns[0][0]) / 96.0, slope_b = (ns[1][2] - ns[1][0]) / 96.0;
+	const double int_a = ns[0][0] - slope_a * 16.0, int_b = ns[1][0] - slope_b * 16.0;
+	printf("\n  gap per step         %+.3f ns  (%.0f%%)\n", slope_b - slope_a,
+	       slope_a > 0 ? 100.0 * (slope_b / slope_a - 1.0) : 0.0);
+	printf("  gap per sample       %+.1f ns  (%.0f%%)\n", int_b - int_a,
+	       int_a > 0 ? 100.0 * (int_b / int_a - 1.0) : 0.0);
+	printf("  and over a 112-step program, the per-sample gap weighs %+.3f ns per step,\n"
+	       "  that is %.0f%% of the baseline's gap -- the share one would repair OUTSIDE the step loop.\n",
+	       (int_b - int_a) / 112.0,
+	       (ns[1][2] - ns[0][2]) != 0 ? 100.0 * (int_b - int_a) / (ns[1][2] - ns[0][2]) : 0.0);
+	printf("  (control: the third point must say `straight` on both sides, otherwise these two numbers\n"
+	       "  separate nothing and more lengths are needed.)\n");
 }
 
-// `--baseline` : le socle seul, et rien d'autre. Il existe pour une raison precise -- le socle porte TOUT
-// l'ecart du DSP (docs/scsp_audit.md §4 septies), et le chercher demande de comparer des CONSTRUCTIONS
-// differentes du meme fichier, donc d'entrelacer reference et variante. La table complete coute trop cher
-// pour ca ; celle-ci tient en deux secondes, et elle fait SEPT passages au lieu de trois parce que c'est un
-// ecart de 20 % sur deux nanosecondes qu'on lui demande de tenir.
-// UN SEUL COEUR, ET LE PROCESSUS NE FAIT QUE CA. C'est ce que demande un compteur materiel : `xperf`
-// totalise ses compteurs PAR PROCESSUS, donc deux coeurs dans le meme binaire ne se separent pas sans
-// symboles -- et nos binaires sont construits par MinGW, en DWARF et sans PDB, que `xperf` ne lit pas.
-// Deux captures d'un processus chacune contournent le probleme entierement : les instructions retirees,
-// les branchements mal predits et les cycles du processus SONT ceux du socle de ce coeur-la, a la mise en
-// route pres, qui est la meme des deux cotes.
+// `--baseline`: the baseline alone, and nothing else. It exists for a precise reason -- the baseline
+// carries ALL of the DSP's gap (docs/scsp_audit.md §4 septies), and looking for it means comparing
+// different BUILDS of the same file, hence interleaving reference and variant. The full table costs too
+// much for that; this one takes two seconds, and it makes SEVEN passes instead of three because what it is
+// asked to hold is a 20% gap on two nanoseconds.
+// ONE CORE ONLY, AND THE PROCESS DOES NOTHING ELSE. That is what a hardware counter wants: `xperf` totals
+// its counters PER PROCESS, so two cores in the same binary cannot be separated without symbols -- and our
+// binaries are built by MinGW, in DWARF and with no PDB, which `xperf` does not read. Two captures of one
+// process each sidestep the problem entirely: the instructions retired, the mispredicted branches and the
+// process's cycles ARE that core's baseline's, up to the start-up, which is the same on both sides.
 //
-//   measure-core --baseline [echantillons]            les deux coeurs, pour lire l'ecart tout de suite
-//   measure-core --baseline <coeur> [echantillons]    un seul, pour qu'un compteur externe l'attribue
-// `--game <coeur> [n]` : LE PROGRAMME DE LA FORME DU JEU, un seul coeur, aucune voix. C'est `--baseline` pour
-// le programme qui compte, et il a fallu une mesure pour qu'il existe : le 2026-10-28, la combinaison des
-// quatre variantes gagnait **29,3 %** sur le socle et **rien de mesurable** sur celui-ci
-// (docs/scsp_audit.md §4 nonies). Le socle est un programme ou les 112 pas font tous la meme chose ; il
-// situe un cout, il ne dit pas ce qu'une modification rend dans le jeu.
+//   measure-core --baseline [samples]            both cores, to read the gap straight away
+//   measure-core --baseline <core> [samples]     one only, so that an external counter attributes it
+// `--game <core> [n]`: THE PROGRAM OF THE GAME'S SHAPE, one core, no voice. It is `--baseline` for the
+// program that counts, and it took a measurement for it to exist: on 2026-10-28, the combination of the
+// four variants won **29.3%** on the baseline and **nothing measurable** on this one
+// (docs/scsp_audit.md §4 nonies). The baseline is a program whose 112 steps all do the same thing; it
+// locates a cost, it does not say what a change is worth in the game.
 //
-// Un seul coeur par processus, pour la meme raison que `--baseline <coeur>` : un compteur materiel totalise
-// par processus, et nos binaires MinGW ne lui donnent aucun nom de fonction.
+// One core per process, for the same reason as `--baseline <core>`: a hardware counter totals per process,
+// and our MinGW binaries give it no function name at all.
 int bench_game(const char *the_core, unsigned n)
 {
 	volatile std::int64_t snk = 0;
 	double v[7];
 	for (int trial = 0; trial < 7; trial++) {
 		Bench b(the_core);
-		b.programme_dsp();
+		b.dsp_program();
 		v[trial] = stopwatch(*b.c, n, snk) * 1e9 / (double(n) * STEPS_PER_PROGRAM);
 	}
 	std::sort(v, v + 7);
-	printf("jeu %u, coeur \"%s\" SEUL : %.3f ns/pas [%.3f-%.3f] ; %llu pas de DSP executes  (puits %lld)\n",
+	printf("game %u, core \"%s\" ALONE: %.3f ns/step [%.3f-%.3f]; %llu DSP steps executed  (sink %lld)\n",
 	       n, the_core, v[3], v[0], v[6],
 	       (unsigned long long)(7ull * n * STEPS_PER_PROGRAM), (long long) snk);
 	return 0;
 }
 
-int bench_baseline(unsigned n, const char *seul)
+int bench_baseline(unsigned n, const char *only)
 {
 	volatile std::int64_t snk = 0;
 	double v[2][7];
 	const char *cores[2] = { "mame", "own" };
-	const int de = seul ? (strcmp(seul, "own") == 0 ? 1 : 0) : 0;
-	const int a_ = seul ? de : 0, b_ = seul ? de + 1 : 2;
+	const int idx = only ? (strcmp(only, "own") == 0 ? 1 : 0) : 0;
+	const int a_ = only ? idx : 0, b_ = only ? idx + 1 : 2;
 	for (int ic = a_; ic < b_; ic++)
 		for (int trial = 0; trial < 7; trial++) {
 			Bench b(cores[ic]);
@@ -385,63 +385,63 @@ int bench_baseline(unsigned n, const char *seul)
 			v[ic][trial] = stopwatch(*b.c, n, snk) * 1e9 / (double(n) * STEPS_PER_PROGRAM);
 		}
 	for (int ic = a_; ic < b_; ic++) std::sort(v[ic], v[ic] + 7);
-	if (seul) {
-		// Le nombre de PAS de DSP que ce processus vient d'executer : c'est le denominateur par lequel un
-		// compteur externe divisera ses totaux. 7 passages, n echantillons, 112 pas.
-		const double ns = v[de][3];
-		printf("socle %u, coeur \"%s\" SEUL : %.3f ns/pas [%.3f-%.3f] ; %llu pas de DSP executes"
-		       "  (puits %lld)\n",
-		       n, cores[de], ns, v[de][0], v[de][6],
+	if (only) {
+		// The number of DSP STEPS this process has just executed: it is the denominator an external
+		// counter will divide its totals by. 7 passes, n samples, 112 steps.
+		const double ns = v[idx][3];
+		printf("baseline %u, core \"%s\" ALONE: %.3f ns/step [%.3f-%.3f]; %llu DSP steps executed"
+		       "  (sink %lld)\n",
+		       n, cores[idx], ns, v[idx][0], v[idx][6],
 		       (unsigned long long)(7ull * n * STEPS_PER_PROGRAM), (long long) snk);
 		return 0;
 	}
 	const double a = v[0][3], b = v[1][3];
-	printf("socle %u : mame %.3f [%.3f-%.3f]  maison %.3f [%.3f-%.3f]  ecart %+.3f  rapport %.3f"
-	       "  (puits %lld)\n",
+	printf("baseline %u: mame %.3f [%.3f-%.3f]  own %.3f [%.3f-%.3f]  gap %+.3f  ratio %.3f"
+	       "  (sink %lld)\n",
 	       n, a, v[0][0], v[0][6], b, v[1][0], v[1][6], b - a, a > 0 ? b / a : 0.0, (long long) snk);
 	return 0;
 }
 
 int bench_dsp(unsigned n)
 {
-	printf("measure-core --dsp : le DSP par caracteristique, %u echantillons par cas,\n"
-	       "mediane de trois passages, 112 pas par programme. Les deux coeurs, et l'ecart.\n\n", n);
-	// Les trois dernieres colonnes sont le COUT PROPRE : la valeur moins le socle. C'est elles qu'il faut
-	// lire, et pas le temps brut -- le socle est dans chaque ligne, et il porte deja un ecart.
+	printf("measure-core --dsp: the DSP by characteristic, %u samples per case,\n"
+	       "median of three passes, 112 steps per program. Both cores, and the gap.\n\n", n);
+	// The last three columns are the NET COST: the value minus the baseline. Those are the ones to read,
+	// and not the raw time -- the baseline is in every line, and it already carries a gap.
 	printf("  %-20s %9s %9s %9s %9s %9s %9s\n",
-	       "caracteristique", "mame", "own", "ecart", "mame", "own", "ecart");
+	       "characteristic", "mame", "own", "gap", "mame", "own", "gap");
 	printf("  %-20s %9s %9s %9s %9s %9s %9s\n",
-	       "", "ns/pas", "ns/pas", "ns/pas", "propre", "propre", "propre");
+	       "", "ns/step", "ns/step", "ns/step", "net", "net", "net");
 
 	volatile std::int64_t snk = 0;
-	double socle_a = 0, socle_b = 0;
-	for (const Caracteristique &k : CHARACTERISTICS) {
-		const double a = ns_par_pas("mame", k, n, snk);
-		const double b = ns_par_pas("own", k, n, snk);
-		if (!strcmp(k.name, "socle")) {
-			socle_a = a; socle_b = b;
+	double baseline_a = 0, baseline_b = 0;
+	for (const Characteristic &k : CHARACTERISTICS) {
+		const double a = ns_per_step("mame", k, n, snk);
+		const double b = ns_per_step("own", k, n, snk);
+		if (!strcmp(k.name, "baseline")) {
+			baseline_a = a; baseline_b = b;
 			printf("  %-20s %9.3f %9.3f %+9.3f %9s %9s %9s\n", k.name, a, b, b - a, "--", "--", "--");
 			continue;
 		}
 		printf("  %-20s %9.3f %9.3f %+9.3f %9.3f %9.3f %+9.3f\n", k.name, a, b, b - a,
-		       a - socle_a, b - socle_b, (b - socle_b) - (a - socle_a));
+		       a - baseline_a, b - baseline_b, (b - baseline_b) - (a - baseline_a));
 	}
-	const double ja = ns_par_pas_du_jeu("mame", n, snk);
-	const double jb = ns_par_pas_du_jeu("own", n, snk);
-	printf("\n  %-20s %9.3f %9.3f %+9.3f %9.3f %9.3f %+9.3f   <- LE TEMOIN\n", "la forme du jeu", ja, jb,
-	       jb - ja, ja - socle_a, jb - socle_b, (jb - socle_b) - (ja - socle_a));
-	printf("\nCE QU'IL FAUT LIRE, dans cet ordre :\n"
-	       "  1. LE SOCLE D'ABORD : mame %.3f, maison %.3f, soit %+.3f ns par pas (%.0f %%) sur 112 pas qui ne\n"
-	       "     font RIEN. Un ecart qui est deja la n'est pas une instruction, c'est la boucle de pas\n"
-	       "     elle-meme -- et il ne se repare pas au meme endroit qu'une instruction.\n"
-	       "  2. puis `ecart propre`, qui est le socle deduit : ce que la caracteristique coute EN PLUS d'un\n"
-	       "     coeur a l'autre. Un nombre negatif dit que le coeur du projet y est meilleur.\n"
-	       "  3. le temoin en dernier : si son ecart n'est pas du meme ordre que ceux qu'on vient de lire,\n"
-	       "     c'est ce banc qu'il faut croire le moins -- 112 pas identiques n'ont ni le cache ni les\n"
-	       "     dependances du vrai programme (en-tete de ce fichier).\n",
-	       socle_a, socle_b, socle_b - socle_a, 100.0 * (socle_b / socle_a - 1.0));
+	const double ja = ns_per_step_of_game("mame", n, snk);
+	const double jb = ns_per_step_of_game("own", n, snk);
+	printf("\n  %-20s %9.3f %9.3f %+9.3f %9.3f %9.3f %+9.3f   <- THE CONTROL\n", "the game's shape", ja, jb,
+	       jb - ja, ja - baseline_a, jb - baseline_b, (jb - baseline_b) - (ja - baseline_a));
+	printf("\nWHAT TO READ, IN THIS ORDER:\n"
+	       "  1. THE BASELINE FIRST: mame %.3f, own %.3f, that is %+.3f ns per step (%.0f%%) over 112 steps\n"
+	       "     that do NOTHING. A gap that is already there is not an instruction, it is the step loop\n"
+	       "     itself -- and it is not repaired in the same place as an instruction.\n"
+	       "  2. then `net gap`, which is the baseline subtracted: what the characteristic costs EXTRA from\n"
+	       "     one core to the other. A negative number says the project's core is better at it.\n"
+	       "  3. the control last: if its gap is not of the same order as the ones just read, it is this\n"
+	       "     bench that should be believed least -- 112 identical steps have neither the cache nor the\n"
+	       "     dependencies of the real program (this file's header).\n",
+	       baseline_a, baseline_b, baseline_b - baseline_a, 100.0 * (baseline_b / baseline_a - 1.0));
 	baseline_by_length(n, snk);
-	printf("\n(puits %lld, pour que rien ne soit optimise au loin)\n", (long long) snk);
+	printf("\n(sink %lld, so that nothing is optimised away)\n", (long long) snk);
 	return 0;
 }
 
@@ -454,32 +454,34 @@ int main(int argc, char **argv)
 	if (argc > 2 && !strcmp(argv[1], "--game"))
 		return bench_game(argv[2], argc > 3 ? unsigned(strtoul(argv[3], nullptr, 10)) : 400000);
 	if (argc > 1 && !strcmp(argv[1], "--baseline")) {
-		// `--baseline [n]` ou `--baseline <coeur> [n]` : un argument qui n'est pas un nombre est un nom de coeur.
-		const bool nomme = argc > 2 && !isdigit((unsigned char)argv[2][0]);
-		const char *seul = nomme ? argv[2] : nullptr;
-		const int in = nomme ? 3 : 2;
-		return bench_baseline(argc > in ? unsigned(strtoul(argv[in], nullptr, 10)) : 600000, seul);
+		// `--baseline [n]` or `--baseline <core> [n]`: an argument that is not a number is a core name.
+		const bool named = argc > 2 && !isdigit((unsigned char)argv[2][0]);
+		const char *only = named ? argv[2] : nullptr;
+		const int in = named ? 3 : 2;
+		return bench_baseline(argc > in ? unsigned(strtoul(argv[in], nullptr, 10)) : 600000, only);
 	}
 
 	const char *name = argc > 1 ? argv[1] : "mame";
 	const unsigned n = argc > 2 ? unsigned(strtoul(argv[2], nullptr, 10)) : 2000000;
 
-	printf("measure-core : coeur \"%s\", %u echantillons par cas\n\n", name, n);
-	printf("  %-14s %10s %12s %14s\n", "cas", "secondes", "ns/ech", "%% d'un coeur");
+	printf("measure-core: core \"%s\", %u samples per case\n\n", name, n);
+	// "% of one core" is an ARGUMENT and not part of the format, so it carries one `%` and not two: the
+	// French version doubled it and printed `%%` in the heading for as long as it existed.
+	printf("  %-14s %10s %12s %14s\n", "case", "seconds", "ns/smp", "% of one core");
 
 	volatile std::int64_t snk = 0;
-	struct Case { const char *name; unsigned voix; bool dsp; };
-	const Case cases[] = { { "a vide", 0, false }, { "fentes", 32, false },
-	                    { "DSP", 0, true }, { "les deux", 32, true } };
+	struct Case { const char *name; unsigned voices; bool dsp; };
+	const Case cases[] = { { "idle", 0, false }, { "slots", 32, false },
+	                    { "DSP", 0, true }, { "both", 32, true } };
 	for (const Case &k : cases) {
 		Bench b(name);
-		if (k.dsp) b.programme_dsp();
-		if (k.voix) b.voix(k.voix);
+		if (k.dsp) b.dsp_program();
+		if (k.voices) b.voices(k.voices);
 		const double s = stopwatch(*b.c, n, snk);
-		// La part d'un coeur : le temps mis pour produire n echantillons, contre leur duree reelle.
+		// The share of one core: the time taken to produce n samples, against their real duration.
 		const double duration = double(n) / 44100.0;
 		printf("  %-14s %10.3f %12.1f %13.2f\n", k.name, s, s * 1e9 / n, 100.0 * s / duration);
 	}
-	printf("\n(puits %lld, pour que rien ne soit optimise au loin)\n", (long long) snk);
+	printf("\n(sink %lld, so that nothing is optimised away)\n", (long long) snk);
 	return 0;
 }

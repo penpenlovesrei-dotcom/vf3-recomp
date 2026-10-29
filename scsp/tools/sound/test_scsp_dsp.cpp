@@ -1,72 +1,72 @@
-// test_scsp_dsp : le jeu d'instructions du DSP d'effets, mesure champ par champ.
+// test_scsp_dsp: the effects DSP's instruction set, measured field by field.
 //
-// Bloc 5 de docs/scsp_architecture.md §3, et le seul des sept dont le coeur du projet n'a pas ecrit une
-// ligne. La raison n'est pas le temps : SON JEU D'INSTRUCTIONS N'EXISTE NULLE PART ECRIT. Le contrat n'en
-// donne que la disposition -- COEF, MADRS, MPRO, 128 pas de 8 octets (scsp_contract.h §6) -- et
-// docs/scsp_references.md est clair : ni fiche technique, ni specification independante, seulement les
-// implementations de MAME et de Supermodel, issues du meme travail de reverse engineering d'ElSemi.
+// Block 5 of docs/scsp_architecture.md §3, and the only one of the seven for which the project's core had
+// not written a line. The reason was not time: ITS INSTRUCTION SET EXISTS NOWHERE WRITTEN DOWN. The
+// contract gives only its layout -- COEF, MADRS, MPRO, 128 steps of 8 bytes (scsp_contract.h §6) -- and
+// docs/scsp_references.md is clear: no datasheet, no independent specification, only MAME's and
+// Supermodel's implementations, both out of ElSemi's same reverse-engineering work.
 //
-// CE FICHIER EST DONC LA SPECIFICATION QUI MANQUAIT, et c'est a cela qu'il sert avant de servir de test :
-// chaque cas pose un programme minuscule, le fait tourner, et ENREGISTRE ce que le DSP en a fait. Une
-// implementation future s'ecrit contre ces nombres, et non contre un autre code. C'est la meme boucle que
-// pour les six autres blocs -- ecrire le test, puis le bloc -- a ceci pres que la cible du test est ici une
-// machine et non un comportement de sortie.
+// SO THIS FILE IS THE SPECIFICATION THAT WAS MISSING, and that is what it is for before it is a test: each
+// case lays down a tiny program, runs it, and RECORDS what the DSP made of it. A future implementation is
+// written against these numbers, and not against another piece of code. It is the same loop as for the
+// other six blocks -- write the test, then the block -- except that the test's target here is a machine
+// and not an output behaviour.
 //
-// IL DISTINGUE LES DEUX COEURS DEPUIS LE 2026-10-27, et c'etait tout son objet : `src/sound/dsp_own`
-// existe, il ne partage pas une ligne avec celui de MAME, et ce fichier dit cas par cas s'il tombe juste --
-// sans qu'on ait a comparer des WAV. `make test` le lance avec les deux noms de coeur.
+// IT HAS TOLD THE TWO CORES APART SINCE 2026-10-27, and that was its whole purpose: `src/sound/dsp_own`
+// exists, it shares not a line with MAME's, and this file says case by case whether it lands right --
+// without having to compare WAVs. `make test` runs it with both core names.
 //
-// ET LES CINQ DERNIERS CAS SONT CE POUR QUOI IL EXISTE. Les huit premiers mesurent des champs que le jeu
-// exerce, donc que le rejoueur recoupe a l'octet a chaque scene : ce fichier y est une commodite. Les cas 9
-// a 13 mesurent FRCL, ADRL, YRL et NEGB, qu'AUCUN jeu servi par ce portage ne pose -- 152 ecritures de
-// programme, cinq formes distinctes, trois jeux (docs/scsp_audit.md §5). Pour ces quatre-la, ce fichier est
-// le SEUL juge qui existe, et les quatre fautes injectees le 2026-10-28 disent qu'il sait echouer.
-//
-// -----------------------------------------------------------------------------------------------------
-// PAR OU ON OBSERVE, et c'est ce qui rend le bloc mesurable : TOUT L'ETAT DU DSP SE RELIT par la fenetre de
-// registres, sans passer par une seule note de musique.
-//
-//     0x700-0x77F  COEF      les coefficients, en lecture et ecriture
-//     0x780-0x7BF  MADRS     les adresses de la ligne de retard
-//     0x800-0xBFF  MPRO      le programme, 128 pas de quatre mots
-//     0xC00-0xDFF  TEMP      128 mots de 24 bits -- DEUX mots chacun, le haut d'abord
-//     0xE00-0xE7F  MEMS      32 mots de 24 bits
-//     0xE80-0xEBF  MIXS      16 mots de 20 bits
-//     0xEC0-0xEDF  EFREG     16 mots de 16 bits, la sortie d'effets
-//     0xEE0-0xEE3  EXTS      les deux entrees externes (rien n'y est branche sur cette carte)
-//
-// Au-dela de 0xC00 la fenetre est en LECTURE SEULE : une ecriture n'y va nulle part.
-//
-// L'ENCODAGE D'UNE INSTRUCTION, quatre mots de seize bits par pas. C'est une disposition materielle, au
-// meme titre qu'une carte de registres :
-//
-//     mot 0 : TRA 14-8, TWT 7, TWA 6-0
-//     mot 1 : XSEL 15, YSEL 14-13, IRA 11-6, IWT 5, IWA 4-0
-//     mot 2 : TABLE 15, MWT 14, MRD 13, EWT 12, EWA 11-8, ADRL 7, FRCL 6, SHIFT 5-4,
-//             YRL 3, NEGB 2, ZERO 1, BSEL 0
-//     mot 3 : NOFL 15, COEF 14-9, MASA 6-2, ADREB 1, NXADR 0
+// AND THE LAST FIVE CASES ARE WHAT IT EXISTS FOR. The first eight measure fields the game exercises, which
+// the replayer therefore cross-checks byte for byte on every scene: this file is a convenience there.
+// Cases 9 to 13 measure FRCL, ADRL, YRL and NEGB, which NO game this port serves sets -- 152 program
+// writes, five distinct shapes, three games (docs/scsp_audit.md §5). For those four, this file is the ONLY
+// judge there is, and the four faults injected on 2026-10-28 say it knows how to fail.
 //
 // -----------------------------------------------------------------------------------------------------
-// LE FAIT CENTRAL DU BLOC, et c'est ce test qui l'a sorti : LE SHIFTER EST UN PAS EN RETARD SUR
-// L'ACCUMULATEUR.
+// WHERE WE OBSERVE FROM, and it is what makes the block measurable: ALL THE DSP'S STATE READS BACK through
+// the register window, without going through a single note of music.
 //
-// Dans le corps d'un pas, SHIFTED est calcule AVANT que ACC ne soit reecrit :
+//     0x700-0x77F  COEF      the coefficients, readable and writable
+//     0x780-0x7BF  MADRS     the delay line's addresses
+//     0x800-0xBFF  MPRO      the program, 128 steps of four words
+//     0xC00-0xDFF  TEMP      128 words of 24 bits -- TWO words each, the high one first
+//     0xE00-0xE7F  MEMS      32 words of 24 bits
+//     0xE80-0xEBF  MIXS      16 words of 20 bits
+//     0xEC0-0xEDF  EFREG     16 words of 16 bits, the effects output
+//     0xEE0-0xEE3  EXTS      the two external inputs (nothing is plugged into them on this board)
 //
-//     SHIFTED = <ecrete ou etend> ACC      <- l'ACC du pas PRECEDENT
-//     ACC = (X * Y >> 12) + B              <- et seulement maintenant
+// Beyond 0xC00 the window is READ-ONLY: a write there goes nowhere.
 //
-// Donc le pas qui fait un produit ne peut pas en ecrire le resultat : il faut le pas SUIVANT pour que
-// TWT, MWT, EWT, FRCL ou ADRL le voient. Une implementation qui decalerait l'ACC fraichement calcule
-// serait fausse partout, et aucune lecture du code ne le crie -- c'est l'ordre des lignes qui le dit.
+// AN INSTRUCTION'S ENCODING, four sixteen-bit words per step. This is a hardware layout, no less than a
+// register map:
 //
-// La premiere version de ce fichier l'ignorait, et la mesure l'a dit sans ambiguite : un cas qui ecrivait
-// EFREG deux fois rendait "une ecriture 0, deux 4095". Seule la seconde voyait la valeur.
+//     word 0 : TRA 14-8, TWT 7, TWA 6-0
+//     word 1 : XSEL 15, YSEL 14-13, IRA 11-6, IWT 5, IWA 4-0
+//     word 2 : TABLE 15, MWT 14, MRD 13, EWT 12, EWA 11-8, ADRL 7, FRCL 6, SHIFT 5-4,
+//              YRL 3, NEGB 2, ZERO 1, BSEL 0
+//     word 3 : NOFL 15, COEF 14-9, MASA 6-2, ADREB 1, NXADR 0
 //
-// D'OU DEUX IDIOMES qui reviennent dans tous les cas ci-dessous :
-//   LE PAS DE MAINTIEN : ZERO=0, BSEL=1, XSEL=0 avec TEMP nul. B vaut ACC, le produit vaut zero, donc
-//     ACC = 0 + ACC : l'accumulateur est conserve, et SHIFTED le rend disponible un pas de plus.
-//   LES ACCES MEMOIRE SUR UN PAS IMPAIR : `if (MRD && (step & 1))`, et de meme pour MWT. Un MRD au pas 0
-//     ne lit rien du tout.
+// -----------------------------------------------------------------------------------------------------
+// THE BLOCK'S CENTRAL FACT, and it is this test that brought it out: THE SHIFTER IS ONE STEP BEHIND THE
+// ACCUMULATOR.
+//
+// Inside a step's body, SHIFTED is computed BEFORE ACC is overwritten:
+//
+//     SHIFTED = <clamp or extend> ACC      <- the PREVIOUS step's ACC
+//     ACC = (X * Y >> 12) + B              <- and only now
+//
+// So the step that does a product cannot write its result: the NEXT step is needed for TWT, MWT, EWT,
+// FRCL or ADRL to see it. An implementation that shifted the freshly computed ACC would be wrong
+// everywhere, and no reading of the code shouts it -- it is the order of the lines that says so.
+//
+// The first version of this file ignored it, and the measurement said so without ambiguity: a case that
+// wrote EFREG twice returned "one write 0, two 4095". Only the second saw the value.
+//
+// HENCE TWO IDIOMS that recur in every case below:
+//   THE HOLD STEP: ZERO=0, BSEL=1, XSEL=0 with TEMP zero. B is ACC, the product is zero, so ACC = 0 + ACC:
+//     the accumulator is kept, and SHIFTED makes it available for one more step.
+//   MEMORY ACCESSES ON AN ODD STEP: `if (MRD && (step & 1))`, and likewise for MWT. An MRD at step 0 reads
+//     nothing at all.
 // -----------------------------------------------------------------------------------------------------
 #include "scsp_bench.h"
 
@@ -80,11 +80,11 @@ using bench::Bench;
 
 int failures = 0;
 
-void ok(const char *what, const std::string &d) { printf("  ok    %-42s %s\n", what, d.c_str()); }
-void rate(const char *what, const std::string &d) { printf("  ECHEC %-42s %s\n", what, d.c_str()); ++failures; }
+void ok(const char *what, const std::string &d) { printf("  ok     %-42s %s\n", what, d.c_str()); }
+void failed(const char *what, const std::string &d) { printf("  FAILED %-42s %s\n", what, d.c_str()); ++failures; }
 
-// Un pas de programme, construit par ses champs plutot qu'en hexadecimal : un programme ecrit en nombres
-// bruts est illisible, et c'est la lisibilite qui fait d'un test une specification.
+// One program step, built from its fields rather than in hexadecimal: a program written in raw numbers is
+// unreadable, and it is readability that makes a test a specification.
 struct DecodedStep {
 	unsigned tra = 0, twt = 0, twa = 0;
 	unsigned xsel = 0, ysel = 0, ira = 0, iwt = 0, iwa = 0;
@@ -92,7 +92,7 @@ struct DecodedStep {
 	unsigned yrl = 0, negb = 0, zero = 0, bsel = 0;
 	unsigned nofl = 0, coef = 0, masa = 0, adreb = 0, nxadr = 0;
 
-	void mots(std::uint16_t m[4]) const
+	void words(std::uint16_t m[4]) const
 	{
 		m[0] = std::uint16_t(((tra & 0x7F) << 8) | ((twt & 1) << 7) | (twa & 0x7F));
 		m[1] = std::uint16_t(((xsel & 1) << 15) | ((ysel & 3) << 13) | ((ira & 0x3F) << 6)
@@ -106,8 +106,8 @@ struct DecodedStep {
 	}
 };
 
-// LE PAS DE MAINTIEN : il conserve ACC et rend donc SHIFTED disponible un pas de plus. B = ACC (ZERO=0,
-// BSEL=1), X = TEMP[0] = 0, donc ACC = 0 + ACC.
+// THE HOLD STEP: it keeps ACC and so makes SHIFTED available for one more step. B = ACC (ZERO=0, BSEL=1),
+// X = TEMP[0] = 0, so ACC = 0 + ACC.
 inline DecodedStep hold()
 {
 	DecodedStep p;
@@ -117,34 +117,34 @@ inline DecodedStep hold()
 	return p;
 }
 
-// Le banc du DSP : pose un programme, le lance, relit l'etat.
+// The DSP's bench: lays down a program, runs it, reads the state back.
 struct BenchDsp {
 	Bench b;
 
 	BenchDsp()
 	{
-		// RBL et RBP : la ligne de retard, 8 kmots a l'origine 0 de la RAM son.
+		// RBL and RBP: the delay line, 8 kwords at origin 0 of sound RAM.
 		b.the_core.write_reg(0x402 / 2, 0x0000, 0xFFFF);
 	}
 
-	// Pose le programme et le DEMARRE. L'ecriture du dernier mot du pas 0x7E (0xBF0) est ce qui declenche
-	// Start() -- la puce n'a pas d'autre signal, et c'est donc le dernier mot a ecrire.
+	// Lays down the program and STARTS it. Writing the last word of step 0x7E (0xBF0) is what triggers
+	// Start() -- the chip has no other signal, and so that is the last word to write.
 	void program(const std::vector<DecodedStep> &step)
 	{
 		for (unsigned i = 0; i < 128; i++) {
 			std::uint16_t m[4] = { 0, 0, 0, 0 };
-			if (i < step.size()) step[i].mots(m);
+			if (i < step.size()) step[i].words(m);
 			for (unsigned k = 0; k < 4; k++)
 				b.the_core.write_reg((0x800 + i * 8 + k * 2) / 2, m[k], 0xFFFF);
 		}
-		// Le mot qui declenche Start n'est ecrit qu'une fois le reste pose.
+		// The word that triggers Start is only written once the rest is laid down.
 		b.the_core.write_reg(0xBF0 / 2, 0, 0xFFFF);
 	}
 
 	void coef(unsigned i, std::int16_t v) { b.the_core.write_reg((0x700 + i * 2) / 2, std::uint16_t(v), 0xFFFF); }
 	void madrs(unsigned i, std::uint16_t v) { b.the_core.write_reg((0x780 + i * 2) / 2, v, 0xFFFF); }
 
-	// Un echantillon de DSP. Aucune voix ne joue : Step() tourne de toute facon, une fois par echantillon.
+	// One DSP sample. No voice is playing: Step() runs anyway, once per sample.
 	void one_step() { b.left(1); }
 
 	std::int32_t temp(unsigned i)
@@ -174,30 +174,30 @@ std::string hex(std::int32_t v)
 int main(int argc, char **argv)
 {
 	if (argc > 1) bench::core_name() = argv[1];
-	printf("test_scsp_dsp : le jeu d'instructions du DSP, coeur \"%s\"\n\n", bench::core_name());
+	printf("test_scsp_dsp: the DSP's instruction set, core \"%s\"\n\n", bench::core_name());
 
-	// ---- 1. UN PROGRAMME VIDE NE FAIT RIEN, et EFREG est remis a zero a chaque echantillon
-	// C'est le controle qui doit passer avant tous les autres : si un programme de zeros bougeait quelque
-	// chose, aucune mesure suivante ne voudrait dire quoi que ce soit.
+	// ---- 1. AN EMPTY PROGRAM DOES NOTHING, and EFREG is cleared on every sample
+	// This is the check that has to pass before all the others: if a program of zeros moved something, no
+	// measurement that followed would mean anything at all.
 	{
 		BenchDsp d;
 		d.program({});
 		for (int k = 0; k < 4; k++) d.one_step();
-		bool propre = true;
-		for (unsigned i = 0; i < 16; i++) if (d.efreg(i) != 0) propre = false;
-		for (unsigned i = 0; i < 128; i++) if (d.temp(i) != 0) propre = false;
-		propre ? ok("un programme vide ne touche rien", "EFREG, TEMP et MEMS restent nuls sur 4 echantillons")
-		       : rate("un programme vide ne touche rien", "quelque chose a bouge");
+		bool clean = true;
+		for (unsigned i = 0; i < 16; i++) if (d.efreg(i) != 0) clean = false;
+		for (unsigned i = 0; i < 128; i++) if (d.temp(i) != 0) clean = false;
+		clean ? ok("an empty program touches nothing", "EFREG, TEMP and MEMS stay zero over 4 samples")
+		      : failed("an empty program touches nothing", "something moved");
 	}
 
-	// ---- 2. LE CHEMIN LE PLUS COURT : un coefficient arrive dans EFREG
-	// Un seul pas : X vient de TEMP (nul), Y du coefficient, B de zero... et le produit est donc nul. Ce
-	// qu'on mesure ici, c'est que le SHIFTER et EWT marchent : avec ZERO=0 et BSEL=0, B vaut TEMP[0] = 0,
-	// donc ACC = 0 et SHIFTED = 0. Le cas suivant y mettra quelque chose.
+	// ---- 2. THE SHORTEST PATH: a coefficient arrives in EFREG
+	// A single step: X comes from TEMP (zero), Y from the coefficient, B from zero... and so the product is
+	// zero. What is measured here is that the SHIFTER and EWT work: with ZERO=0 and BSEL=0, B is TEMP[0] =
+	// 0, so ACC = 0 and SHIFTED = 0. The next case will put something in it.
 	//
-	// ET LES ECRITURES MEMOIRE N'ONT LIEU QUE SUR LES PAS IMPAIRS, ce qui est le premier quirk de ce bloc :
-	// `if (MRD && (step & 1))` et de meme pour MWT. Un programme qui lirait la RAM au pas 0 ne lirait rien.
-	// C'est pourquoi tous les cas ci-dessous placent leurs acces memoire sur un pas impair.
+	// AND MEMORY WRITES ONLY HAPPEN ON ODD STEPS, which is this block's first quirk: `if (MRD && (step &
+	// 1))` and likewise for MWT. A program reading RAM at step 0 would read nothing. That is why every case
+	// below places its memory accesses on an odd step.
 	{
 		BenchDsp d;
 		DecodedStep p;
@@ -207,99 +207,99 @@ int main(int argc, char **argv)
 		d.program({ p });
 		d.one_step();
 		const std::int16_t e = d.efreg(0);
-		(e == 0) ? ok("EWT sans entree : zero", "X et B viennent de TEMP[0], qui est nul")
-		         : rate("EWT sans entree : zero", "EFREG[0] = " + std::to_string(e));
+		(e == 0) ? ok("EWT with no input: zero", "X and B come from TEMP[0], which is zero")
+		         : failed("EWT with no input: zero", "EFREG[0] = " + std::to_string(e));
 	}
 
-	// ---- 3. B PASSE PAR TEMP, ET TWT L'Y MET : le premier aller-retour mesurable
-	// Deux pas. Le premier ecrit une valeur dans TEMP par TWT ; le second la relit par TRA et l'envoie dans
-	// EFREG. Entre les deux, le decalage de TEMP par `dec` -- le compteur qui descend d'un par echantillon
-	// -- impose que les deux pas soient dans le MEME echantillon, ce qu'ils sont.
+	// ---- 3. B COMES THROUGH TEMP, AND TWT PUTS IT THERE: the first measurable round trip
+	// Two steps. The first writes a value into TEMP through TWT; the second reads it back through TRA and
+	// sends it into EFREG. Between the two, TEMP's offset by `dec` -- the counter that counts down by one
+	// per sample -- requires both steps to be in the SAME sample, which they are.
 	//
-	// Pour mettre une valeur connue dans ACC sans entree, on se sert de B : avec ZERO=0, BSEL=1, B = ACC.
-	// Il faut donc d'abord remplir ACC, et le seul chemin est le produit X * Y. On prend X dans MIXS, qu'une
-	// lecture de registre ne peut pas remplir... donc on prend le chemin inverse : COEF dans Y, et X depuis
-	// TEMP apres l'y avoir mis. Ce cas-ci se contente donc de montrer que TWT ECRIT bien dans TEMP, ce qui
-	// se relit directement.
+	// To put a known value into ACC with no input, B is used: with ZERO=0, BSEL=1, B = ACC. So ACC has to
+	// be filled first, and the only path is the product X * Y. X is taken from MIXS, which a register read
+	// cannot fill... so the opposite path is taken: COEF into Y, and X out of TEMP after putting it there.
+	// So this case merely shows that TWT does WRITE into TEMP, which reads back directly.
 	{
 		BenchDsp d;
 		DecodedStep p0;
 		p0.ysel = 1; p0.coef = 0;      // Y = COEF[0] >> 3 = 0x4000 >> 3 = 0x800
-		p0.zero = 1;                   // B = 0, donc ACC = X * Y >> 12 avec X = TEMP[0] = 0
+		p0.zero = 1;                   // B = 0, so ACC = X * Y >> 12 with X = TEMP[0] = 0
 		p0.twt = 1; p0.twa = 1;        // TEMP[1 + dec] = SHIFTED
 		p0.shift = 0;
 		d.coef(0, 0x4000);
 		d.program({ p0 });
 		d.one_step();
-		// SHIFTED vaut 0, donc TEMP recoit 0 : ce qu'on verifie est que l'ECRITURE a lieu a l'index attendu,
-		// en la refaisant avec une valeur non nulle au cas suivant. Ici on enregistre l'index touche.
-		ok("TWT ecrit dans TEMP", "l'index ecrit est (TWA + dec) & 0x7F, dec descendant d'un par echantillon");
+		// SHIFTED is 0, so TEMP receives 0: what is checked is that the WRITE happens at the expected
+		// index, by doing it again with a non-zero value in the next case. Here the index touched is
+		// recorded.
+		ok("TWT writes into TEMP", "the index written is (TWA + dec) & 0x7F, dec counting down per sample");
 	}
 
-	// ---- 4. LE PRODUIT : X depuis MEMS, Y depuis COEF, et le decalage de douze
-	// `v = (X * Y) >> 12 ; ACC = v + B`. Pour poser un X connu sans voix, on passe par la RAM : un pas
-	// impair avec MRD charge MEMVAL depuis la ligne de retard, un pas suivant avec IWT le range dans MEMS,
-	// et un troisieme le prend par IRA. C'est la chaine complete de l'entree memoire, et elle est la seule
-	// qui ne demande ni voix ni entree externe.
+	// ---- 4. THE PRODUCT: X from MEMS, Y from COEF, and the shift by twelve
+	// `v = (X * Y) >> 12 ; ACC = v + B`. To set a known X with no voice, RAM is used: an odd step with MRD
+	// loads MEMVAL from the delay line, a following step with IWT files it into MEMS, and a third takes it
+	// through IRA. That is the complete memory input chain, and it is the only one that needs neither a
+	// voice nor an external input.
 	//
-	// NOFL=1 evite PACK/UNPACK : la valeur passe telle quelle, decalee de huit. C'est le cas simple, et
-	// PACK est mesure plus bas.
+	// NOFL=1 avoids PACK/UNPACK: the value passes through as it is, shifted by eight. That is the simple
+	// case, and PACK is measured further down.
 	{
 		BenchDsp d;
-		// La ligne de retard commence a RBP<<12 ; MADRS[0]=0 et TABLE=1 pour ne pas ajouter `dec`.
+		// The delay line starts at RBP<<12; MADRS[0]=0 and TABLE=1 so as not to add `dec`.
 		d.b.ram[0] = 0x1234;
 		d.madrs(0, 0);
 
-		DecodedStep p0;                        // pas 0 : rien (les acces memoire veulent un pas impair)
-		DecodedStep p1;                        // pas 1 : MRD -> MEMVAL
+		DecodedStep p0;                        // step 0: nothing (memory accesses want an odd step)
+		DecodedStep p1;                        // step 1: MRD -> MEMVAL
 		p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
-		DecodedStep p2;                        // pas 2 : IWT range MEMVAL dans MEMS[0]
+		DecodedStep p2;                        // step 2: IWT files MEMVAL into MEMS[0]
 		p2.iwt = 1; p2.iwa = 0;
-		DecodedStep p3;                        // pas 3 : X = MEMS[0], Y = COEF[0] -> ACC
+		DecodedStep p3;                        // step 3: X = MEMS[0], Y = COEF[0] -> ACC
 		p3.xsel = 1; p3.ira = 0;
 		p3.ysel = 1; p3.coef = 0;
 		p3.zero = 1;                   // B = 0
-		DecodedStep p4 = hold();           // pas 4 : LE SHIFTER voit enfin l'ACC du pas 3
+		DecodedStep p4 = hold();           // step 4: THE SHIFTER finally sees step 3's ACC
 		p4.shift = 0;
 		p4.ewt = 1; p4.ewa = 0;
 		d.coef(0, 0x4000);             // Y = 0x4000 >> 3 = 0x800
 		d.program({ p0, p1, p2, p3, p4 });
 		d.one_step();
 
-		// MEMVAL = rword << 8 = 0x123400. MEMS[0] le recoit. X = 0x123400 (24 bits signes).
-		// ACC = (0x123400 * 0x800) >> 12 = 0x123400 / 2 = 0x91A00 ; SHIFT=0 ecrete a 24 bits signes.
+		// MEMVAL = rword << 8 = 0x123400. MEMS[0] receives it. X = 0x123400 (signed 24-bit).
+		// ACC = (0x123400 * 0x800) >> 12 = 0x123400 / 2 = 0x91A00; SHIFT=0 clamps to signed 24 bits.
 		// EFREG += SHIFTED >> 8 = 0x91A00 >> 8 = 0x91A -> 2330.
 		const std::int32_t m = d.mems(0);
 		const std::int16_t e = d.efreg(0);
 		char t[160];
 		snprintf(t, sizeof t, "MEMS[0] = %s, EFREG[0] = %d", hex(m).c_str(), e);
 		(m == 0x123400 && e == 0x091A)
-			? ok("RAM -> MRD -> MEMS -> produit -> EFREG", t)
-			: rate("RAM -> MRD -> MEMS -> produit -> EFREG",
-			       std::string(t) + " ; attendu 00123400 et 2330");
+			? ok("RAM -> MRD -> MEMS -> product -> EFREG", t)
+			: failed("RAM -> MRD -> MEMS -> product -> EFREG",
+			         std::string(t) + "; expected 00123400 and 2330");
 	}
 
-	// ---- 5. LES QUATRE DECALAGES : deux ecretent, deux etendent le signe
-	// SHIFT=0 : ACC ecrete a 24 bits signes. SHIFT=1 : ACC*2 ecrete. SHIFT=2 : ACC*2 avec le signe etendu
-	// sur 24 bits (donc il REBOUCLE au lieu d'ecreter). SHIFT=3 : ACC avec le signe etendu.
+	// ---- 5. THE FOUR SHIFTS: two clamp, two sign-extend
+	// SHIFT=0: ACC clamped to signed 24 bits. SHIFT=1: ACC*2 clamped. SHIFT=2: ACC*2 with the sign extended
+	// over 24 bits (so it WRAPS instead of clamping). SHIFT=3: ACC with the sign extended.
 	//
-	// La difference entre ecreter et reboucler est tout l'interet du cas : un reverb dont le shifter
-	// reboucle au lieu d'ecreter ne sature pas, il claque.
+	// The difference between clamping and wrapping is the whole point of the case: a reverb whose shifter
+	// wraps instead of clamping does not saturate, it snaps.
 	{
-		// MESURES, et non calculees : c'est ce fichier qui est la specification, pas mon arithmetique. Trois
-		// de ces quatre valeurs etaient tombees juste du premier coup, la quatrieme non -- et c'est la
-		// mesure qui tranche.
+		// MEASURED, not computed: this file is the specification, not my arithmetic. Three of these four
+		// values came out right first time, the fourth did not -- and it is the measurement that settles it.
 		//
-		// Ce qu'elles disent : a 0 et a 3 le resultat est le MEME ici, parce que la valeur ne depasse pas
-		// 24 bits signes et qu'ecreter ou etendre le signe revient alors au meme. A 1 le double SATURE a
-		// 0x7FFF. A 2 le double REBOUCLE et devient negatif. La difference entre saturer et reboucler est
-		// tout l'interet du champ : un reverb dont le shifter reboucle ne sature pas, il claque.
-		const std::int16_t attendus[4] = { 0x7F89, 0x7FFF, static_cast<std::int16_t>(0xFF12), 0x7F89 };
+		// What they say: at 0 and at 3 the result is the SAME here, because the value does not exceed
+		// signed 24 bits and clamping or sign-extending then come to the same thing. At 1 the double
+		// SATURATES at 0x7FFF. At 2 the double WRAPS and goes negative. The difference between saturating
+		// and wrapping round is the whole point of the field: a reverb whose shifter wraps does not
+		// saturate, it snaps.
+		const std::int16_t expected[4] = { 0x7F89, 0x7FFF, static_cast<std::int16_t>(0xFF12), 0x7F89 };
 		std::string lines;
 		bool correct = true;
 		for (unsigned s = 0; s < 4; s++) {
 			BenchDsp d;
-			d.b.ram[0] = 0x7F91;       // de quoi depasser 24 bits apres le produit
+			d.b.ram[0] = 0x7F91;       // enough to exceed 24 bits after the product
 			d.madrs(0, 0);
 			DecodedStep p0;
 			DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.nofl = 1;
@@ -308,31 +308,31 @@ int main(int argc, char **argv)
 			p3.xsel = 1; p3.ira = 0;
 			p3.ysel = 1; p3.coef = 0;
 			p3.zero = 1;
-			DecodedStep p4 = hold();       // le decalage s'applique a l'ACC du pas precedent
+			DecodedStep p4 = hold();       // the shift applies to the previous step's ACC
 			p4.shift = s;
 			p4.ewt = 1; p4.ewa = 0;
-			d.coef(0, 0x7FF8);         // Y = 0x7FF8 >> 3 = 0xFFF, soit presque 1.0 en 1.12
+			d.coef(0, 0x7FF8);         // Y = 0x7FF8 >> 3 = 0xFFF, that is almost 1.0 in 1.12
 			d.program({ p0, p1, p2, p3, p4 });
 			d.one_step();
 			const std::int16_t e = d.efreg(0);
 			char t[48];
 			snprintf(t, sizeof t, "%s%u->%04x", lines.empty() ? "" : " ", s, unsigned(std::uint16_t(e)));
 			lines += t;
-			if (e != attendus[s]) { correct = false; lines += "(att " + hex(attendus[s]).substr(4) + ")"; }
+			if (e != expected[s]) { correct = false; lines += "(exp " + hex(expected[s]).substr(4) + ")"; }
 		}
-		correct ? ok("les quatre decalages : deux ecretent, deux rebouclent", lines)
-		      : rate("les quatre decalages : deux ecretent, deux rebouclent", lines);
+		correct ? ok("the four shifts: two clamp, two wrap", lines)
+		        : failed("the four shifts: two clamp, two wrap", lines);
 	}
 
-	// ---- 6. MWT ECRIT DANS LA RAM, et seulement sur un pas impair
-	// Le pendant de MRD. On charge une valeur, on la renvoie dans la ligne de retard a une autre adresse,
-	// et on relit la RAM -- que le test possede. C'est l'observation la plus directe de tout le bloc :
-	// aucune lecture de registre, la memoire elle-meme.
+	// ---- 6. MWT WRITES INTO RAM, and only on an odd step
+	// MRD's counterpart. A value is loaded, sent back into the delay line at another address, and RAM is
+	// read back -- RAM being the test's own. It is the most direct observation in the whole block: no
+	// register read, the memory itself.
 	{
 		BenchDsp d;
 		d.b.ram[0] = 0x4321;
 		d.madrs(0, 0);
-		d.madrs(1, 0x10);              // la destination, 16 mots plus loin
+		d.madrs(1, 0x10);              // the destination, 16 words further on
 
 		DecodedStep p0;
 		DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
@@ -341,25 +341,25 @@ int main(int argc, char **argv)
 		p3.xsel = 1; p3.ira = 0;       // X = MEMS[0]
 		p3.ysel = 1; p3.coef = 0;
 		p3.zero = 1;                   // -> ACC
-		DecodedStep p4 = hold();           // ACC conserve
-		DecodedStep p5 = hold();           // pas IMPAIR : c'est le seul ou MWT a le droit d'ecrire
-		p5.shift = 3;                  // le signe etendu, pour que SHIFTED garde la valeur
+		DecodedStep p4 = hold();           // ACC kept
+		DecodedStep p5 = hold();           // an ODD step: the only one where MWT is allowed to write
+		p5.shift = 3;                  // the sign extended, so that SHIFTED keeps the value
 		p5.mwt = 1; p5.table = 1; p5.masa = 1; p5.nofl = 1;
 		d.coef(0, 0x7FF8);
 		d.program({ p0, p1, p2, p3, p4, p5 });
 		d.one_step();
 
-		const std::uint16_t ecrit = d.b.ram[0x10];
+		const std::uint16_t written = d.b.ram[0x10];
 		char t[96];
-		snprintf(t, sizeof t, "RAM[0x10] = %04x apres un aller-retour par MEMS", ecrit);
-		(ecrit != 0) ? ok("MWT ecrit dans la ligne de retard", t)
-		             : rate("MWT ecrit dans la ligne de retard", std::string(t) + " ; rien n'a ete ecrit");
+		snprintf(t, sizeof t, "RAM[0x10] = %04x after a round trip through MEMS", written);
+		(written != 0) ? ok("MWT writes into the delay line", t)
+		               : failed("MWT writes into the delay line", std::string(t) + "; nothing was written");
 	}
 
-	// ---- 7. EWT ACCUMULE, il n'affecte pas
-	// `EFREG[EWA] += SHIFTED >> 8` : deux pas qui ecrivent le meme EFREG s'ajoutent. Et EFREG est remis a
-	// zero au DEBUT de chaque echantillon, donc l'accumulation ne porte que sur un echantillon. Une
-	// reecriture qui affecterait au lieu d'ajouter perdrait tous les melanges internes du reverb.
+	// ---- 7. EWT ACCUMULATES, it does not assign
+	// `EFREG[EWA] += SHIFTED >> 8`: two steps writing the same EFREG add up. And EFREG is cleared at the
+	// BEGINNING of each sample, so the accumulation only covers one sample. A rewrite assigning instead of
+	// adding would lose all the reverb's internal mixes.
 	{
 		BenchDsp d;
 		d.b.ram[0] = 0x1000;
@@ -369,12 +369,12 @@ int main(int argc, char **argv)
 		DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
 		DecodedStep p3;
 		p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;   // -> ACC
-		DecodedStep p4 = hold(); p4.shift = 3; p4.ewt = 1; p4.ewa = 0;        // premiere ecriture
-		DecodedStep p5 = hold(); p5.shift = 3; p5.ewt = 1; p5.ewa = 0;        // seconde, sur le meme EFREG
+		DecodedStep p4 = hold(); p4.shift = 3; p4.ewt = 1; p4.ewa = 0;        // the first write
+		DecodedStep p5 = hold(); p5.shift = 3; p5.ewt = 1; p5.ewa = 0;        // the second, on the same EFREG
 		d.coef(0, 0x7FF8);
 		d.program({ p0, p1, p2, p3, p4, p5 });
 		d.one_step();
-		const std::int16_t deux = d.efreg(0);
+		const std::int16_t two = d.efreg(0);
 
 		BenchDsp u;
 		u.b.ram[0] = 0x1000;
@@ -382,19 +382,19 @@ int main(int argc, char **argv)
 		u.coef(0, 0x7FF8);
 		u.program({ p0, p1, p2, p3, p4 });
 		u.one_step();
-		const std::int16_t une = u.efreg(0);
+		const std::int16_t one = u.efreg(0);
 
 		char t[96];
-		snprintf(t, sizeof t, "une ecriture %d, deux %d", une, deux);
-		(une != 0 && deux == std::int16_t(une * 2))
-			? ok("EWT ajoute, et EFREG repart de zero", t)
-			: rate("EWT ajoute, et EFREG repart de zero", std::string(t) + " ; attendu le double");
+		snprintf(t, sizeof t, "one write %d, two %d", one, two);
+		(one != 0 && two == std::int16_t(one * 2))
+			? ok("EWT adds, and EFREG starts from zero", t)
+			: failed("EWT adds, and EFREG starts from zero", std::string(t) + "; expected double");
 	}
 
-	// ---- 8. PACK ET UNPACK, la compression de la ligne de retard
-	// Sans NOFL, une valeur ecrite dans la RAM passe par PACK et en revient par UNPACK : un format a
-	// exposant, qui garde la dynamique au prix de la precision. On mesure l'aller-retour : ce qui ressort
-	// n'est pas ce qui est entre, et c'est normal -- ce qui compte est QUE ce soit reproductible.
+	// ---- 8. PACK AND UNPACK, the delay line's compression
+	// Without NOFL, a value written into RAM goes through PACK and comes back through UNPACK: an exponent
+	// format, which keeps the dynamic range at the price of precision. The round trip is measured: what
+	// comes out is not what went in, and that is normal -- what matters is THAT it is reproducible.
 	{
 		std::string lines;
 		bool correct = true;
@@ -404,13 +404,13 @@ int main(int argc, char **argv)
 			d.madrs(0, 0);
 			d.madrs(1, 0x20);
 			DecodedStep p0;
-			DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0;     // NOFL=0 : UNPACK
+			DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0;     // NOFL=0: UNPACK
 			DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
 			DecodedStep p3;
 			p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
 			DecodedStep p4 = hold();
 			DecodedStep p5 = hold(); p5.shift = 3;
-			p5.mwt = 1; p5.table = 1; p5.masa = 1;             // NOFL=0 : PACK, sur un pas impair
+			p5.mwt = 1; p5.table = 1; p5.masa = 1;             // NOFL=0: PACK, on an odd step
 			d.coef(0, 0x7FF8);
 			d.program({ p0, p1, p2, p3, p4, p5 });
 			d.one_step();
@@ -419,35 +419,35 @@ int main(int argc, char **argv)
 			lines += t;
 			if (d.b.ram[0x20] == 0) correct = false;
 		}
-		correct ? ok("PACK/UNPACK : l'aller-retour de la ligne de retard", lines)
-		      : rate("PACK/UNPACK : l'aller-retour de la ligne de retard", lines + " ; un zero inattendu");
+		correct ? ok("PACK/UNPACK: the delay line's round trip", lines)
+		        : failed("PACK/UNPACK: the delay line's round trip", lines + "; an unexpected zero");
 	}
 
 
 	// =====================================================================================================
-	// LES QUATRE CONTROLES QU'AUCUN JEU NE POSE : FRCL, ADRL, YRL et NEGB.
+	// THE FOUR CONTROLS NO GAME SETS: FRCL, ADRL, YRL and NEGB.
 	//
-	// Mesure du 2026-10-28, et c'est elle qui rend ces cas necessaires : `dspprog` lu sur TOUS les jeux que
-	// ce portage sert -- 152 ecritures de programme, cinq formes distinctes, trois jeux dont Sega Rally 2
-	// qui a un tout autre programme -- ne trouve pas UN pas qui pose l'un des quatre
-	// (docs/scsp_audit.md §5). Il n'y a donc pas de jeu a aller chercher qui ferait du rejoueur leur juge a
-	// l'octet, et sans ces cas-ci le DSP du projet les porte ECRITS et JAMAIS EPROUVES.
+	// Measured on 2026-10-28, and it is that measurement that makes these cases necessary: `dspprog` read
+	// over ALL the games this port serves -- 152 program writes, five distinct shapes, three games
+	// including Sega Rally 2, which has an altogether different program -- does not find ONE step that sets
+	// any of the four (docs/scsp_audit.md §5). So there is no game to go and find that would make the
+	// replayer their byte-for-byte judge, and without these cases the project's DSP carries them WRITTEN
+	// and NEVER TESTED.
 	//
-	// CE QUE CES CINQ CAS ACHETENT, ET CE QU'ILS N'ACHETENT PAS. Ils achetent que `dsp_own` fait sur ces
-	// champs ce que fait le DSP de MAME, qui est le comportement VISE par ce portage. Ils n'achetent pas que
-	// MAME ait raison : personne n'a mesure ces quatre-la sur du materiel, et docs/scsp_references.md
-	// refuse le consensus entre emulateurs comme preuve. Les nombres ci-dessous sont donc une CIBLE
-	// enregistree, au meme titre que les huit cas precedents -- a ceci pres que les huit autres, eux, sont
-	// recoupes par le jeu a chaque rejeu.
+	// WHAT THESE FIVE CASES BUY, AND WHAT THEY DO NOT. They buy that `dsp_own` does on these fields what
+	// MAME's DSP does, which is the behaviour this port AIMS at. They do not buy that MAME is right: nobody
+	// has measured those four on hardware, and docs/scsp_references.md refuses consensus between emulators
+	// as proof. So the numbers below are a recorded TARGET, just like the eight preceding cases -- except
+	// that the other eight are cross-checked by the game on every replay.
 	//
-	// TOUS PARTENT DE LA CHAINE DU CAS 4, la seule qui pose un X connu sans voix : RAM -> MRD (pas impair)
-	// -> IWT -> MEMS -> produit. Avec ram[0] = 0x1234 et COEF[0] = 0x4000, elle donne MEMS[0] = 0x00123400
-	// et ACC = 0x0091A00 au pas 3.
+	// THEY ALL START FROM CASE 4'S CHAIN, the only one that sets a known X with no voice: RAM -> MRD (odd
+	// step) -> IWT -> MEMS -> product. With ram[0] = 0x1234 and COEF[0] = 0x4000, it gives MEMS[0] =
+	// 0x00123400 and ACC = 0x0091A00 at step 3.
 	// =====================================================================================================
 
-	// ---- 9. NEGB : B change de signe, et rien d'autre
-	// NEGB ne touche QUE B, apres que BSEL l'ait choisi. Donc un pas de maintien (B = ACC) avec NEGB rend
-	// ACC = -ACC. On le mesure des deux cotes du meme programme : sans, puis avec.
+	// ---- 9. NEGB: B changes sign, and nothing else
+	// NEGB touches ONLY B, after BSEL has chosen it. So a hold step (B = ACC) with NEGB gives ACC = -ACC.
+	// It is measured on both sides of the same program: without, then with.
 	{
 		std::string lines;
 		std::int16_t seen[2] = {};
@@ -459,7 +459,7 @@ int main(int argc, char **argv)
 			DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
 			DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
 			DecodedStep p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
-			DecodedStep p4 = hold(); p4.negb = unsigned(neg);   // B = ACC, nie si NEGB
+			DecodedStep p4 = hold(); p4.negb = unsigned(neg);   // B = ACC, negated if NEGB
 			DecodedStep p5 = hold(); p5.shift = 0; p5.ewt = 1; p5.ewa = 0;
 			d.coef(0, 0x4000);
 			d.program({ p0, p1, p2, p3, p4, p5 });
@@ -470,15 +470,15 @@ int main(int argc, char **argv)
 			lines += t;
 		}
 		(seen[0] == 2330 && seen[1] == -2330)
-			? ok("NEGB : B change de signe", lines)
-			: rate("NEGB : B change de signe", lines + " ; attendu 2330 et -2330");
+			? ok("NEGB: B changes sign", lines)
+			: failed("NEGB: B changes sign", lines + "; expected 2330 and -2330");
 	}
 
-	// ---- 10. FRCL : SHIFTED est retenu, et YSEL=0 le relit
-	// FRC_REG n'a pas de fenetre : le SEUL moyen de le lire est de s'en servir comme Y (YSEL=0). Le cas
-	// ecrit donc FRC_REG depuis un SHIFTED connu, puis le remultiplie par le meme X et sort le produit.
-	// FRCL prend (SHIFTED >> 11) & 0x1FFF -- sauf a SHIFT=3, ou il prend SHIFTED & 0x0FFF. Les deux sont
-	// mesures, parce que c'est la seule asymetrie du champ.
+	// ---- 10. FRCL: SHIFTED is latched, and YSEL=0 reads it back
+	// FRC_REG has no window: the ONLY way to read it is to use it as Y (YSEL=0). So the case writes FRC_REG
+	// from a known SHIFTED, then multiplies it again by the same X and sends the product out. FRCL takes
+	// (SHIFTED >> 11) & 0x1FFF -- except at SHIFT=3, where it takes SHIFTED & 0x0FFF. Both are measured,
+	// because that is the field's only asymmetry.
 	{
 		std::string lines;
 		std::int16_t seen[2] = {};
@@ -491,7 +491,7 @@ int main(int argc, char **argv)
 			DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
 			DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
 			DecodedStep p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
-			DecodedStep p4 = hold(); p4.shift = sh; p4.frcl = 1;     // FRC_REG <- SHIFTED, selon SHIFT
+			DecodedStep p4 = hold(); p4.shift = sh; p4.frcl = 1;     // FRC_REG <- SHIFTED, per SHIFT
 			DecodedStep p5; p5.xsel = 1; p5.ira = 0; p5.ysel = 0; p5.zero = 1;   // Y = FRC_REG
 			DecodedStep p6 = hold(); p6.shift = 0; p6.ewt = 1; p6.ewa = 0;
 			d.coef(0, 0x4000);
@@ -503,18 +503,17 @@ int main(int argc, char **argv)
 			lines += t;
 			i++;
 		}
-		// RELEVES, et non calcules. A SHIFT=0, FRC_REG prend (SHIFTED >> 11) & 0x1FFF ; a SHIFT=3 il prend
-		// SHIFTED & 0x0FFF, une tranche basse et bien plus grande -- d'ou le produit six fois plus gros.
-		// C'est la seule asymetrie du champ, et elle se lit ici.
+		// READ OFF, not computed. At SHIFT=0, FRC_REG takes (SHIFTED >> 11) & 0x1FFF; at SHIFT=3 it takes
+		// SHIFTED & 0x0FFF, a low slice and a much larger one -- hence the product six times bigger. That
+		// is the field's only asymmetry, and it reads here.
 		(seen[0] == 331 && seen[1] == 2912)
-			? ok("FRCL : SHIFTED retenu, relu par YSEL=0", lines)
-			: rate("FRCL : SHIFTED retenu, relu par YSEL=0", lines + " ; attendu 331 et 2912");
+			? ok("FRCL: SHIFTED latched, read back through YSEL=0", lines)
+			: failed("FRCL: SHIFTED latched, read back through YSEL=0", lines + "; expected 331 and 2912");
 	}
 
-	// ---- 11. YRL : l'ENTREE est retenue, et YSEL 2 et 3 en prennent deux tranches differentes
-	// YRL range `entree` -- et non SHIFTED -- dans Y_REG. YSEL=2 en prend les bits 23-11, YSEL=3 les bits
-	// 15-4 : deux fenetres differentes sur le meme registre, et c'est tout l'interet de les mesurer les
-	// deux.
+	// ---- 11. YRL: the INPUT is latched, and YSEL 2 and 3 take two different slices of it
+	// YRL files `input` -- and not SHIFTED -- into Y_REG. YSEL=2 takes its bits 23-11, YSEL=3 its bits
+	// 15-4: two different windows on the same register, and that is the whole point of measuring both.
 	{
 		std::string lines;
 		std::int16_t seen[2] = {};
@@ -527,8 +526,8 @@ int main(int argc, char **argv)
 			DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
 			DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
 			DecodedStep p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
-			p3.yrl = 1;                                          // Y_REG <- entree = MEMS[0]
-			DecodedStep p4; p4.xsel = 1; p4.ira = 0; p4.ysel = ys; p4.zero = 1;   // Y = une tranche de Y_REG
+			p3.yrl = 1;                                          // Y_REG <- input = MEMS[0]
+			DecodedStep p4; p4.xsel = 1; p4.ira = 0; p4.ysel = ys; p4.zero = 1;   // Y = a slice of Y_REG
 			DecodedStep p5 = hold(); p5.shift = 0; p5.ewt = 1; p5.ewa = 0;
 			d.coef(0, 0x4000);
 			d.program({ p0, p1, p2, p3, p4, p5 });
@@ -539,56 +538,56 @@ int main(int argc, char **argv)
 			lines += t;
 			i++;
 		}
-		// RELEVES. Les deux tranches de Y_REG ne donnent pas le meme Y, donc pas le meme produit : c'est
-		// ce qui prouve que YSEL=2 et YSEL=3 lisent bien DEUX fenetres differentes du meme registre, et
-		// non la meme par deux chemins.
+		// READ OFF. The two slices of Y_REG do not give the same Y, hence not the same product: that is
+		// what proves YSEL=2 and YSEL=3 do read TWO different windows of the same register, and not the
+		// same one by two paths.
 		(seen[0] == 662 && seen[1] == 946)
-			? ok("YRL : l'entree retenue, relue par YSEL 2 et 3", lines)
-			: rate("YRL : l'entree retenue, relue par YSEL 2 et 3", lines + " ; attendu 662 et 946");
+			? ok("YRL: the input latched, read back through YSEL 2 and 3", lines)
+			: failed("YRL: the input latched, read back through YSEL 2 and 3", lines + "; expected 662 and 946");
 	}
 
-	// ---- 12. ADRL : l'adresse memoire est decalee, et ADREB s'en sert
-	// ADRS_REG n'a pas de fenetre non plus. Il se lit par son EFFET : avec ADREB, la ligne de retard est
-	// adressee a MADRS[masa] + ADRS_REG. On met donc une valeur DIFFERENTE a l'adresse decalee, et c'est
-	// celle-la qui doit remonter dans MEMS.
+	// ---- 12. ADRL: the memory address is offset, and ADREB uses it
+	// ADRS_REG has no window either. It reads through its EFFECT: with ADREB, the delay line is addressed
+	// at MADRS[masa] + ADRS_REG. So a DIFFERENT value is put at the offset address, and it is that one that
+	// must come back in MEMS.
 	//
-	// Hors SHIFT=3, ADRL prend `entree >> 16` -- ici 0x00123400 >> 16 = 0x12, et l'on place donc le temoin
-	// au mot 0x12 de la ligne de retard.
+	// Outside SHIFT=3, ADRL takes `input >> 16` -- here 0x00123400 >> 16 = 0x12, so the control is placed
+	// at word 0x12 of the delay line.
 	{
 		BenchDsp d;
 		d.b.ram[0] = 0x1234;
-		d.b.ram[0x12] = 0x5678;        // le temoin, a l'adresse que ADRS_REG doit ajouter
+		d.b.ram[0x12] = 0x5678;        // the control, at the address ADRS_REG must add
 		d.madrs(0, 0);
 		DecodedStep p0;
 		DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
 		DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
 		DecodedStep p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
-		p3.adrl = 1;                   // ADRS_REG <- entree >> 16
+		p3.adrl = 1;                   // ADRS_REG <- input >> 16
 		DecodedStep p4;
-		DecodedStep p5; p5.mrd = 1; p5.table = 1; p5.masa = 0; p5.nofl = 1; p5.adreb = 1;   // pas impair
+		DecodedStep p5; p5.mrd = 1; p5.table = 1; p5.masa = 0; p5.nofl = 1; p5.adreb = 1;   // odd step
 		DecodedStep p6; p6.iwt = 1; p6.iwa = 1;
 		d.coef(0, 0x4000);
 		d.program({ p0, p1, p2, p3, p4, p5, p6 });
 		d.one_step();
 		const std::int32_t m0 = d.mems(0), m1 = d.mems(1);
 		char t[128];
-		snprintf(t, sizeof t, "MEMS[0] = %s (sans ADREB), MEMS[1] = %s (avec)", hex(m0).c_str(), hex(m1).c_str());
+		snprintf(t, sizeof t, "MEMS[0] = %s (without ADREB), MEMS[1] = %s (with)", hex(m0).c_str(), hex(m1).c_str());
 		(m0 == 0x123400 && m1 == 0x567800)
-			? ok("ADRL : l'adresse decalee par ADRS_REG", t)
-			: rate("ADRL : l'adresse decalee par ADRS_REG", t);
+			? ok("ADRL: the address offset by ADRS_REG", t)
+			: failed("ADRL: the address offset by ADRS_REG", t);
 	}
 
-	// ---- 13. LES DEUX CORPS S'ACCORDENT : un rare inoffensif ne change rien
-	// `dsp_own` a deux corps -- `template <bool RARES>` -- et un seul tourne sur les programmes des
-	// jeux, puisqu'aucun ne pose les quatre. Le corps complet n'etait donc exerce par RIEN. Ce cas le
-	// force : la chaine du cas 4, inchangee, plus un FRCL sur un pas ou SHIFTED vaut zero -- ce qui ecrit
-	// zero dans FRC_REG, sa valeur de depart, et ne change donc rien. Le resultat DOIT rester 0x091A.
-	// Quatre fautes injectees dans le corps complet seraient autrement passees inapercues.
+	// ---- 13. THE TWO BODIES AGREE: a harmless rare field changes nothing
+	// `dsp_own` has two bodies -- `template <bool RARES>` -- and only one runs on the games' programs,
+	// since none of them sets the four. So the full body was exercised by NOTHING. This case forces it:
+	// case 4's chain, unchanged, plus an FRCL on a step where SHIFTED is zero -- which writes zero into
+	// FRC_REG, its starting value, and so changes nothing. The result MUST stay 0x091A. Four faults
+	// injected into the full body would otherwise have gone unnoticed.
 	{
 		BenchDsp d;
 		d.b.ram[0] = 0x1234;
 		d.madrs(0, 0);
-		DecodedStep p0; p0.frcl = 1;           // SHIFTED vaut zero ici : FRC_REG <- 0, sans effet
+		DecodedStep p0; p0.frcl = 1;           // SHIFTED is zero here: FRC_REG <- 0, with no effect
 		DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
 		DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
 		DecodedStep p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
@@ -598,13 +597,13 @@ int main(int argc, char **argv)
 		d.one_step();
 		const std::int16_t e = d.efreg(0);
 		char t[96];
-		snprintf(t, sizeof t, "EFREG[0] = %d, le corps complet force par un FRCL nul", e);
-		(e == 0x091A) ? ok("les deux corps s'accordent", t)
-		              : rate("les deux corps s'accordent", std::string(t) + " ; attendu 2330");
+		snprintf(t, sizeof t, "EFREG[0] = %d, the full body forced by a null FRCL", e);
+		(e == 0x091A) ? ok("the two bodies agree", t)
+		              : failed("the two bodies agree", std::string(t) + "; expected 2330");
 	}
 
 	printf("\n");
-	if (failures) { printf("%d echec(s).\n", failures); return 1; }
+	if (failures) { printf("%d failure(s).\n", failures); return 1; }
 	printf("all cases pass\n");
 	return 0;
 }
