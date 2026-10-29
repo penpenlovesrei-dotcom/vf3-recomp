@@ -35,7 +35,7 @@ namespace {
 int failures = 0;
 
 void ok(const char *what, const std::string &d) { printf("  ok     %-40s %s\n", what, d.c_str()); }
-void rate(const char *what, const std::string &d) { printf("  FAILED %-40s %s\n", what, d.c_str()); ++failures; }
+void fail(const char *what, const std::string &d) { printf("  FAILED %-40s %s\n", what, d.c_str()); ++failures; }
 
 struct Silent final : scsp::sink {
 	void irq(int, bool) override {}
@@ -111,7 +111,7 @@ int main(int argc, char **argv)
 		}
 		const bool correct = slots == 32 && others == 2 && skipped == slots + others;
 		correct ? ok("the ones set aside are named", std::to_string(slots) + " slot word 0s + 0x400 + 0x416")
-		      : rate("the ones set aside are named",
+		      : fail("the ones set aside are named",
 		             std::to_string(slots) + " slots and " + std::to_string(others) + " others, for "
 		             + std::to_string(skipped) + " skipped");
 	}
@@ -145,7 +145,7 @@ int main(int argc, char **argv)
 		// assignment would pass the first half of this test and fail the second.
 		(mo == 0x0020 && co == 0x0020)
 			? ok(name, std::string(d) + ": bit 5 alone, and it stays raised")
-			: rate(name, std::string(d) + ", expected raises and sticks 0x0020");
+			: fail(name, std::string(d) + ", expected raises and sticks 0x0020");
 	}
 
 	// ---- 3 bis. SCIRE, the twin that does NOT have the exception
@@ -156,7 +156,7 @@ int main(int argc, char **argv)
 		char d[64];
 		snprintf(d, sizeof d, "raises 0x%04x", mo);
 		(mo == 0xFFFF) ? ok("SCIRE (0x422)", std::string(d) + ": a whole register, no exception on this side")
-		               : rate("SCIRE (0x422)", std::string(d) + ", expected 0xFFFF");
+		               : fail("SCIRE (0x422)", std::string(d) + ", expected 0xFFFF");
 	}
 
 	// ---- 3 ter. the two words the READ manufactures
@@ -171,7 +171,7 @@ int main(int argc, char **argv)
 		                      "0x408 raises 0x%04x (MSLC/CA/SGC/EG, recomputed on every read)", m404, m408);
 		(m404 == 0xFF00 && m408 == 0x0000)
 			? ok("0x404 and 0x408: the read manufactures them", d)
-			: rate("0x404 and 0x408: the read manufactures them", std::string(d) + ", expected 0xFF00 and 0x0000");
+			: fail("0x404 and 0x408: the read manufactures them", std::string(d) + ", expected 0xFF00 and 0x0000");
 	}
 
 	// ---- 4. the fields the driver depends on all read back
@@ -188,7 +188,7 @@ int main(int argc, char **argv)
 			if ((m & expected) != expected) lost += std::string(lost.empty() ? "" : ", ") + c.name;
 		}
 		lost.empty() ? ok("a slot's 34 fields all read back", "no bit lost by the register")
-		               : rate("a slot's 34 fields all read back", "lost: " + lost);
+		               : fail("a slot's 34 fields all read back", "lost: " + lost);
 	}
 
 	// ---- 5. the disputed range 0x7C0-0x7FF, described and not judged
@@ -220,7 +220,7 @@ int main(int argc, char **argv)
 		}
 		set_mirror(the_core, true);   // we hand the core back in the state we took it in
 		correct ? ok("0x7C0-0x7FF: what this core does with it", lines)
-		      : rate("0x7C0-0x7FF: what this core does with it", lines + " -- not what was recorded");
+		      : fail("0x7C0-0x7FF: what this core does with it", lines + " -- not what was recorded");
 	}
 
 	// ---- 6. the map of the masks, so that a rewrite has a target and not an intention

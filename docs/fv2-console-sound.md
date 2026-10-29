@@ -625,17 +625,47 @@ has been fixed, even if I find the sound effects are lower". That is not a loss 
 says the opposite — but the reverb, which is no longer crushed into one point and gets its real delay lines
 back: the hits have a tail instead of a concentrated crack.
 
-### The fix is PER GAME, because both measurements are good
+### ~~The fix is PER GAME, because both measurements are good~~ — one of the two was not
 
-Upstream measured that the mirror is **right for Virtua Fighter 3**: the credit's and Start's echoes die
-there in a second, like the reference, whereas without it they ring on for several. We have just measured
-that it is **wrong for Fighting Vipers 2**. Neither measurement cancels the other, so the setting follows
-the game, as `driver_known` already does:
+**Settled on 2026-10-29: the mirror is off for BOTH games**, and the paragraph this heading used to carry
+is kept below the line because the way it was wrong is the lesson.
+
+It read: upstream measured that the mirror is **right for Virtua Fighter 3** — the credit's and Start's
+echoes dying there in a second, like the reference, where without it they ring on for several. That
+measurement was made against **Supermodel at `c65edb1`**, and that build mirrors: its own comment says
+`// MADRS is mirrored twice`. The reference agreed because it shared the behaviour, which establishes
+nothing. Read at the source five days later.
+
+Two projects outside this one removed the mirror in the same week, and one of them has what we do not:
+MAME on 2026-10-19 (#16527, for `doa`), and Supermodel on 2026-10-21 (`b1f2c162`), **citing the YMF292
+manual's Fig. 4.5 — MADRS is 32 words at 780h-7BFh** — and stating that a mirror "wipes the taps and
+silences their reverb" for VF3 and Sega Rally 2.
+
+The magnitude never supported the exception either, and §5's own figures said so at the time: +2.2 dB of
+mean peak on the coin-up, +0.0 dB in the fight, spectrum within 0.1 dB, the echoes going from 2.05 s to
+2.25 s and from 0.95 s to 1.15 s, and the left/right correlation — the signature of the collapse, which
+moved from 0.99 to 0.73-0.85 on VF2 — not moving at all (0.861 against 0.865). "Several seconds" was never
+reproduced.
+
+**What is still not known** is what the chip does. There is no cabinet here; if a real SCSP mirrors, then
+the collapsed delay lines were the period sound and this change is wrong for both games at once. That is
+the one thing none of these measurements can reach.
+
+---
+
+The setting as it was, until the above:
 
 - `SoundBoard::madrs_mirror`, set from the set by the host and by `vf3run` (`board.set == "vf3"`), applied
   to the chip at its creation through `scsp_device::set_madrs_mirror`.
 - `VF3_SCSP_MADRS_SEPARATE=1` and `VF3_SCSP_MADRS_MIRROR=1` force one or the other, for comparison.
 - `verify-vf3.cmd 2000`: four `IDENTICAL` and 2231 identical frames — Virtua Fighter 3 does not move.
+
+**And as it is now**: nothing assigns `SoundBoard::madrs_mirror` any more — it is `false` at construction,
+the two lines in `main.cpp` and `vf3run.cpp` that set it from the set are gone, and the two environment
+variables are the only things that move it. `verify-vf3.cmd` still gives its five `IDENTICAL`, because it
+compares no audio at all; where VF3's new sound shows is `tools/sound/compare-sound.cmd vf3`, which now
+reports `DIFFERENT` against any commit before this one, and that is the point of the change rather than a
+regression.
 
 **A measurement trap met on the way, not to be repeated**: the first build failed (`m_madrs_mirror` was
 private) and the checker then ran on the **old** binaries, returning four `IDENTICAL` that bore on nothing.

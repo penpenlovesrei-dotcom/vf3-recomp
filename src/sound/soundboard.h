@@ -60,11 +60,11 @@ public:
 	// records at 0x400 are something else, and reading them could put voices in the wrong group by coincidence,
 	// so every voice is the music's and the two volumes move together.
 	bool driver_known = true;
-	// Whether the DSP's MADRS table is mirrored at 0x7C0-0x7FF (scsp.h: m_madrs_mirror). Measured right
-	// for Virtua Fighter 3, where it keeps the reverb as short as the reference's, and measured WRONG for
-	// Fighting Vipers 2, where it collapses the DSP's delay lines onto one address and the victory
-	// screen's sound feeds itself (docs/fv2-console-sound.md). Set from the set, like driver_known.
-	bool madrs_mirror = true;
+	// Whether the DSP's MADRS table is mirrored at 0x7C0-0x7FF (scsp.h: m_madrs_mirror). OFF FOR BOTH
+	// GAMES since 2026-10-29, and it was per game until then: see scsp.h for why the exception VF3 had
+	// did not survive being checked. Not set from the set any more -- nothing writes this field; the two
+	// environment variables are the only things that move it, for comparing.
+	bool madrs_mirror = false;
 
 	uint64_t cycles() const { return now; }
 	uint32_t pc() const { return cpu->pc(); }

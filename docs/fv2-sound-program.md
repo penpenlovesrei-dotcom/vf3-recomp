@@ -1101,15 +1101,20 @@ corrected on its side for `doa` (#16527). Three games, one mechanism.
 range, then the cabinet ran with its delay lines collapsed too, and the short reverberation **is** the period
 sound. Nothing here says so, and there is no Model 3 on this desk.
 
-**So what needs doing, and what I have not done:** take up the VF3 measurement again with
-`VF3_SCSP_MADRS_SEPARATE=1`, and listen. Changing that setting changes the port's sound: it is a decision,
-not a correction, and it is not mine to make.
+**DONE on 2026-10-29, and the decision went the other way.** The measurement was taken up, and what
+settled it was not the listening but the REFERENCE: the build the VF3 exception rested on — Supermodel at
+`c65edb1` — mirrors too, its comment reading `// MADRS is mirrored twice`, so the agreement proved nothing.
+Supermodel has since removed the mirror (`b1f2c162`, 2026-10-21) **citing the YMF292 manual's Fig. 4.5**,
+which is the primary source this desk does not have. The mirror is now off for **both** games
+(`src/sound/scsp.h`). What is above this paragraph stands unchanged, the unsettled part included: if a real
+SCSP mirrors, this change is wrong for both at once.
 
 
 ## 5 bis. How the question stood before the probe
 
-A reminder of the question (`scsp/docs/scsp_references.md`): this port keeps the MADRS mirror for VF3 and
-separates it for Fighting Vipers 2; MAME `master` discards the writes and returns MADRS on reads. Nobody had
+A reminder of the question as it stood then (`scsp/docs/scsp_references.md`): this port kept the MADRS
+mirror for VF3 and separated it for Fighting Vipers 2 — since 2026-10-29 it separates both; MAME `master`
+discards the writes and returns MADRS on reads. Nobody had
 looked at what the program does.
 
 What was found: in the whole image, **no absolute reference to `+7C0`-`+7FF`** — but **COEF (`+700`) seven

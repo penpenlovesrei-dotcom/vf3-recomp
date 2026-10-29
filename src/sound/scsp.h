@@ -185,20 +185,37 @@ private:
 	// here are kept and read back; nothing else uses them. VF2_SCSP_MADRS_MIRROR=1 restores
 	// MAME's mirror, for comparing the sound with MAME's (tools/sound_compare.py).
 	u16 m_madrs_hi[32] = {};
-	// 0x7C0-0x7FF a mirror of MADRS (MAME's, and what Supermodel's VF3 sounds like): VF3's sound program sets its
-	// reverb's addresses, then clears that range, which with the mirror leaves them all at one place: the reverb
-	// short, as the reference's (the coin's and start's echoes die in about a second; kept apart, VF2's way, they
-	// rang on for several). VF3_SCSP_MADRS_SEPARATE=1: kept apart.
-	// AND IT IS WRONG FOR FIGHTING VIPERS 2, measured the 2026-10-24. With the mirror every MADRS entry lands
-	// at one place, so each of the DSP's delay lines reads and writes the same buffer: on the victory screen
-	// (VIC_DSP) that fed itself, and a sound was born there and climbed 24 dB to the host's limiter, which held
-	// 120 frames at -1 dBFS. Kept apart, it goes: the state's mean peak falls from 22831 to 6532 while every
-	// other state stays where it was (the fight's mean even rises, 6714 to 6979). MAME has since corrected
-	// this on its own account -- mamedev/mame#16527, "Don't mirror MADRS at 0x7c0-0x7ff, fixes corrupted and
-	// then silent sound" -- and Supermodel kept ElSemi's older DSP for this very game until it made its DSP's
-	// memory access follow the manual. So: the mirror for the game it was measured right on, apart for the
-	// other. The board sets it per game (soundboard.h); VF3_SCSP_MADRS_SEPARATE=1 and VF3_SCSP_MADRS_MIRROR=1
-	// force it either way, for comparing. See docs/fv2-console-sound.md.
+	// 0x7C0-0x7FF IS NOT A MIRROR OF MADRS, and this port mirrored it until 2026-10-29 because MAME does.
+	// Both games' sound program loads MADRS and then writes 32 zeros over that range, in that order, so with
+	// the mirror those zeros erase the delay lines' addresses: 878 of them lost on Fighting Vipers 2, 176 on
+	// Virtua Fighter 3, leaving every line reading and writing one buffer.
+	//
+	// WHAT IT COST FIGHTING VIPERS 2, measured the 2026-10-24: on the victory screen (VIC_DSP) that one
+	// buffer fed itself, a sound was born there and climbed 24 dB to the host's limiter, which then held 120
+	// frames at -1 dBFS. Kept apart it goes -- the state's mean peak falls from 22831 to 6532 while every
+	// other state stays put (the fight's mean even rises, 6714 to 6979).
+	//
+	// AND VF3 WAS THE EXCEPTION FOR FIVE DAYS, on a reason that did not survive being checked. The reason
+	// was that without the mirror VF3's reverb rang on for several seconds where THE REFERENCE cut it in
+	// one. The reference is Supermodel at c65edb1, and that build MIRRORS -- its own comment says
+	// "MADRS is mirrored twice". So the agreement was with a build that had the same behaviour, which
+	// establishes nothing. Read at the source the 2026-10-29.
+	//
+	// Three things point the other way and none of them is ours. MAME stopped mirroring on 2026-10-19
+	// (mamedev/mame#16527, "Don't mirror MADRS at 0x7c0-0x7ff, fixes corrupted and then silent sound in
+	// doa"). Supermodel stopped on 2026-10-21 (b1f2c162) and cites the YMF292 MANUAL for it -- Fig. 4.5,
+	// MADRS is 32 words at 780h-7BFh -- saying in so many words that a mirror "wipes the taps and silences
+	// their reverb" for VF3 and Sega Rally 2. That is a primary source, which this repository does not have
+	// and cannot answer. And the magnitude never supported the exception anyway: on VF3 the two sounds
+	// differ by +2.2 dB of mean peak on the coin-up, +0.0 dB in the fight, within 0.1 dB of spectrum, and
+	// the echoes go from 2.05 s to 2.25 s and from 0.95 s to 1.15 s -- a fifth of a second, not "several".
+	// The left/right correlation, which is the signature of the collapse and moved from 0.99 to 0.73-0.85
+	// on VF2, does not move here at all (0.861 against 0.865).
+	//
+	// So: APART FOR BOTH, and the per-game field in soundboard.h keeps only the two environment variables
+	// that force it either way for comparing -- VF3_SCSP_MADRS_SEPARATE=1 and VF3_SCSP_MADRS_MIRROR=1.
+	// What is still not known is what the chip does: there is no cabinet here, and if a real SCSP mirrors
+	// then the collapsed lines were the period sound. See docs/fv2-console-sound.md.
 	bool m_madrs_mirror = true;
 	// VF3_SCSP_MSLC_LATCH=1: MAME's MSLC status latched once a sample (for comparisons)
 	const bool m_latch_mslc_per_sample = [] { const char *e = getenv("VF3_SCSP_MSLC_LATCH"); return e && *e == '1'; }();

@@ -164,11 +164,14 @@ void SoundBoard::reset()
 			fprintf(stderr, "sound: core \"%s\" -- the per-group gains, the energy probe and the key-on"
 			                " log do not apply (soundboard.h)\n", name);
 		// THE MADRS MIRROR IS SET BEFORE THE TRACE, and the order is a divergence's lesson: it is the only
-		// one of the four extras that changes the sound, it changes per game (soundboard.h) and it does not
-		// go through scsp::core. Set AFTER the recorder -- as it used to be -- it did not go into the
-		// trace's header, a replay assumed it `true`, and on Fighting Vipers 2 where it is false the replay
-		// diverged from the board at sample 772 067 (scsp/docs/scsp_validation.md §3 c). Set here, the
-		// recorder READS it back from the chip: there is nothing left to remember to tell it.
+		// one of the four extras that changes the sound, and it does not go through scsp::core. Set AFTER
+		// the recorder -- as it used to be -- it did not go into the trace's header, a replay assumed it
+		// `true`, and on Fighting Vipers 2, which already had it false then, the replay diverged from the
+		// board at sample 772 067 (scsp/docs/scsp_validation.md §3 c). Set here, the recorder READS it
+		// back from the chip: there is nothing left to remember to tell it.
+		//
+		// It was per game until 2026-10-29 and is false for both now (soundboard.h); setting it here is
+		// what keeps the trace honest either way.
 		{
 			const char *sep = getenv("VF3_SCSP_MADRS_SEPARATE"), *mir = getenv("VF3_SCSP_MADRS_MIRROR");
 			const bool on = (sep && *sep == '1') ? false : (mir && *mir == '1') ? true : madrs_mirror;

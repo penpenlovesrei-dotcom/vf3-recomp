@@ -9,18 +9,34 @@ nothing here is deduced from a memory.
 
 ## The warning that comes first
 
-**The implementations are not independent of one another, and their agreement proves nothing.**
+**The implementations were not independent of one another, and their agreement proved nothing — and that
+has stopped being true of Supermodel, which makes it the warning's own counter-example.**
 
 MAME's SCSP carries `copyright-holders: ElSemi, R. Belmont` at its head: ElSemi wrote it, R. Belmont
-converted it for MAME/M1, kingshriek corrected it. Supermodel's SCSP comes from **the same ElSemi**, who
-gave it to the project; the header of `Src/Sound/SCSP.cpp` says so and separately credits a MAME conversion
-by Paul Prosser. So the two emulators are not two witnesses: they are **one witness read twice**. When MAME
-and Supermodel sound the same, that does not establish that the YMF292 sounds like that.
+converted it for MAME/M1, kingshriek corrected it. Supermodel's came from **the same ElSemi**, who gave it
+to the project; the header of `Src/Sound/SCSP.cpp` still says so and separately credits a MAME conversion
+by Paul Prosser. So for years the two emulators were not two witnesses but **one witness read twice**, and
+"MAME and Supermodel do the same" settled nothing.
 
-The practical consequence: any question of fidelity settled by "MAME and Supermodel do the same" is a
-question **not settled**. In this repository, the settings that depart from MAME were decided by
-measurement on the cabinet (a state's level, the reverb's left/right correlation, a voice's spectral gap),
-not by a vote between emulators — and that is the right method to keep.
+**Read at the source on 2026-10-29, and it is no longer the state of things.** Supermodel's commit
+`b1f2c162` of **2026-10-21** rewrites that core twice over:
+
+- its DSP pipeline now **follows Mednafen** — "memory reads/writes complete one step later, IWT takes the
+  word read 2-3 steps earlier, NOFL is bit 8" — and the message states it "matches Mednafen exactly on 300
+  random programs". Mednafen's SCSP is a Saturn lineage, not ElSemi's, so this is a **second** witness;
+- and it cites the **YMF292 manual** throughout: Fig. 4.5 (MADRS), Fig. 4.7 (the internal buffers),
+  Fig. 4.30/4.31 (the sound stack's delay), Fig. 4.65, Table 4.12 and 4.17, pages 35, 72 and 96,
+  section 4.2 (DMA). That is a **primary source**, and it is one this repository does not have (see "what
+  will remain impossible to check here").
+
+So the warning holds for MAME against Supermodel-before-2026-10-21, and no longer after it. The practical
+consequence has turned around: where Supermodel now cites the manual, it is this repository that has the
+weaker evidence, and said so on the `0x7C0-0x7FF` question (point 3 below).
+
+In this repository, the settings that depart from MAME were decided by measurement (a state's level, the
+reverb's left/right correlation, a voice's spectral gap), not by a vote between emulators — and that stays
+the right method. What the `0x7C0-0x7FF` question taught is the method's blind spot: a measurement against
+a REFERENCE BUILD is only worth what that build is, and must be checked at its source.
 
 
 ## Licences, and what may be done with each source
@@ -88,9 +104,19 @@ So:
 2. **On the read side**, the two differ: MAME returns MADRS, the "separate" mode returns the words written.
    If a sound program reads that range back and acts on it, the two will not give the same thing. **Not
    measured** here: it is not known whether either game reads it back.
-3. **And for Virtua Fighter 3, this repository keeps the mirror** (`soundboard.h`: `madrs_mirror = true`),
-   because without it the reverb held for several seconds where the reference cuts it in one
-   (`src/sound/scsp.h`).
+3. ~~**And for Virtua Fighter 3, this repository keeps the mirror**~~ — **withdrawn on 2026-10-29, and
+   the reason it rested on was circular.** The reason was that without the mirror VF3's reverb held for
+   several seconds "where the reference cuts it in one". The reference is Supermodel at **`c65edb1`**, the
+   commit `tools/ref/supermodel-cov.patch` is made against, and that build **mirrors**: its own comment
+   reads `// MADRS is mirrored twice`. The agreement was with a build that had the same behaviour, so it
+   established nothing. `madrs_mirror = false` for both games now (`src/sound/scsp.h` carries the whole
+   reasoning).
+
+   Two sources outside this repository point the same way, and neither is ours: MAME stopped mirroring on
+   2026-10-19 (#16527, for `doa`), and Supermodel on 2026-10-21 (`b1f2c162`) **citing manual Fig. 4.5 —
+   MADRS is 32 words at 780h-7BFh** — and saying in so many words that a mirror "wipes the taps and
+   silences their reverb" for **VF3 and Sega Rally 2**. On VF3 specifically, that is a primary source
+   against a reading of ours that had none.
 
    **Measured since, and it changes the reading** (`docs/fv2-sound-program.md` §5): **both** games' sound
    program loads MADRS and then writes **32 zeros into `0x7C0-0x7FF`**, in that order. With the mirror,
@@ -140,12 +166,17 @@ look, and Mednafen's sentence says where.
   assertion was not rechecked at the source today**.
 - **The YMF292-F / SCSP technical documentation**: not obtained. Nothing was downloaded, and no assertion
   in this repository rests on it for the time being.
-- **Supermodel's code beyond `SCSPDSP.cpp`**: only the header and the loop's shape were read.
-  `src/sound/scsp.h`'s assertion that "Supermodel kept ElSemi's older DSP for this very game until it made
-  its DSP's memory access follow the manual" **has not been confirmed**: the file read today mentions
-  neither MAME, nor an original DSP, nor a manual. There is besides an indirect hint (a search returns a
-  Supermodel commit that "ported MAME's implementation and added a legacy DSP option for games with DSP
-  glitches"), but that is a secondary source and it is not accepted as proof.
+- ~~**Supermodel's code beyond `SCSPDSP.cpp`**~~ — **read on 2026-10-29, and the assertion is CONFIRMED at
+  the source.** `src/sound/scsp.h` had said "Supermodel kept ElSemi's older DSP for this very game until it
+  made its DSP's memory access follow the manual", marked here as unconfirmed. `Src/Sound/SCSP.cpp`'s own
+  to-do list says it almost word for word:
+
+  > "Check that music in Fighting Vipers 2 Bahn's stage no longer hangs (it used to need ElSemi's older DSP
+  > register handling, which has been removed now that DSP memory access follows the manual)."
+
+  So the claim was right, and its game is Fighting Vipers 2. **And the option is gone**: a code search over
+  `trzy/Supermodel` returns no `LegacySoundDSP`, which matters because that is still the only answer given
+  on their open issue #321 about this very defect.
 
 ### And what will remain impossible to check here
 
