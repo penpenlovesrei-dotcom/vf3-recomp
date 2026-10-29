@@ -3902,7 +3902,8 @@ int main(int argc, char **argv)
 			// tree still in front of it and the state still saying the game is held -- the port's own menu
 			// closes itself for the same reason (reset_game calls menu.close).
 			{ "RESET GAME", {}, {}, [&] { enter(cstate::PLAY, "RESET GAME"); reset_game(); }, {}, 0, true, 1.2f },
-			{ "QUIT", {}, {}, [&] { running = false; }, {}, 0, true, 0.32f },
+			// QUIT WENT WITH THE PAGE, the 2026-10-29: "supprime QUIT". A console's own menu does not offer
+			// to leave the console. The window's cross and the port's menu under Escape both still do.
 		};
 		options.ctl = cfg.ctl;   // CONTROLLER reads the bindings and writes them
 		// AND THE THREE LINES OF THAT PAGE THAT ARE ABOUT THE PADS RATHER THAN THEIR BUTTONS. The page owns
