@@ -758,125 +758,124 @@ variable is set and only reads RAM. Measured against the binary as it stood befo
   `--watch 58FD98` reports `B_MAIN_MODE` written at `0x0000AC10` with `LR 0x00039068`, and
   `0x00039064` is `bl 0x0000ABC4`.
 
-## 8. Le relevé des combats : `FUN_000701C8`
+## 8. The record of fights: `FUN_000701C8`
 
-Lu dans Ghidra le 2026-10-23, à la demande de Frédéric, pour savoir ce qui sépare `SKO 1` de `SKO 2`.
-C'est **la routine qui range un match dans le tableau des statistiques**, celui que la borne montre sous
-`VS DIAGRAM` dans son menu de test et que la Dreamcast reprend en plus large.
+Read in Ghidra on 2026-10-23, at Frédéric's request, to find out what separates `SKO 1` from `SKO 2`. It is
+**the routine that files a match into the statistics table**, the one the cabinet shows under `VS DIAGRAM` in
+its test menu and that the Dreamcast takes up on a larger scale.
 
-### La table vivante
+### The live table
 
-Trouvée par l'écran de la borne lui-même (`FUN_00070924`, qui l'affiche) :
+Found through the cabinet's own screen (`FUN_00070924`, which displays it):
 
 ```
 base      0x0011F7E0
-pas       0xD4 par personnage        (index = fighter[0xB8], le *1P CHARA du flux)
-  +0x00   KO          entier 32 bits
-  +0x04   SKO 1       entier 32 bits
-  +0x08   SKO 2       entier 32 bits
-  +0x0C   JUDGE       entier 32 bits
-  +0x10   DRAW        entier 32 bits
-  +0x14   FIGHT[16]   un entier par adversaire, de 4 en 4
+step      0xD4 per character         (index = fighter[0xB8], the stream's *1P CHARA)
+  +0x00   KO          32-bit integer
+  +0x04   SKO 1       32-bit integer
+  +0x08   SKO 2       32-bit integer
+  +0x0C   JUDGE       32-bit integer
+  +0x10   DRAW        32-bit integer
+  +0x14   FIGHT[16]   one integer per opponent, every 4
   +0x54   WIN[16]
   +0x94   LOSE[16]
 ```
 
-**Ce sont des entiers 32 bits**, `lwz`/`stw`, et non des mots de 16 bits. Dans la sauvegarde, où tout est
-espacé à deux octets utiles sur quatre, chaque entier occupe huit octets et **la valeur se lit dans les deux
-premiers** — mesuré : `00 01 00 00 00 00 00 00` pour un compteur à 1. Une lecture 16 bits au décalage du
-champ donne donc le bon compte tant qu'il reste sous 65536 ; au-delà il faudrait la moitié haute, quatre
-octets plus loin.
+**They are 32-bit integers**, `lwz`/`stw`, and not 16-bit words. In the backup, where everything is spaced out
+at two useful bytes in four, each integer occupies eight bytes and **the value reads in the first two** —
+measured: `00 01 00 00 00 00 00 00` for a counter at 1. So a 16-bit read at the field's offset gives the right
+count as long as it stays under 65536; beyond that the high half would be needed, four bytes further on.
 
-Les décalages de la sauvegarde sont exactement le double de ceux-ci : `0x1A8` pour `0xD4`, `0x28` pour
-`0x14`, `0xA8` pour `0x54`, `0x128` pour `0x94`, et 8 entre adversaires pour 4. La sauvegarde est une image
-espacée de cette table, rien de plus.
+The backup's offsets are exactly double these: `0x1A8` for `0xD4`, `0x28` for `0x14`, `0xA8` for `0x54`,
+`0x128` for `0x94`, and 8 between opponents for 4. The backup is a spaced-out image of this table, nothing
+more.
 
-### Ce que la routine fait
+### What the routine does
 
 ```
 char0 = fighter0[0xB8]        /* [0x0007511C] + 0xB8 */
 char1 = fighter1[0xB8]        /* [0x00075120] + 0xB8 */
 
-FIGHT[char0][char1]++ ;  FIGHT[char1][char0]++        /* toujours, des deux cotes */
+FIGHT[char0][char1]++ ;  FIGHT[char1][char0]++        /* always, on both sides */
 
-if (0x00581453 == 2) {                                 /* match nul */
+if (0x00581453 == 2) {                                 /* a draw */
         DRAW[char0]++ ;  DRAW[char1]++
 } else {
-        gagnant = (0x00581453 == 0) ? char0 : char1
-        perdant = l'autre
-        WIN[gagnant][perdant]++ ;  LOSE[perdant][gagnant]++
+        winner = (0x00581453 == 0) ? char0 : char1
+        loser  = the other one
+        WIN[winner][loser]++ ;  LOSE[loser][winner]++
 
-        switch (0x00581452) {                          /* LE GENRE DE FIN */
-        case 2:   JUDGE[gagnant]++                     /* decision au juge */
-        case 3:   SUPER_K_O ? SKO2[gagnant]++ : SKO1[gagnant]++
-        default:  KO[gagnant]++
+        switch (0x00581452) {                          /* THE KIND OF ENDING */
+        case 2:   JUDGE[winner]++                      /* decision by the judge */
+        case 3:   SUPER_K_O ? SKO2[winner]++ : SKO1[winner]++
+        default:  KO[winner]++
         }
 }
 ```
 
-### Deux variables nommées au passage
+### Two variables named in passing
 
-| adresse | ce que c'est |
+| address | what it is |
 |---|---|
-| `0x00581452` | **le genre de fin** : 2 au juge, 3 Super K.O., le reste un KO ordinaire |
-| `0x00581453` | **qui a gagné** : 0 le combattant 0, 2 un nul, sinon le combattant 1 |
+| `0x00581452` | **the kind of ending**: 2 by the judge, 3 Super K.O., anything else an ordinary KO |
+| `0x00581453` | **who won**: 0 fighter 0, 2 a draw, otherwise fighter 1 |
 
-La section 7 donnait `0x00581454` / `0x00581455` comme « on ne sait pas lequel est quel côté » ; ces deux-ci
-sont juste avant et ne sont pas les mêmes.
+Section 7 gave `0x00581454` / `0x00581455` as "nobody knows which is which side"; these two are just before
+them and are not the same.
 
-### Et `SKO 1` contre `SKO 2` : ce n'est pas deux coups
+### And `SKO 1` against `SKO 2`: it is not two moves
 
-C'est ce que la lecture apporte de plus inattendu. Les deux colonnes comptent **la même fin** — `0x00581452`
-vaut 3 dans les deux cas — et ce qui décide de la colonne est **le réglage `SUPER K.O.` lui-même** :
+That is the most unexpected thing the reading brings. Both columns count **the same ending** — `0x00581452`
+is 3 in both cases — and what decides the column is **the `SUPER K.O.` setting itself**:
 
 ```
 00070304  lis   r9, 0x12
-00070308  lbz   r0, 0x554(r9)      ; le reglage SUPER K.O., 0x00120554
+00070308  lbz   r0, 0x554(r9)      ; the SUPER K.O. setting, 0x00120554
 0007030c  cmpwi cr1, r0, 0x0
 00070310  beq   cr1, 0x00070324
-00070314  lwz   r0, 0x8(r10)       ; reglage ALLUME  -> +0x08, la seconde colonne
+00070314  lwz   r0, 0x8(r10)       ; setting ON  -> +0x08, the second column
 0007031c  stw   r0, 0x8(r10)
-00070324  lwz   r0, 0x4(r10)       ; reglage ETEINT  -> +0x04, la premiere
+00070324  lwz   r0, 0x4(r10)       ; setting OFF -> +0x04, the first
 0007032c  stw   r0, 0x4(r10)
 ```
 
-Autrement dit l'exploitant qui éteint `SUPER K.O.` ne supprime pas la fin : il la fait compter dans l'autre
-colonne. Les deux cases séparent donc **les Super K.O. obtenus réglage éteint de ceux obtenus réglage
-allumé**, et non deux manières de les faire.
+In other words, the operator who turns `SUPER K.O.` off does not remove the ending: he makes it count in the
+other column. So the two cells separate **the Super K.O.s obtained with the setting off from those obtained
+with it on**, and not two ways of doing them.
 
-### Et ce que le réglage commande vraiment
+### And what the setting really commands
 
-Il ne décide pas si la fin peut arriver — le compteur monte dans les deux cas. C'est une option
-**d'affichage**, et deux routines le montrent :
+It does not decide whether the ending can happen — the counter goes up in both cases. It is a **display**
+option, and two routines show it:
 
-- **`FUN_00059E24`**, les marques de rounds gagnés. Éteint, le jeu dessine de simples marques, `0x00581454`
-  d'un côté et `0x00581455` de l'autre. Allumé, il parcourt l'historique des rounds à `0x00581897` sur
-  `0x00581456` entrées et donne à chacun un symbole **selon la façon dont il a été gagné** : 1 et 2 pour le
-  côté gauche, 3 et 4 pour le droit, `0xFF` pour un double KO qui en pose un des deux côtés.
-- **`FUN_0005C760`**, qui change la bannière affichée pendant le combat selon le même réglage.
+- **`FUN_00059E24`**, the marks for rounds won. Off, the game draws plain marks, `0x00581454` on one side and
+  `0x00581455` on the other. On, it walks the history of rounds at `0x00581897` over `0x00581456` entries and
+  gives each one a symbol **according to how it was won**: 1 and 2 for the left side, 3 and 4 for the right,
+  `0xFF` for a double KO, which puts one on each side.
+- **`FUN_0005C760`**, which changes the banner shown during the fight according to the same setting.
 
-Ce qui donne aussi un sens à la séparation des deux colonnes : réglage allumé, le joueur a été prévenu et la
-fin lui est annoncée ; éteint, elle lui est tombée dessus sans rien dire. Deux statistiques différentes pour
-l'exploitant.
+Which also gives a meaning to the separation of the two columns: with the setting on, the player was warned
+and the ending is announced to him; off, it fell on him without a word. Two different statistics for the
+operator.
 
-### Ce qui reste en doute
+### What remains in doubt
 
-Tout ce qui précède est **lu dans le code et non vu en jouant**, et Frédéric, qui connaît le jeu, n'est pas
-convaincu. Son objection tient : si `SUPER K.O.` éteint empêche le coup — et `FUN_000136B0` va dans son sens,
-le coup ne valant alors qu'un round au lieu de deux — alors la colonne du réglage éteint ne peut jamais se
-remplir, et deux colonnes pour un seul cas atteignable n'a pas de sens.
+Everything above is **read in the code and not seen in play**, and Frédéric, who knows the game, is not
+convinced. His objection holds: if `SUPER K.O.` off prevents the move — and `FUN_000136B0` is on his side, the
+move then being worth one round instead of two — then the setting-off column can never fill, and two columns
+for a single reachable case makes no sense.
 
-Deux lectures restent ouvertes :
+Two readings remain open:
 
-1. **C'est du code mort.** Sega a écrit les deux branches, une seule est atteignable, et `SKO 1` reste à zéro
-   pour toujours. C'est ce que dit le code tel quel.
-2. **J'ai mal lu quelque chose.** Le genre de fin à `0x00581452` n'a pas été vu prendre la valeur 3 ; personne
-   n'a trouvé qui l'écrit, et c'est tout ce sur quoi repose l'aiguillage.
+1. **It is dead code.** Sega wrote both branches, only one is reachable, and `SKO 1` stays at zero for ever.
+   That is what the code as it stands says.
+2. **I misread something.** The kind of ending at `0x00581452` has not been seen taking the value 3; nobody
+   has found who writes it, and that is all the switch rests on.
 
-**Ce qui trancherait** : un Super K.O. joué avec le réglage éteint — s'il sort quand même, la lecture 1 tombe
-et `SKO 1` prend le point ; s'il ne sort pas, la lecture 1 tient. Trois minutes de jeu, pas davantage.
+**What would settle it**: a Super K.O. played with the setting off — if it comes out all the same, reading 1
+falls and `SKO 1` takes the point; if it does not come out, reading 1 holds. Three minutes of play, no more.
 
-En attendant, la page dessine les deux colonnes et ne prétend rien de plus que ce que la sauvegarde contient.
+In the meantime, the page draws both columns and claims nothing more than what the backup contains.
 
-Au passage, `0x00581454` et `0x00581455` sont **les rounds gagnés de chaque côté**, ce que la section 7
-donnait pour non établi, et `0x00581456` est le nombre de rounds joués.
+In passing, `0x00581454` and `0x00581455` are **the rounds won on each side**, which section 7 gave as
+unestablished, and `0x00581456` is the number of rounds played.
