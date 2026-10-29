@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 mr-finster
+Copyright (c) 2026 PenPen
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -18,7 +18,15 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 ---
+WHOSE NOTICE THIS IS, and why it is not the port's. All 33 files of code and documentation here were
+written for this subsystem by the author above -- `git log --follow` over any of them says so. This
+file is the exception, and it is why the notice was wrong until 2026-10-29: it was copied from the
+port, which is a fork and carries its own MIT notice in its own name. That notice covers the port;
+this one covers this repository, and nothing here is taken from its holder.
+
 This repository contains NOTHING that comes from MAME. MAME's core (`scsp.cpp`, `scspdsp.cpp`,
 `scsp_mame.cpp`), under BSD-3-Clause with its own rights holders, stays in `fv2-recomp`: the licence
 boundary runs exactly at this repository's edge, and that is why it is kept apart.
