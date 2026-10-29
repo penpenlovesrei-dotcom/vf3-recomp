@@ -25,7 +25,9 @@
 // the music -- B is, A is the effects -- over 1807 allocations, with no counter-example (§5 quinquies). The
 // consequence: the voice stealer looks for the smallest serial and A's has bit 7 forced, so THE MUSIC IS
 // STOLEN BEFORE THE EFFECTS
-// (VF3_POKE_FRAMES=from-to: only those). VF3_FREE_PLAY=1: the coin setting FREE PLAY before the boot, as the PC way.
+// (VF3_POKE_FRAMES=from-to: only those). VF3_POLY_COPY=dst=src:words copies a model inside polygon RAM before
+// every frame, to try one where the game never put any (docs/fv2-parts.md section 7).
+// VF3_FREE_PLAY=1: the coin setting FREE PLAY before the boot, as the PC way.
 // HD 2D (docs/fv2-hd-2d.md): --tile-dump DIR writes every tile and every layer layout the game draws, once each,
 // with the hash in the name; --tile-scale N draws the tile plane N times its size (1, the default, is the
 // hardware's and changes nothing); --tile-pack DIR puts that folder's images in the place of the tiles and layers
@@ -83,7 +85,7 @@ static const char *fv2_sub_name(int mode, int sub)
 int main(int argc, char **argv)
 {
 	std::string rom, script_path, state_path, shots, wav_path, coverage_path, portraits;
-	long frames = -1, ram_at = -1, poly_at = -1;
+	long frames = -1, ram_at = -1, poly_at = -1, cull_at = -1;
 	bool modes_log = false;
 	uint32_t watch = 0xFFFFFFFF, trace_pc = 0xFFFFFFFF;
 	bool quiet = false, rec = false, full_roster = false;
@@ -127,6 +129,7 @@ int main(int argc, char **argv)
 		else if (a == "--hd-pack" && i + 1 < argc) hd_pack = argv[++i];
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--poly-at" && i + 1 < argc) poly_at = strtol(argv[++i], nullptr, 10);
+		else if (a == "--cull-at" && i + 1 < argc) cull_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--modes") modes_log = true;
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
 		else if (a == "--trace-pc" && i + 1 < argc) trace_pc = uint32_t(strtoul(argv[++i], nullptr, 16));
@@ -365,6 +368,29 @@ int main(int argc, char **argv)
 					std::vector<uint8_t> &mem = bk ? board.backup : board.ram;
 					if (pa < mem.size()) mem[pa] = uint8_t(pv);
 				}
+		}
+		// VF3_POLY_COPY=dst=src:words (hex, 32-bit words of polygon RAM) copies a model inside the Real3D's
+		// own memory before every frame. It exists to try a model where the game never put one: the bank the
+		// game copies from the CROM ends at word 0x58FC6 and the 2.6 MB above it is never written
+		// (docs/fv2-parts.md section 5), so a model placed there is reached only through a directory entry
+		// poked by VF3_POKE. Held every frame rather than written once, as VF3_STAGE is: a copy that has to
+		// survive whatever the game does to that memory should not depend on a single moment.
+		if (static const char *pc = getenv("VF3_POLY_COPY"); pc) {
+			unsigned long dst = 0, src = 0, n = 0;
+			if (sscanf(pc, "%lx=%lx:%lx", &dst, &src, &n) == 3 &&
+			    dst + n <= board.poly_ram.size() && src + n <= board.poly_ram.size())
+				std::copy(board.poly_ram.begin() + src, board.poly_ram.begin() + src + n,
+				          board.poly_ram.begin() + dst);
+		}
+		// VF3_CULL_COPY=dst=src:words, the same for the culling RAM, which is where a part's own nodes live and
+		// where the directory of docs/fv2-parts.md section 5 points. The game fills words 0x40000 to 0x79797 of
+		// it and leaves everything above free.
+		if (static const char *cc = getenv("VF3_CULL_COPY"); cc) {
+			unsigned long dst = 0, src = 0, n = 0;
+			if (sscanf(cc, "%lx=%lx:%lx", &dst, &src, &n) == 3 &&
+			    dst + n <= board.cull_lo.size() && src + n <= board.cull_lo.size())
+				std::copy(board.cull_lo.begin() + src, board.cull_lo.begin() + src + n,
+				          board.cull_lo.begin() + dst);
 		}
 		// VF3_STAGE=n holds Fighting Vipers 2's arena to scene n, for measuring what changes with the arena
 		// from a headless run. HELD every frame, not written once, because the draw marks its own choice used
@@ -1247,6 +1273,21 @@ int main(int argc, char **argv)
 		}
 		// --poly-at: the polygon RAM, where the colour table of the untextured
 		// polygons lives (src/video/r3d_scene.cpp).
+		// --cull-at FRAME writes the culling RAM, both halves, beside --poly-at's dump: the models' addresses
+		// are reached through nodes that live there, and nothing else in this port shows them
+		// (docs/fv2-parts.md section 7).
+		if (long(board.frame) == cull_at) {
+			std::string p = "cull_lo_" + std::to_string(board.frame) + ".bin";
+			if (FILE *cf = fopen(p.c_str(), "wb")) {
+				fwrite(board.cull_lo.data(), 4, board.cull_lo.size(), cf);
+				fclose(cf);
+			}
+			p = "cull_hi_" + std::to_string(board.frame) + ".bin";
+			if (FILE *cf = fopen(p.c_str(), "wb")) {
+				fwrite(board.cull_hi.data(), 4, board.cull_hi.size(), cf);
+				fclose(cf);
+			}
+		}
 		if (long(board.frame) == poly_at) {
 			std::string p = "poly_" + std::to_string(board.frame) + ".bin";
 			if (FILE *pf = fopen(p.c_str(), "wb")) {

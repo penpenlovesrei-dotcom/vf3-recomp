@@ -137,7 +137,8 @@ A number that takes six values in six frames is not an identity. What field +12 
 ## 5. What a part id resolves to
 
 A part id is not an address. It is an index into one flat directory, and the directory says where that part's
-model sits in polygon RAM. The whole chain was measured, from the id to the ROM.
+**culling nodes** are. The models themselves are further down, in the VROM. The chain was measured end to end,
+and one turn of it was measured wrong first -- section 7 keeps the mistake with what corrected it.
 
 ### The directory: 5,298 words at `0x003003CC`
 
@@ -161,31 +162,39 @@ The three values are each in **one** place in all of RAM, and that place is the 
 
 A sweep of the 8 MB for a table `T` with `T[id] = value`, at every stride from 4 to 48, returns **one**
 candidate: base `0x003003CC`, stride 4. It holds **5,298 non-zero entries** (ids `0x0000` to `0x14B1`),
-strictly increasing from `0x00040000` to `0x0007978E`, so the gap between two entries is a model's size.
+strictly increasing from `0x00040000` to `0x0007978E`.
 
-### The models: a byte-for-byte copy of the CROM
+### What that address is: a place in the culling RAM
 
-`VF3_DMA_LOG=1` names where polygon RAM comes from. Over the whole run, **450 blocks** come from the CROM,
-frames 547 to 996, and for every one of the 450 the **source minus the destination is the same constant**,
-`0x67A42000`:
+`--cull-at` was added for this (`tools/vf3run.cpp`), because nothing in this port showed that memory. At frame
+3300 the culling RAM holds **145,638 non-zero words, the first at `0x040000` and the last at `0x079797`** --
+and the directory's values run from `0x00040000` to `0x0007978E`. The two are the same range, and at every one
+of those addresses there is the head of a node (`n[0] & 3` set).
 
-```
-r3d dma: frame 547  FFA82000 -> 98040000, 535 words
-r3d dma: frame 996  FFBA4C18 -> 98162C18, 1216 words
-```
-
-298,950 words in all (1.14 MB), filling polygon RAM words `0x00400` to `0x58FC6`. Nothing else ever writes
-there: the other 76,373 blocks of the run come from main RAM and land in words `0x00400`-`0x0040C`, the
-display list. So **the bank of models is a flat image in the program EPROMs, copied without being looked at**,
-and a part's model is at
+A node is ten words, and the word the game takes from the directory is read as a child pointer
+(`n[5 + node_shift]`, `src/video/r3d_scene.cpp`). A part is a small tree of them:
 
 ```
-CROM address = 0xFFA42000 + directory[id] * 4
+041B18  800AD412 ... 00041B22 01000000     child -> a node
+041B22  800AD812 ... 00041B2C 01000000     child -> a node
+041B2C  800ADC12 ... 0166261B 00041B36     child -> a MODEL, sibling -> 041B36
+041B36  800AE012 ... 016627FC 00041B40     another model
+041B40  800AE412 ... 01662CC6 01000000     another, and the chain ends
 ```
 
-Picky's slot 1, id `0x00FE`: polygon RAM word `0x41B18`, CROM `0xFFA83B18`.
+Walked that way, Picky's slot 1 is **3 models** and Grace's slot 1 is **8**. Swept over the whole filled
+region, the nodes' type-1 children are **21,457 into the VROM** and 1,567 into the low polygon RAM
+(`0x800`-`0xD7E`: the joints the game builds each frame, which the port's renderer already names).
 
-### The directory itself comes from the CROM too
+### How the two memories are filled
+
+The culling node tree is **not** the Real3D DMA's doing. Over a whole run its blocks are 16,163 into the other
+half of that memory -- the 48-byte records of the table above, from main RAM `0x007DAD10` -- and 450 from the
+CROM into polygon RAM words `0x10000`-`0x58FC6`, every one of the 450 at the same constant offset,
+`source - destination = 0x67A42000`. **No node seen points into those words**, and what that 1.14 MB is for
+was not established here.
+
+### The directory itself comes from the CROM
 
 `vf3run --watch 3007C4` catches **one** store, at PC `0x0003312C`, and the routine around it reads its source
 with `lwbrx` and masks it to 24 bits:
@@ -195,7 +204,6 @@ with `lwbrx` and masks it to 24 bits:
 00033120  lwbrx r0,0,r0          a word, byte-reversed, from r31
 00033128  rlwinm r0,r0,0,8,31    kept to 24 bits
 0003312C  stwx  r0,r9,r8         directory[first id + k] = it
-00033130  addi  r31,r31,4
 ```
 
 and its caller walks a list in the CROM at **`0xFFF10000`**, terminated by `FFFFFFFF`, whose entries are
@@ -203,24 +211,18 @@ offsets from that same address:
 
 ```
 00038C88  lis   r9,0xFFF1
-00038C90  lwzu  r0,4(r29)        the next entry
 00038C94  cmpwi cr1,r0,-1        FFFFFFFF ends it
 00038CAC  add   r3,r3,r27        0xFFF10000 + the entry
 00038CB0  bl    0x000330D0       fill a run of ids from there
 ```
 
-### The check that says the reading is right
+### Kuma, read again
 
-The renderer takes a node's address as a **word** index into polygon RAM (`src/video/r3d_scene.cpp`,
-`model_at`). Read that way, **every part of every fighter's first table falls inside the 0x400-0x58FC6 the DMA
-filled -- except Kuma's, all twelve of which fall past it**, in polygon RAM that is still zero at frame 3300
-(measured: nothing above byte `0x163F18` is ever written, and the 2.6 MB above it is zero).
-
-Kuma is the fighter `docs/fv2-roster.md` says no cursor reaches. His models were never put in the machine.
-That also reads the first picture of section 3: with his table, Picky's parts resolve to nothing and simply
-stop being drawn -- and what stays on screen is a body in skin and blue jeans that no slot of the table names.
-The 45 slots are the clothing and armour over a body drawn by something else. (Read off two pictures, not out
-of the code.)
+An earlier pass of this page said Kuma's twelve parts pointed past anything the machine loads, and read the
+first picture of section 3 as his parts resolving to nothing. **That was wrong**, and it came of taking the
+directory's addresses for polygon RAM. Read in the culling RAM, all twelve have a node and would be drawn.
+What is true of him is what section 2 already says: his first table fills **12 slots of 45**, where the other
+fifteen fill 27 to 41. The picture is twelve of his parts drawn and thirty-three absent.
 
 ## 6. Repeating it
 
@@ -234,25 +236,68 @@ A poke address is an index into the dump, so the byte of address A is written at
 (`docs/fv2-honey.md`). The fighter table is program data the boot inflates once and never rewrites, so the poke
 holds -- unlike the colour table of `docs/fv2-colours.md`, which the game wins back every frame.
 
+Section 7's part, added whole, with the three levers written for this page:
 
-## 7. What a part that is not in the game would need
+```
+set VF3_POKE=3057CF=0,3057CE=8,3057CD=0,3057CC=0,7CB83=0,7CB82=0,7CB81=21,7CB80=0
+set VF3_POKE_FRAMES=2000-4200
+set VF3_CULL_COPY=80000=4426E:A
+vf3run fvipers2.zip --script tools\scripts\fv2-fight.txt --shots DIR --cull-at 3300
+```
 
-Exchanging parts works because every fighter's models are already in the machine. Adding one is a different
-thing, and the chain above says exactly where it would have to go in:
+`--cull-at FRAME` writes both halves of the culling RAM beside `--poly-at`'s dump; `VF3_CULL_COPY=dst=src:words`
+and `VF3_POLY_COPY` copy inside the culling RAM and inside polygon RAM, held before every frame, in words and
+in hexadecimal. All three are `tools/vf3run.cpp` only: the game's own path has nothing of them.
 
-- **The model's bytes, in polygon RAM.** The bank ends at byte `0x163F18` and polygon RAM is 4 MB: **2.6 MB
-  above it are zero and nothing ever writes there**. A model put there is a model the renderer can reach.
-- **A directory entry.** `0x003003CC` holds 5,298 entries and the ids above `0x14B1` are zero, so a new id
-  needs one word written -- in main RAM, where this port already writes one word for the roster
-  (`docs/fv2-roster.md`).
-- **A slot that names it.** One id in a 45-slot table, which is what section 3 pokes.
 
-None of the three is in the ROM. The ROM holds the originals, and the game copies them without reading them;
-the port is the one that performs the copy (`Model3::r3d_dma_write32`). So a part added this way would be
-added the way the roster patch is added -- read before writing, at a moment the game has reached -- and not by
-patching a CRC-checked set.
+## 7. Adding a part, and the mistake that came first
 
-What this page does **not** say is that the part would look right. It says where it would be read from.
+### The id goes in
+
+The directory's last entry is id `0x14B1`, and **4,702 words of zero follow it** (`0x305694` to `0x30A00C`).
+Id `0x1500` lands at `0x003057CC`, in that empty run. Poked there: Grace's address `0x0004426E`, with slot 1
+of Picky's table poked to `0x1500`, an id Fighting Vipers 2 never names.
+
+**Sixteen pictures of sixteen, byte-identical to giving the slot Grace's own id `0x02BC`.** The directory is
+read live, for any id, and an id the game has never heard of is as good as one of its own.
+
+### The mistake: a model copied into free polygon RAM draws nothing
+
+Her model was copied -- `VF3_POLY_COPY`, added for this -- into polygon RAM at word `0x60000`, the copy
+checked word for word in the dump afterwards, and the entry for `0x1500` set to `0x00060000`. **Nothing was
+drawn**, on all sixteen pictures, exactly as if the entry pointed at zeros. The same at `0x59000`. Writing
+over a model inside the polygon-RAM region did not draw it either, and sent the fight off its rails by frame
+3251 (45 % of the pixels), so that run says nothing at all.
+
+The game was not what refused it. Two runs differing only in that entry differ, over the whole 8 MB, in
+**exactly two words**: the directory entry, and the node word at `0x007DB04C`, which carries the invented
+address faithfully (`00000600`, which is `0x00060000` byte-reversed).
+
+**What was wrong was the memory.** The directory addresses the culling RAM, not polygon RAM. Word `0x60000`
+there is the middle of a live node (`BFA24000`, whose low two bits are zero) and `0x59000` is zero: in both
+cases the renderer reads a head that says "not drawn" and stops. The trial aimed at the wrong half of the
+Real3D's memory, and the port behaved correctly throughout.
+
+### Done properly, it works
+
+`VF3_CULL_COPY` puts Grace's first node -- ten words -- at culling RAM word `0x80000`, which the game never
+touches (zero in the baseline, and its filled region ends at `0x79797`). The directory entry for the invented
+id `0x1500` is set to `0x00080000`, and slot 1 of Picky's table names `0x1500`.
+
+**Sixteen pictures of sixteen, byte-identical to Grace's own id.** The part is drawn from a node of its own,
+in memory the game never wrote, reached by an id the game never had.
+
+The three doors are open, and none of them is in the ROM:
+
+| | where | what it takes |
+|---|---|---|
+| an id of its own | the directory, main RAM `0x003003CC` | one word, above id `0x14B1` |
+| a node of its own | the culling RAM, above word `0x79797` | 2.6 MB free, nothing writes there |
+| a slot that names it | a 45-slot part table | one word |
+
+What this does **not** say is that a part from somewhere else would look right. Its nodes carry a model's
+address in the VROM and its polygons name a place in the texture sheet; a part that is not already in this
+machine needs both, and neither was tried here.
 
 ## 8. What is not settled
 
@@ -261,6 +306,10 @@ What this page does **not** say is that the part would look right. It says where
 - **What a part brings with it.** A model's polygons name a place in the texture sheet, and the sheet is filled
   by the game. A part from elsewhere would need its textures there as well: not measured.
 - **`0x00580E34`**, the fourth word that moves with a part id, a running total of some kind. Not chased.
+- **The 1.14 MB the CROM copies into polygon RAM** (section 5). No node points there, and nothing here says
+  what reads it.
+- **A part from outside this machine.** Section 7 adds an id, a node and a slot; a model of its own in the
+  VROM, and the textures it names, were not tried.
 - **What the four 45-slot tables are.** Table 0 is what a fight draws; tables 1 to 3 were never reached, so
   "the armour states" is a guess, not a measurement. Their ids are in different bands from table 0's, which a
   plain armour variant would not need.
