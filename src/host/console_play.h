@@ -393,6 +393,8 @@ struct console_play
 	leave_phase leaving = L_OFF;
 	leave_dest leave_for = L_TO_TITLE;
 	int leave_frames = 0, leave_cut = -1, leave_scene = -1;
+	// whether GAME OVER has been asked for on this way out: once, and only once
+	int leave_cut_over = -1;
 	// VS FINISH as the player had it, lent for the length of the way out (model3.h). -1: not borrowed.
 	int leave_vs_finish = -1;
 	// AND WHETHER THE MATCH WAS ALREADY DECIDED when the way out began -- the end-of-match panel's road.
@@ -428,6 +430,7 @@ struct console_play
 		leave_decided = decided;
 		leave_frames = 0;
 		leave_cut = -1;
+		leave_cut_over = -1;
 		leave_scene = -1;
 	}
 
@@ -815,7 +818,12 @@ struct console_play
 		if (++leave_frames >= LEAVE_GIVE_UP) {
 			fprintf(stderr, "the console: the match would not end in a minute -- the writing stops\n");
 			return_vs_finish(b);
+			// AND IT DOES NOT LEAVE THE PORT IN MID-AIR. Giving up used to clear `leaving` and nothing else,
+			// so a MENU_IN that was waiting for the way home waited for ever: the list over a running game,
+			// no line of it working, the music the game's. Whatever became of the match, the destination is
+			// reached.
 			leaving = L_OFF;
+			arrive(b);
 			return;
 		}
 		if (leaving == L_ENDING) {
@@ -868,6 +876,35 @@ struct console_play
 			// 2026-10-25 caught it fighting five more rounds for exactly that reason (model3.cpp).
 			if ((b.fv2_mode() == 6 || b.fv2_mode() == 7)) b.fv2_hold_match_over();
 			const int su = b.fv2_submode();
+			// AND THE END IS ASKED FOR, NOT HOPED FOR, which is Frederic's of the 2026-10-29: from ARCADE the
+			// main menu came up with not one working line, the music went on, and backing out dropped him into
+			// the game IN A DIFFERENT STAGE.
+			//
+						// All three are one thing, and the different stage names it: THE LADDER WENT ON. And it is not a
+			// question of who was winning -- Frederic said so and his own log proves it. This way out ends the
+			// round by putting the game's own clock at 1, so the round ends on the CLOCK and nobody is knocked
+			// out: the players-out byte stays 0. NEXT_PROG_SEL then asks whether the players out are one fewer
+			// than the players playing -- 1 == 0 + 1 in a one-player game, always -- and hands the last one
+			// standing the next opponent (0x0000DB8C). In ARCADE that road is taken EVERY TIME.
+			//
+			// The test above waits for the attract loop or an end screen; neither ever comes; the state stays
+			// MENU_IN, where the list is drawn over a game that is still running. Every line of it is held
+			// until the way out is over, the music is the game's because MENU was never reached, and B gives
+			// the game back -- on the ladder's next stage. Read off his log of the 2026-10-29: sub 2 at sixty
+			// frames, sub 8 at a hundred and twenty, sub 12 from four hundred and eighty, for a thousand frames.
+			//
+// So once the game says the match is DECIDED, the port writes what the game's own road writes when
+			// it ends a game: MODE_REQUEST = 18, GAME OVER (Model3::fv2_request_game_over). It is asked for
+			// after the judgement has begun, so the round's own end is not cut out from under it, and once.
+			// THE MOMENT: the fight itself is over. Not `su >= 13` -- Frederic's own log shows the game at
+			// ROUND_MASK sixty frames after the press, so the judgement had come and gone and a NEW ROUND
+			// was loading. Anything but FIGHT_INT and FIGHT_DSP, then, which is every way the round can end.
+			if (leave_cut_over < 0 && b.fv2_match_over() && (su < 11 || su > 12)) {
+				leave_cut_over = 1;
+				b.fv2_request_game_over();
+				fprintf(stderr, "the console: the match is decided -- GAME OVER asked for, the game's own\n"
+					"  way out (the ladder would have gone on otherwise)\n");
+			}
 			if (su >= 13 && su <= 18 && su != leave_cut) {
 				leave_cut = su;
 				b.fv2_cut_submode();

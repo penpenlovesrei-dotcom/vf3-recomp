@@ -1,0 +1,134 @@
+# Fighting Vipers 2 : MAIN MENU demande pendant qu on GAGNE, en ARCADE.
+#
+# Frederic, le 2026-10-29 : depuis l arcade, le menu principal n a plus aucune ligne qui marche, la
+# musique ne s arrete pas, et le retour ramene dans le jeu dans UN AUTRE DECOR. Cet autre decor est
+# l indice : l echelle a continue au lieu que la partie se termine.
+#
+# La sortie de match pose le chrono a 1, donc le round se termine par le temps -- et c est le joueur
+# EN TETE qui gagne. S il gagne, NEXT_PROG_SEL lui donne l adversaire suivant au lieu d aller a
+# CONTINUE, et le portage attend un retour a la boucle d attente qui ne vient jamais.
+#
+# Ici le joueur 1 frappe sans arret pour etre en tete, puis Start ouvre le menu pause.
+#   VF3_CONSOLE_MODE=arcade VF3_CONSOLE_PAUSE=4 VF3_LEAVE_TRACE=1
+1300 press p1.start 8
+3000 press p1.punch
+3010 press p1.punch
+3020 press p1.punch
+3030 press p1.punch
+3040 press p1.punch
+3050 press p1.punch
+3060 press p1.punch
+3070 press p1.punch
+3080 press p1.punch
+3090 press p1.punch
+3100 press p1.punch
+3110 press p1.punch
+3120 press p1.punch
+3130 press p1.punch
+3140 press p1.punch
+3150 press p1.punch
+3160 press p1.punch
+3170 press p1.punch
+3180 press p1.punch
+3190 press p1.punch
+3200 press p1.punch
+3210 press p1.punch
+3220 press p1.punch
+3230 press p1.punch
+3240 press p1.punch
+3250 press p1.punch
+3260 press p1.punch
+3270 press p1.punch
+3280 press p1.punch
+3290 press p1.punch
+3300 press p1.punch
+3310 press p1.punch
+3320 press p1.punch
+3330 press p1.punch
+3340 press p1.punch
+3350 press p1.punch
+3360 press p1.punch
+3370 press p1.punch
+3380 press p1.punch
+3390 press p1.punch
+3400 press p1.punch
+3410 press p1.punch
+3420 press p1.punch
+3430 press p1.punch
+3440 press p1.punch
+3450 press p1.punch
+3460 press p1.punch
+3470 press p1.punch
+3480 press p1.punch
+3490 press p1.punch
+3500 press p1.punch
+3510 press p1.punch
+3520 press p1.punch
+3530 press p1.punch
+3540 press p1.punch
+3550 press p1.punch
+3560 press p1.punch
+3570 press p1.punch
+3580 press p1.punch
+3590 press p1.punch
+3600 press p1.punch
+3610 press p1.punch
+3620 press p1.punch
+3630 press p1.punch
+3640 press p1.punch
+3650 press p1.punch
+3660 press p1.punch
+3670 press p1.punch
+3680 press p1.punch
+3690 press p1.punch
+3700 press p1.punch
+3710 press p1.punch
+3720 press p1.punch
+3730 press p1.punch
+3740 press p1.punch
+3750 press p1.punch
+3760 press p1.punch
+3770 press p1.punch
+3780 press p1.punch
+3790 press p1.punch
+3800 press p1.punch
+3810 press p1.punch
+3820 press p1.punch
+3830 press p1.punch
+3840 press p1.punch
+3850 press p1.punch
+3860 press p1.punch
+3870 press p1.punch
+3880 press p1.punch
+3890 press p1.punch
+3900 press p1.punch
+3910 press p1.punch
+3920 press p1.punch
+3930 press p1.punch
+3940 press p1.punch
+3950 press p1.punch
+3960 press p1.punch
+3970 press p1.punch
+3980 press p1.punch
+3990 press p1.punch
+4000 press p1.punch
+4010 press p1.punch
+4020 press p1.punch
+4030 press p1.punch
+4040 press p1.punch
+4050 press p1.punch
+4060 press p1.punch
+4070 press p1.punch
+4080 press p1.punch
+4090 press p1.punch
+4100 press p1.punch
+4110 press p1.punch
+4120 press p1.punch
+4130 press p1.punch
+4140 press p1.punch
+4150 press p1.punch
+4160 press p1.punch
+4170 press p1.punch
+4180 press p1.punch
+4190 press p1.punch
+4200 press p1.start 8
