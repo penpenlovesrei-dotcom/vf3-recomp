@@ -9,14 +9,18 @@
 // the chosen arena. Sega's own slot, with our own screen in it.
 //
 // THE FORM IS THE SUMMER ROM'S, because the pictures are: a carousel, not a list. One large thumbnail at a
-// time with its name underneath and an arrow each side -- select_stage.png, vignette_01..14.png,
-// nom_01..14.png, fleche_gauche.png, fleche_droite.png, drawn by Frederic for the patched ROM and handed over
+// time with its name underneath and an arrow each side -- select_stage.png, shot_01..14.png,
+// name_01..14.png, arrow_left.png, arrow_right.png, drawn by Frederic for the patched ROM and handed over
 // the 2026-10-25. Fourteen of them, where this port had only ever named twelve arenas (model3.cpp), and one
 // of the fourteen is a "???" -- a stage nobody has named yet.
 //
-// THE NAMES AGREE, read off the fourteen pictures the 2026-10-25: nom_01 to nom_12 are word for word this
-// port's own twelve arenas, measured on screen one by one (model3.cpp), in the same order. nom_13 is "???"
-// on a black picture and nom_14 carries nom_11's text, "The Skies of Armstone", over the training room's
+// THE NAMES THE PICTURES ARRIVED UNDER are the French ones -- vignette_NN.png, nom_NN.png,
+// fleche_gauche.png, fleche_droite.png, in a folder called decors -- and they are STILL ACCEPTED beside the
+// English ones above, so the set Frederic already has keeps working: folder_name.h says why.
+//
+// THE NAMES AGREE, read off the fourteen pictures the 2026-10-25: name_01 to name_12 are word for word this
+// port's own twelve arenas, measured on screen one by one (model3.cpp), in the same order. name_13 is "???"
+// on a black picture and name_14 carries name_11's text, "The Skies of Armstone", over the training room's
 // blue grid -- a leftover, not a stage. So the first twelve indices ARE the game's scene numbers by name;
 // that the arena drawn matches is still being photographed index by index, which is the only proof that
 // counts: see docs/fv2-console.md.
@@ -33,6 +37,7 @@
 #include <vector>
 #include "controls.h"
 #include "fv2_text.h"
+#include "folder_name.h"
 #include "png.h"
 
 struct fv2_stage_list
@@ -141,17 +146,20 @@ struct fv2_stage_list
 		if (tried) return ready;
 		tried = true;
 		font = sheet;
-		const std::string dir = assets + "/menu-console/decors/";
+		const std::string dir = either_name(assets + "/menu-console/stages",
+		                                    assets + "/menu-console/decors") + "/";
 		banner = one(ren, dir + "select_stage.png", banner_w, banner_h, log);
-		left = one(ren, dir + "fleche_gauche.png", arrow_w, arrow_h, log);
+		left = one(ren, either_name(dir + "arrow_left.png", dir + "fleche_gauche.png"), arrow_w, arrow_h, log);
 		int rw = 0, rh = 0;
-		right = one(ren, dir + "fleche_droite.png", rw, rh, log);
+		right = one(ren, either_name(dir + "arrow_right.png", dir + "fleche_droite.png"), rw, rh, log);
 		for (int i = 0; i < STAGES; i++) {
-			char f[64];
-			snprintf(f, sizeof f, "vignette_%02d.png", i + 1);
-			shot[i] = one(ren, dir + f, shot_w[i], shot_h[i], log);
-			snprintf(f, sizeof f, "nom_%02d.png", i + 1);
-			name[i] = one(ren, dir + f, name_w[i], name_h[i], log);
+			char f[64], g[64];
+			snprintf(f, sizeof f, "shot_%02d.png", i + 1);
+			snprintf(g, sizeof g, "vignette_%02d.png", i + 1);
+			shot[i] = one(ren, either_name(dir + f, dir + g), shot_w[i], shot_h[i], log);
+			snprintf(f, sizeof f, "name_%02d.png", i + 1);
+			snprintf(g, sizeof g, "nom_%02d.png", i + 1);
+			name[i] = one(ren, either_name(dir + f, dir + g), name_w[i], name_h[i], log);
 			if (!shot[i]) break;      // the stages run from 1 with no gaps: the first missing one ends the list
 			have = i + 1;
 		}

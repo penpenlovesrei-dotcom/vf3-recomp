@@ -25,6 +25,7 @@
 #include <SDL3/SDL.h>
 #include <string>
 #include <vector>
+#include "folder_name.h"
 #include "png.h"
 
 struct fv2_ending
@@ -48,7 +49,8 @@ struct fv2_ending
 	{
 		if (tried) return;
 		tried = true;
-		const std::string dir = assets + "/menu-console/fin/";
+		// menu-console/ending, with the folder's old name fin still accepted: folder_name.h says why.
+		const std::string dir = either_name(assets + "/menu-console/ending", assets + "/menu-console/fin") + "/";
 		static const char *const NAMES[PICTURES] = {
 			"01_charlie.png", "02_emi.png", "03_grace_honey.png", "04_raxel_picky.png",
 			"05_bahn.png", "06_tokio_sanman.png", "07_jane_mahler.png", "08_bm_kuhn.png",
