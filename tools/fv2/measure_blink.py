@@ -1,12 +1,12 @@
-# Mesure le clignotement de la ligne choisie, sur des captures de la fenetre.
+# Measures the chosen line's blink, on captures of the window.
 #
-# La ligne choisie voit son alpha descendre a 0,5 et remonter (src/host/fv2_mode_list.h). Une image fixe ne
-# peut pas le montrer : il faut plusieurs captures prises a des instants differents du cycle, et comparer
-# l'encre de la ligne choisie a celle d'une ligne qui, elle, ne bouge pas.
+# The chosen line's alpha falls to 0.5 and comes back up (src/host/fv2_mode_list.h). A still picture cannot
+# show it: several captures taken at different moments of the cycle are needed, and the chosen line's ink
+# has to be compared with that of a line which does not move.
 #
 #   py -3 -I tools/fv2/measure_blink.py build/blink-*.png
 #
-# Les bandes sont celles du relevé (docs/fv2-states.md), ramenées aux pixels de la capture.
+# The bands are the measured ones (docs/fv2-states.md), brought down to the capture's pixels.
 import sys
 from PIL import Image
 
@@ -21,7 +21,7 @@ DRAWN_TOP = TOP + (HEIGHT - DRAWN_HEIGHT) * 0.5 - LIFT
 
 
 def ink(px, w, h, line):
-    """La clarte moyenne des pixels d'encre de cette ligne (les plus clairs de sa bande)."""
+    """The mean lightness of this line's ink pixels (the lightest ones in its band)."""
     block_h = DRAWN_HEIGHT * h
     block_w = block_h * IMG_W / IMG_H
     block_x = w * CENTRE - block_w * 0.5
@@ -35,18 +35,18 @@ def ink(px, w, h, line):
         for x in range(max(0, x0), min(w, x1)):
             r, g, b = px[x, y]
             v = (r + g + b) / 3
-            if v > 90:          # l'encre, pas le fond assombri
+            if v > 90:          # the ink, not the darkened background
                 vals.append(v)
     return (sum(vals) / len(vals), len(vals)) if vals else (0.0, 0)
 
 
 def main(paths):
-    print("%-22s %10s %10s %8s" % ("capture", NAMES[0], NAMES[3], "rapport"))
+    print("%-22s %10s %10s %8s" % ("capture", NAMES[0], NAMES[3], "ratio"))
     for p in paths:
         im = Image.open(p).convert("RGB")
         px, (w, h) = im.load(), im.size
-        a, na = ink(px, w, h, 0)       # ARCADE, la ligne choisie a l'ouverture
-        s, ns = ink(px, w, h, 3)       # SURVIVAL, qui ne clignote pas
+        a, na = ink(px, w, h, 0)       # ARCADE, the line chosen when it opens
+        s, ns = ink(px, w, h, 3)       # SURVIVAL, which does not blink
         print("%-22s %10.1f %10.1f %8.3f" % (p.split("/")[-1].split("\\")[-1], a, s, a / s if s else 0))
 
 

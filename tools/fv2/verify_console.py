@@ -1,60 +1,61 @@
-"""Lit le journal d'une partie et dit si la couche console est passee par les etats attendus.
+"""Reads a session's log and says whether the console layer went through the expected states.
 
-Pourquoi un verificateur et pas une trace a lire : une trace, on la lit le jour ou on l'ecrit. Le
-lendemain on la survole, et une ligne qui manque au milieu ne saute pas aux yeux. Ici la suite attendue
-est ecrite une fois, dans l'appel, et la machine compare.
+Why a verifier and not a trace to read: a trace gets read the day it is written. The next day one skims
+it, and a line missing in the middle does not leap out. Here the expected sequence is written once, in the
+call, and the machine compares.
 
-Il lit les lignes que `console_ui::set` ecrit, et elles seules :
+It reads the lines `console_ui::set` writes, and those alone:
 
     the console: PLAY -> MENU (Start on the title screen)
 
-Usage :
+Usage:
     py -3 tools/fv2/verify_console.py <log.txt> PLAY MENU PLAY STAGE PLAY PAUSE MENU_IN MENU
 
-Sortie : une ligne par etat attendu, et le code de sortie 0 si la suite est exactement celle-la.
+Output: one line per expected state, and exit code 0 if the sequence is exactly that one.
 """
 
 import re
 import sys
 
-LIGNE = re.compile(r"the console: (\w+) -> (\w+) \(")
+LINE = re.compile(r"the console: (\w+) -> (\w+) \(")
 
 
-def suite(journal):
-    """La suite des etats traverses, le premier compris."""
-    vus = []
-    for ligne in journal.splitlines():
-        m = LIGNE.search(ligne)
+def sequence(log):
+    """The sequence of states passed through, the first one included."""
+    seen = []
+    for line in log.splitlines():
+        m = LINE.search(line)
         if not m:
             continue
-        depuis, vers = m.group(1), m.group(2)
-        if not vus:
-            vus.append(depuis)
-        elif vus[-1] != depuis:
-            # un changement d'etat qui ne part pas d'ou le precedent est arrive : la trace est trouee
-            vus.append("?" + depuis)
-        vus.append(vers)
-    return vus
+        frm, to = m.group(1), m.group(2)
+        if not seen:
+            seen.append(frm)
+        elif seen[-1] != frm:
+            # a state change that does not start where the previous one arrived: the trace has a hole
+            seen.append("?" + frm)
+        seen.append(to)
+    return seen
 
 
 def main(argv):
     if len(argv) < 3:
         print(__doc__)
         return 2
-    attendu = argv[2:]
+    expected = argv[2:]
     with open(argv[1], "r", encoding="utf-8", errors="replace") as f:
-        obtenu = suite(f.read())
-    largeur = max(len(e) for e in attendu + obtenu) if obtenu else 10
-    bon = True
-    for i in range(max(len(attendu), len(obtenu))):
-        a = attendu[i] if i < len(attendu) else "-"
-        o = obtenu[i] if i < len(obtenu) else "-"
-        marque = "  " if a == o else "<-- ici"
-        bon = bon and a == o
-        print(f"  {a:<{largeur}}  {o:<{largeur}}  {marque}")
+        got = sequence(f.read())
+    width = max(len(e) for e in expected + got) if got else 10
+    right = True
+    for i in range(max(len(expected), len(got))):
+        a = expected[i] if i < len(expected) else "-"
+        o = got[i] if i < len(got) else "-"
+        mark = "  " if a == o else "<-- here"
+        right = right and a == o
+        print(f"  {a:<{width}}  {o:<{width}}  {mark}")
     print()
-    print("la suite des etats est celle attendue" if bon else "LA SUITE DES ETATS N'EST PAS CELLE ATTENDUE")
-    return 0 if bon else 1
+    print("the sequence of states is the one expected" if right
+          else "THE SEQUENCE OF STATES IS NOT THE ONE EXPECTED")
+    return 0 if right else 1
 
 
 if __name__ == "__main__":

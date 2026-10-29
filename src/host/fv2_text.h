@@ -97,11 +97,21 @@ struct fv2_texte
 	{
 		if (tried) return ready;
 		tried = true;
-		path = assets + "/menu-console/police.png";
+		// font.png is the name the repository uses; police.png is the name the sheet arrived under and is
+		// still accepted, so that a folder somebody already has keeps working.
+		path = assets + "/menu-console/font.png";
 		std::vector<uint32_t> px;
 		int w = 0, h = 0;
 		std::string why;
 		if (!read_png(path.c_str(), px, w, h, why)) {
+			const std::string old = assets + "/menu-console/police.png";
+			std::string why_old;
+			if (read_png(old.c_str(), px, w, h, why_old)) {
+				path = old;
+				why.clear();
+			}
+		}
+		if (px.empty()) {
 			if (log) fprintf(log, "the console's text: %s %s -- the pages that need it stay shut\n", path.c_str(), why.c_str());
 			return false;
 		}

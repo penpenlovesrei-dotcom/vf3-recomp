@@ -1,43 +1,54 @@
-"""Maquette de la page OPTIONS : batie sur le releve de la capture Dreamcast.
+"""A mock-up of the OPTIONS page: built on the measurements of the Dreamcast capture.
 
-Tout nombre ici vient de docs/fv2-dreamcast-menus.md section 3bis, sauf deux, qui
-sont dits a leur place. L'image fait exactement la taille de la capture (1878 x
-1405), pour que les fractions se transportent sans conversion.
+Every number here comes from docs/fv2-dreamcast-menus.md section 3bis, except two,
+which are stated where they are used. The picture is exactly the capture's size
+(1878 x 1405), so that the fractions carry over without conversion.
 
-    py -3 maquette2.py <ligne choisie> <sortie> [titre 0|1] [oblique 0|1]
+    py -3 options_mockup.py <chosen line> <output> [title 0|1] [slant 0|1]
 """
 import math
+import os
 import sys
 from PIL import Image, ImageChops
 
 A = "assets/menu-console/"
 CELL, COLS = 64, 16
 TRACK, SPACE = 5.0 / CELL, 16.0 / CELL
-CAP = 31.0 / CELL           # la hauteur de capitale dans la case : y 16 a 46, mesure
-OBLIQUE = math.radians(7.5)  # la pente des lignes de reglages du disque, mesuree
-# Le titre du disque est un gras ETROIT, que police.png ne porte pas. Quatre nombres
-# mesures sur la capture : sa largeur vaut 4.143 capitales et ses jambages 0.254 de la
-# capitale, quand police.png vaut 6.000 et 0.194.
+CAP = 31.0 / CELL            # the capital height within the cell: y 16 to 46, measured
+SLANT = math.radians(7.5)    # the slant of the disc's setting lines, measured
+# The disc's title is a NARROW bold, which font.png does not carry. Four numbers
+# measured on the capture: its width is 4.143 capitals and its stems 0.254 of the
+# capital, where font.png is 6.000 and 0.194.
 #
-# On l'approche en condensant d'un facteur c puis en EPAISSISSANT HORIZONTALEMENT de s
-# pixels -- pas avec une dilatation carree, essayee d'abord : elle arrondit les angles
-# et ferme les contrepoincons, alors que le disque les a francs et ouverts. Un gras
-# etroit porte de toute facon sa graisse sur les jambages verticaux. L'epaississement
-# horizontal ne touche pas la hauteur, donc on rend a la capitale voulue :
-#     6.000*cap*c + s = 4.143*cap        (la largeur)
-#     0.194*cap*c + s = 0.254*cap        (la graisse)
-# -> c = 0.6698 et s = 0.1241*cap.
-LARG_DC, LARG_POLICE = 4.143, 6.000
-GRAS_DC, GRAS_POLICE = 0.254, 0.194
-COND = (LARG_DC - GRAS_DC) / (LARG_POLICE - GRAS_POLICE)
-EPAIS = GRAS_DC - GRAS_POLICE * COND        # en fractions de la capitale
+# It is approached by condensing by a factor c and then THICKENING HORIZONTALLY by s
+# pixels -- not with a square dilation, which was tried first: that rounds the corners
+# and closes the counters, where the disc has them sharp and open. A narrow bold carries
+# its weight on the vertical stems in any case. Horizontal thickening does not touch the
+# height, so the wanted capital is kept:
+#     6.000*cap*c + s = 4.143*cap        (the width)
+#     0.194*cap*c + s = 0.254*cap        (the weight)
+# -> c = 0.6698 and s = 0.1241*cap.
+WIDTH_DC, WIDTH_FONT = 4.143, 6.000
+BOLD_DC, BOLD_FONT = 0.254, 0.194
+COND = (WIDTH_DC - BOLD_DC) / (WIDTH_FONT - BOLD_FONT)
+THICKEN = BOLD_DC - BOLD_FONT * COND        # in fractions of the capital
 
-POLICE = Image.open(A + "police.png").convert("RGBA")
+
+def sheet_path():
+    """font.png is the repository's name; police.png, the name the sheet arrived
+    under, is still accepted."""
+    for p in (A + "font.png", A + "police.png"):
+        if os.path.isfile(p):
+            return p
+    return A + "font.png"
+
+
+FONT = Image.open(sheet_path()).convert("RGBA")
 INK = []
 
 
-def mesurer():
-    px = POLICE.load()
+def measure():
+    px = FONT.load()
     for r in range(6):
         for c in range(COLS):
             x0, y0 = c * CELL, r * CELL
@@ -45,21 +56,21 @@ def mesurer():
             INK.append((min(xs), max(xs) - min(xs) + 1) if xs else (0, 0))
 
 
-def largeur(s, h):
-    x, premier = 0.0, True
+def width(s, h):
+    x, first = 0.0, True
     for ch in s:
         i = ord(ch) - 0x20
         i = i if 0 <= i < 96 else 0
-        if not premier:
+        if not first:
             x += TRACK * h
-        premier = False
+        first = False
         x += (INK[i][1] / CELL if INK[i][1] else SPACE) * h
     return x
 
 
-def ecrire(img, s, x, y, h, col, pencher=False):
-    """La case entiere est dessinee : la feuille centre ses glyphes, donc capitales et
-    chiffres -- les seuls employes ici -- gardent leur alignement sans calcul."""
+def write(img, s, x, y, h, col, slant=False):
+    """The whole cell is drawn: the sheet centres its glyphs, so capitals and digits
+    -- the only ones used here -- keep their alignment with no computation."""
     for ch in s:
         i = ord(ch) - 0x20
         i = i if 0 <= i < 96 else 0
@@ -67,22 +78,22 @@ def ecrire(img, s, x, y, h, col, pencher=False):
             x += SPACE * h + TRACK * h
             continue
         sx, sw = INK[i]
-        g = POLICE.crop(((i % COLS) * CELL + sx, (i // COLS) * CELL,
-                         (i % COLS) * CELL + sx + sw, (i // COLS) * CELL + CELL))
+        g = FONT.crop(((i % COLS) * CELL + sx, (i // COLS) * CELL,
+                       (i % COLS) * CELL + sx + sw, (i // COLS) * CELL + CELL))
         w = sw / CELL * h
         g = g.resize((max(1, round(w)), max(1, round(h))), Image.LANCZOS)
-        if pencher:
-            d = math.tan(OBLIQUE) * g.height
+        if slant:
+            d = math.tan(SLANT) * g.height
             g = g.transform((g.width + int(d) + 2, g.height), Image.AFFINE,
-                            (1, math.tan(OBLIQUE), -d, 0, 1, 0), Image.BICUBIC)
-        teinte = Image.new("RGBA", g.size, col + (255,))
-        teinte.putalpha(g.split()[3])
-        img.alpha_composite(teinte, (round(x), round(y)))
+                            (1, math.tan(SLANT), -d, 0, 1, 0), Image.BICUBIC)
+        tint = Image.new("RGBA", g.size, col + (255,))
+        tint.putalpha(g.split()[3])
+        img.alpha_composite(tint, (round(x), round(y)))
         x += w + TRACK * h
     return x
 
 
-LIGNES = [
+LINES = [
     ("MATCH COUNT 1P", "2"), ("MATCH COUNT VS", "3"),
     ("ROUND TIME 1P", "30"), ("ROUND TIME VS", "45"),
     ("DIFFICULTY", "NORMAL"),
@@ -93,67 +104,69 @@ LIGNES = [
 ]
 
 SEL = int(sys.argv[1]) if len(sys.argv) > 1 else 5
-SORTIE = sys.argv[2] if len(sys.argv) > 2 else "maquette2.png"
-TITRE = int(sys.argv[3]) if len(sys.argv) > 3 else 1
-PENCHE = int(sys.argv[4]) if len(sys.argv) > 4 else 1
+OUT = sys.argv[2] if len(sys.argv) > 2 else "options_mockup.png"
+TITLE = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+SLANTED = int(sys.argv[4]) if len(sys.argv) > 4 else 1
 
-mesurer()
+measure()
 
 W, H = 1878, 1405
 img = Image.new("RGBA", (W, H), (0, 0, 0, 255))
-# le fond du disque est option_bg.png TEL QUEL : mesure, il n'est pas assombri
+# the disc's background is option_bg.png AS IT IS: measured, it is not darkened
 img.alpha_composite(Image.open(A + "option_bg.png").convert("RGBA")
                     .crop((447, 0, 3183, 2048)).resize((W, H), Image.LANCZOS))
 
-JAUNE = (252, 252, 10)      # l'encre de la ligne choisie, relevee
-BLANC = (247, 246, 246)     # celle des autres, relevee
-SOURD = (150, 150, 150)     # pour COUNTRY, en lecture seule : pas du disque, choisi ici
+YELLOW = (252, 252, 10)     # the chosen line's ink, measured
+WHITE = (247, 246, 246)     # the others', measured
+MUTED = (150, 150, 150)     # for COUNTRY, read-only: not the disc's, chosen here
 
-LIB_X = 0.3136 * W          # les libelles, cales a gauche
-VAL_MID = 0.665 * W         # les valeurs, centrees
-FILET_G, FILET_D = 0.2913 * W, 0.7295 * W
+LABEL_X = 0.3136 * W        # the labels, flush left
+VALUE_MID = 0.665 * W       # the values, centred
+RULE_L, RULE_R = 0.2913 * W, 0.7295 * W
 
-h = (0.0292 / CAP) * H      # la hauteur de case qui donne la capitale du disque
-HAUT = 0.185 * H            # la premiere ligne (le disque la met a 0.2128, mais il n a que sept lignes)
-# Le disque tient SEPT lignes a un pas de 0.0584 ; il nous en faut TREIZE. Le pas est
-# donc resserre pour que la derniere s'arrete avant INITIALIZE -- le seul nombre de
-# cette disposition qui ne vienne pas de la capture.
-PAS = (0.800 * H - HAUT) / (len(LIGNES) - 1)
+h = (0.0292 / CAP) * H      # the cell height that gives the disc's capital
+TOP = 0.185 * H             # the first line (the disc puts it at 0.2128, but it has only seven lines)
+# The disc holds SEVEN lines at a pitch of 0.0584; we need THIRTEEN. So the pitch is
+# tightened for the last one to stop before INITIALIZE -- the only number in this
+# layout that does not come from the capture.
+PITCH = (0.800 * H - TOP) / (len(LINES) - 1)
 
-def titre(img, s, cap, cy, col, grossir=True):
-    """Le gras etroit du disque, approche sur police.png (voir en tete)."""
-    ep = round(EPAIS * cap) if grossir else 0
-    c = COND if grossir else LARG_DC / LARG_POLICE
-    h = cap / CAP                            # la case qui donne cette capitale
-    couche = Image.new("RGBA", (int(largeur(s, h)) + 8, int(h) + 8), (0, 0, 0, 0))
-    ecrire(couche, s, 4, 4, h, (255, 255, 255))
-    couche = couche.resize((max(1, int(couche.width * c)), couche.height), Image.LANCZOS)
-    a = couche.split()[3]
-    if ep:
-        large = Image.new("L", (a.width + ep, a.height), 0)
-        for dx in range(ep + 1):
-            large.paste(ImageChops.lighter(large.crop((dx, 0, dx + a.width, a.height)), a), (dx, 0))
-        a = large
-    plein = Image.new("RGBA", a.size, col + (255,))
-    plein.putalpha(a)
-    # cy est le haut de l'ENCRE, qui commence a 16/64 de la case
-    img.alpha_composite(plein, (int(W * 0.5 - a.width / 2), int(cy - 4 - h * (16.0 / CELL))))
 
-if TITRE:
-    titre(img, "OPTIONS", 0.0442 * H, 0.0996 * H, BLANC, TITRE == 1)
+def title(img, s, cap, cy, col, grow=True):
+    """The disc's narrow bold, approached on font.png (see the head of this file)."""
+    th = round(THICKEN * cap) if grow else 0
+    c = COND if grow else WIDTH_DC / WIDTH_FONT
+    h = cap / CAP                            # the cell that gives this capital
+    layer = Image.new("RGBA", (int(width(s, h)) + 8, int(h) + 8), (0, 0, 0, 0))
+    write(layer, s, 4, 4, h, (255, 255, 255))
+    layer = layer.resize((max(1, int(layer.width * c)), layer.height), Image.LANCZOS)
+    a = layer.split()[3]
+    if th:
+        wide = Image.new("L", (a.width + th, a.height), 0)
+        for dx in range(th + 1):
+            wide.paste(ImageChops.lighter(wide.crop((dx, 0, dx + a.width, a.height)), a), (dx, 0))
+        a = wide
+    solid = Image.new("RGBA", a.size, col + (255,))
+    solid.putalpha(a)
+    # cy is the top of the INK, which begins at 16/64 of the cell
+    img.alpha_composite(solid, (int(W * 0.5 - a.width / 2), int(cy - 4 - h * (16.0 / CELL))))
 
-curseur = Image.open(A + "option_cursor.png").convert("RGBA")
 
-for i, (nom, val) in enumerate(LIGNES):
-    y = HAUT + i * PAS - h * (16.0 / CELL)   # le haut de case, l'encre commencant a 16/64
-    choisi = i == SEL
-    if choisi:
-        cw = int(FILET_D - FILET_G)
-        img.alpha_composite(curseur.resize((cw, max(1, round(h * 0.40))), Image.LANCZOS),
-                            (int(FILET_G), int(y + h * (46.0 / CELL) + h * 0.04)))
-    col = JAUNE if choisi else (SOURD if nom == "COUNTRY" else BLANC)
-    ecrire(img, nom, LIB_X, y, h, col, PENCHE)
-    ecrire(img, val, VAL_MID - largeur(val, h) / 2, y, h, col, PENCHE)
+if TITLE:
+    title(img, "OPTIONS", 0.0442 * H, 0.0996 * H, WHITE, TITLE == 1)
+
+cursor = Image.open(A + "option_cursor.png").convert("RGBA")
+
+for i, (name, val) in enumerate(LINES):
+    y = TOP + i * PITCH - h * (16.0 / CELL)   # the cell top, the ink beginning at 16/64
+    chosen = i == SEL
+    if chosen:
+        cw = int(RULE_R - RULE_L)
+        img.alpha_composite(cursor.resize((cw, max(1, round(h * 0.40))), Image.LANCZOS),
+                            (int(RULE_L), int(y + h * (46.0 / CELL) + h * 0.04)))
+    col = YELLOW if chosen else (MUTED if name == "COUNTRY" else WHITE)
+    write(img, name, LABEL_X, y, h, col, SLANTED)
+    write(img, val, VALUE_MID - width(val, h) / 2, y, h, col, SLANTED)
 
 ini = Image.open(A + "option_initialize.png").convert("RGBA")
 ih = int(0.0242 * H * 1.45)
@@ -161,9 +174,9 @@ iw = int(ini.width * ih / ini.height)
 img.alpha_composite(ini.resize((iw, ih), Image.LANCZOS), (int(W * 0.5 - iw / 2), int(0.848 * H)))
 
 hp = h * 0.62
-for ligne, yy in (("USE THE DIRECTION BUTTON TO SELECT.", 0.902),
-                  ("A : DECIDE        B : BACK", 0.940)):
-    ecrire(img, ligne, W * 0.5 - largeur(ligne, hp) / 2, yy * H, hp, BLANC)
+for line, yy in (("USE THE DIRECTION BUTTON TO SELECT.", 0.902),
+                 ("A : DECIDE        B : BACK", 0.940)):
+    write(img, line, W * 0.5 - width(line, hp) / 2, yy * H, hp, WHITE)
 
-img.convert("RGB").save(SORTIE)
-print("ecrit", SORTIE)
+img.convert("RGB").save(OUT)
+print("written", OUT)
