@@ -371,8 +371,19 @@ struct fv2_options
 		const int v = board.fv2_option(int(s.live), s.bytes);
 		return v < s.lo || v > s.hi ? -1 : v;
 	}
+	// ENERGY MAX 1P HAS ONE STEP ABOVE THE GAME'S OWN HIGHEST, and it is not a value of the game's at all:
+	// the setting stays where it was and the host holds player one's life full while a round runs. Frederic,
+	// the 2026-10-29, on finishing the arcade ladder: "je voudrais de la vie infinie, c'est possible de
+	// l'ajouter a la ligne energy max 1P". The two functions are the host's, because what they switch is the
+	// port's own setting and this file has no business knowing it.
+	std::function<bool()> endless_1p;
+	std::function<void(bool)> set_endless_1p;
+	static bool is_energy_1p(size_t i) { return table()[i].name == std::string("ENERGY MAX 1P"); }
+	bool endless_on(size_t i) const { return endless_1p && is_energy_1p(i) && endless_1p(); }
+
 	std::string value_text(m3::Model3 &board, size_t i) const
 	{
+		if (endless_on(i)) return "INFINITE";
 		const int v = value(board, i);
 		if (v < 0) return "-";
 		const setting &s = table()[i];
@@ -384,6 +395,11 @@ struct fv2_options
 		const setting &s = table()[i];
 		const int v = value(board, i);
 		if (v < 0) return;
+		// the step above the highest, and the step back down out of it (see endless_1p above)
+		if (set_endless_1p && is_energy_1p(i)) {
+			if (endless_on(i)) { if (d < 0) set_endless_1p(false); return; }
+			if (d > 0 && v >= s.hi) { set_endless_1p(true); return; }
+		}
 		const int n = std::clamp(v + d * s.step, s.lo, s.hi);
 		// THE ONE WRITE TO THE GAME'S RAM THAT DOES NOT GO THROUGH console_play::ask_for, and the reason is
 		// in console_state.h: this page IS the arcade's settings, and the state it belongs to declares that

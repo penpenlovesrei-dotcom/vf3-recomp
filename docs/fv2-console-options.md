@@ -931,3 +931,31 @@ frame 7777 mode  3 sub 10    the replay, as if nothing had happened
 
 So the game goes through its GAME OVER before coming back to the attract. Six thousand three hundred frames
 between the request and the return, a little under two minutes.
+
+## ENERGY MAX 1P has one step above the game's own highest: INFINITE
+
+Frédéric, the 2026-10-29, on finishing the arcade ladder: "je voudrais de la vie infinie, c'est possible de
+l'ajouter à la ligne energy max 1P et que ça fonctionne pour le mode arcade ?".
+
+**It is not a value of the game's.** Sega's setting is a word at `0x00120540` (`CONFIG *1P ENERGY`) and the
+game reads it once a round, at `ROUND_MASK_INT`, to fill `fighter+0x68` -- the life a round starts with. Its
+range is 160 to 360 in steps of ten and there is no number in it that means "never runs out". So the setting
+keeps whatever it had, and one step past 360 switches something of the port's own instead: `endless_life_1p`
+in settings.ini. The line then reads INFINITE, and a step left puts it back at 360.
+
+**What holds the life** is the frame loop, not the setting: every frame of `FIGHT_INT` and `FIGHT_DSP`
+(sub-states 11 and 12), player one's life is written back to its maximum through `Model3::fv2_set_life`,
+which is the same door training uses for its floor -- the fighter's block found through the game's own
+pointer, guarded by a plausible starting life. Before those two sub-states the round is being announced and
+the block is being filled; after them the game is deciding who won, and a life written into either is a life
+written into Sega's own bookkeeping.
+
+**Not in a two-player match.** `*1P ENERGY` is the setting the game reads only when the match is not a
+versus, so the step above it keeps the same scope (`fv2_players() != 3`).
+
+Measured hidden, arcade, the pad left alone for a whole round: at 57 seconds of fight EMI has been knocked
+down again and again and her bar is still full, the round running out on the clock rather than on a K.O.
+
+**What it does not do**: it does not stop a knockdown, and it cannot catch a blow that empties the bar and is
+declared a K.O. inside the game's own frame. Nothing measured here produced one -- a Super K.O. would be the
+case to watch.

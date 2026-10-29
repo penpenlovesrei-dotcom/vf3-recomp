@@ -582,6 +582,10 @@ struct settings
 	// illustrations in their place (src/host/fv2_ending.h). The arcade's is what the board does, so it is what
 	// this starts at.
 	bool ending_dc = false;
+	// ENERGY MAX 1P's step above the game's own highest: player one's life held full while a round runs.
+	// Not a value of the game's -- its setting keeps whatever it had -- so it lives here. Frederic asked
+	// for it the 2026-10-29, to finish the arcade ladder.
+	bool endless_1p = false;
 	// The console way: the PC way's boot and free play, plus a console's own menu over the game (Start in the
 	// attract loop). A third play style rather than a fourth flag on the other two, because that is how the
 	// player thinks of it; `arcade` keeps meaning exactly what it did, so nothing that reads it changes.
@@ -641,6 +645,7 @@ struct settings
 		flag("ending_dreamcast", ending_dc);
 		if (auto it = kv.find("portraits_folder"); it != kv.end()) portraits = it->second;
 		flag("portraits_off", portraits_off);
+		flag("endless_life_1p", endless_1p);
 		flag("hd_3d", hd_3d);
 		num("tile_scale", tile_scale, 1, 8);
 		if (auto it = kv.find("tile_pack"); it != kv.end()) tile_pack = it->second;
@@ -707,6 +712,7 @@ struct settings
 		if (console) fprintf(f, "console_mode = %d\n", int(console));         // (likewise: an older build reads the file as the PC way)
 		if (!portraits.empty()) fprintf(f, "portraits_folder = %s\n", portraits.c_str());   // (one game's, likewise)
 		if (portraits_off) fprintf(f, "portraits_off = %d\n", int(portraits_off));
+		if (endless_1p) fprintf(f, "endless_life_1p = %d\n", int(endless_1p));
 		if (hd_3d) fprintf(f, "hd_3d = %d\n", int(hd_3d));   // (a texture pack is one game's too: written only once asked for)
 		if (tile_scale > 1) fprintf(f, "tile_scale = %d\n", tile_scale);      // (as full_roster: written only once asked for)
 		if (!tile_pack.empty()) fprintf(f, "tile_pack = %s\n", tile_pack.c_str());
@@ -3987,6 +3993,15 @@ int main(int argc, char **argv)
 		// own INITIALIZE, pushed there by build_pages.
 		//
 		// Both are still a key away: Escape opens the port's own menu, which resets the game and quits.
+		// ENERGY MAX 1P's one step above the game's own highest (fv2_options.h). The page shows INFINITE and
+		// switches this; what holds the life is the frame loop below, which is the only place that can.
+		options.endless_1p = [&] { return cfg.endless_1p; };
+		options.set_endless_1p = [&](bool on) {
+			cfg.endless_1p = on;
+			cfg_dirty = true;
+			fprintf(stderr, "the console's GAME ASSIGNMENTS: player one's life %s\n",
+					on ? "held full while a round runs (ENERGY MAX 1P: INFINITE)" : "left to the game again");
+		};
 		options.ctl = cfg.ctl;   // CONTROLLER reads the bindings and writes them
 		// AND THE THREE LINES OF THAT PAGE THAT ARE ABOUT THE PADS RATHER THAN THEIR BUTTONS. The page owns
 		// the grid and the capture; the host owns the pads, so it lends them (fv2_options.h). The same three
@@ -4997,6 +5012,27 @@ int main(int argc, char **argv)
 				board.mute_game_midi = cplay.ui.port_sound();
 				game.mute_fight_voice = cplay.training_on && cplay.train_hush > 0;
 				cplay.step(board, console_ctl);
+				// PLAYER ONE'S LIFE HELD FULL, when ENERGY MAX 1P has been stepped past the game's highest.
+				// Frederic, the 2026-10-29: "pour finir le mode arcade, je voudrais de la vie infinie".
+				//
+				// WRITTEN EVERY FRAME, and only during a round. The life is two bytes in the fighter's own
+				// block, found through the game's pointer and guarded by a plausible starting life
+				// (model3.cpp); training already holds a floor there the same way. Only FIGHT_INT and
+				// FIGHT_DSP (11 and 12) -- before them the round is being announced and the block is being
+				// filled, after them the game is deciding who won, and a life written into either is a life
+				// written into Sega's own bookkeeping.
+				//
+				// AND NOT IN A TWO-PLAYER MATCH. The setting is Sega's CONFIG *1P ENERGY (0x00120540), which
+				// the game reads only when the match is not a versus (ROUND_MASK_INT, docs/fv2-match-flow.md),
+				// so the step above it keeps the same scope: holding one side's life against a human is not
+				// a setting, it is a second player with nothing to do.
+				if (cfg.endless_1p && board.set == "fvipers2") {
+					const int m = board.fv2_mode(), su = board.fv2_submode();
+					if ((m == 6 || m == 7) && (su == 11 || su == 12) && board.fv2_players() != 3) {
+						const int max = board.fv2_life_max(1), now = board.fv2_life(1);
+						if (max > 0 && now >= 0 && now < max) board.fv2_set_life(1, max);
+					}
+				}
 				// THE CHARACTERS HAVE BEEN CHOSEN: the stage page opens here, between SELECT and DECIDE_INT,
 				// where the summer's ROM put it and where Sega's own STAGE_SEL states sit empty. The game is
 				// NOT frozen under it -- console_play parks it in that empty sub-state and it goes on running
