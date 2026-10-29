@@ -4624,10 +4624,52 @@ int main(int argc, char **argv)
 			// OPTIONS tree never showed it because they are opened from the event loop, which waits for
 			// that frame before it opens anything; the pause menu is opened from the frame itself.
 			if (game.emu_thread.joinable()) game.job_wait();
+			// HOW MUCH TO MAKE, AND IT IS THE DEVICE THAT SAYS SO, not the wall clock.
+			//
+			// It used to be the clock: as many sound frames as real time had asked for since the last pass. That
+			// has no way back. The device consumes at its own rate, which is near 57.52 a second and not exactly
+			// it, and a pass that ran late is capped (it was capped at four) -- so every hitch took a bite out of
+			// the queue and NOTHING ever put it back. The game's own frames have a governor for exactly this
+			// reason; this pump had none.
+			//
+			// Measured in Frederic's own session the 2026-10-29, a window and a real device, with VF3_MENU_SOUND:
+			// the queue ran at a median of 2.3 to 2.8 frames against the three the device wants, its first
+			// percentile at 1.2, and it reached ZERO -- 795 readings under a frame and a half out of 23920. In a
+			// hidden run the same code never went under 2.5, which is why months of measuring here found nothing.
+			// A queue that reaches zero is a device playing silence, and that is heard as a rasp -- on the menu's
+			// own beeps, because a dropout in a silence is a dropout nobody notices. He heard it "a chaque
+			// deplacement du curseur", and the dropouts were NOT on the beeps: after one, 8.9 per cent of passes
+			// dipped under a frame and a half against 10.5 per cent taken at random. The beep is what made them
+			// audible, not what caused them.
+			//
+			// So the pump is a feedback loop now: make up what the device is SHORT OF its target and nothing
+			// more. The average rate then equals the device's own consumption by construction -- the board's
+			// time follows the card, which is what the game's governor does with its own frames -- and a pass
+			// that ran late is made up instead of being thrown away. The clock is kept only where there is no
+			// device to ask.
 			const uint64_t now = SDL_GetTicksNS();
-			if (menu_sound_last) menu_sound_owed += double(now - menu_sound_last) / 1e9 * FRAME_HZ;
+			const double queued_frames = audio && frame_bytes > 0
+				? double(SDL_GetAudioStreamQueued(audio)) / frame_bytes : -1.0;
+			// THE CLOCK FOR THE RATE, THE QUEUE FOR THE REST, which is what the game's own frames already do.
+			//
+			// Driving the pump by the queue ALONE was tried first and it regulates too low: a frame is only made
+			// once a whole one is owed, so the loop settles where the shortfall is about one -- measured in
+			// Frederic's session, a median of 1.5 frames against the three the device wants, a maximum of 2.0.
+			// That is a smaller margin than the clock alone had, not a bigger one.
+			//
+			// So: the clock gives the average, which is right to within the card's own drift; a proportional nudge
+			// of at most one per cent pulls that drift back to the target, the gain and the clamp being the
+			// governor's own (see where `rate` is made for the game's frames); and a FLOOR catches what neither
+			// can -- a pass that ran long. Below two frames the shortfall is made up on the spot, because a queue
+			// that reaches zero is a device playing silence, and that is the rasp.
+			static constexpr double MENU_FLOOR = 2.0;
+			double menu_rate = FRAME_HZ;
+			if (queued_frames >= 0) menu_rate *= 1 - std::clamp((queued_frames - QUEUED) * 0.005, -0.01, 0.01);
+			if (menu_sound_last) menu_sound_owed += double(now - menu_sound_last) / 1e9 * menu_rate;
+			if (queued_frames >= 0 && queued_frames < MENU_FLOOR)
+				menu_sound_owed = std::max(menu_sound_owed, MENU_FLOOR - queued_frames);
+			menu_sound_owed = std::min(menu_sound_owed, 6.0);
 			menu_sound_last = now;
-			menu_sound_owed = std::min(menu_sound_owed, 4.0);   // (a window dragged: catch up a little, never a flood)
 			int made = 0;
 			while (menu_sound_owed >= 1.0) { menu_sound_owed -= 1.0; game.sound_only_frame(); made++; }
 			// (tests: VF3_MENU_SOUND=1 reports what the board made under the surface, which is the measure the
