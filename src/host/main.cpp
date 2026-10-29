@@ -77,6 +77,8 @@
 //   VF3_SCRIPT=file      inputs from an input script (src/host/input_script.h), frame by frame from the boot;
 //                        its shots go to build/host_<name>.png
 //   VF3_WINDOW=WxH       the window's size in points
+//   VF3_MENU_BEEP=s      the menu's own move sound, played by itself every s seconds while a
+//                        surface is up: the one way to reproduce the menu's sound without a hand
 //   VF3_SOUND_WAV=file   everything handed to the sound device, in order, as a WAV -- the menus' own
 //                        sound included, which VF3_RECORD's sound.wav misses (see where it is opened)
 //   VF3_DATA=dir         the data folder
@@ -4615,6 +4617,35 @@ int main(int argc, char **argv)
 			if (options.want_sound) { heard(options.want_sound); options.want_sound = fv2_options::SND_NONE; }
 			if (pause.want_sound) { heard(pause.want_sound); pause.want_sound = fv2_pause::SND_NONE; }
 			if (stages.want_sound) { heard(stages.want_sound); stages.want_sound = fv2_stage_list::SND_NONE; }
+			// VF3_MENU_BEEP=s -- THE MENU'S OWN MOVE SOUND, PLAYED BY ITSELF every s seconds while a
+			// surface is up, and nothing else.
+			//
+			// Written the 2026-10-29 because the fault being chased cannot be reproduced without it. The beep
+			// comes out of the menu with a tail that repeats every 165 ms, and the same sound sent into the
+			// game's own frame loop has no tail at all -- so it belongs to the path that turns the board while
+			// the game is frozen. Reproducing that path meant pressing a key on a surface, and a hidden run
+			// cannot: measured by subtracting two runs of the same road, one with a press and one without, the
+			// files came out IDENTICAL TO THE BIT. The press reaches the surface (the OPTIONS tree is walked
+			// this way) and the sound does not come. So the hook plays it from here instead, where `heard` is,
+			// and asks nothing of the keyboard.
+			//
+			// Hidden runs are deterministic -- the same road with the sound on its thread and in the frame gave
+			// two identical files -- so a run with this and a run without subtract to the beep alone, with the
+			// music cancelled exactly.
+			// BY THE CLOCK AND NOT BY GAME FRAMES, which the first version got wrong and the measurement said
+			// at once: these surfaces FREEZE the game, so the frame counter stands still under them and the
+			// hook fired exactly once. Seconds, then -- the same reason VF3_KEYS_S exists beside VF3_KEYS.
+			if (static const char *mb = getenv("VF3_MENU_BEEP"); mb && cplay.on && !cplay.ui.game_runs()) {
+				static const double every = std::max(0.2, atof(mb));
+				static double last = 0;
+				const double now_s = double(SDL_GetTicksNS()) / 1e9;
+				if (now_s >= last + every) {
+					last = now_s;
+					heard(fv2_mode_list::SND_MOVE);
+					fprintf(stderr, "menu beep: played by hand at %.2f s, state %s\n",
+						now_s, crules(cplay.ui.at).name);
+				}
+			}
 		}
 		if (stopped && cplay.on && !cplay.ui.game_sound()) {
 			// AND NOT WHILE A FRAME IS STILL IN FLIGHT. The board is the game's: turned here while the
