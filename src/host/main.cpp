@@ -566,6 +566,14 @@ struct settings
 	int arcade_coin = -2;   // the arcade way's coin setting, while the PC way's FREE PLAY replaces it (-1 none to give back, -2 none kept yet)
 	std::string roms_folder;
 	std::string gpu3d_failed;   // SDL_GPU's drivers whose 3D failed here ("direct3d12 vulkan"): the next start tries the next
+	// THE CHECK THAT COSTS A FIFTH OF A SECOND, REMEMBERED. The GPU's first scene is drawn on the CPU too and
+	// the two pictures compared before the GPU is trusted; at a render scale of 4 the CPU's own picture takes
+	// 174 ms of the 184 the check costs, and it lands on the first thing with a 3D model in it -- the fighter
+	// on the select screen. Frederic, the 2026-10-29: "un leger freeze a l'ecran de selection des personnages
+	// [...] quand le modele 3D du personnage apparait". So the driver and the card that passed are written
+	// down here, and a start that finds the same pair again does not check a second time. Anything else --
+	// another card, another driver, a settings file from another machine -- does not match, and is checked.
+	std::string gpu3d_ok;
 	bool fullscreen = false, arcade = false, show_fps = false, smooth = true;
 	bool timings = false;    // F9: the timings in the title bar
 	bool full_roster = false;   // Fighting Vipers 2's hidden fighters, selectable (Model3::unlock_roster)
@@ -620,6 +628,7 @@ struct settings
 		num("renderer_3d", renderer3d, 0, 2);
 		if (auto it = kv.find("roms_folder"); it != kv.end()) roms_folder = it->second;
 		if (auto it = kv.find("gpu_3d_failed"); it != kv.end()) gpu3d_failed = it->second;
+		if (auto it = kv.find("gpu_3d_checked"); it != kv.end()) gpu3d_ok = it->second;
 		flag("fullscreen", fullscreen);
 		flag("arcade_mode", arcade);
 		flag("console_mode", console);
@@ -688,6 +697,7 @@ struct settings
 				int(smooth), renderer3d, int(smooth_bg));
 		if (!roms_folder.empty()) fprintf(f, "roms_folder = %s\n", roms_folder.c_str());
 		if (!gpu3d_failed.empty()) fprintf(f, "gpu_3d_failed = %s\n", gpu3d_failed.c_str());
+		if (!gpu3d_ok.empty()) fprintf(f, "gpu_3d_checked = %s\n", gpu3d_ok.c_str());
 		fprintf(f, "crt_colours = %d\nsharp_textures = %d\n", crt_colours, int(sharp_textures));
 		if (graphics) fprintf(f, "graphics = %d\n", graphics);
 		fprintf(f, "screen_filter = %d\nantialiasing = %d\nmusic_volume = %d\neffects_volume = %d\narcade_coins = %d\nframe_timings = %d\n", filter, aa, music, effects, arcade_coin, int(timings));
@@ -2067,6 +2077,7 @@ int main(int argc, char **argv)
 	// ---- the 3D on the GPU ----
 	static R3dGpu gpu3d;
 	struct { bool on = false, failed = false, checked = false; SDL_Texture *tex = nullptr; int w = 0, h = 0, k = 1; double cpu_ms = 0, gpu_ms = 0; } g3;
+	std::string gpu3d_key;   // "<driver> <card>": what the check's verdict is remembered against (Config::gpu3d_ok)
 	if (r3d_mode != R3D_CPU) {
 		const char *rn = SDL_GetRendererName(ren);
 		SDL_GPUDevice *gd = rn && !strcmp(rn, "gpu") ? SDL_GetGPURendererDevice(ren) : nullptr;
@@ -2076,6 +2087,7 @@ int main(int argc, char **argv)
 		} else if (gd) {
 			const char *name = SDL_GetStringProperty(SDL_GetGPUDeviceProperties(gd), SDL_PROP_GPU_DEVICE_NAME_STRING, nullptr);
 			fprintf(stderr, "SDL_GPU: %s, %s\n", SDL_GetGPUDeviceDriver(gd), name ? name : "?");
+			gpu3d_key = std::string(SDL_GetGPUDeviceDriver(gd)) + " " + (name ? name : "?");
 			// (as VF1's: a "GPU" that is itself drawn by the CPU, a machine with no graphics driver, draws the 3D about 5
 			// times slower than the CPU's own renderer, so Auto keeps the CPU there; the GPU chosen by hand still uses it)
 			std::string lower = name ? name : "";
@@ -2087,8 +2099,16 @@ int main(int argc, char **argv)
 				fprintf(stderr, "the 3D on the GPU: %s draws on the CPU, so Auto uses the CPU's 3D (faster here)\n", name);
 			else if (gpu3d.init(gd)) {
 				g3.on = true;
-				fprintf(stderr, "the 3D on the GPU: started in %.0f ms (checked against the CPU's picture before it's trusted)\n",
-						std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+				// THE CHECK IS DONE ONCE PER CARD, NOT ONCE PER START. What it costs is not the comparison but
+				// the CPU drawing the same scene at the player's own render scale -- 174 ms of 184 at 4x,
+				// measured the 2026-10-29 -- and it falls on the first picture with a model in it, which is the
+				// fighter arriving on the select screen. The verdict belongs to the card and its driver, not to
+				// this run, so it is written down (settings.ini, gpu_3d_checked) and read back here.
+				if (!gpu3d_key.empty() && cfg.gpu3d_ok == gpu3d_key) g3.checked = true;
+				fprintf(stderr, "the 3D on the GPU: started in %.0f ms (%s)\n",
+						std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(),
+						g3.checked ? "its pictures were checked against the CPU's here before"
+								   : "checked against the CPU's picture before it's trusted");
 			} else {
 				g3.failed = true;
 				fprintf(stderr, "the 3D on the GPU: %s (the CPU's 3D)\n", gpu3d.error().c_str());
@@ -2289,12 +2309,15 @@ int main(int argc, char **argv)
 	constexpr int GPU_ROUNDING_COLOUR = 8;
 	constexpr double GPU_WRONG_COLOUR = 0.01, GPU_WRONG_COVER = 0.05, GPU_WRONG_COLOUR_CHOSEN = 0.10, GPU_WRONG_COVER_CHOSEN = 0.25;
 	auto g3_check = [&](const video::Scene &s) -> bool {
+		const uint64_t t_read = SDL_GetTicksNS();
 		std::vector<uint32_t> gp;
 		if (!gpu3d.read_output(gp)) { g3_fail("its picture couldn't be read back"); return false; }
+		const uint64_t t_cpu = SDL_GetTicksNS();
 		raster.render(s, game.view.tex.data());
 		const int k = aa_now(), cw = raster.width() / k, ch = raster.height() / k;
 		std::vector<uint32_t> cp(size_t(cw) * ch);
 		raster.to_premultiplied(reinterpret_cast<uint8_t *>(cp.data()), size_t(cw) * 4, k);
+		const uint64_t t_cmp = SDL_GetTicksNS();
 		long long n = 0, drawn = 0, cover = 0, big = 0;
 		int most = 0;
 		for (size_t i = 0; i < cp.size(); i++) {
@@ -2314,12 +2337,19 @@ int main(int argc, char **argv)
 		const bool keep = big <= ok && cover <= ok_cover;
 		fprintf(stderr, "the 3D on the GPU: its picture (%d x %d, %lld pixels of 3D) against the CPU's: %lld pixels differ (%lld drawn on one only, %lld by more than %d, colours by %d at most; up to %lld and %lld kept): %s\n",
 				cw, ch, drawn, n, cover, big, GPU_ROUNDING_COLOUR, most, ok_cover, ok, keep ? "the GPU's" : "the CPU's");
+		fprintf(stderr, "  the check cost %.1f ms: read back %.1f, the CPU's own picture %.1f, compared %.1f\n",
+				double(SDL_GetTicksNS() - t_read) / 1e6, double(t_cpu - t_read) / 1e6,
+				double(t_cmp - t_cpu) / 1e6, double(SDL_GetTicksNS() - t_cmp) / 1e6);
 		if (getenv("VF3_GPU_CHECK_DIR")) {
 			const std::string d = getenv("VF3_GPU_CHECK_DIR");
 			write_png((d + "/gpu.png").c_str(), gp.data(), cw, ch);
 			write_png((d + "/cpu.png").c_str(), cp.data(), cw, ch);
 		}
 		if (!keep) { g3_fail("its pictures aren't the CPU's"); return false; }
+		// IT PASSED, AND THAT IS WORTH REMEMBERING: this is the only picture of the run that takes a fifth of
+		// a second, and the card it was done on is the same card at the next start. Any other card or driver
+		// writes a different key and is checked in its turn.
+		if (!gpu3d_key.empty() && cfg.gpu3d_ok != gpu3d_key) { cfg.gpu3d_ok = gpu3d_key; cfg_dirty = true; }
 		return true;
 	};
 	double picture_fixed_ms = 0;   // the last picture's in-between and triangles prepared (the governor's)
@@ -2492,6 +2522,26 @@ int main(int argc, char **argv)
 				const bool mine = board.set == "fvipers2" && (gmode == 6 || gmode == 7);
 				hud_top = mine ? cuts(0, HUD_TOP_ROWS) : HudCut();
 				hud_foot = mine ? cuts(video::H - HUD_FOOT_ROWS, video::H) : HudCut();
+				// THE CLOCK BLINKS AT TEN SECONDS, AND THE BAND MUST NOT BLINK WITH IT. The top band is
+				// spread by standing the two blocks evenly between the window's edge and WHAT IS DRAWN in
+				// the timer's field; with nothing drawn there, the band below falls back to hard against
+				// the edges. Under ten seconds the game flashes the digits, so the two blocks jumped
+				// between the two placements several times a second -- Frederic, the 2026-10-29: "quand le
+				// timer arrive a 10, le bloc du HUD du haut clignote: il alterne entre les positionnements
+				// 4/3 et 16/9".
+				//
+				// MEASURED, with VF3_HUD_AUDIT=1 over a versus played out to the clock: the field's run
+				// 222..269 is there every frame of the fight from 3108 to 5351, and from 5352 it comes and
+				// goes -- six frames on, six off, then four and four as the clock speeds up. Nothing else
+				// in the band moves at all.
+				//
+				// So the field's ink is REMEMBERED while the band is up: a flash takes the digits away, not
+				// the place they stand in. It is forgotten as soon as there is no band to spread, which is
+				// the end of the fight, so nothing is carried from one match into the next.
+				static int kept_c0 = -1, kept_c1 = -1;
+				if (!mine || !hud_top.left) kept_c0 = kept_c1 = -1;
+				else if (hud_top.c0 >= 0) { kept_c0 = hud_top.c0; kept_c1 = hud_top.c1; }
+				else if (kept_c0 >= 0) { hud_top.c0 = kept_c0; hud_top.c1 = kept_c1; }
 				// THE CLOCK IS NOT SHOWN IN TRAINING. It is stopped there, so what it shows is a number that
 				// never changes; Frederic asked for it gone the 2026-10-25. Nothing of the game is touched --
 				// the middle slice of the top band, which is the timer's own field and nothing else, is simply
@@ -2567,8 +2617,9 @@ int main(int argc, char **argv)
 						(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode(), said.c_str());
 			}
 			if (static const char *ha = getenv("VF3_HUD_AUDIT"); ha && game_frame % std::max<uint64_t>(1, strtoull(ha, nullptr, 10)) == 0) {
-				fprintf(stderr, "hud frame %llu (mode %d sub %d)\n", (unsigned long long)game_frame,
-						board.fv2_mode(), board.fv2_submode());
+				fprintf(stderr, "hud frame %llu (mode %d sub %d); the top band's cut %d..%d, its middle %d..%d\n",
+						(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode(),
+						hud_top.left, hud_top.right, hud_top.c0, hud_top.c1);
 				auto runs = [&](int y0, int y1, const char *what) {
 					std::string s;
 					int from = -1;
@@ -5183,6 +5234,8 @@ int main(int argc, char **argv)
 		if (draw) {
 			smooth_budget = std::max(0.0, smooth_budget - 1);
 			t9.pictures++;
+			// (VF3_SLOW, below: the running totals as they stood before this picture, to take its own share out)
+			static double was_upload_ms = 0, was_prep_ms = 0, was_g3_ms = 0, was_gpu_ms = 0;
 			const uint64_t td = SDL_GetTicksNS();
 			double t = smooth && !stopped ? std::clamp(frame_clock - double(frames_run), 0.0, 1.0) : 1.0;
 			if (stopped) t = 1.0;
@@ -5193,6 +5246,19 @@ int main(int argc, char **argv)
 			pace.draw_ms += ms;
 			t9.draw_ms += ms;
 			pace.pictures++;
+			// VF3_SLOW=ms -- EVERY PICTURE THAT TOOK LONGER THAN THAT, with the state it was drawn in.
+			// The pace line is an average over ten seconds and a hitch is four frames: it cannot show one.
+			// Written the 2026-10-29 for a hitch Frederic sees on the select screen "quand le modele 3D du
+			// personnage apparait a l'ecran", which is exactly the kind of thing an average hides.
+			if (static const double slow = getenv("VF3_SLOW") ? atof(getenv("VF3_SLOW")) : 0.0; slow > 0 && ms > slow)
+				fprintf(stderr, "slow picture: %.1f ms at frame %llu (mode %d sub %d), %dx -- uploads %.1f, "
+						"the triangles prepared %.1f, the GPU's renderer %.1f (its set-up %.1f)\n", ms,
+						(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode(), scale,
+						// (the totals are emptied every ten seconds: a picture that straddles that is not one to read)
+						std::max(0.0, pace.upload_ms - was_upload_ms), std::max(0.0, pace.prep_ms - was_prep_ms),
+						std::max(0.0, pace.g3_wall_ms - was_g3_ms), std::max(0.0, pace.gpu_ms - was_gpu_ms));
+			was_upload_ms = pace.upload_ms; was_prep_ms = pace.prep_ms;
+			was_g3_ms = pace.g3_wall_ms; was_gpu_ms = pace.gpu_ms;
 			new_frame = false;
 			// the governor
 			const uint64_t now = SDL_GetTicksNS();
