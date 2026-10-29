@@ -1221,8 +1221,14 @@ private:
 				button_at(ren, mid, ink_top, cap, h, on);
 				continue;
 			}
-			// the rule's line just under the capitals, which end at (16 + 31) / 64 of the cell
-			if (on && l.what != line::DOOR) rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_text::CELL + 0.24f), h);
+			// THE RULE IS FOR LINES OF TEXT, and for nothing else. It underlines a chosen setting just under
+			// its capitals; a door is the title a size down and a painted label is a picture, and a rule
+			// drawn under either reads as a scratch. Frederic, the 2026-10-29: "ne souligne pas initialize
+			// avec le trait rose (a appliquer sur toutes les pages)". The painted label's own highlight is
+			// its alpha, which goes from 190 to 255 when it is chosen (button_at).
+			const bool painted = l.what == line::OWN && own[at][size_t(l.which)].as_button;
+			if (on && l.what != line::DOOR && !painted)
+				rule(ren, mid, y + h * ((16.0f + 31.0f) / fv2_text::CELL + 0.24f), h);
 			if (l.what == line::DOOR) {
 				// THE DOORS ARE THE TITLE'S OWN LETTERING, and nothing is drawn under them. They were bold,
 				// slanted and underlined by the pink rule like any chosen line; Frederic, the 2026-10-29:
@@ -1272,7 +1278,6 @@ private:
 		const float bh = cap * 1.45f;
 		const float bw = bh * float(init_w) / float(init_h ? init_h : 1);
 		const SDL_FRect dst = { mid.x + mid.w * 0.5f - bw * 0.5f, top, bw, bh };
-		if (on) rule(ren, mid, dst.y + bh * 1.30f, h);
 		SDL_SetTextureAlphaMod(init, uint8_t(on ? 255 : 190));
 		SDL_RenderTexture(ren, init, nullptr, &dst);
 		SDL_SetTextureAlphaMod(init, 255);

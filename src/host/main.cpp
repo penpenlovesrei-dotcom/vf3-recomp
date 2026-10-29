@@ -905,7 +905,6 @@ struct Game
 		sound.attach(&board.sound_rom, &board.samples);
 		// the music/effects split reads Virtua Fighter 3's sound driver (soundboard.h)
 		sound.driver_known = board.set == "vf3";
-		sound.madrs_mirror = board.set == "vf3";   // (soundboard.h: right for VF3, wrong for Fighting Vipers 2)
 		board.on_line = [this](unsigned y) {
 			if (!tiles_on) return;
 			if (y == 0) tiles.clear();
@@ -3765,6 +3764,44 @@ int main(int argc, char **argv)
 			// restarts on the spot, which is the only honest way to change it.
 			{ "PLAY STYLE", [&] { return std::string(cfg.arcade ? "ARCADE" : cfg.console ? "CONSOLE" : "PC"); },
 			  [&](int d) { switch_play_style(d); }, {}, {}, 0, false, 0 },
+			// INITIALIZE, as GAME ASSIGNMENTS and SOUNDS have: the factory value of every line above it.
+			// Frederic, the 2026-10-29: "il manque la ligne initialize la page display".
+			//
+			// EVERY LINE ABOVE IT EXCEPT TWO. ENHANCED SHADOWS sets nothing yet, and PLAY STYLE is not a
+			// setting of the picture at all -- it restarts the game and takes this menu away with it, which
+			// is not what a player asking for the factory picture is asking for. It is parked on this page
+			// and it is left alone.
+			//
+			// The values are the ones Config starts at, read off its own declarations rather than written
+			// again here: FIT, no pack, no counter, the scale and the renderer on Auto, antialiasing off,
+			// the backgrounds smooth, the textures sharp, smooth motion on, no filter, no CRT colours, the
+			// driver on Auto, and the window out of fullscreen. Each is put back through the SAME lever its
+			// own line uses, so nothing that follows a setting -- the governor, the scale mode of the 2D,
+			// the rasteriser's mipmaps -- is left behind.
+			{ "INITIALIZE", {}, {}, [&] {
+				  set_shape(0);
+				  if (video::hd3d().replacing()) {
+					  std::string report;
+					  video::hd3d().load(std::string(), report);
+					  fprintf(stderr, "the console's DISPLAY: the 3D texture pack put down (INITIALIZE)\n");
+				  }
+				  cfg.show_fps = false;
+				  cfg.scale = 0;            // (0 is Auto: set_scale would clamp it to 1)
+				  cfg.aa = 1;
+				  cfg.renderer3d = 2;
+				  cfg.gpu3d_failed.clear();
+				  cfg.smooth_bg = true;
+				  SDL_SetTextureScaleMode(tex_below, SDL_SCALEMODE_LINEAR);
+				  cfg.sharp_textures = true;
+				  video::Raster::arcade_lod = false;
+				  cfg.smooth = true;
+				  cfg.filter = 0;
+				  cfg.crt_colours = 0;
+				  cfg.graphics = 0;
+				  if (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN) set_fullscreen(false);
+				  cfg_dirty = true;
+				  gov_fresh();
+			  }, {}, 0, true, 1.2f },
 		};
 
 		// ---- GAME ASSIGNMENTS carries ONE line of the port's own, under the game's thirteen ----
