@@ -115,7 +115,7 @@ Over 8 MB, at frame 3300, with the inputs equalised:
 |---|---|---|
 | `0x00279668` | 12 against 14 | the cursor, the address `docs/fv2-roster.md` already names |
 | `0x0030E088` | 14 against 13 | the id |
-| `0x005949F4` and on, every 0x168 | `0x0A6F` against `0x0183` | a resource id, repeated; **not identified** |
+| `0x005949F4` and on, every 0x168 | `0x0A6F` against `0x0183` | **not a resource id**: field +12 of the fighter's working record, copied every frame beside his position (`docs/fv2-parts.md` section 4) |
 | `0x00701440` / `0x00701442` | 800/800 against 2400/2400 | the armour |
 
 Nothing else. No difference in position, in animation frame, or in the twelve tables' working copies.
@@ -124,7 +124,10 @@ Nothing else. No difference in position, in animation frame, or in the twelve ta
 ## What is not settled
 
 - **The repeated `0x0A6F` / `0x0183`.** Something per-fighter, written in a table of 0x168-byte entries at
-  `0x005949F4`. Not chased.
+  `0x005949F4`. Not chased. **Chased 2026-10-29, see `docs/fv2-parts.md` section 4:** the table is at
+  `0x00591E18`, its entries are 180 bytes a player, and the halfword is field +12 of the fighter's working
+  record, which changes every frame. What that field is remains unidentified; that it is no identity is now
+  measured.
 - **Whether the armour difference is reachable in play.** Fifty frames of light punching damage nothing, so
   the pictures stay identical; the difference only shows in a fight long enough to break armour. Not filmed.
 - **The two sub-tables at +0x34 and +0x38.** Their contents were not compared beyond the first words; one
