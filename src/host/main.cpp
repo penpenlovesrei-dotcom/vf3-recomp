@@ -4642,6 +4642,36 @@ int main(int argc, char **argv)
 						(unsigned long long)game_frame, ending.want ? "DREAMCAST" : "ARCADE");
 			}
 		}
+		// VF3_LADDER_RUSH=1: the opponent's life emptied a second into every round, so the ladder is won
+		// match after match and THE REAL ENDING ARRIVES BY THE GAME'S OWN ROAD. There is no other way for a
+		// test to reach it: a hand has to finish the ladder, and a run with no hands draws every round.
+		// Written the 2026-10-29, to measure an ending Frederic had just played through and this port had
+		// said nothing about. Tests only, and it is the game's own K.O. that is being provoked -- the life
+		// is written where fv2_set_life writes it and the game decides what that means.
+		if (static const bool rush = getenv("VF3_LADDER_RUSH") != nullptr; rush && board.set == "fvipers2") {
+			const int m = board.fv2_mode(), su = board.fv2_submode();
+			static uint64_t in_round = 0;
+			if ((m == 6 || m == 7) && (su == 11 || su == 12)) {
+				if (++in_round > 60 && board.fv2_life(2) > 0) board.fv2_set_life(2, 0);
+			} else in_round = 0;
+		}
+		// VF3_CONSOLE_REAL_ENDING=frame: the match ended there and the GAME'S OWN ending taken, replays and
+		// all -- the road a finished ladder takes, which no test could reach before. The pair is what the
+		// removed "AFTER A MATCH" line used to do: the match ended on the spot (fv2_end_match) and the
+		// ladder marked finished (fv2_finish_ladder, laid by step_real_ending at the first frame the match
+		// is over). Written the 2026-10-29: Frederic finished the ladder with ENDING on DREAMCAST and got
+		// the arcade's replays, while the requested roll shows the pictures perfectly -- so the difference
+		// is the road, and the road has to be driveable by a test.
+		if (static const char *re = getenv("VF3_CONSOLE_REAL_ENDING"); re && cplay.on) {
+			static const uint64_t at = strtoull(re, nullptr, 10);
+			static bool done = false;
+			if (!done && game_frame >= at && board.fv2_end_match() > 0) {
+				done = true;
+				cplay.arm_real_ending();
+				fprintf(stderr, "frame %llu: VF3_CONSOLE_REAL_ENDING -- the match ended, the ladder marked finished\n",
+						(unsigned long long)game_frame);
+			}
+		}
 		// VF3_CONSOLE_PAUSE=n: the pause menu answered without a hand -- the line's own number in fv2_pause.h,
 		// which is 0 RESUME, 1 REMATCH, 2 CHANGE STAGE, 3 CHANGE YOUR VIPER, 4 MAIN MENU -- as soon as it is
 		// up, HOWEVER IT WAS OPENED, which now means the end-of-match panel of a versus as well as a pause

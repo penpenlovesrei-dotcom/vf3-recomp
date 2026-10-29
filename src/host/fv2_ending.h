@@ -23,6 +23,8 @@
 // on the fall let a flash of replay through before the next page of credits.
 #pragma once
 #include <SDL3/SDL.h>
+#include <algorithm>
+#include <filesystem>
 #include <string>
 #include <vector>
 #include "folder_name.h"
@@ -43,20 +45,42 @@ struct fv2_ending
 	// read as a picture that failed to load.
 	uint8_t edge[3] = { 0, 0, 0 };
 
-	// The folder is read once and only its NAMES are kept. Eight pictures of 2048 square would be a hundred
-	// and twenty megabytes of texture held for the one that is on screen, so they are read as they come.
+	// THE FOLDER IS READ, NOT A LIST OF NAMES. Eight pictures of 2048 square would be a hundred and twenty
+	// megabytes of texture held for the one on screen, so only their paths are kept and each is read as it
+	// comes. The names used to be written down here, and the eighth of them was 08_bm_kuhn.png while the
+	// file in the folder is 08_groupe.png: the picture could not be opened, every frame of the last replay,
+	// and what showed instead was the game's own replay -- the arcade's ending. Found the 2026-10-29 in the
+	// trail of a whole ladder played out hidden.
+	//
+	// The art is Frederic's and lives outside git (/assets/menu-console/ is ignored), so he renames a file
+	// when he replaces it. What is fixed is the ORDER, which the numbers at the head of the names give: the
+	// folder is listed, the .png files are sorted by name, and the first eight are the roll's eight.
 	void find(const std::string &assets, FILE *log)
 	{
 		if (tried) return;
 		tried = true;
 		// menu-console/ending, with the folder's old name fin still accepted: folder_name.h says why.
 		const std::string dir = either_name(assets + "/menu-console/ending", assets + "/menu-console/fin") + "/";
-		static const char *const NAMES[PICTURES] = {
-			"01_charlie.png", "02_emi.png", "03_grace_honey.png", "04_raxel_picky.png",
-			"05_bahn.png", "06_tokio_sanman.png", "07_jane_mahler.png", "08_bm_kuhn.png",
-		};
-		for (const char *n : NAMES) paths.push_back(dir + n);
-		if (log) fprintf(log, "the console's ending: %d pictures named in %s\n", PICTURES, dir.c_str());
+		std::vector<std::string> names;
+		std::error_code ec;
+		for (const auto &e : std::filesystem::directory_iterator(dir, ec)) {
+			if (!e.is_regular_file(ec)) continue;
+			std::string ext = e.path().extension().string();
+			for (char &c : ext) c = char(tolower((unsigned char)c));
+			if (ext == ".png") names.push_back(e.path().filename().string());
+		}
+		std::sort(names.begin(), names.end());
+		if (int(names.size()) > PICTURES) names.resize(PICTURES);
+		for (const std::string &n : names) paths.push_back(dir + n);
+		if (log) {
+			std::string said;
+			for (const std::string &n : names) said += (said.empty() ? "" : ", ") + n;
+			fprintf(log, "the console's ending: %d picture%s in %s%s%s\n", int(names.size()),
+					names.size() == 1 ? "" : "s", dir.c_str(), said.empty() ? "" : " -- ", said.c_str());
+			if (int(names.size()) < PICTURES)
+				fprintf(log, "the console's ending: the roll has %d replays, so the last %d keep the game's own\n",
+						PICTURES, PICTURES - int(names.size()));
+		}
 	}
 
 	bool have() const { return !paths.empty(); }
@@ -77,6 +101,7 @@ struct fv2_ending
 		if (index < 0 || index >= int(paths.size())) return;
 		std::vector<uint32_t> px;
 		std::string why;
+		at = index;   // (asked for once: a file that cannot be read was being retried every frame)
 		if (!read_png(paths[size_t(index)].c_str(), px, tex_w, tex_h, why)) {
 			if (log) fprintf(log, "the console's ending: %s %s\n", paths[size_t(index)].c_str(), why.c_str());
 			return;

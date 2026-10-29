@@ -678,26 +678,72 @@ struct console_play
 	//   * the picture goes up on the replay byte's RISE and comes down at the SEGMENT'S BOUNDARY, never on
 	//     the byte's fall: the byte drops two frames before the segment ends and the game is still showing
 	//     its replay in those two, so taking the picture away on the fall let a flash of replay through.
+	// ---- AND THE PICTURE IS THE NTH REPLAY'S, NOT THE NTH SEGMENT'S ----
+	//
+	// It used to be the segment's: ending_art = ending_seg - 1. That is right for the roll ASKED FOR from
+	// the menu, which runs eight segments with one replay each, and wrong for the REAL ending, which is the
+	// one a finished ladder takes. Frederic finished it the 2026-10-29 with ENDING on DREAMCAST and saw the
+	// arcade's replays; the port said nothing, because a picture whose number is past the last one is not
+	// drawn at all (fv2_ending::show, which leaves the screen as it was on purpose).
+	//
+	// MEASURED, a whole ladder played out hidden with VF3_LADDER_RUSH and the trail below:
+	//
+	//     the real ending   39 segments, the sequence running 4, 8, 12 ... 124 and round again
+	//                       the replay byte rises 8 times: segments 1, 5, 9, 15, 22, 25, 33, 34
+	//     the asked roll     8 segments, one rise each
+	//
+	// Eight rises either way, and eight pictures. So the rises are counted and the segments are not: the
+	// first replay is the first picture, wherever in the list it falls.
+	//
+	// IT COMES DOWN A FEW FRAMES AFTER THE BYTE FALLS, which is August's own observation kept: the byte
+	// drops about two frames before the game stops showing the replay, so cutting on the fall itself let a
+	// flash of replay through. The segment's boundary used to stand in for the replay's end; in the real
+	// ending a replay spans several segments (1 to 3, 5 to 7, 9 to 13 ...), so the boundary is no longer
+	// the end of anything and only the byte is listened to.
+	static constexpr int ENDING_PICTURES = 8;   // (fv2_ending::PICTURES, which this file does not include)
+	static constexpr int ENDING_FALL_HOLD = 6;  // frames the picture stays after the replay byte falls
 	int ending_art = -1;
 	int ending_seg = 0;          // which segment: 1 is the first
 	int ending_ptr = -1;         // the sequence pointer as it last read
 	int ending_replay = 0;       // the replay byte as it last read
+	int ending_shown = 0;        // how many pictures have been put up: the next replay takes the next one
+	int ending_fall = 0;         // frames since the byte fell, 0 when it is up
+	// AND IT SAYS WHAT IT SAW, because an ending is not a thing anyone can repeat on demand: reaching it
+	// means finishing the ladder. Frederic finished it the 2026-10-29 with the arcade's replays on screen
+	// although the line read DREAMCAST, and his log held nothing at all about the ending -- there was
+	// nothing in it to hold. A dozen lines a roll is cheap, and they are the only measurement of the real
+	// one anybody is going to get.
 	void step_ending(m3::Model3 &b)
 	{
 		const int mode = b.fv2_mode();
 		const bool dsp = mode == 13;      // ENDING_DSP; ENDING_INT is 12 and is followed without counting
-		if (mode != 12 && !dsp) { ending_art = -1; ending_seg = 0; ending_ptr = -1; ending_replay = 0; return; }
+		if (mode != 12 && !dsp) {
+			if (ending_seg || ending_art >= 0 || ending_ptr >= 0)
+				fprintf(stderr, "the console's ending: over after %d segment%s, %d picture%s shown\n",
+						ending_seg, ending_seg == 1 ? "" : "s", ending_shown, ending_shown == 1 ? "" : "s");
+			ending_art = -1; ending_seg = 0; ending_ptr = -1; ending_replay = 0;
+			ending_shown = 0; ending_fall = 0;
+			return;
+		}
 		const int ptr = b.fv2_ending_seq(), rep = b.fv2_ending_replay();
+		if (ending_ptr < 0)
+			fprintf(stderr, "the console's ending: it begins (mode %d, the sequence at %d, the replay byte %d)\n",
+					mode, ptr, rep);
 		if (!dsp) { ending_ptr = ptr; ending_replay = rep; return; }
-		if (ptr != ending_ptr) {          // a boundary: the picture comes down here and the segment advances
+		if (ptr != ending_ptr) {          // a boundary: the segment advances, and nothing else happens here
 			ending_ptr = ptr;
 			ending_seg++;
-			ending_art = -1;
 		}
 		if (rep != ending_replay) {
 			ending_replay = rep;
-			if (rep && ending_seg > 0) ending_art = ending_seg - 1;   // the replay has begun: its picture stands in
+			if (rep) {
+				ending_art = ending_shown < ENDING_PICTURES ? ending_shown++ : -1;   // the next picture
+				ending_fall = 0;
+			} else ending_fall = 1;      // (the count below takes it down a few frames later)
+			fprintf(stderr, "the console's ending: the replay byte %s in segment %d -- picture %d\n",
+					rep ? "rises" : "falls", ending_seg, ending_art + 1);
 		}
+		if (ending_fall > 0 && ++ending_fall > ENDING_FALL_HOLD) { ending_art = -1; ending_fall = 0; }
 	}
 	void arm_real_ending() { want_real_ending = true; }
 
