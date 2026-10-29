@@ -1,15 +1,15 @@
 @echo off
-rem SONDE : pourquoi l'ecran CONTINUE n'apparait pas apres un combat perdu.
+rem PROBE: why the CONTINUE screen does not appear after a fight is lost.
 rem
-rem C'est jouer-fv2-console.cmd avec deux traces allumees, et rien d'autre :
-rem   VF3_VS_TRACE  une ligne a chaque changement de mode a partir du jugement,
-rem                 avec ce que le jeu demande ensuite et ce qu'il dit du match ;
-rem   VF3_MIDI_LOG  une ligne a chaque octet envoye a la carte son, avec l'image
-rem                 et le mode -- donc quand la musique du combat est coupee,
-rem                 quand celle du CONTINUE part, quand celle du GAME OVER part.
+rem It is jouer-fv2-console.cmd with two traces switched on, and nothing else:
+rem   VF3_VS_TRACE  one line at every mode change from the judgement on, with what
+rem                 the game asks for next and what it says about the match;
+rem   VF3_MIDI_LOG  one line per byte sent to the sound board, with the frame and
+rem                 the mode -- so when the fight's music is cut, when CONTINUE's
+rem                 starts, when GAME OVER's starts.
 rem
-rem A FAIRE : mode ARCADE, perdre un combat, laisser tourner jusqu'a l'ecran titre.
-rem Le journal est log.txt, dans ce dossier.
+rem WHAT TO DO: ARCADE mode, lose a fight, let it run to the title screen.
+rem The log is log.txt, in this folder.
 setlocal
 set PATH=C:\msys64\mingw64\bin;%PATH%
 set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\fvipers2.zip

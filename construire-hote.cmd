@@ -1,10 +1,10 @@
 @echo off
-rem Construit la fenetre (build\bin\vf3.exe) ET l'outil sans fenetre
-rem (build\bin\vf3run.exe), avec le g++ de MSYS2.
-rem construire.cmd ne batit que les outils sans fenetre ; celui-ci fait les deux,
-rem parce que le menu des modes de Fighting Vipers 2 se dessine dans la fenetre.
-rem make doit recevoir un dossier temporaire ou il peut ecrire, sinon le
-rem compilateur tente C:\WINDOWS et s'arrete sur "Cannot create temporary file".
+rem Builds the window (build\bin\vf3.exe) AND the windowless tool
+rem (build\bin\vf3run.exe), with MSYS2's g++.
+rem construire.cmd builds only the windowless tools; this one does both, because
+rem Fighting Vipers 2's list of modes is drawn in the window.
+rem make must be given a temporary folder it can write to, or the compiler tries
+rem C:\WINDOWS and stops on "Cannot create temporary file".
 setlocal
 set MINGW=C:\msys64\mingw64\bin
 set MAKE=C:\msys64\usr\bin\make.exe
@@ -13,5 +13,5 @@ set SCRATCH=%LOCALAPPDATA%\Temp
 cd /d "%~dp0"
 "%MAKE%" CXX=g++ TMP=%SCRATCH% TEMP=%SCRATCH% TMPDIR=%SCRATCH% build/bin/vf3run build/bin/vf3 -j8
 echo.
-echo ---- fini (code %ERRORLEVEL%) ----
+echo ---- finished (code %ERRORLEVEL%) ----
 pause

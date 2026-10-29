@@ -23,7 +23,7 @@ set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\%JEU%.zip
 cd /d "%~dp0..\.."
 
 if not exist "build\bin\vf3run.exe" (
-  echo build\bin\vf3run.exe manque : lancer construire.cmd d'abord.
+  echo build\bin\vf3run.exe is missing: run construire.cmd first.
   goto :fin
 )
 if not exist "%ROM%" (

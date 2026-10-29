@@ -263,7 +263,7 @@ Nothing it makes belongs in the repository: it is the game's own pictures, alter
 
 ## 10. Verified
 
-- `verifier-vf3.cmd`: the five checks IDENTIQUE. Virtua Fighter 3 cannot feel any of this -- with no pack and no
+- `verifier-vf3.cmd`: the five checks IDENTICAL. Virtua Fighter 3 cannot feel any of this -- with no pack and no
   dump, `Raster::hd` stays empty and both rasterisers take the paths they always took.
 - With the option off, Fighting Vipers 2's 22 pictures over `fv2-shots.txt` and Virtua Fighter 3's three over
   `vf3-shots.txt` are **byte-identical** to the build before this change.

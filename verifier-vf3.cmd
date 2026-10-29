@@ -1,8 +1,8 @@
 @echo off
-rem Non-regression de Virtua Fighter 3 : compare cette branche a la version
-rem d'origine (le commit "main"), sur la meme ROM revision D. Doit sortir
-rem IDENTIQUE partout, sinon une modification de la Step 2.0 a touche la 1.0.
-rem Premier lancement : cree l'arbre de travail d'origine et le construit.
+rem Virtua Fighter 3's non-regression: compares this branch with the original
+rem version (the "main" commit), on the same revision D ROM. It must come out
+rem IDENTICAL everywhere, or a change to Step 2.0 has touched 1.0.
+rem First run: it creates the original worktree and builds it.
 setlocal
 set MINGW=C:\msys64\mingw64\bin
 set MAKE=C:\msys64\usr\bin\make.exe
@@ -11,57 +11,57 @@ set SCRATCH=%LOCALAPPDATA%\Temp
 set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\vf3.zip
 set UP=C:\Temp\vf3up
 set CMP=C:\Temp\cmp
-set IMAGES=%1
-if "%IMAGES%"=="" set IMAGES=3000
+set FRAMES=%1
+if "%FRAMES%"=="" set FRAMES=3000
 cd /d "%~dp0"
 
-rem UN SEUL TOUR A LA FOIS. Les deux runs ecrivent leurs etats et leurs dumps dans %CMP%, toujours au
-rem meme endroit : deux verificateurs lances ensemble melangent leurs fichiers et la comparaison sort
-rem DIFFERENT sans qu'aucune regression n'existe. C'est arrive le 2026-10-23, un tour a 2000 images et
-rem un a 3000 : le s.state compare valait 3000 images d'un cote et 2000 de l'autre. Le verrou coute une
-rem ligne ; une fausse alerte sur le contrat de fidelite coute bien plus.
+rem ONE RUN AT A TIME. Both runs write their states and their dumps into %CMP%, always in the same
+rem place: two verifiers launched together mix their files up and the comparison comes out DIFFERENT
+rem with no regression existing at all. That happened on 2026-10-23, one run at 2000 frames and one at
+rem 3000: the s.state compared was 3000 frames on one side and 2000 on the other. The lock costs one
+rem line; a false alarm on the fidelity contract costs far more.
 if not exist "%CMP%" mkdir "%CMP%" 2> nul
-if exist "%CMP%\encours" (
-  echo Un autre verificateur tourne deja ^(%CMP%\encours^).
-  echo S'il a ete interrompu, effacer ce fichier et relancer.
-  goto :fin
+if exist "%CMP%\running" (
+  echo Another verifier is already running ^(%CMP%\running^).
+  echo If it was interrupted, delete that file and start again.
+  goto :done
 )
-echo %DATE% %TIME% > "%CMP%\encours"
+echo %DATE% %TIME% > "%CMP%\running"
 
 if not exist "%UP%\Makefile" (
-  echo ---- creation de l'arbre d'origine dans %UP% ----
-  git worktree add "%UP%" main || goto :fin
+  echo ---- creating the original worktree in %UP% ----
+  git worktree add "%UP%" main || goto :done
 )
 if not exist "%UP%\build\bin\vf3run.exe" (
-  echo ---- construction de la version d'origine ----
+  echo ---- building the original version ----
   pushd "%UP%"
   "%MAKE%" CXX=g++ TMP=%SCRATCH% TEMP=%SCRATCH% TMPDIR=%SCRATCH% build/bin/vf3run -j8
   popd
 )
 if not exist "build\bin\vf3run.exe" (
-  echo build\bin\vf3run.exe manque : lancer construire.cmd d'abord.
-  goto :fin
+  echo build\bin\vf3run.exe is missing: run construire.cmd first.
+  goto :done
 )
 
 if not exist "%CMP%\up" mkdir "%CMP%\up"
 if not exist "%CMP%\fv2" mkdir "%CMP%\fv2"
-echo ---- %IMAGES% images, version d'origine ----
+echo ---- %FRAMES% frames, the original version ----
 pushd "%CMP%\up"
-"%UP%\build\bin\vf3run.exe" "%ROM%" --frames %IMAGES% --state s.state --ram-at %IMAGES% --quiet
+"%UP%\build\bin\vf3run.exe" "%ROM%" --frames %FRAMES% --state s.state --ram-at %FRAMES% --quiet
 popd
-echo ---- %IMAGES% images, cette branche ----
+echo ---- %FRAMES% frames, this branch ----
 pushd "%CMP%\fv2"
-"%~dp0build\bin\vf3run.exe" "%ROM%" --frames %IMAGES% --state s.state --ram-at %IMAGES% --quiet
+"%~dp0build\bin\vf3run.exe" "%ROM%" --frames %FRAMES% --state s.state --ram-at %FRAMES% --quiet
 popd
 
 echo.
-echo ---- etat du PowerPC, image par image ----
-fc /b "%CMP%\up\s.state" "%CMP%\fv2\s.state" > nul && echo   IDENTIQUE || echo   *** DIFFERENT ***
-echo ---- les 8 Mo de RAM ----
-fc /b "%CMP%\up\ram_%IMAGES%.bin" "%CMP%\fv2\ram_%IMAGES%.bin" > nul && echo   IDENTIQUE || echo   *** DIFFERENT ***
+echo ---- the PowerPC's state, frame by frame ----
+fc /b "%CMP%\up\s.state" "%CMP%\fv2\s.state" > nul && echo   IDENTICAL || echo   *** DIFFERENT ***
+echo ---- the 8 MB of RAM ----
+fc /b "%CMP%\up\ram_%FRAMES%.bin" "%CMP%\fv2\ram_%FRAMES%.bin" > nul && echo   IDENTICAL || echo   *** DIFFERENT ***
 
 echo.
-echo ---- images rendues (vf3run --shots) ----
+echo ---- frames rendered (vf3run --shots) ----
 if exist "%CMP%\shup" rmdir /s /q "%CMP%\shup"
 if exist "%CMP%\shnew" rmdir /s /q "%CMP%\shnew"
 mkdir "%CMP%\shup" & mkdir "%CMP%\shnew"
@@ -70,21 +70,21 @@ mkdir "%CMP%\shup" & mkdir "%CMP%\shnew"
 set SHOTS_OK=1
 if not exist "%CMP%\shup\*.png" set SHOTS_OK=0
 for %%F in ("%CMP%\shup\*.png") do fc /b "%%F" "%CMP%\shnew\%%~nxF" > nul || set SHOTS_OK=0
-if "%SHOTS_OK%"=="1" (echo   IDENTIQUE) else (echo   *** DIFFERENT ***)
+if "%SHOTS_OK%"=="1" (echo   IDENTICAL) else (echo   *** DIFFERENT ***)
 
-rem L'hote complet : l'image du jeu que la fenetre affiche. Elle est reproductible
-rem (host_last.png), contrairement a host_window.png qui depend du rythme reel.
-rem Sans SDL 3 installe, la cible build/bin/vf3 n'existe pas et on saute l'essai.
-if not exist "build\bin\vf3.exe" goto :pashote
+rem The complete host: the game's picture as the window shows it. It is reproducible
+rem (host_last.png), unlike host_window.png, which depends on the real pace.
+rem With no SDL 3 installed, the target build/bin/vf3 does not exist and the trial is skipped.
+if not exist "build\bin\vf3.exe" goto :nohost
 if not exist "%UP%\build\bin\vf3.exe" (
-  echo ---- construction de l'hote d'origine ----
+  echo ---- building the original host ----
   pushd "%UP%"
   "%MAKE%" CXX=g++ TMP=%SCRATCH% TEMP=%SCRATCH% TMPDIR=%SCRATCH% build/bin/vf3 -j8
   popd
 )
-if not exist "%UP%\build\bin\vf3.exe" goto :pashote
+if not exist "%UP%\build\bin\vf3.exe" goto :nohost
 echo.
-echo ---- l'hote complet, image du jeu ----
+echo ---- the complete host, the game's picture ----
 if exist "%CMP%\hup" rmdir /s /q "%CMP%\hup"
 if exist "%CMP%\hnew" rmdir /s /q "%CMP%\hnew"
 mkdir "%CMP%\hup" & mkdir "%CMP%\hnew"
@@ -106,20 +106,20 @@ set VF3_DATA=%CMP%\hnew
 del /q build\host_last.png 2> nul
 "%~dp0build\bin\vf3.exe" "%ROM%" > nul 2>&1
 copy /y build\host_last.png "%CMP%\hnew\last.png" > nul
-fc /b "%CMP%\hup\last.png" "%CMP%\hnew\last.png" > nul && echo   IDENTIQUE || echo   *** DIFFERENT ***
+fc /b "%CMP%\hup\last.png" "%CMP%\hnew\last.png" > nul && echo   IDENTICAL || echo   *** DIFFERENT ***
 set VF3_HIDDEN=
 set VF3_QUIT_AFTER=
 set VF3_SCRIPT=
 set VF3_DATA=
 set VF3_3D=
-:pashote
+:nohost
 
 echo.
-echo ---- pas a pas interpreteur contre code recompile (vf3lock) ----
+echo ---- step by step, interpreter against recompiled code (vf3lock) ----
 "build\bin\vf3lock.exe" "%ROM%" --script tools\scripts\vf3-match.txt
 
-:fin
-if exist "%CMP%\encours" del "%CMP%\encours"
+:done
+if exist "%CMP%\running" del "%CMP%\running"
 echo.
-echo ---- fini (code %ERRORLEVEL%) ----
+echo ---- finished (code %ERRORLEVEL%) ----
 pause

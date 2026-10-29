@@ -196,7 +196,7 @@ def main(argv):
     A, B = lire(argv[1]), lire(argv[2])
     m = min(len(A), len(B))
     if np.array_equal(A[:m], B[:m]):
-        print("  Les deux fichiers sont IDENTIQUES. Rien a entendre, par construction.")
+        print("  Les deux fichiers sont IDENTICAL. Rien a entendre, par construction.")
         return 0
     analyser(A, B, noms, spl, pires, bruit)
     print()

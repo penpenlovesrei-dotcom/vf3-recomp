@@ -205,7 +205,7 @@ AMD A9-9425, two cores, two logical processors. Five passes of 4 000 frames, med
 | the tests | **24 files green**: the ten on both cores, plus the seven **without a line of MAME** |
 | the replayer, whole scene | **EVERYTHING AGREES**, the four checks, 3 219 865 samples per chip |
 | the end-to-end footprint | **`9A2310F8AF000E09EB18BD114852B003`** with each core |
-| VF3's non-regression | `verifier-vf3.cmd 3000` → **IDENTIQUE** on the four checks |
+| VF3's non-regression | `verifier-vf3.cmd 3000` → **IDENTICAL** on the four checks |
 | by ear | the real game, windowed, no difference |
 
 **The migration plan's eight acceptance criteria are satisfied.**

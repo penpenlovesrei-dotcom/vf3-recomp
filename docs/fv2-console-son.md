@@ -635,10 +635,10 @@ the game, as `driver_known` already does:
 - `SoundBoard::madrs_mirror`, set from the set by the host and by `vf3run` (`board.set == "vf3"`), applied
   to the chip at its creation through `scsp_device::set_madrs_mirror`.
 - `VF3_SCSP_MADRS_SEPARATE=1` and `VF3_SCSP_MADRS_MIRROR=1` force one or the other, for comparison.
-- `verifier-vf3.cmd 2000`: four `IDENTIQUE` and 2231 identical frames — Virtua Fighter 3 does not move.
+- `verifier-vf3.cmd 2000`: four `IDENTICAL` and 2231 identical frames — Virtua Fighter 3 does not move.
 
 **A measurement trap met on the way, not to be repeated**: the first build failed (`m_madrs_mirror` was
-private) and the checker then ran on the **old** binaries, returning four `IDENTIQUE` that bore on nothing.
+private) and the checker then ran on the **old** binaries, returning four `IDENTICAL` that bore on nothing.
 The same defect as the morning's bisection: a harness that measures a stale binary always answers "all is
 well". Since then, the script stops on a compilation error before checking anything at all.
 

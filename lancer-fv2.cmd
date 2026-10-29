@@ -1,24 +1,24 @@
 @echo off
-rem Fait tourner Fighting Vipers 2 sur l'interpreteur, sans fenetre, et releve
-rem l'etat : le set reconnu, le stepping, le PC, l'empreinte de la RAM et ce que
-rem le jeu a demande a la puce de securite.
-rem   lancer-fv2.cmd            -> 120 images, et un vidage de la RAM
-rem   lancer-fv2.cmd 1800       -> 1800 images, sans vidage
+rem Runs Fighting Vipers 2 on the interpreter, without a window, and records the
+rem state: the set recognised, the stepping, the PC, the RAM's footprint and what
+rem the game asked the security chip for.
+rem   lancer-fv2.cmd            -> 120 frames, and a dump of the RAM
+rem   lancer-fv2.cmd 1800       -> 1800 frames, no dump
 setlocal
 set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\fvipers2.zip
-set IMAGES=%1
-if "%IMAGES%"=="" set IMAGES=120
+set FRAMES=%1
+if "%FRAMES%"=="" set FRAMES=120
 cd /d "%~dp0"
 if not exist "build\bin\vf3run.exe" (
-  echo build\bin\vf3run.exe manque : lancer construire.cmd d'abord.
+  echo build\bin\vf3run.exe is missing: run construire.cmd first.
   pause
   exit /b 1
 )
 if "%1"=="" (
-  "build\bin\vf3run.exe" "%ROM%" --frames %IMAGES% --ram-at %IMAGES%
+  "build\bin\vf3run.exe" "%ROM%" --frames %FRAMES% --ram-at %FRAMES%
 ) else (
-  "build\bin\vf3run.exe" "%ROM%" --frames %IMAGES%
+  "build\bin\vf3run.exe" "%ROM%" --frames %FRAMES%
 )
 echo.
-echo ---- fini (code %ERRORLEVEL%) ----
+echo ---- finished (code %ERRORLEVEL%) ----
 pause

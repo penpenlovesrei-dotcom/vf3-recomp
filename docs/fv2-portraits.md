@@ -149,7 +149,7 @@ laid out the same, and the code says so rather than writing at an address that m
 
 ## Verified
 
-- `verifier-vf3.cmd`: Virtua Fighter 3 untouched, all five checks IDENTIQUE. It has to be -- `replace_portraits`
+- `verifier-vf3.cmd`: Virtua Fighter 3 untouched, all five checks IDENTICAL. It has to be -- `replace_portraits`
   is never called unless the player names a folder, and it returns at once for any set but `fvipers2`.
 - Fighting Vipers 2 **without** the option, against this branch's base commit, on `tools/scripts/fv2-fight.txt`,
   4200 frames: the CPU state every frame, the 8 MB of RAM at the end, and all 16 rendered pictures, byte-identical.

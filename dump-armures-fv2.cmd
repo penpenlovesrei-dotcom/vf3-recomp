@@ -1,28 +1,29 @@
 @echo off
-rem Fighting Vipers 2 : le second dump, celui des modeles SANS leur armure.
+rem Fighting Vipers 2: the second dump, the one of the models WITHOUT their
+rem armour.
 rem
-rem   "dump-armures-fv2.cmd"       deux couleurs par combattant
-rem   "dump-armures-fv2.cmd" 4     quatre
+rem   "dump-armures-fv2.cmd"       two colours per fighter
+rem   "dump-armures-fv2.cmd" 4     four
 rem
-rem Le premier dump (dump-complet-fv2.cmd) tenait la garde pour que l'armure ne
-rem tombe pas : il n'a vu que les combattants habilles. Sous l'armure il y a un
-rem autre modele et d'autres textures -- le chrome de la case 14 n'avait zero
-rem texture propre que parce que tout son corps EST son armure.
+rem The first dump (dump-complet-fv2.cmd) held guard so that the armour would not
+rem fall: it only saw the fighters clothed. Under the armour there is another
+rem model and other textures -- cell 14's chrome had zero textures of its own only
+rem because its whole body IS its armour.
 rem
-rem `flag0` du joueur 1 est a 0x00701444 ; 0x04 et 0x08 sont « la piece est
-rem tombee », et ce sont ces bits-la que le modele lit (docs\fv2-honey.md).
-rem 15 = 0x0F : les deux pieces a leur limite et les deux tombees. L'adresse
-rem donnee a VF3_POKE est un indice dans le vidage de --ram-at, ou l'octet
-rem d'adresse A est a l'indice A^3 : 701444 vise donc l'octet de poids faible
-rem du mot de 32 bits. L'adresse est en hexadecimal, la valeur en decimal.
+rem Player 1's `flag0` is at 0x00701444; 0x04 and 0x08 are "the piece has fallen",
+rem and those are the bits the model reads (docs\fv2-honey.md). 15 = 0x0F: both
+rem pieces at their limit and both fallen. The address given to VF3_POKE is an
+rem index into --ram-at's dump, where the byte at address A is at index A^3: so
+rem 701444 aims at the low byte of the 32-bit word. The address is in hexadecimal,
+rem the value in decimal.
 rem
-rem Le poke est TENU, parce que le modele est choisi quand un round se charge
-rem et pas pendant : c'est le round 2 qui porte le resultat, et c'est lui seul
-rem que les scripts rendent.
+rem The poke is HELD, because the model is chosen when a round loads and not
+rem during it: it is round 2 that carries the result, and it alone is what the
+rem scripts render.
 rem
-rem Les textures s'ajoutent a celles du premier dump, dans le meme dossier : le
-rem dump n'ecrit jamais par-dessus un fichier deja la, donc seules les nouvelles
-rem arrivent. Ne pas effacer Textures3D-dump avant de lancer ceci.
+rem The textures are added to the first dump's, in the same folder: the dump never
+rem writes over a file already there, so only the new ones arrive. Do not delete
+rem Textures3D-dump before running this.
 setlocal enabledelayedexpansion
 set MINGW=C:\msys64\mingw64\bin
 set PATH=%MINGW%;%PATH%
@@ -31,25 +32,25 @@ cd /d "%~dp0"
 set "VF3_DATA=%~dp0"
 if "%VF3_DATA:~-1%"=="\" set "VF3_DATA=%VF3_DATA:~0,-1%"
 
-set "COULEURS=%~1"
-if "%COULEURS%"=="" set "COULEURS=2"
+set "COLOURS=%~1"
+if "%COLOURS%"=="" set "COLOURS=2"
 
 if not exist "build\bin\vf3run.exe" (
-  echo build\bin\vf3run.exe manque : lancer construire.cmd d'abord.
+  echo build\bin\vf3run.exe is missing: run construire.cmd first.
   pause
   exit /b 1
 )
 if not exist "%ROM%" (
-  echo ROM introuvable : %ROM%
+  echo ROM not found: %ROM%
   pause
   exit /b 1
 )
 
-py -3 -I "tools\fv2\mk_dump_armures.py" %COULEURS% || goto :rate
+py -3 -I "tools\fv2\mk_dump_armures.py" %COLOURS% || goto :failed
 
-set "SORTIE=%~dp0Textures3D-dump"
-mkdir "%SORTIE%\fvipers2" 2>nul
-mkdir "%SORTIE%\ram" 2>nul
+set "OUT=%~dp0Textures3D-dump"
+mkdir "%OUT%\fvipers2" 2>nul
+mkdir "%OUT%\ram" 2>nul
 
 set "VF3_POKE=701444=15"
 set "VF3_POKE_FRAMES=3200-7500"
@@ -57,8 +58,8 @@ set "VF3_POKE_FRAMES=3200-7500"
 set /a N=0
 for %%S in ("tools\scripts\dump-armures\*.txt") do set /a N+=1
 echo.
-echo   %N% courses, armure explosee, %COULEURS% couleur(s) par combattant.
-echo   Comptez environ %N% x 3 minutes.
+echo   %N% runs, the armour blown off, %COLOURS% colour(s) per fighter.
+echo   Allow about %N% x 3 minutes.
 echo.
 
 set /a I=0
@@ -66,25 +67,25 @@ for %%S in ("tools\scripts\dump-armures\*.txt") do (
   set /a I+=1
   echo.
   echo --- !I!/%N%  %%~nS ---
-  "build\bin\vf3run.exe" "%ROM%" --script "%%S" --hd-dump "%SORTIE%\fvipers2" --full-roster --ram-at 5200 --rec --quiet
+  "build\bin\vf3run.exe" "%ROM%" --script "%%S" --hd-dump "%OUT%\fvipers2" --full-roster --ram-at 5200 --rec --quiet
   echo     code !ERRORLEVEL!
-  if exist "ram_5200.bin" move /y "ram_5200.bin" "%SORTIE%\ram\%%~nS.ram" >nul
+  if exist "ram_5200.bin" move /y "ram_5200.bin" "%OUT%\ram\%%~nS.ram" >nul
 )
 
 set "VF3_POKE="
 set "VF3_POKE_FRAMES="
 
 echo.
-echo --- couverture ---
-py -3 -I "tools\fv2\couverture_dump.py" "%SORTIE%" || goto :rate
+echo --- coverage ---
+py -3 -I "tools\fv2\couverture_dump.py" "%OUT%" || goto :failed
 
 echo.
-echo   Textures  %SORTIE%\fvipers2
+echo   Textures  %OUT%\fvipers2
 echo.
-goto :fin
+goto :done
 
-:rate
+:failed
 echo.
-echo   ---- echec (code %ERRORLEVEL%) ----
-:fin
+echo   ---- failed (code %ERRORLEVEL%) ----
+:done
 if /i not "%1"=="-silence" if /i not "%2"=="-silence" pause

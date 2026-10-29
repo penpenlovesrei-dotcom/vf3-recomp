@@ -420,7 +420,7 @@ now runs five checks, the last two new:
 | **The game frame the windowed host draws** | `host_last.png`, which is reproducible run to run (`host_window.png` is not: it follows the real-time pacing) |
 | The lockstep, interpreter against recompiled | 2231 frames |
 
-All five say IDENTIQUE. `jouer-fv2.cmd` opens the game in a window.
+All five say IDENTICAL. `jouer-fv2.cmd` opens the game in a window.
 
 ## 15. Widescreen in a fight, and two things the GPU was not doing
 

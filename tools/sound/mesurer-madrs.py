@@ -137,7 +137,7 @@ def main(argv):
     print("  ecart max sur un echantillon : %.0f  (%.1f dBFS)" % (np.abs(diff).max(), db(np.abs(diff).max())))
     print("  ecart RMS                    : %.1f  (%.1f dBFS)" % (diff.std(), db(diff.std())))
     if np.abs(diff).max() == 0:
-        print("  *** IDENTIQUES : le reglage n'a rien change sur cette scene ***")
+        print("  *** IDENTICAL : le reglage n'a rien change sur cette scene ***")
         return 0
     print()
 

@@ -10,7 +10,7 @@
 // this port added -- Decode, Inst::f, Inst::mf, uses, the two bodies, the loop copies and the
 // restrict pointer -- against the plain form the semantics were taken from. It does NOT re-derive
 // the chip's behaviour from a hardware document, and PACK/UNPACK are transcribed rather than
-// re-reasoned (nothing in this port touches them). A test that says IDENTIQUE here means "the port
+// re-reasoned (nothing in this port touches them). A test that says IDENTICAL here means "the port
 // still computes what the plain loop computes", which is the question at hand, and not "the chip
 // does this".
 //

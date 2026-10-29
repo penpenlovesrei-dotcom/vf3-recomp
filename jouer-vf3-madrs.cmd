@@ -1,21 +1,21 @@
 @echo off
-rem Virtua Fighter 3 dans la fenetre, pour ECOUTER le miroir de MADRS d'un cote puis de l'autre.
+rem Virtua Fighter 3 in the window, to LISTEN to the MADRS mirror one way and then the other.
 rem
-rem   jouer-vf3-madrs.cmd miroir     le reglage ACTUEL du portage pour VF3
-rem   jouer-vf3-madrs.cmd separe     les deux plages separees (ce que MAME fait depuis #16527)
+rem   jouer-vf3-madrs.cmd mirror     the port's CURRENT setting for VF3
+rem   jouer-vf3-madrs.cmd separate   the two ranges kept apart (what MAME does since #16527)
 rem
-rem Pourquoi ce lanceur existe (docs/fv2-son-programme.md section 5) : mesure du 2026-10-24, le
-rem pilote son ecrit 32 zeros dans 0x7C0-0x7FF APRES avoir charge MADRS. Avec le miroir ces zeros
-rem ecrasent MADRS, donc 176 adresses de ligne de retard sur VF3 tombent a zero et toutes les lignes
-rem du DSP lisent le meme tampon. Le reglage avait ete garde pour VF3 sur la seule LONGUEUR de la
-rem reverberation -- et cette longueur venait de l'effondrement.
+rem Why this launcher exists (docs/fv2-son-programme.md section 5): measured on 2026-10-24, the sound
+rem driver writes 32 zeros into 0x7C0-0x7FF AFTER loading MADRS. With the mirror those zeros overwrite
+rem MADRS, so 176 delay-line addresses on VF3 fall to zero and every line of the DSP reads the same
+rem buffer. The setting had been kept for VF3 on the reverberation's LENGTH alone -- and that length
+rem came from the collapse.
 rem
-rem Ce que ce lanceur NE dit pas : lequel des deux est le son de la borne. Il n'y a pas de Model 3
-rem ici. C'est une decision d'ecoute, pas une correction.
+rem What this launcher does NOT say: which of the two is the cabinet's sound. There is no Model 3 here.
+rem It is a decision to be made by listening, not a correction.
 setlocal
 set MODE=%1
 if "%MODE%"=="" (
-  echo Usage : jouer-vf3-madrs.cmd miroir ^| separe
+  echo Usage: jouer-vf3-madrs.cmd mirror ^| separate
   pause
   exit /b 1
 )
@@ -25,27 +25,27 @@ set "VF3_DATA=%~dp0"
 if "%VF3_DATA:~-1%"=="\" set "VF3_DATA=%VF3_DATA:~0,-1%"
 cd /d "%~dp0"
 
-if /i "%MODE%"=="miroir" (
+if /i "%MODE%"=="mirror" (
   set VF3_SCSP_MADRS_MIRROR=1
   set VF3_SCSP_MADRS_SEPARATE=
-  echo ---- MIROIR : le reglage actuel du portage pour VF3 ----
-) else if /i "%MODE%"=="separe" (
+  echo ---- MIRROR: the port's current setting for VF3 ----
+) else if /i "%MODE%"=="separate" (
   set VF3_SCSP_MADRS_MIRROR=
   set VF3_SCSP_MADRS_SEPARATE=1
-  echo ---- SEPARE : les deux plages gardees a part ----
+  echo ---- SEPARATE: the two ranges kept apart ----
 ) else (
-  echo Mode inconnu : %MODE%. Attendu "miroir" ou "separe".
+  echo Unknown mode: %MODE%. Expected "mirror" or "separate".
   pause
   exit /b 1
 )
 
 if not exist "build\bin\vf3.exe" (
-  echo build\bin\vf3.exe manque : installer SDL 3 puis lancer construire-hote.cmd.
+  echo build\bin\vf3.exe is missing: install SDL 3 then run construire-hote.cmd.
   pause
   exit /b 1
 )
 if not exist "%ROM%" (
-  echo La ROM %ROM% n'est pas la.
+  echo The ROM %ROM% is not there.
   pause
   exit /b 1
 )

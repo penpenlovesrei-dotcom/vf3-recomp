@@ -1,32 +1,32 @@
 @echo off
-rem Fighting Vipers 2 avec les graphismes 2D remplaces : le plan de tuiles est
-rem dessine a 4 fois sa resolution et les images du pack prennent la place des
-rem tuiles et des couches dont elles portent le nom. Voir docs\fv2-hd-2d.md.
+rem Fighting Vipers 2 with the 2D graphics replaced: the tile plane is drawn at
+rem 4 times its resolution and the pack's images take the place of the tiles and
+rem the layers whose names they carry. See docs\fv2-hd-2d.md.
 rem
-rem Le pack attendu est assets-hd\pack-fvipers2, avec tiles\ et layers\ comme
-rem le releve les ecrit (releve-tuiles-fv2.cmd). Toutes ses images doivent etre
-rem a l'echelle 4 : une tuile fait 32x32, une couche 2048x2048 (la tuilemap
-rem entiere) ou 1984x1536 (l'ecran visible). Une image a une autre taille est
-rem refusee par son nom, et la ligne de chargement le dit.
+rem The pack expected is assets-hd\pack-fvipers2, with tiles\ and layers\ as the
+rem survey writes them (releve-tuiles-fv2.cmd). All of its images must be at
+rem scale 4: a tile is 32x32, a layer 2048x2048 (the whole tilemap) or 1984x1536
+rem (the visible screen). An image at any other size is refused by its name, and
+rem the loading line says so.
 rem
-rem Sans pack, l'echelle seule n'ameliore rien : les tuiles d'origine sont
-rem simplement repetees. Elle ne fait que creer la place ou l'art HD se pose.
+rem With no pack, the scale alone improves nothing: the original tiles are simply
+rem repeated. All it does is make the room where the HD art goes.
 rem
-rem L'echelle et le pack sont retenus dans settings.ini (tile_scale, tile_pack).
-rem Pour revenir au rendu d'origine : jouer-fv2.cmd avec --tile-scale 1
+rem The scale and the pack are kept in settings.ini (tile_scale, tile_pack). To
+rem go back to the original rendering: jouer-fv2.cmd with --tile-scale 1
 rem --no-tile-pack.
 setlocal
 set PATH=C:\msys64\mingw64\bin;%PATH%
 set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\fvipers2.zip
 cd /d "%~dp0"
 if not exist "build\bin\vf3.exe" (
-  echo build\bin\vf3.exe manque : installer SDL 3 puis lancer construire.cmd.
+  echo build\bin\vf3.exe is missing: install SDL 3 then run construire.cmd.
   pause
   exit /b 1
 )
 if not exist "assets-hd\pack-fvipers2" (
-  echo assets-hd\pack-fvipers2 n'existe pas : lancer releve-tuiles-fv2.cmd,
-  echo puis fabriquer le pack a partir du releve ^(docs\fv2-hd-2d.md^).
+  echo assets-hd\pack-fvipers2 does not exist: run releve-tuiles-fv2.cmd,
+  echo then make the pack from the survey ^(docs\fv2-hd-2d.md^).
   pause
   exit /b 1
 )

@@ -233,7 +233,7 @@ back. With `--shots`, `vf3run` writes its pictures at the HD size.
 
 ## 8. Verified
 
-- **`verifier-vf3.cmd`: all five checks IDENTIQUE** -- the PowerPC state frame by frame over 3000 frames, the
+- **`verifier-vf3.cmd`: all five checks IDENTICAL** -- the PowerPC state frame by frame over 3000 frames, the
   8 MB of RAM, the rendered pictures, the windowed host's picture, and the interpreter against the recompiled
   code over 2231 frames.
 - **With no option, byte for byte what it was.** 22 Fighting Vipers 2 pictures (`fv2-shots.txt`) and 3 Virtua

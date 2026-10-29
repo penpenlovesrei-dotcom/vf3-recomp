@@ -40,7 +40,7 @@ if not exist "%ROM%" (
   goto :fin
 )
 if not exist "build\bin\vf3run.exe" (
-  echo build\bin\vf3run.exe manque : lancer construire.cmd d'abord.
+  echo build\bin\vf3run.exe is missing: run construire.cmd first.
   goto :fin
 )
 
@@ -71,6 +71,6 @@ set VF3_PROF=
 
 echo.
 echo ---- le son, octet par octet ----
-fc /b "%OUT%\ref\son.wav" "%OUT%\moi\son.wav" > nul && echo   IDENTIQUE || echo   *** DIFFERENT ***
+fc /b "%OUT%\ref\son.wav" "%OUT%\moi\son.wav" > nul && echo   IDENTICAL || echo   *** DIFFERENT ***
 :fin
 endlocal

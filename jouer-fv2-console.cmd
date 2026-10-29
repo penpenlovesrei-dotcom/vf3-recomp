@@ -1,62 +1,62 @@
 @echo off
-rem Fighting Vipers 2 a la maniere d'une console : Start ouvre la liste des sept
-rem modes sur l'ecran titre du jeu, comme sur la version Dreamcast, au lieu de
-rem tomber directement sur la route fixe de l'arcade.
-rem Voir docs\fv2-console.md.
+rem Fighting Vipers 2 the way a console does it: Start opens the list of the
+rem seven modes on the game's title screen, as on the Dreamcast version, instead
+rem of dropping straight onto the arcade's fixed road.
+rem See docs\fv2-console.md.
 rem
-rem UNE SEULE TOUCHE, DEUX COMPORTEMENTS :
-rem   sur l'ecran titre du jeu  -> Start ouvre la liste des sept modes
-rem   partout ailleurs          -> Start ramene le jeu a son ecran titre
-rem Dans les deux cas le jeu ne voit pas l'appui.
+rem ONE KEY, TWO BEHAVIOURS:
+rem   on the game's title screen -> Start opens the list of the seven modes
+rem   everywhere else            -> Start brings the game back to its title screen
+rem In both cases the game does not see the press.
 rem
-rem Dans la liste : haut et bas deplacent, Start (ou Entree) choisit, B (ou
-rem Retour arriere) ressort, et la ligne choisie clignote. Echap ouvre toujours
-rem le menu de reglages de ce portage, et referme la liste au passage.
+rem In the list: up and down move, Start (or Enter) chooses, B (or Backspace)
+rem leaves, and the chosen line blinks. Escape still opens this port's settings
+rem menu, and closes the list on the way.
 rem
-rem SIX LIGNES SUR SEPT FONT QUELQUE CHOSE :
-rem   ARCADE    la partie, telle quelle
-rem   V.S.      la partie avec le deuxieme joueur deja dedans
-rem   RANDOM    le drapeau RANDOM_CHARA du jeu : personnage tire au sort
-rem   SURVIVAL  le mode survie
-rem   TRAINING  pour l'instant : le combat dans MARBLE ARENA
-rem   OPTIONS   une page a elle, par-dessus l'image du jeu (voir plus bas)
-rem   NETWORK   n'existe pas sur la borne et ne fait rien
+rem SIX LINES OUT OF SEVEN DO SOMETHING:
+rem   ARCADE    the game, as it stands
+rem   V.S.      the game with the second player already in it
+rem   RANDOM    the game's RANDOM_CHARA flag: the character drawn at random
+rem   SURVIVAL  survival mode
+rem   TRAINING  for now: the fight in MARBLE ARENA
+rem   OPTIONS   a page of its own, over the game's picture (see below)
+rem   NETWORK   does not exist on the cabinet and does nothing
 rem
-rem LA PAGE OPTIONS : les treize reglages d'exploitation du jeu, ceux de son
-rem menu de test. Haut et bas deplacent, GAUCHE et DROITE changent la valeur,
-rem B ressort. INITIALIZE remet les valeurs d'usine. RIEN NE REDEMARRE : chaque
-rem reglage est ecrit a la fois dans la sauvegarde du jeu, ou il dure, et dans
-rem la copie que le jeu lit en tournant, ou il prend effet tout de suite. Il
-rem prend effet au moment ou le jeu relit ce reglage -- en general au debut du
-rem match suivant. COUNTRY est affiche en gris : il est en lecture seule.
-rem Voir docs\fv2-console-options.md.
+rem THE OPTIONS PAGE: the game's thirteen operator settings, the ones from its
+rem test menu. Up and down move, LEFT and RIGHT change the value, B leaves.
+rem INITIALIZE restores the factory values. NOTHING RESTARTS: each setting is
+rem written both into the game's backup, where it lasts, and into the copy the
+rem game reads while running, where it takes effect at once. It takes effect at
+rem the moment the game reads that setting again -- generally at the start of the
+rem next match. COUNTRY is shown in grey: it is read-only.
+rem See docs\fv2-console-options.md.
 rem
-rem PAS BESOIN DE PIECE : le mode console est en FREE PLAY, comme une console.
-rem Le portage pose le reglage COIN/CREDIT du jeu lui-meme au demarrage (un
-rem octet de la NVRAM, voir docs\fv2-console.md). La liste, elle, ne touche
-rem jamais au compteur de credits : choisir un mode donne au jeu un vrai appui
-rem sur Start, et c'est le jeu qui decide de ce que ca coute -- rien, ici.
+rem NO COIN NEEDED: console mode is on FREE PLAY, like a console. The port sets
+rem the game's own COIN/CREDIT setting at start-up (one byte of the NVRAM, see
+rem docs\fv2-console.md). The list, for its part, never touches the credit
+rem counter: choosing a mode hands the game a real press of Start, and it is the
+rem game that decides what it costs -- nothing, here.
 rem
-rem     1   Start joueur 1            2   Start joueur 2
-rem     5   une piece joueur 1        6   une piece joueur 2
+rem     1   Start player 1            2   Start player 2
+rem     5   a coin, player 1          6   a coin, player 2
 rem     F2  Test                      9   Service
 rem
-rem Les memes choix sont aussi sous Echap, ligne "Fighting Vipers 2" : c'est une
-rem page de reglages de ce portage, et ce n'est pas la liste.
+rem The same choices are also under Escape, line "Fighting Vipers 2": that is a
+rem settings page of this port's, and it is not the list.
 rem
-rem Le reglage est retenu dans settings.ini (console_mode = 1). Pour revenir
-rem au mode PC : lancer jouer-fv2.cmd une fois avec --pc.
+rem The setting is kept in settings.ini (console_mode = 1). To go back to PC
+rem mode: run jouer-fv2.cmd once with --pc.
 setlocal
 set PATH=C:\msys64\mingw64\bin;%PATH%
 set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\fvipers2.zip
-rem Ce portage range ce qui lui appartient -- reglages, NVRAM, journal,
-rem portraits -- dans le dossier du projet, celui ou est ce lanceur. Les
-rem quatre lanceurs epinglent le meme, sinon chacun aurait les siens.
+rem This port files what belongs to it -- settings, NVRAM, log, portraits --
+rem in the project's folder, the one this launcher sits in. All four launchers
+rem pin the same one, or each would have its own.
 set "VF3_DATA=%~dp0"
 if "%VF3_DATA:~-1%"=="\" set "VF3_DATA=%VF3_DATA:~0,-1%"
 cd /d "%~dp0"
 if not exist "build\bin\vf3.exe" (
-  echo build\bin\vf3.exe manque : installer SDL 3 puis lancer construire-hote.cmd.
+  echo build\bin\vf3.exe is missing: install SDL 3 then run construire-hote.cmd.
   pause
   exit /b 1
 )
