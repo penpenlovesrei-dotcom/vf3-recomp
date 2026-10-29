@@ -3003,11 +3003,7 @@ int main(int argc, char **argv)
 	int bgm_playing = -1;
 	bool bgm_testing = false;
 	// The pump's own clock, out here so that going into a surface can prime it (see there).
-	double menu_sound_owed = 0;
-	uint64_t menu_sound_last = 0;
 	// the probe's counters, reset each time a surface opens so its rate means something (see it)
-	int menu_sound_frames = 0;
-	uint64_t menu_sound_t0 = 0;
 	if (cplay.on) {
 		console_font.load(ren, find_assets(), stderr);
 		options.load(ren, find_assets(), &console_font, stderr);
@@ -4542,41 +4538,13 @@ int main(int argc, char **argv)
 			// menu and the carousel the game's screen is still there, and its music belongs with it
 			const bool holds_music = cplay.on && cplay.ui.port_screen() && !cplay.ui.game_runs();
 			if (up && !was_up) {
-				// THE QUEUE IS DRAINED ON THE WAY IN ONLY WHERE THERE IS SOMETHING TO DRAIN, and the version
-				// before this one emptied it every time.
+				// NOTHING IS DONE TO THE DEVICE'S QUEUE ANY MORE, and that is the refactoring of the 2026-10-29.
 				//
-				// It was put in for a real fault: Frederic heard the menu's beeps "en decale", late and only
-				// once the game started again. The board was making them on time all along -- what was late was
-				// the SDL queue, which the game had run ahead into before it froze, and nothing drains it while
-				// the game is stopped, since the pump below makes exactly as much as real time asks for.
-				//
-				// But emptying a queue is throwing away sound the player has not heard yet, and the figure was
-				// never looked at. Measured the 2026-10-28 on the arcade road: 3.2 frames, 56 ms. That is not a
-				// backlog, it is the three frames the game's own governor keeps ahead on purpose -- and 56 ms of
-				// the music was being cut out of the middle of itself every time a surface opened, which is a
-				// jump in a held note and sounds like what Frederic calls a crackle, or an echo.
-				//
-				// So the excess is drained and the usual three frames are left alone. A beep then comes 56 ms
-				// after the key, which is three refreshes and not a lateness anybody hears; what the first
-				// version was really curing was a queue the game had run far ahead into, and that is still cured,
-				// because that is the case this still empties. Fast-forward is where it happens: eight frames a
-				// pass, and the queue grows past twice what the device wants.
-				const double queued_now = audio && frame_bytes > 0
-					? double(SDL_GetAudioStreamQueued(audio)) / frame_bytes : 0.0;
-				if (queued_now > 2 * QUEUED) {
-					fprintf(stderr, "the console's sound: %.1f frames were queued -- drained to %.0f\n",
-						queued_now, QUEUED);
-					SDL_ClearAudioStream(audio);
-					game.audio.clear();
-					menu_sound_owed = QUEUED;
-				} else {
-					// nothing emptied, and the pump only makes up what the device is actually short of: left at
-					// nothing the device is starved, which is the other way to make it rasp.
-					menu_sound_owed = std::max(0.0, QUEUED - queued_now);
-				}
-				menu_sound_last = 0;
-				menu_sound_frames = 0;
-				menu_sound_t0 = 0;
+				// This used to empty it, then prime it, because the pump that turned the board under a surface had
+				// a pace of its own and had to be started somewhere. There is no pump now: a frozen state's frames
+				// come out of the one loop, at the one pace, against this very queue (see where `stopped` picks the
+				// frame without the PowerPC). So there is nothing to empty, nothing to prime, and nothing to drain:
+				// the queue never notices that the game stopped.
 				music_held = holds_music ? game.music_now : -1;
 				if (music_held >= 0) {
 					game.stop_music();
@@ -4647,95 +4615,23 @@ int main(int argc, char **argv)
 				}
 			}
 		}
-		if (stopped && cplay.on && !cplay.ui.game_sound()) {
-			// AND NOT WHILE A FRAME IS STILL IN FLIGHT. The board is the game's: turned here while the
-			// emulation thread is still finishing the frame that was in flight when the surface opened,
-			// the two write it at once. Measured the 2026-10-26, on the pause menu the moment it joined
-			// this set: a hidden arcade run died of heap corruption two seconds in. The list and the
-			// OPTIONS tree never showed it because they are opened from the event loop, which waits for
-			// that frame before it opens anything; the pause menu is opened from the frame itself.
-			if (game.emu_thread.joinable()) game.job_wait();
-			// HOW MUCH TO MAKE, AND IT IS THE DEVICE THAT SAYS SO, not the wall clock.
-			//
-			// It used to be the clock: as many sound frames as real time had asked for since the last pass. That
-			// has no way back. The device consumes at its own rate, which is near 57.52 a second and not exactly
-			// it, and a pass that ran late is capped (it was capped at four) -- so every hitch took a bite out of
-			// the queue and NOTHING ever put it back. The game's own frames have a governor for exactly this
-			// reason; this pump had none.
-			//
-			// Measured in Frederic's own session the 2026-10-29, a window and a real device, with VF3_MENU_SOUND:
-			// the queue ran at a median of 2.3 to 2.8 frames against the three the device wants, its first
-			// percentile at 1.2, and it reached ZERO -- 795 readings under a frame and a half out of 23920. In a
-			// hidden run the same code never went under 2.5, which is why months of measuring here found nothing.
-			// A queue that reaches zero is a device playing silence, and that is heard as a rasp -- on the menu's
-			// own beeps, because a dropout in a silence is a dropout nobody notices. He heard it "a chaque
-			// deplacement du curseur", and the dropouts were NOT on the beeps: after one, 8.9 per cent of passes
-			// dipped under a frame and a half against 10.5 per cent taken at random. The beep is what made them
-			// audible, not what caused them.
-			//
-			// So the pump is a feedback loop now: make up what the device is SHORT OF its target and nothing
-			// more. The average rate then equals the device's own consumption by construction -- the board's
-			// time follows the card, which is what the game's governor does with its own frames -- and a pass
-			// that ran late is made up instead of being thrown away. The clock is kept only where there is no
-			// device to ask.
-			const uint64_t now = SDL_GetTicksNS();
-			const double queued_frames = audio && frame_bytes > 0
-				? double(SDL_GetAudioStreamQueued(audio)) / frame_bytes : -1.0;
-			// THE CLOCK FOR THE RATE, THE QUEUE FOR THE REST, which is what the game's own frames already do.
-			//
-			// Driving the pump by the queue ALONE was tried first and it regulates too low: a frame is only made
-			// once a whole one is owed, so the loop settles where the shortfall is about one -- measured in
-			// Frederic's session, a median of 1.5 frames against the three the device wants, a maximum of 2.0.
-			// That is a smaller margin than the clock alone had, not a bigger one.
-			//
-			// So: the clock gives the average, which is right to within the card's own drift; a proportional nudge
-			// of at most one per cent pulls that drift back to the target, the gain and the clamp being the
-			// governor's own (see where `rate` is made for the game's frames); and a FLOOR catches what neither
-			// can -- a pass that ran long. Below two frames the shortfall is made up on the spot, because a queue
-			// that reaches zero is a device playing silence, and that is the rasp.
-			static constexpr double MENU_FLOOR = 2.0;
-			double menu_rate = FRAME_HZ;
-			if (queued_frames >= 0) menu_rate *= 1 - std::clamp((queued_frames - QUEUED) * 0.005, -0.01, 0.01);
-			if (menu_sound_last) menu_sound_owed += double(now - menu_sound_last) / 1e9 * menu_rate;
-			if (queued_frames >= 0 && queued_frames < MENU_FLOOR)
-				menu_sound_owed = std::max(menu_sound_owed, MENU_FLOOR - queued_frames);
-			menu_sound_owed = std::min(menu_sound_owed, 6.0);
-			menu_sound_last = now;
-			int made = 0;
-			while (menu_sound_owed >= 1.0) { menu_sound_owed -= 1.0; game.sound_only_frame(); made++; }
-			// (tests: VF3_MENU_SOUND=1 reports what the board made under the surface, which is the measure the
-			// plan asks for -- the peak rises on a move where it was at zero -- and the rate, which is what
-			// the undone version got wrong: 30 a second where the board wants 57.5.)
-			// (tests: the rate and the counters start again at each opening. Counted across them they said
-			// 43/s where the board makes 57.5, because the wall clock went on running while the surface was
-			// shut and the frames did not -- a figure that reads like a fault and is one of the instrument.)
-			if (static const bool say = getenv("VF3_MENU_SOUND") != nullptr; say && made) {
-				int peak = 0;
-				for (int16_t s : game.audio) peak = std::max(peak, std::abs(int(s)));
-				menu_sound_frames += made;
-				if (!menu_sound_t0) menu_sound_t0 = now;
-				const int frames = menu_sound_frames;
-				const double since = double(now - menu_sound_t0) / 1e9;
-				// The queue is in the line too, and it is the only thing left that can make a sound late: the
-				// board was measured making them on the key's own frame, so a beep heard late is a beep sitting
-				// behind something. frame_bytes is one sound frame's worth, so the figure reads as frames of
-				// delay.
-				const int q = audio ? SDL_GetAudioStreamQueued(audio) : -1;
-				if (peak > 0 || frames % 60 == 0)
-					fprintf(stderr, "menu sound: %.2f s, %d sound frames (%.1f/s), peak %d, queued %d bytes (%.1f frames)\n",
-							since, frames, since > 0 ? frames / since : 0.0, peak, q,
-							frame_bytes > 0 ? double(q) / frame_bytes : 0.0);
-			}
-			snd_wav_put(game.audio);
-			if (audio && !game.audio.empty() && rec.dir.empty())
-				SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
-			game.audio.clear();
-		}
-		if (stopped) {
-			pace.stopped_s += double(SDL_GetTicksNS() - clock_t) / 1e9;   // (the menu's time isn't the game's)
-			restart_clock_real();
-		}
-		else if (!rec.dir.empty()) {
+		// THE CLOCK RUNS WHETHER THE GAME DOES OR NOT, and this is the whole of the correction.
+		//
+		// It used to stop here: a frozen state reset the frame clock, so no frame fell due, and the sound
+		// board -- which does not freeze, the 68000 and its DSP going on without their host -- was turned by
+		// a pump of its own further up, with its own clock, its own catch-up cap and its own floor. Two
+		// pacemakers for one card, and they did not speak. Everything measured the 2026-10-29 came out of
+		// that: a queue that reached zero 795 times, fifty-six milliseconds of music thrown away at every
+		// opening, and a beep whose tail nobody could reproduce.
+		//
+		// Frederic, the 2026-10-29: "je veux des menus proprement integres au jeu, on arrete le bricolage".
+		// So: ONE door. The pass works out what is due exactly as it always did -- the clock, the governor,
+		// the device's queue -- and the frame loop below runs a frame WITHOUT THE POWERPC when the state says
+		// the game does not run. The pump is gone, and with it its clock, its cap and its floor.
+		//
+		// What is kept is the accounting: the time spent in a menu is not the game's, and the pace log says so.
+		if (stopped) pace.stopped_s += double(SDL_GetTicksNS() - clock_t) / 1e9;
+		if (!stopped && !rec.dir.empty()) {
 			// the recording: before it starts, frames as fast as they go; then 60 pictures a second by the game's clock
 			if (!rec.on && game_frame >= rec.from) {
 				rec.on = true;
@@ -5000,7 +4896,45 @@ int main(int argc, char **argv)
 				if (test_frames > 0) { c.test[0] = true; test_frames--; }
 				game.builder.widen = std::max(1.0f, float(picture_aspect()) * 0.75f) * 1.05f;   // (a little more: smooth motion)
 		};
+		// WHAT A FRAME'S SOUND DOES NEXT, and both kinds of frame go through it: the recording's file, the
+		// VF3_SOUND_WAV probe, the device. It is a lambda rather than two copies because the two copies are
+		// exactly what let the menu's sound drift away from the game's.
+		auto send_audio = [&] {
+			if (rec.wav && game_frame > rec.from) {
+				fwrite(game.audio.data(), sizeof(int16_t), game.audio.size(), rec.wav);
+				rec.wav_bytes += uint32_t(game.audio.size() * sizeof(int16_t));
+			}
+			snd_wav_put(game.audio);
+			if (audio && !game.audio.empty() && !ff && rec.dir.empty())   // (recording: to its file only, not queued for hours)
+				SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
+			game.audio.clear();
+		};
 		for (int i = 0; i < due && running; i++) {
+			// A FRAME WITHOUT THE POWERPC, which is exactly what a frozen state is.
+			//
+			// The state table says the game does not run (console_state.h); it has never said that the SOUND
+			// BOARD stops, and it does not -- the 68000 and its DSP go on. So a frozen state still has frames,
+			// and they come out of this loop at this pass's pace, from this pass's clock, under this pass's
+			// governor and against the same queue. Nothing of the menu's sound has a timing of its own any more.
+			//
+			// The frame in flight is finished first, once: the emulation thread may still be holding the frame
+			// that was running when the surface opened, and turning the board from here while it does had a
+			// hidden run die of heap corruption two seconds in (measured the 2026-10-26).
+			if (stopped) {
+				if (half) { game.job_wait(); half = false; }
+				game.sound_only_frame();
+				send_audio();
+				// (tests: VF3_MENU_SOUND reports what the board made and how deep the device's queue is -- the
+				// figure that named the fault of the 2026-10-29)
+				if (static const bool say = getenv("VF3_MENU_SOUND") != nullptr; say) {
+					static int n = 0;
+					const int q = audio ? SDL_GetAudioStreamQueued(audio) : -1;
+					if (++n % 30 == 0)
+						fprintf(stderr, "menu sound: %d sound frames, queued %d bytes (%.1f frames)\n",
+							n, q, frame_bytes > 0 ? double(q) / frame_bytes : 0.0);
+				}
+				continue;
+			}
 			// A frame more than this pass's first (a slow pass let two fall due): started on the game's own thread, not
 			// run here, and taken next pass (run here it made this pass slow too, and the next, one after another)
 			if (emu_threaded && i > 0 && !half && !ff && cfg.smooth) {
@@ -5039,14 +4973,7 @@ int main(int argc, char **argv)
 			new_frame = true;
 			for (auto &s : act.shots) write_frame("build/host_" + s + ".png");
 			if (act.quit) running = false;
-			if (rec.wav && game_frame > rec.from) {
-				fwrite(game.audio.data(), sizeof(int16_t), game.audio.size(), rec.wav);
-				rec.wav_bytes += uint32_t(game.audio.size() * sizeof(int16_t));
-			}
-			snd_wav_put(game.audio);
-			if (audio && !game.audio.empty() && !ff && rec.dir.empty())   // (recording: to its file only, not queued for hours)
-				SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
-			game.audio.clear();
+			send_audio();
 			for (auto &k : test_keys) if (k.second == game_frame) { send_key(k.first); window_shots.push_back(game_frame + 3); }
 			// VF3_MIDI_SEND: in with the game's own bytes, so the board hears it exactly as it hears the game
 			for (auto &m : midi_send)

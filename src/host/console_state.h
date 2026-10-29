@@ -17,7 +17,18 @@
 //
 // So: one state at a time, and each one DECLARES three things.
 //
-//   runs     whether the PowerPC steps. The game is never half-frozen: either the frame runs or it does not.
+//   runs     whether the POWERPC steps, and that word is exact. The game is never half-frozen: either the
+//            frame runs or it does not.
+//
+//            AND THE SOUND BOARD IS NOT THE POWERPC. The 68000 and its DSP go on whatever this says, so a
+//            state where `runs` is false STILL HAS FRAMES -- frames without the PowerPC, issued by the
+//            host's one frame loop, at its pace, from its clock, under its governor and against the same
+//            device queue as a played frame. That is the 2026-10-29 correction, and it is Frederic's own:
+//            "je veux des menus proprement integres au jeu, on arrete le bricolage". Before it, this table
+//            stopped the game and a PUMP of its own further up turned the board -- its own clock, its own
+//            catch-up cap, its own floor. Two pacemakers for one card, and they did not speak: measured in
+//            his session, the device queue reached ZERO 795 times under a menu. Measured after, under the
+//            same menu, it never went below 3.2 frames of the three it wants.
 //   screen   who owns the picture. GAME: the port draws nothing of its own. OVER: the port draws over the
 //            picture the game made, which is what a pause menu is. PORT: the port draws its own ground and the
 //            game's picture is NOT DRAWN AT ALL -- not covered, not dimmed, not drawn.
