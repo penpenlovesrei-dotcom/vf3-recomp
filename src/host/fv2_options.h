@@ -209,6 +209,12 @@ struct fv2_options
 		// while GAME ASSIGNMENTS was nothing but the game's thirteen settings; ENDING moved here the
 		// 2026-10-29 and would have sat under the button, which is where a page ends.
 		built[SCR_SETTINGS].push_back({ line::BUTTON, 0, 1.2f });   // August's own gap before the button
+		// AND ONE AT THE FOOT OF OPTIONS, which is where the disc and August both keep it. It left this page
+		// the 2026-10-22, when the thirteen settings went behind a door and a button whose effect could not
+		// be seen stayed behind; Frederic put it back the 2026-10-29 -- "supprime RESET GAME et remet
+		// l'image" -- and it does from here exactly what it does down there: the factory values of those
+		// thirteen, which is the game's own idea of initialising and the only one the label stands for.
+		built[SCR_OPTIONS].push_back({ line::BUTTON, 0, 1.2f });
 	}
 
 	bool shown = false;

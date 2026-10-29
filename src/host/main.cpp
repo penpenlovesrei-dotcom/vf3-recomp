@@ -3890,21 +3890,15 @@ int main(int argc, char **argv)
 				  game.sound.set_volumes(1.0f, 1.0f);
 			  }, {}, 0, true, 1.2f },
 		};
-		// ---- GAME: what is left of the port's own page, and it is on its way out ----
+		// ---- THE GAME PAGE AND ITS THREE LINES ARE ALL GONE, the 2026-10-29 ----
 		//
-		// PLAY STYLE went to DISPLAY and ENDING to GAME ASSIGNMENTS the 2026-10-29, and the page itself went
-		// with them: "ligne et page GAME a supprimer". What was left were two buttons that set nothing, and
-		// a door into a page of two buttons is a corridor. They are at the FOOT OF OPTIONS now, under a gap
-		// -- where the disc keeps the one button it has -- and that is also the only place a pad can still
-		// reach them, the port's own menu under Escape being the keyboard's.
-		options.own[fv2_options::SCR_OPTIONS] = {
-			// AND THE PAGE GOES WITH THE RESET. A game restarted under an open page would come back with the
-			// tree still in front of it and the state still saying the game is held -- the port's own menu
-			// closes itself for the same reason (reset_game calls menu.close).
-			{ "RESET GAME", {}, {}, [&] { enter(cstate::PLAY, "RESET GAME"); reset_game(); }, {}, 0, true, 1.2f },
-			// QUIT WENT WITH THE PAGE, the 2026-10-29: "supprime QUIT". A console's own menu does not offer
-			// to leave the console. The window's cross and the port's menu under Escape both still do.
-		};
+		// PLAY STYLE went to DISPLAY and ENDING to GAME ASSIGNMENTS, and the page with them ("ligne et page
+		// GAME a supprimer"). The two buttons that were left stood at the foot of OPTIONS for an hour, until
+		// QUIT went ("supprime QUIT": a console's own menu does not offer to leave the console) and RESET
+		// GAME after it ("supprime RESET GAME et remet l'image"). What stands at that foot now is the disc's
+		// own INITIALIZE, pushed there by build_pages.
+		//
+		// Both are still a key away: Escape opens the port's own menu, which resets the game and quits.
 		options.ctl = cfg.ctl;   // CONTROLLER reads the bindings and writes them
 		// AND THE THREE LINES OF THAT PAGE THAT ARE ABOUT THE PADS RATHER THAN THEIR BUTTONS. The page owns
 		// the grid and the capture; the host owns the pads, so it lends them (fv2_options.h). The same three
