@@ -1,7 +1,7 @@
 @echo off
 rem Ce que le son coute A L'HOTE, ou la carte tourne sur un fil a elle. Une commande, sans fenetre.
 rem
-rem   tools\son\mesurer-hote.cmd [secondes]      (120 par defaut)
+rem   tools\son\measure-host.cmd [secondes]      (120 par defaut)
 rem
 rem POURQUOI CE N'EST PAS LE CHIFFRE DE vf3run. Dans le lanceur la carte son est DANS la boucle d'image,
 rem donc son temps est celui de l'image : 30,5 % sous --rec (scsp/docs/scsp_audit.md sect. 4 bis). Dans l'hote elle est

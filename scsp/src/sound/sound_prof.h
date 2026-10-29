@@ -61,7 +61,7 @@ struct Scope
 };
 
 // `out` says which stream the report lands on, because it is not the same on both sides: the host sends
-// everything to stderr (log.txt, and tools/son/mesurer-hote.cmd looks for the line there), while vf3run
+// everything to stderr (log.txt, and tools/sound/measure-host.cmd looks for the line there), while vf3run
 // prints its `prof` line on stdout -- and a redirection that keeps one while losing the other has already
 // made it look as though the probe produced nothing.
 inline void report(const char *what, int frames, FILE *out = stderr)

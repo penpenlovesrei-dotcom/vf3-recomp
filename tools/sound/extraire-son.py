@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Extrait le programme 68000 de la carte son d'un zip de ROM et l'ecrit dans l'ordre du 68000.
 #
-#   tools/son/extraire-son.py <jeu.zip> <sortie.bin>
+#   tools/sound/extraire-son.py <jeu.zip> <sortie.bin>
 #
 # L'ordre des octets est la seule chose delicate, et elle a ete TRANCHEE PAR LA MESURE, pas
 # supposee. romset.cpp pose la region SOUND avec stride 1, chunk 1, swap false : les octets du

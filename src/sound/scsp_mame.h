@@ -8,7 +8,7 @@
 // samples are the old core's either way. What it proves is that the SHAPE of scsp_core.h is sufficient: that
 // everything this board asks of the chip goes through three sink methods and a pushed run(), with nothing
 // left over. The proof is the board driven through it producing BYTE-IDENTICAL sound, which is what
-// tools/son/comparer-son.cmd checks.
+// tools/sound/compare-sound.cmd checks.
 //
 // THREE PLACES WHERE THE OLD CORE AND THE NEW SHAPE DO NOT LINE UP, named here rather than papered over:
 //

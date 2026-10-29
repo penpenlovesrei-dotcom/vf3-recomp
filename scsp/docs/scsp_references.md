@@ -1,6 +1,6 @@
 # Sources du SCSP — ce qui a été lu, et ce qu'on en sait
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/sound.md](son.md).
 
 Relevé le 2026-10-24. Chaque ligne dit **où elle a été lue**. Ce qui n'a pas été vérifié est marqué comme tel ;
 rien ici n'est déduit d'un souvenir.
@@ -98,7 +98,7 @@ Donc :
    corrigé pour `doa`.
 
    **Mais l'ampleur n'y est pas, et il faut le dire.** Les deux sons produits sans fenêtre sur la même scène
-   VF3 (`tools/son/comparer-madrs.cmd vf3`, 2400 images) diffèrent de peu : pic moyen **+2,2 dB** sur la pièce
+   VF3 (`tools/sound/compare-madrs.cmd vf3`, 2400 images) diffèrent de peu : pic moyen **+2,2 dB** sur la pièce
    et **+0,0 dB** en combat, spectre à **±0,1 dB**, échos de la pièce et du start qui passent de 2,05 à 2,25 s
    et de 0,95 à 1,15 s — et surtout **la corrélation gauche/droite ne bouge pas** (0,861 contre 0,865), alors
    que c'est la signature de l'effondrement et qu'elle valait 0,99 contre 0,73-0,85 sur VF2. « Plusieurs

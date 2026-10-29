@@ -1,10 +1,10 @@
 # Le SCSP autonome — contrat d'interface et découpage
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/sound.md](son.md).
 
 > **Mise à jour du 2026-10-25.** Ce document décrit l'**interface C++**. Le second morceau du contrat —
 > ce que le pilote attend de la **puce**, champ par champ, avec la provenance de chaque nombre — existe
-> maintenant à part : `src/sound/scsp_contract.h`, vérifié par `tools/son/test_scsp_contract.cpp` contre
+> maintenant à part : `src/sound/scsp_contract.h`, vérifié par `tools/sound/test_scsp_contract.cpp` contre
 > l'implémentation et contre la ROM. Les deux ensemble sont le préalable que `docs/scsp_migration_plan.md`
 > appelait « le contrat d'interface ».
 
@@ -121,13 +121,13 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
    commun (0x400-0x45F), les registres DSP (COEF 0x700, MADRS 0x780, MPRO 0x800, TEMP, MEMS, MIXS, EFREG,
    EXTS). Y compris les bits réservés, ce qui se relit, et **la plage 0x7C0-0x7FF**, dont ce portage et MAME ne
    font pas la même chose (`docs/scsp_references.md`). Se teste sans aucun son : écrire, relire.
-   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_regs.cpp`, neuf cas, et il a déjà rapporté
+   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_regs.cpp`, neuf cas, et il a déjà rapporté
    deux choses qu'aucune lecture n'avait vues — l'exception « bit 5 » de MAME tombe sur MCIRE (0x42E) et non
    sur MCIPD (0x42C), que le commentaire nomme ; et la plage 0x7C0-0x7FF, mesurée dans les **deux** réglages
    du miroir MADRS plutôt que dans celui qui est par défaut.
 2. **Fentes, oscillateur, PCM, adressage, bouclage** — 8 et 16 bits signés, `SA`/`LSA`/`LEA`, les quatre modes
    `LPCTL`, l'interpolation linéaire, les limites de la RAM. Se teste en comptant des échantillons.
-   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_fentes.cpp`, onze cas, et il a démenti la
+   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_fentes.cpp`, onze cas, et il a démenti la
    lecture sur les quatre bouclages à la fois. La boucle de bouclage tourne sur `cur_addr` **et** `nxt_addr`,
    mais `nxt_addr` est réaffecté à chaque échantillon : sa réécriture d'adresse est perdue, ses effets de bord
    (`Backwards`, `StopSlot`) ne le sont pas. Tout se déclenche donc **un échantillon tôt**, et aucun échantillon
@@ -135,7 +135,7 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
 3. **Enveloppes ADSR** — les quatre états, `AR`/`D1R`/`D2R`/`RR`, `DL`, `EGHOLD`, `KRS`, `LPSLNK`, et les
    tables de temps. **Attention** : les tables `ARTimes`/`DRTimes` de MAME sont des constantes mesurées, pas
    une formule ; les reprendre est un choix de fidélité à assumer explicitement.
-   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_adsr.cpp`, dix cas. Il fixe les durées d'attaque
+   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_adsr.cpp`, dix cas. Il fixe les durées d'attaque
    **en échantillons** (1297, 332, 83, 24, 1 pour `AR` = 0x10 à 0x1F), si bien qu'une formule à la place des
    tables échoue là et nulle part ailleurs — l'avertissement ci-dessus devient une mesure. Il montre aussi que
    l'attaque multiplie le **volume brut** quand tout le reste passe par la courbe en décibels, et que `DECAY1`
@@ -143,7 +143,7 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
 4. **Pitch, LFO, modulation FM** — `OCT`/`FNS`, les quatre formes de LFO, `PLFOS`/`ALFOS`, et la modulation par
    anneau (`MDL`/`MDXSL`/`MDYSL`). **Les réglages de ce portage se gardent tels quels** jusqu'à mesure
    contraire : profondeur FM à 24 et bit bas de `MDL` ignoré (`docs/scsp_audit.md` §2).
-   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_lfo.cpp`, onze cas, et il fixe les deux réglages
+   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_lfo.cpp`, onze cas, et il fixe les deux réglages
    nommés ci-dessus plutôt que de les laisser à la bonne volonté d'un relecteur. Il a aussi trouvé que **huit
    des trente-deux cadences de LFO ne font rien** — `phase_step` tronque à zéro en dessous de 0,673 Hz — et que
    `LFORE` n'est lu nulle part dans ce cœur (`scsp_contract.h` §11).
@@ -153,24 +153,24 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
    seconde. La forme décodée de ce dépôt (`Inst`, `Inst::f`) est déjà au-delà de MAME et de Supermodel, qui
    décodent dans la boucle ; la suite naturelle est une forme compilée par programme, pas un interpréteur plus
    serré.
-   **Le seul bloc que `scsp_maison` n'a pas écrit**, et la raison n'est pas le temps : son jeu d'instructions
+   **Le seul bloc que `scsp_own` n'a pas écrit**, et la raison n'est pas le temps : son jeu d'instructions
    n'existe nulle part écrit. Le contrat n'en donne que la disposition (§6), et `docs/scsp_references.md` est
    clair — il n'y a ni fiche technique ni spécification indépendante, seulement les implémentations de MAME et
    de Supermodel, issues du même travail d'ElSemi. Écrire ce bloc demande donc d'abord un **test qui mesure**
    le comportement instruction par instruction, comme pour les six autres. Tant qu'il n'existe pas, il n'y a
    rien contre quoi écrire, et le cœur emprunte `scspdsp.{h,cpp}`.
-   **La spécification a été écrite d'abord**, le 2026-10-27 : `tools/son/test_scsp_dsp.cpp`, huit cas mesurés
+   **La spécification a été écrite d'abord**, le 2026-10-27 : `tools/sound/test_scsp_dsp.cpp`, huit cas mesurés
    par la fenêtre de registres (TEMP, MEMS, MIXS, EFREG) et par la RAM, sans une note de musique. Elle a sorti
    le fait central du bloc, qu'aucune lecture ne crie : **le shifter est un pas en retard sur l'accumulateur**
    — le pas qui fait un produit ne peut pas en écrire le résultat, il faut le suivant.
-   **Puis le bloc**, `src/sound/dsp_maison.{h,cpp}`, vérifié à l'octet par le rejoueur sur la scène entière.
+   **Puis le bloc**, `src/sound/dsp_own.{h,cpp}`, vérifié à l'octet par le rejoueur sur la scène entière.
    Quatre de ses vingt-cinq champs — `FRCL`, `ADRL`, `YRL`, `NEGB` — ne sont validés par **aucune** mesure :
    les programmes de ce jeu les laissent à zéro sur toutes ses arènes, et la sonde `dspprog` le dit avec son
    propre témoin dans la même ligne. Écrits, jamais éprouvés.
 6. **Timers, interruptions, synchronisation** — A/B/C, `SCIEB`/`SCIPD`/`SCILV`, `MCIEB`/`MCIPD`, le DMA, et la
    cadence des interruptions, dont Mednafen dit qu'elle est ce qui fait dériver le tempo de 2 %
    (`docs/scsp_references.md`).
-   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_irq.cpp`, onze cas, mesurés par le puits
+   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_irq.cpp`, onze cas, mesurés par le puits
    plutôt que par le son. Il fixe le `+1` de `timer_samples` — la troisième divergence voulue du portage, celle
    qui a remis le tic de VF3 à 882 Hz — et il a trouvé que la **ligne 0 ne retombe pas quand rien n'est en
    attente** : `CheckPendingIRQ` sort avant, et le `-0` n'arrive que sur une source en attente que rien n'arme
@@ -178,7 +178,7 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
 7. **Mélange et rendu** — `DISDL`/`DIPAN`, `EFSDL`/`EFPAN`, `MVOL`, `DAC18B`, les tables de panoramique. Les
    deux volumes par groupe et le niveleur d'effets de ce portage sont **au-dessus** du chip, pas dedans : ils
    restent dans la carte.
-   **Le test existe** depuis le 2026-10-26 : `tools/son/test_scsp_mix.cpp`, neuf cas. Il lit les trois tables de
+   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_mix.cpp`, neuf cas. Il lit les trois tables de
    décibels en entier, et il a établi que **`MVOL` n'est jamais appliqué dans la puce** — elle l'expose seulement,
    et la carte multiplie — ce qui est un **trou dans l'interface** : `scsp::core` ne sait pas rendre `MVOL`,
    donc la carte descend par `->device()` (`scsp_contract.h` §13).
@@ -205,7 +205,7 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
 
 ## 5. Ce qui doit exister avant la première ligne
 
-1. Le **harnais différentiel** : il existe (`tools/son/comparer-son.cmd`), mais il compare deux *constructions*
+1. Le **harnais différentiel** : il existe (`tools/sound/compare-sound.cmd`), mais il compare deux *constructions*
    du portage, pas deux *cœurs*. Il lui faut un sélecteur (variable d'environnement ou option de build) qui
    fasse tourner l'ancien et le neuf dans le même binaire, sur la même séquence d'accès, et compare les PCM,
    les états observables, les interruptions et les timers.

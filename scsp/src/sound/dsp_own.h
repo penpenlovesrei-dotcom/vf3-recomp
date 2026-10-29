@@ -1,4 +1,4 @@
-// dsp_maison.h -- the project's effects DSP: block 5, written against its specification.
+// dsp_own.h -- the project's effects DSP: block 5, written against its specification.
 //
 // Block 5 of docs/scsp_architecture.md §3, and the last of the seven. The other six were written from
 // src/sound/scsp_contract.h, which says what the chip MUST do. This one could not be: its instruction set
@@ -6,7 +6,7 @@
 // implementations, both out of ElSemi's same reverse-engineering work (docs/scsp_references.md).
 //
 // SO THE SPECIFICATION WAS WRITTEN FIRST, on 2026-10-27, and it is against that one that this file exists:
-// tools/son/test_scsp_dsp.cpp, eight cases that each lay down a tiny program and RECORD what the DSP makes
+// tools/sound/test_scsp_dsp.cpp, eight cases that each lay down a tiny program and RECORD what the DSP makes
 // of it, observed through the register window (TEMP, MEMS, MIXS, EFREG) and through sound RAM.
 //
 // -----------------------------------------------------------------------------------------------------
@@ -25,14 +25,14 @@
 //   So there is no program to go and find that would let the replayer judge them.
 //
 //   THEY ARE NOW TESTED AGAINST THE TARGET, and the two sentences have to be read together:
-//   tools/son/test_scsp_dsp.cpp cases 9 to 13, written on 2026-10-28, measure them one by one -- NEGB
+//   tools/sound/test_scsp_dsp.cpp cases 9 to 13, written on 2026-10-28, measure them one by one -- NEGB
 //   through B's sign, FRCL and YRL by reading the registers back through YSEL (their only read path), ADRL
 //   through the address that ADREB shifts. This core returns the same numbers as MAME's on all five, first
 //   time, and four faults injected into this file are each caught by their own case.
 //
 //   WHAT THAT DOES NOT SAY: that MAME is right. Nobody has measured those four on hardware, and
 //   docs/scsp_references.md refuses consensus between emulators as proof. The behaviour this port AIMS at
-//   is MAME's (see scsp_maison.h); these cases establish that this DSP reaches it, and nothing more. Case
+//   is MAME's (see scsp_own.h); these cases establish that this DSP reaches it, and nothing more. Case
 //   13 adds what no game gave either: that the second body, the one the four trigger, agrees with the
 //   first. The count comes from the `dspprog` probe, and it carries its control in the same line --
 //   `frcl 0 adrl 0 yrl 0 negb 0` next to `iwt 23 twt 39 mrd 23 mwt 10 ewt 5`, counted by the same code at
@@ -49,13 +49,13 @@
 //              YRL 3, NEGB 2, ZERO 1, BSEL 0
 //     word 3 : NOFL 15, COEF 14-9, MASA 6-2, ADREB 1, NXADR 0
 //
-// THE PUBLIC MEMBERS' NAMES ARE THE OTHER DSP'S, deliberately: the project's core (scsp_maison) reaches
+// THE PUBLIC MEMBERS' NAMES ARE THE OTHER DSP'S, deliberately: the project's core (scsp_own) reaches
 // them directly, and swapping DSPs must change nothing there.
 #pragma once
 
 #include <cstdint>
 
-class dsp_maison {
+class dsp_own {
 public:
 	using u8  = std::uint8_t;
 	using u16 = std::uint16_t;
@@ -81,8 +81,8 @@ public:
 
 	void Init();
 	void Start();                    // (re)decodes the whole program and finds its last step
-	void Decode(int pas);            // one step, decoded on write and not in the loop
-	void SetSample(s32 echantillon, s32 sel, s32 mxl);
+	void Decode(int step);            // one step, decoded on write and not in the loop
+	void SetSample(s32 sample, s32 sel, s32 mxl);
 	void Step();                     // one sample
 
 private:
@@ -92,7 +92,7 @@ private:
 	// ONE WORD OF FLAGS, AND NOT FIFTEEN BOOLEANS. The one-bit fields fit in an integer read once, and the
 	// loop tests masks instead of loading fifteen bytes per step. Measured: going from fifteen booleans to
 	// this word brought the core down from 22.93 s to what Step's comment states.
-	enum Indic : u32 {
+	enum Flag : u32 {
 		I_TWT = 1u << 0, I_XSEL = 1u << 1, I_IWT = 1u << 2, I_TABLE = 1u << 3,
 		I_MWT = 1u << 4, I_MRD = 1u << 5, I_EWT = 1u << 6, I_ZERO = 1u << 7,
 		I_BSEL = 1u << 8, I_NOFL = 1u << 9, I_ADREB = 1u << 10, I_NXADR = 1u << 11,
@@ -102,14 +102,14 @@ private:
 		I_SHPRE = 1u << 16,          // the shift doubles the accumulator first (SHIFT 1 and 2)
 		I_SHECR = 1u << 17,          // it CLAMPS (SHIFT 0 and 1) instead of sign-extending (2 and 3)
 	};
-	struct Pas {
+	struct DecodedStep {
 		u32 f = 0;                   // the one-bit fields
 		u8  tra = 0, twa = 0, ira = 0, iwa = 0, ewa = 0, coef = 0, masa = 0;
 		u8  shift = 0, ysel = 0;
 	};
-	Pas m_prog[128] = {};
-	int m_dernier = 0;               // how many steps to execute
-	bool m_arrete = true;            // before the first Start, the DSP does not run
+	DecodedStep m_prog[128] = {};
+	int m_last = 0;               // how many steps to execute
+	bool m_stopped = true;            // before the first Start, the DSP does not run
 
 	// THE BODY SPECIALISED ON WHAT THE PROGRAM ACTUALLY USES, and it is a measurement that demands it:
 	// without it the project's core cost 1% of a core more per chip than MAME's, that is a quarter more
@@ -119,8 +119,8 @@ private:
 	//
 	// It never comes undone mid-run: a program rewritten to stop using one of the four keeps the full body
 	// until the next Start. That costs speed and nothing else.
-	bool m_rares = false;
-	template <bool RARES> void boucle();
+	bool m_rare = false;
+	template <bool RARES> void loop();
 
 	// The live state. ACC and SHIFTED are two distinct registers, and that is the whole subject: the
 	// shifter is ONE STEP BEHIND the accumulator (see Step).
@@ -129,6 +129,6 @@ private:
 	s32 m_frc_reg = 0, m_y_reg = 0, m_adrs_reg = 0;
 	u32 m_dec = 0;                   // counts down by one per sample; indexes TEMP and the delay line
 
-	u16 lire_mot(u32 octet) const { return octet < ram_bytes ? ram[octet >> 1] : 0; }
-	void ecrire_mot(u32 octet, u16 v) { if (octet < ram_bytes) ram[octet >> 1] = v; }
+	u16 read_word(u32 byte) const { return byte < ram_bytes ? ram[byte >> 1] : 0; }
+	void write_word(u32 byte, u16 v) { if (byte < ram_bytes) ram[byte >> 1] = v; }
 };

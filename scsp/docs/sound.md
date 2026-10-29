@@ -6,7 +6,7 @@ et rien ne les nommait ensemble ; il a fallu, le 2026-10-25, mesurer l'empreinte
 | | lignes | |
 |---|---|---|
 | `src/sound/` | 6 239 | dont **2 110 sont celles de MAME** (`scsp.cpp`, `scsp.h`), soit un tiers |
-| `tools/son/` et `tools/ghidra/FV2Son*` | 5 963 | l'outillage de mesure et de lecture — les dix tests en sont |
+| `tools/sound/` et `tools/ghidra/FV2Son*` | 5 963 | l'outillage de mesure et de lecture — les dix tests en sont |
 | les neuf documents ci-dessous | 5 459 | **du même ordre que tout le code** |
 | **en tout** | **17 661** | 3,0 % du dépôt, mais **18,7 %** hors `third_party/` |
 
@@ -14,7 +14,7 @@ et rien ne les nommait ensemble ; il a fallu, le 2026-10-25, mesurer l'empreinte
 le cœur du projet, son DSP, les sept tests de bloc et le rejoueur, qui sont l'essentiel de l'écart. Et avant
 lui une première version donnait 3 130 lignes d'outillage parce qu'elle comptait tout `tools/ghidra/`,
 scripts du PowerPC compris. Les chiffres de ce tableau vieillissent vite : la commande qui les refait est
-`grep -c '' src/sound/* tools/son/* tools/ghidra/FV2Son*.java docs/*.md`.)
+`grep -c '' src/sound/* tools/sound/* tools/ghidra/FV2Son*.java docs/*.md`.)
 
 La documentation a longtemps été plus grosse que le code, et elle en reste du même ordre : l'essentiel de ce
 travail est de la **connaissance**, et une connaissance qu'on ne retrouve pas est perdue. D'où ce fichier.
@@ -43,29 +43,29 @@ travail est de la **connaissance**, et une connaissance qu'on ne retrouve pas es
 | `src/sound/scsp_core.h` | **l'interface neuve** d'un cœur de SCSP : trois méthodes de `sink`, le temps poussé, l'unité l'échantillon |
 | `src/sound/scsp_mame.h`, `.cpp` | **l'adaptateur** qui présente le cœur de MAME à travers elle — l'étape 3 du plan de migration, et les trois endroits où les deux ne coïncident pas y sont nommés |
 | `src/sound/scsp_contract.h` | **le contrat matériel** : 48 champs et les constantes du pilote, chaque nombre avec sa provenance, les écarts assumés marqués `DEVIATION` |
-| `src/sound/scsp_maison.h`, `.cpp` | **le SCSP du projet**, les sept blocs. Rend le même son que celui de MAME **à l'octet** sur 3 219 865 échantillons par puce. L'en-tête dit l'état de chaque bloc et ce qui reste non validé par la mesure |
-| `src/sound/dsp_maison.h`, `.cpp` | **le DSP d'effets du projet** : bloc 5, écrit contre la spécification mesurée parce que son jeu d'instructions n'existe nulle part écrit. Son en-tête nomme les **quatre champs que le jeu n'exerce jamais**, donc jamais éprouvés |
+| `src/sound/scsp_own.h`, `.cpp` | **le SCSP du projet**, les sept blocs. Rend le même son que celui de MAME **à l'octet** sur 3 219 865 échantillons par puce. L'en-tête dit l'état de chaque bloc et ce qui reste non validé par la mesure |
+| `src/sound/dsp_own.h`, `.cpp` | **le DSP d'effets du projet** : bloc 5, écrit contre la spécification mesurée parce que son jeu d'instructions n'existe nulle part écrit. Son en-tête nomme les **quatre champs que le jeu n'exerce jamais**, donc jamais éprouvés |
 | `src/sound/scsp_select.h`, `.cpp` | **le sélecteur** : `scsp::make(nom, ...)`, par où un second cœur entrera. `mame` est la seule entrée aujourd'hui, et le fichier le dit |
 | `src/sound/scsp_trace.h`, `.cpp` | **le format de trace, l'enregistreur et le rejoueur** : chaque accès à l'échantillon près, les écritures de RAM comprises. L'enregistrement passe par une seule porte, `SoundBoard::tete[n]`, et non par les huit sites d'appel |
-| `src/sound/sound_prof.h` | le profilage par parties (`VF3_SND_PROF=1`). Les portées sont dans `soundboard.cpp`, `scsp.cpp` **et** `scsp_maison.cpp` : les quatre manières dont ce branchement se taisait sont en `scsp_audit.md` §4 sexies |
+| `src/sound/sound_prof.h` | le profilage par parties (`VF3_SND_PROF=1`). Les portées sont dans `soundboard.cpp`, `scsp.cpp` **et** `scsp_own.cpp` : les quatre manières dont ce branchement se taisait sont en `scsp_audit.md` §4 sexies |
 
 ## 3. Les outils
 
 | | |
 |---|---|
-| `tools/son/extraire-son.py` | extrait la ROM du 68000 d'un `.zip` **et échange les octets** — sans quoi rien ne se désassemble. C'est le préalable de tout le reste |
-| `tools/son/desas_son.py` | **cherche** dans les 512 Ko : `--cherche`, `--at`, `--fonctions`, `--carte`. Il sème les onze sauts calculés, sans quoi il ne voit que la moitié du programme |
-| `tools/son/importer-son.cmd` | importe la ROM dans Ghidra, sans interface |
+| `tools/sound/extraire-son.py` | extrait la ROM du 68000 d'un `.zip` **et échange les octets** — sans quoi rien ne se désassemble. C'est le préalable de tout le reste |
+| `tools/sound/desas_son.py` | **cherche** dans les 512 Ko : `--cherche`, `--at`, `--fonctions`, `--carte`. Il sème les onze sauts calculés, sans quoi il ne voit que la moitié du programme |
+| `tools/sound/import-sound.cmd` | importe la ROM dans Ghidra, sans interface |
 | `tools/ghidra/FV2SonSetup.java` | sème les points d'entrée **avant** l'analyse (en `-preScript`) |
 | `tools/ghidra/FV2SonTablesDeSaut.java` | ouvre les quatre tables de saut — 41 fonctions à 90 |
 | `tools/ghidra/FV2SonSautsIndirects.java` | résout les cinq derniers `jmp (An)` |
 | `tools/ghidra/FV2SonDonnees.java` | déclare les données, et **recompte** ce qui reste dehors |
 | `tools/ghidra/FV2SonListe.java` | sort les fonctions et leurs plages, sans rien changer — le témoin des trois précédents |
-| `tools/son/variantes-dsp.py`, `batir-variantes.py` | **les variantes du DSP à juger**, et un exe par variante : chacune appliquée, construite, passée aux dix tests, gardée seulement si les 24 fichiers sont au vert. Une variante non vérifiée qui gagne est pire qu'une qui perd |
-| `tools/son/mesurer-variantes.cmd` | **le jugement au compteur matériel** : une capture d'instructions retirées par variante. Demande une fenêtre **administrateur**, et le vérifie avant d'entrer dans la boucle |
-| `tools/son/comparer-son.cmd` | **le harnais différentiel** : deux WAV, même scène, comparaison à l'octet |
-| `tools/son/audibilite.py` | si deux WAV diffèrent, **est-ce audible** : bandes de Bark, masquage, seuil absolu, plancher ambiant |
-| `tools/son/comparer-madrs.cmd`, `mesurer-madrs.py` | le cas particulier du miroir MADRS |
+| `tools/sound/dsp-variants.py`, `build-variants.py` | **les variantes du DSP à juger**, et un exe par variante : chacune appliquée, construite, passée aux dix tests, gardée seulement si les 24 fichiers sont au vert. Une variante non vérifiée qui gagne est pire qu'une qui perd |
+| `tools/sound/measure-variants.cmd` | **le jugement au compteur matériel** : une capture d'instructions retirées par variante. Demande une fenêtre **administrateur**, et le vérifie avant d'entrer dans la boucle |
+| `tools/sound/compare-sound.cmd` | **le harnais différentiel** : deux WAV, même scène, comparaison à l'octet |
+| `tools/sound/audibilite.py` | si deux WAV diffèrent, **est-ce audible** : bandes de Bark, masquage, seuil absolu, plancher ambiant |
+| `tools/sound/compare-madrs.cmd`, `mesurer-madrs.py` | le cas particulier du miroir MADRS |
 
 ## 4. Les sondes, et où chacune vit
 
@@ -81,8 +81,8 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 | `VF3_FICHES=f` | les fiches de voix vivantes, avec canal et catégorie — ce qui a tranché « quelle catégorie est la musique » | `tools/vf3run.cpp` |
 | `VF3_STAGE=n` | **force l'arène** (1-12), en tenant les deux leviers du jeu | `tools/vf3run.cpp` |
 | `VF3_VOLUMES=m,e` | les volumes musique et effets, séparément | `tools/vf3run.cpp` |
-| `VF3_SCSP_WLOG=f` | la trace des écritures de registres, à LIRE : image par image, puce 0 seulement. Pas de quoi rejouer — voir `VF3_SCSP_TRACE` | `soundboard.cpp` |
-| `VF3_SCSP_COEUR=n` | **quel cœur de SCSP la carte emploie** : `mame` (par défaut) ou `maison`, le SCSP du projet. Les gains par groupe, la sonde d'énergie et le journal des key-on ne s'appliquent qu'au premier, et la carte le dit au lancement | `soundboard.cpp` |
+| `VF3_SCSP_WLOG=f` | la trace des écritures de registres, à LIRE : image par image, puce 0 seulement. Pas de quoi replay — voir `VF3_SCSP_TRACE` | `soundboard.cpp` |
+| `VF3_SCSP_CORE=n` | **quel cœur de SCSP la carte emploie** : `mame` (par défaut) ou `own`, le SCSP du projet. Les gains par groupe, la sonde d'énergie et le journal des key-on ne s'appliquent qu'au premier, et la carte le dit au lancement | `soundboard.cpp` |
 | `VF3_SCSP_TRACE=f` | **la trace rejouable** : `f.0` et `f.1`, chaque accès à l'échantillon près, les écritures de RAM comprises, plus `f.N.pcm` comme référence | `scsp_trace.h` |
 | `VF3_SCSP_RESTE=N` | ce que les deux puces laissent dans les tampons, toutes les N images — un reste qui **grandit** serait le signe d'une désynchronisation | `soundboard.cpp` |
 | `VF3_KEYON_LOG=1` | les allumages de note | `soundboard.cpp` |
@@ -98,19 +98,19 @@ produite** ; c'est la règle de ce sous-système, et elle vient d'y avoir été 
 
 | | |
 |---|---|
-| `tools/son/rejouer.cpp`, `rejouer.cmd` | **le rejoueur** : une trace d'accès rejouée dans un ou deux cœurs, et la première divergence située à l'échantillon — PCM, interruptions, armements de timer, lectures de registre, MIDI sortant. Le `.cmd` prend la trace et lance les deux contrôles en une commande |
-| `tools/son/mesurer-coeur.cpp` | **ce qu'un cœur coûte, par poste** : à vide, les fentes seules, le DSP seul, les deux. Le rejoueur compare à l'octet mais son temps est dominé par l'analyse de trace — celui-ci ne chronomètre que `run()`. C'est lui qui a dit que le coût était dans **les fentes et non le DSP**. Et `--dsp` descend d'un cran : **le DSP par caractéristique**, les deux cœurs côte à côte, socle déduit — c'est lui qui a dit que l'écart n'est **aucune instruction mais le socle** (`scsp_audit.md` §4 septies). `--socle` ne mesure que le socle, sept passages : assez rapide pour entrelacer une référence et une variante du même fichier |
-| `tools/son/banc_scsp.h` | le montage que les tests de bloc partagent : un cœur neuf, sa RAM, le keyage d'une fente par la table du contrat. **Aucune attente** n'y vit — ce qu'on attend d'un bloc appartient au test de ce bloc. Et **aucune classe concrète** depuis le 2026-10-28 : il liait le cœur de MAME à sept tests pour deux aiguillages, passés à `scsp_select.h` (`make test-sans-mame`) |
-| `tools/son/test_scsp_dsp.cpp` | **le jeu d'instructions du DSP**, et c'est une **spécification** avant d'être un test : ce jeu d'instructions n'existe nulle part écrit. **Treize cas**, observés par la fenêtre de registres et par la RAM. Il a sorti le pas de retard du shifter. Et depuis le 2026-10-28 il est le **seul juge** de `FRCL`, `ADRL`, `YRL` et `NEGB`, qu'aucun jeu servi ne pose (cas 9 à 13, quatre fautes injectées pour qu'il sache échouer). Bloc 5 |
-| `tools/son/test_scspdsp.cpp` | les deux corps du DSP contre une référence qui décode dans la boucle. 16 cas, dont les quatre contrôles qu'aucun jeu ne pose |
-| `tools/son/test_scsp_core.cpp` | **MAME piloté uniquement par l'interface neuve**, registres écrits par la table du contrat : un champ faux y coupe le son |
-| `tools/son/test_scsp_contract.cpp` | **le contrat contre ce qu'il décrit** : 48 champs contre les macros de `scsp.cpp`, les constantes contre la ROM. 55 contrôles, et **un compte qui doit fermer** pour qu'aucun champ ne soit silencieusement sauté |
-| `tools/son/test_scsp_regs.cpp` | **ce qu'une écriture dans un registre se relit**, mot par mot de 0x000 à 0x42F : deux masques (ce qui monte, ce qui reste levé), les trois mots dont le bit 5 colle par trois chemins différents, et la plage contestée 0x7C0-0x7FF mesurée dans **les deux** réglages du miroir MADRS. 9 cas. Bloc 1 de l'architecture |
-| `tools/son/test_scsp_fentes.cpp` | **l'oscillateur, l'adressage PCM et les quatre bouclages**, mesures à l'échantillon exact : `SDIR` met l'enveloppe de côté, donc la sortie vaut l'échantillon brut et la suite des **indices** se lit. 11 cas. Bloc 2 de l'architecture |
-| `tools/son/test_scsp_adsr.cpp` | **l'enveloppe ADSR** : une onde continue fait que la sortie *est* l'enveloppe, et son multiplicateur se relit sans arrondi. Les **durées d'attaque en échantillons** y encodent les tables de temps de MAME, pour qu'une formule à leur place ne passe pas inaperçue. 10 cas. Bloc 3 |
-| `tools/son/test_scsp_lfo.cpp` | **le pas, les deux LFO et la modulation par anneau**. Une rampe fait de la sortie l'**accumulateur de phase**, donc le pas se lit au lieu d'être compté. Fixe les **deux divergences délibérées** du portage (`PLFOS` et `MDL` perdent leur bit bas) pour que personne ne les « corrige ». 11 cas. Bloc 4 |
-| `tools/son/test_scsp_irq.cpp` | **les trois timers, les cinq lignes d'interruption et le DMA**, mesurés par le **puits** et non par le son : on compare des entiers, pas des gains. Fixe le `+1` de `timer_samples`, troisième divergence voulue. 11 cas. Bloc 6 |
-| `tools/son/test_scsp_mix.cpp` | **le mélange et le rendu** : les **trois tables de décibels à la Sega** (`TL`, `DIPAN`, `SDLT`) lues en entier et sur les **deux** canaux, plus un contrôle qui les recoupe l'une par l'autre sans valeur enregistrée. 9 cas. Bloc 7 |
+| `tools/sound/replay.cpp`, `replay.cmd` | **le rejoueur** : une trace d'accès rejouée dans un ou deux cœurs, et la première divergence située à l'échantillon — PCM, interruptions, armements de timer, lectures de registre, MIDI sortant. Le `.cmd` prend la trace et lance les deux contrôles en une commande |
+| `tools/sound/measure-core.cpp` | **ce qu'un cœur coûte, par poste** : à vide, les fentes seules, le DSP seul, les deux. Le rejoueur compare à l'octet mais son temps est dominé par l'analyse de trace — celui-ci ne chronomètre que `run()`. C'est lui qui a dit que le coût était dans **les fentes et non le DSP**. Et `--dsp` descend d'un cran : **le DSP par caractéristique**, les deux cœurs côte à côte, socle déduit — c'est lui qui a dit que l'écart n'est **aucune instruction mais le socle** (`scsp_audit.md` §4 septies). `--baseline` ne mesure que le socle, sept passages : assez rapide pour entrelacer une référence et une variante du même fichier |
+| `tools/sound/scsp_bench.h` | le montage que les tests de bloc partagent : un cœur neuf, sa RAM, le keyage d'une fente par la table du contrat. **Aucune attente** n'y vit — ce qu'on attend d'un bloc appartient au test de ce bloc. Et **aucune classe concrète** depuis le 2026-10-28 : il liait le cœur de MAME à sept tests pour deux aiguillages, passés à `scsp_select.h` (`make test-without-mame`) |
+| `tools/sound/test_scsp_dsp.cpp` | **le jeu d'instructions du DSP**, et c'est une **spécification** avant d'être un test : ce jeu d'instructions n'existe nulle part écrit. **Treize cas**, observés par la fenêtre de registres et par la RAM. Il a sorti le pas de retard du shifter. Et depuis le 2026-10-28 il est le **seul juge** de `FRCL`, `ADRL`, `YRL` et `NEGB`, qu'aucun jeu servi ne pose (cas 9 à 13, quatre fautes injectées pour qu'il sache échouer). Bloc 5 |
+| `tools/sound/test_scspdsp.cpp` | les deux corps du DSP contre une référence qui décode dans la boucle. 16 cas, dont les quatre contrôles qu'aucun jeu ne pose |
+| `tools/sound/test_scsp_core.cpp` | **MAME piloté uniquement par l'interface neuve**, registres écrits par la table du contrat : un champ faux y coupe le son |
+| `tools/sound/test_scsp_contract.cpp` | **le contrat contre ce qu'il décrit** : 48 champs contre les macros de `scsp.cpp`, les constantes contre la ROM. 55 contrôles, et **un compte qui doit fermer** pour qu'aucun champ ne soit silencieusement sauté |
+| `tools/sound/test_scsp_regs.cpp` | **ce qu'une écriture dans un registre se relit**, mot par mot de 0x000 à 0x42F : deux masques (ce qui monte, ce qui reste levé), les trois mots dont le bit 5 colle par trois chemins différents, et la plage contestée 0x7C0-0x7FF mesurée dans **les deux** réglages du miroir MADRS. 9 cas. Bloc 1 de l'architecture |
+| `tools/sound/test_scsp_fentes.cpp` | **l'oscillateur, l'adressage PCM et les quatre bouclages**, mesures à l'échantillon exact : `SDIR` met l'enveloppe de côté, donc la sortie vaut l'échantillon brut et la suite des **indices** se lit. 11 cas. Bloc 2 de l'architecture |
+| `tools/sound/test_scsp_adsr.cpp` | **l'enveloppe ADSR** : une onde continue fait que la sortie *est* l'enveloppe, et son multiplicateur se relit sans arrondi. Les **durées d'attaque en échantillons** y encodent les tables de temps de MAME, pour qu'une formule à leur place ne passe pas inaperçue. 10 cas. Bloc 3 |
+| `tools/sound/test_scsp_lfo.cpp` | **le pas, les deux LFO et la modulation par anneau**. Une rampe fait de la sortie l'**accumulateur de phase**, donc le pas se lit au lieu d'être compté. Fixe les **deux divergences délibérées** du portage (`PLFOS` et `MDL` perdent leur bit bas) pour que personne ne les « corrige ». 11 cas. Bloc 4 |
+| `tools/sound/test_scsp_irq.cpp` | **les trois timers, les cinq lignes d'interruption et le DMA**, mesurés par le **puits** et non par le son : on compare des entiers, pas des gains. Fixe le `+1` de `timer_samples`, troisième divergence voulue. 11 cas. Bloc 6 |
+| `tools/sound/test_scsp_mix.cpp` | **le mélange et le rendu** : les **trois tables de décibels à la Sega** (`TL`, `DIPAN`, `SDLT`) lues en entier et sur les **deux** canaux, plus un contrôle qui les recoupe l'une par l'autre sans valeur enregistrée. 9 cas. Bloc 7 |
 
 La seconde partie du test du contrat s'efface, **avec une ligne visible**, quand `build/fv2-son-68000.bin`
 n'est pas là — elle vient d'une ROM que le dépôt ne porte pas.
@@ -146,10 +146,10 @@ Alors il ne dépendra plus du jeu, la frontière de licence sera propre, et la s
 
 **Où en est ce moment, au 2026-10-28.** Le cœur existe et passe le harnais — à l'octet sur la scène entière, et
 de bout en bout dans le jeu. Et le dernier préalable est tombé le même jour : les sept tests de bloc
-liaient les 2 110 lignes du cœur de MAME **par `tools/son/banc_scsp.h`**, pour deux aiguillages de trois lignes.
+liaient les 2 110 lignes du cœur de MAME **par `tools/sound/scsp_bench.h`**, pour deux aiguillages de trois lignes.
 Chaque cœur s'inscrit maintenant dans son propre `.cpp` (`src/sound/scsp_select.h`), donc **ce qui est lié
-décide ce qui existe**, et `make test-sans-mame` construit ces sept tests avec le seul cœur du projet —
-`scsp_select.o`, `scsp_maison.o`, `dsp_maison.o`, rien d'autre. Ce n'est plus une intention : c'est une cible,
+décide ce qui existe**, et `make test-without-mame` construit ces sept tests avec le seul cœur du projet —
+`scsp_select.o`, `scsp_own.o`, `dsp_own.o`, rien d'autre. Ce n'est plus une intention : c'est une cible,
 que `make test` refait à chaque fois.
 
 Ce qui reste avant de séparer n'est donc plus technique : **la preuve vit toujours dans le jeu**, et c'est

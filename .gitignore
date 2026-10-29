@@ -43,3 +43,6 @@ assets-hd/
 # De l amont : le cache de Wrangler et les portages voisins sortis a cote.
 .wrangler/
 /*-recomp/
+
+# les WAV de mesure : produits par vf3run --wav et par les harnais, jamais une source
+*.wav

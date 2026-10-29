@@ -1,11 +1,11 @@
 # Sortir du SCSP de MAME — le plan, et ce qui est déjà fait
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/sound.md](son.md).
 
 **C'est un plan.** Au 2026-10-27, les étapes 0, 2 et 3 sont faites. **Le SCSP du projet existe** —
-`src/sound/scsp_maison.{h,cpp}` — et il rend le même son que celui de MAME **à l'octet** sur une scène
+`src/sound/scsp_own.{h,cpp}` — et il rend le même son que celui de MAME **à l'octet** sur une scène
 réelle. **Les sept blocs sont écrits**, et le dernier — le DSP d'effets — l'a été contre une spécification
-mesurée d'abord (`tools/son/test_scsp_dsp.cpp`), faute de la moindre description de son jeu d'instructions.
+mesurée d'abord (`tools/sound/test_scsp_dsp.cpp`), faute de la moindre description de son jeu d'instructions.
 Le cœur du projet ne contient donc **plus une ligne de MAME**.
 
 **Au rejoueur, sur la scène entière de `fv2-fight.txt` (4200 images) : IDENTIQUES.** 3 219 865 échantillons
@@ -17,7 +17,7 @@ cœur, donne le même WAV — `9A2310F8AF000E09EB18BD114852B003`, qui est **exac
 avant tout ce travail** (commit de l'étape 3). Le rejoueur jugeait la puce sur une séquence figée ; ceci la
 juge en place, avec le 68000 qui lui répond et le mélangeur de la carte derrière.
 
-**La carte peut désormais tourner sur l'un ou l'autre** : `VF3_SCSP_COEUR=mame` (par défaut) ou `maison`.
+**La carte peut désormais tourner sur l'un ou l'autre** : `VF3_SCSP_CORE=mame` (par défaut) ou `own`.
 Deux des quatre extras ont disparu en chemin — `MVOL` se **lit dans le registre**, la puce ne l'appliquant
 pas elle-même, et `reg_word` n'était qu'un `read_reg` déguisé. Le **miroir MADRS** est porté par les deux
 cœurs, chacun sur sa classe concrète, parce qu'il appartient au jeu et non à la puce.
@@ -56,10 +56,10 @@ le premier venu.
 | mesurer | `src/sound/sound_prof.h` : où va le temps de la carte son, vérifié sans effet sur ce qu'elle produit |
 | cartographier | `docs/scsp_audit.md` : pièces, provenance, licences, interfaces, chemins chauds |
 | sourcer | `docs/scsp_references.md` : ce qui a été lu à la source, et l'avertissement sur la non-indépendance des émulateurs |
-| le harnais | `tools/son/comparer-son.cmd` : le son contre un commit de référence, octet par octet |
+| le harnais | `tools/sound/compare-sound.cmd` : le son contre un commit de référence, octet par octet |
 | gagner | trois lots sur `scspdsp`, **−24,3 %** sur la carte son, WAV identique à l'octet sur les deux jeux |
 | le lot défait | un quatrième, sur les voix, qui ne gagnait rien : défait, et le résultat négatif consigné |
-| tester | `tools/son/test_scspdsp.cpp` (`make test`) : les deux corps du DSP contre une référence qui décode dans la boucle, seize cas, et quatre fautes injectées pour montrer qu'il sait échouer |
+| tester | `tools/sound/test_scspdsp.cpp` (`make test`) : les deux corps du DSP contre une référence qui décode dans la boucle, seize cas, et quatre fautes injectées pour montrer qu'il sait échouer |
 
 Ce que l'étape 0 n'avait pas fait a été fait depuis, et il faut le lire avant la suite. Elle laissait un seul
 test de bloc sur sept ; **les sept en ont un** maintenant, les six derniers écrits le 2026-10-26 : les
@@ -107,7 +107,7 @@ Rien ne s'écrit avant ces trois-là, et c'est le gros du travail :
 0. **Le contrat matériel**, qui n'était pas dans cette liste et aurait dû l'être : ce que la puce doit faire,
    par opposition à la façon dont on la branche. Écrit le 2026-10-25 — `src/sound/scsp_contract.h`, 48 champs
    et les constantes du pilote, chaque nombre portant sa provenance et les écarts assumés marqués comme tels
-   — et **vérifié** par `tools/son/test_scsp_contract.cpp` : 55 contrôles contre `src/sound/scsp.cpp` et
+   — et **vérifié** par `tools/sound/test_scsp_contract.cpp` : 55 contrôles contre `src/sound/scsp.cpp` et
    contre la ROM du pilote, avec un compte qui doit fermer pour qu'aucun champ ne soit silencieusement sauté.
 1. **Les tests par bloc** de `docs/scsp_validation.md` §3b, écrits avant les blocs qu'ils testent. Le premier
    des sept existe depuis le 2026-10-24 (`make test` : le DSP, ses deux corps et les quatre contrôles que
@@ -122,7 +122,7 @@ Rien ne s'écrit avant ces trois-là, et c'est le gros du travail :
      l'instant d'une écriture dans la trame, qui est ce qui décide où tombent les interruptions — et il
      laisse de côté la puce 1, les lectures, le MIDI entrant, les timers qui se déclenchent et **les
      écritures de la RAM son**, sans lesquelles un rejeu n'a aucun échantillon à jouer.
-   - `tools/son/rejouer.cpp` et `rejouer.cmd` : le rejeu et la comparaison du PCM, des interruptions, des
+   - `tools/sound/replay.cpp` et `replay.cmd` : le rejeu et la comparaison du PCM, des interruptions, des
      armements de timer, des lectures de registre et du MIDI sortant — la première divergence, située à
      l'échantillon.
    - L'enregistrement passe par **une seule porte**, `SoundBoard::tete[n]` : un décorateur de `scsp::core`
@@ -140,7 +140,7 @@ Rien ne s'écrit avant ces trois-là, et c'est le gros du travail :
    2026-10-26.** `src/sound/scsp_core.h` est l'interface telle que le §2 l'avait dessinée (trois méthodes de
    `sink`, le temps **poussé** par `run(n, out)`, l'unité l'échantillon, aucune allocation) ;
    `src/sound/scsp_mame.{h,cpp}` est l'adaptateur qui présente l'ancien cœur à travers elle ; et
-   `tools/son/test_scsp_core.cpp` est ce qui décide que le contrat tient — il pilote MAME **uniquement** par
+   `tools/sound/test_scsp_core.cpp` est ce qui décide que le contrat tient — il pilote MAME **uniquement** par
    `scsp::core`, et **écrit ses registres par la table de champs du contrat**, de sorte qu'un champ faux y
    coupe le son au lieu d'attendre d'être trouvé dans un jeu.
 
@@ -219,12 +219,12 @@ Repris du cahier des charges, et rendus vérifiables ici :
 |---|---|---|
 | 1 | ça compile dans les configurations servies | `make build/bin/vf3run build/bin/vf3lock build/bin/vf3` sans erreur |
 | 2 | les tests existants passent, ou l'écart est expliqué et isolé | `verifier-vf3.cmd` dit IDENTIQUE partout |
-| 3 | les scènes sonores de référence se refont | `tools/son/comparer-son.cmd` sur les deux jeux |
+| 3 | les scènes sonores de référence se refont | `tools/sound/compare-sound.cmd` sur les deux jeux |
 | 4 | les écarts audio sont mesurés, classés, documentés | pour une optimisation : **aucun écart**, WAV identique à l'octet. Pour un cœur neuf : la liste des écarts, chacun avec sa mesure (erreur max, RMS, corrélation, spectre) et sa cause |
 | 5 | le coût processeur est mesuré contre la ligne de base | `VF3_PROF=1`, même scène, même machine, et la répartition avec `VF3_SND_PROF=1` |
 | 6 | aucun gain annoncé sans chiffres refaisables | les commandes sont dans `docs/scsp_benchmark_baseline.md` |
 | 7 | les dépendances et les licences sont documentées | `docs/scsp_audit.md` §2, `docs/scsp_references.md`, `third_party/README.md` |
-| 8 | le repli reste utilisable pendant la validation | le sélecteur de l'étape 2, et l'ancien cœur derrière. Depuis le 2026-10-28 **chaque cœur s'inscrit dans son propre `.cpp`** : le sélecteur ne nomme plus aucune classe concrète, donc ce qui est lié décide ce qui existe, et `make test-sans-mame` construit les sept tests de bloc **sans une ligne du cœur de MAME** — le dernier préalable d'un dépôt séparé |
+| 8 | le repli reste utilisable pendant la validation | le sélecteur de l'étape 2, et l'ancien cœur derrière. Depuis le 2026-10-28 **chaque cœur s'inscrit dans son propre `.cpp`** : le sélecteur ne nomme plus aucune classe concrète, donc ce qui est lié décide ce qui existe, et `make test-without-mame` construit les sept tests de bloc **sans une ligne du cœur de MAME** — le dernier préalable d'un dépôt séparé |
 
 **État au 2026-10-28 :** **les huit sont satisfaits.** 1 ✔. **2 ✔, lancé ce jour** après tout le travail
 du son : `verifier-vf3.cmd 3000` dit **IDENTIQUE** sur les quatre contrôles — l'état du PowerPC image par
@@ -232,7 +232,7 @@ image, les 8 Mo de RAM, les images rendues, l'hôte complet — et le pas à pas
 recompilé concorde sur 2 231 images. 3 ✔ sur les deux jeux. 4 ✔ : **aucun écart**, l'empreinte
 `9A2310F8AF000E09EB18BD114852B003` tenue par les deux cœurs sur les 4 200 images. 5 ✔, et deux crans plus
 fin depuis (`scsp_audit.md` §4 sexies à §4 octies). 6 ✔. 7 ✔. 8 sans objet : rien n'a été remplacé, et le
-sélecteur permet maintenant de ne **pas lier** l'ancien cœur du tout (`make test-sans-mame`).
+sélecteur permet maintenant de ne **pas lier** l'ancien cœur du tout (`make test-without-mame`).
 
 (L'état du 2026-10-24 disait « 2 non revérifié depuis les lots — à lancer quand même ». C'est fait, et il
 fallait : un contrôle qu'on remet à plus tard n'est pas un contrôle.)

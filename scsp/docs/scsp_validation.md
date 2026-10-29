@@ -1,6 +1,6 @@
 # Valider le son — ce qui est en place, et ce qui manque
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/sound.md](son.md).
 
 État au 2026-10-24. La partie « en place » a été exécutée et vérifiée ; la partie « manque » est une liste de
 travaux, pas une promesse tenue.
@@ -21,7 +21,7 @@ ailleurs — quand on compare deux *implémentations* dont on n'attend pas l'ide
 
 ### Le son, octet par octet, contre un commit de référence
 
-`tools/son/comparer-son.cmd <jeu> <script> <images> [commit]`
+`tools/sound/compare-sound.cmd <jeu> <script> <images> [commit]`
 
 Construit (une fois) un arbre de travail du commit de référence dans `C:\Temp\fv2-son-ref`, fait jouer la même
 scène aux deux `vf3run`, et compare les deux WAV avec `fc /b`.
@@ -42,7 +42,7 @@ harnais ne les regarde pas.
 
 ### Les deux corps du DSP, l'un contre l'autre et contre une référence
 
-`make test` → `build/bin/test_scspdsp` (`tools/son/test_scspdsp.cpp`). Pas de ROM, pas de RAM de jeu, pas de
+`make test` → `build/bin/test_scspdsp` (`tools/sound/test_scspdsp.cpp`). Pas de ROM, pas de RAM de jeu, pas de
 fenêtre : les programmes sont engendrés depuis des graines fixes, donc deux lancements font la même chose.
 
 Le test porte une **référence naïve** du DSP : elle décode les champs de bits du MPRO **dans** la boucle, comme
@@ -88,13 +88,13 @@ veut dire « le portage calcule toujours ce que la boucle simple calcule », qui
 ### Le même trou, de l'autre côté — et bouché le 2026-10-28
 
 Tout ce qui précède porte sur le DSP de MAME et sur ses **deux corps**. Le DSP du projet,
-`src/sound/dsp_maison`, avait exactement le même trou, au même endroit, et pour la même raison : il porte
+`src/sound/dsp_own`, avait exactement le même trou, au même endroit, et pour la même raison : il porte
 `FRCL`, `ADRL`, `YRL` et `NEGB` **écrits**, son second corps ne tourne que quand l'un des quatre est posé,
 et **aucun jeu ne les pose**. Mesuré ce jour sur tous les sets que le portage connaît : 152 écritures de
 programme, cinq formes distinctes, trois jeux dont Sega Rally 2 avec un tout autre programme, et pas un pas
 (`docs/scsp_audit.md` §5). Il n'y avait donc rien à aller chercher : le rejoueur ne pouvait pas en être juge.
 
-**`tools/son/test_scsp_dsp.cpp` cas 9 à 13** les mesurent, et chacun par le seul chemin de lecture qui
+**`tools/sound/test_scsp_dsp.cpp` cas 9 à 13** les mesurent, et chacun par le seul chemin de lecture qui
 existe — ces registres n'ont pas de fenêtre :
 
 | cas | ce qui le rend observable | relevé |
@@ -109,7 +109,7 @@ existe — ces registres n'ont pas de fenêtre :
 confirmation et non une correction : ce code était juste, il n'avait simplement aucun témoin.
 
 **Et ces cas savent échouer**, par la même méthode qu'au-dessus — quatre fautes injectées dans
-`dsp_maison.cpp`, une à la fois, **chacune attrapée par son propre cas** : `NEGB` qui ne nie plus, `FRCL`
+`dsp_own.cpp`, une à la fois, **chacune attrapée par son propre cas** : `NEGB` qui ne nie plus, `FRCL`
 qui prend l'autre tranche, `YRL` qui retient l'entrée décalée d'un bit, `ADRL` qui décale de huit au lieu de
 seize. Une cinquième tentative, `YRL` retenant `SHIFTED`, **ne compile pas** — et c'est en soi un fait du
 bloc : à cet endroit du pas, `shifted` n'existe pas encore, parce que le shifter est un pas en retard.
@@ -179,11 +179,11 @@ de `docs/scsp_architecture.md` §3) :
 
 ### c. Le harnais à deux cœurs
 
-`comparer-son.cmd` compare deux **constructions**. Pour une réécriture, il faut comparer deux **cœurs dans le
+`compare-sound.cmd` compare deux **constructions**. Pour une réécriture, il faut comparer deux **cœurs dans le
 même binaire** : la même séquence d'accès rejouée dans les deux, et la comparaison des PCM, des états
 observables, des interruptions et des timers, pas seulement du WAV final.
 
-**Fait le 2026-10-26** : `tools/son/rejouer` et `tools/son/rejouer.cmd`, sur le format de
+**Fait le 2026-10-26** : `tools/sound/replay` et `tools/sound/replay.cmd`, sur le format de
 `src/sound/scsp_trace.h` et le sélecteur de `src/sound/scsp_select.h`. `VF3_SCSP_WLOG` n'a pas servi de
 départ : il note l'image et non l'échantillon, et laisse de côté la puce 1, les lectures, le MIDI entrant,
 les timers et les écritures de RAM. Le rejeu retrouve le PCM de la carte **à l'octet** sur 229 991
@@ -191,7 +191,7 @@ les timers et les écritures de RAM. Le rejeu retrouve le PCM de la carte **à l
 veuille dire quelque chose.
 
 **Et il faut dire jusqu'où, parce que ce n'était pas jusqu'au bout.** Ces 229 991 échantillons sont
-**300 images**, la valeur par défaut de `rejouer.cmd`. Lancé le 2026-10-28 sur la scène entière — 4 200
+**300 images**, la valeur par défaut de `replay.cmd`. Lancé le 2026-10-28 sur la scène entière — 4 200
 images, 3 219 865 échantillons par puce — **ce contrôle échouait** :
 
 | puce | première divergence | ce que le rejeu rendait | ce que la carte avait produit |
@@ -204,7 +204,7 @@ cette divergence se cachait est le plus instructif de l'affaire.
 
 ### Ce que la mesure disait avant de savoir
 
-1. **Ce n'était pas une divergence entre les deux cœurs.** Le second contrôle, `mame` contre `maison` sur
+1. **Ce n'était pas une divergence entre les deux cœurs.** Le second contrôle, `mame` contre `own` sur
    la même trace de 4 200 images, disait **IDENTIQUES** sur les cinq flux. L'identité des cœurs tenait donc
    sur la scène entière ; c'était **la complétude de la trace** qui ne tenait que sur 300 images.
 2. **L'étendue, et c'est elle qui a orienté.** Non pas un échantillon isolé : **84,7 % des valeurs après la
@@ -240,14 +240,14 @@ une valeur non nulle y va et que le programme DSP s'en sert. Le contrôle ne men
 |---|---|
 | **une seule porte** | `scsp::regle_miroir_madrs` et `scsp::miroir_madrs` dans `scsp_select.h` — dont l'en-tête nommait déjà ce manque. Le `dynamic_cast` ne vit plus dans `soundboard.cpp` |
 | **l'ordre** | le miroir se pose **avant** que l'enregistreur existe, et l'enregistreur le **relit de la puce** au lieu qu'on pense à le lui dire |
-| **la trace le porte** | en-tête **version 2** : `# scsp-trace 2 puce=N horloge=H ram=B miroir=0|1`, et le rejeu le pose avant la première ligne |
+| **la trace le porte** | en-tête **version 3** : `# scsp-trace 3 chip=N clock=H ram=B mirror=0|1`, et le rejeu le pose avant la première ligne |
 | **une trace v1 est refusée** | avec un message qui dit quoi faire, et non devinée — supposer est précisément ce qui a coûté cette divergence |
 
 **Vérifié le 2026-10-28, scène entière**, et les trois contrôles comptent ensemble :
 
 | | |
 |---|---|
-| `tools/son/rejouer.cmd fvipers2 tools/scripts/fv2-fight.txt 4200 mame maison` | **TOUT CONCORDE** — les quatre contrôles, 3 219 865 échantillons par puce, les deux puces |
+| `tools/sound/replay.cmd fvipers2 tools/scripts/fv2-fight.txt 4200 mame maison` | **TOUT CONCORDE** — les quatre contrôles, 3 219 865 échantillons par puce, les deux puces |
 | `make test` | les dix tests, **tous les cas passent**, les deux cœurs là où le test prend un nom de cœur |
 | `vf3run --frames 4200 --rec --wav`, chaque cœur | même empreinte **`9A2310F8AF000E09EB18BD114852B003`** — le correctif ne change pas une valeur du son |
 
@@ -265,7 +265,7 @@ Le lot 1 du 2026-10-24 a coupé le corps du DSP en deux chemins (`docs/scsp_audi
 ce portage, c'est le chemin maigre qui tourne, et il est vérifié à l'octet ; l'autre n'était vérifié par rien,
 et c'était le premier test à écrire si ce portage servait un jour un troisième jeu.
 
-**Il est écrit** (`tools/son/test_scspdsp.cpp`, §2) : `Run<USES_ALL>` est exercé par onze des seize cas, sur des
+**Il est écrit** (`tools/sound/test_scspdsp.cpp`, §2) : `Run<USES_ALL>` est exercé par onze des seize cas, sur des
 programmes qui posent les quatre contrôles ensemble puis chacun seul, et sur le programme même des jeux avec
 `uses` forcé — ce dernier cas étant celui qui dit que **les deux corps s'accordent**. Quatre fautes injectées
 dans le corps générique ont bien fait tomber le test.

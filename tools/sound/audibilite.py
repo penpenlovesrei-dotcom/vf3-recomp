@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deux WAV du meme passage : l'ecart entre eux passe-t-il au-dessus du seuil d'audition ?
 
-  tools/son/audibilite.py <wav_a> <wav_b> [--noms "a,b"] [--spl 96] [--bruit 30] [--pires 8]
+  tools/sound/audibilite.py <wav_a> <wav_b> [--noms "a,b"] [--spl 96] [--bruit 30] [--pires 8]
 
 Pourquoi cet outil : « je n'entends pas de difference » est une information, pas une mesure -- elle
 depend du casque, de la piece, de l'attention et du passage. Ce qui se mesure, c'est le rapport
@@ -50,7 +50,7 @@ sont legitimes et ce sont deux questions :
     NMR faible -> on ne le detectera pas, meme si l'un des deux est grossierement faux
 
 Pour « est-ce grave », il faut regarder le niveau, le spectre et la correlation
-(tools/son/mesurer-madrs.py), pas celui-ci. Ne jamais lire ce programme comme une mesure de gravite.
+(tools/sound/mesurer-madrs.py), pas celui-ci. Ne jamais lire ce programme comme une mesure de gravite.
 
 Les limites, dites d'avance : pas de distinction tonal/bruite, pas de masquage temporel (ni pre- ni
 post-), pas de modele d'integration de la sonie, seuil absolu approche d'ISO 226, et le niveau de

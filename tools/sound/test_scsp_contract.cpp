@@ -17,7 +17,7 @@
 // that a filter which silently drops lines looks exactly like a test that passes.
 //
 // PART 2 is skipped, with a visible line, when build/fv2-son-68000.bin is absent -- it is extracted from a
-// ROM the repository does not carry (tools/son/extraire-son.py). PART 1 always runs.
+// ROM the repository does not carry (tools/sound/extraire-son.py). PART 1 always runs.
 #include "scsp_contract.h"
 
 #include <cstdio>
@@ -28,27 +28,27 @@
 
 namespace {
 
-int echecs = 0;
+int failures = 0;
 
-void ok(const char *quoi, const char *detail)
+void ok(const char *what, const char *detail)
 {
-	printf("  ok    %-34s %s\n", quoi, detail);
+	printf("  ok    %-34s %s\n", what, detail);
 }
 
-void rate(const char *quoi, const char *detail)
+void rate(const char *what, const char *detail)
 {
-	printf("  ECHEC %-34s %s\n", quoi, detail);
-	++echecs;
+	printf("  ECHEC %-34s %s\n", what, detail);
+	++failures;
 }
 
-std::string lire(const char *chemin)
+std::string read(const char *chemin)
 {
 	FILE *f = fopen(chemin, "rb");
 	if (!f) return {};
 	std::string s;
-	char tampon[65536];
+	char buffer[65536];
 	size_t n;
-	while ((n = fread(tampon, 1, sizeof tampon, f)) > 0) s.append(tampon, n);
+	while ((n = fread(buffer, 1, sizeof buffer, f)) > 0) s.append(buffer, n);
 	fclose(f);
 	return s;
 }
@@ -64,10 +64,10 @@ constexpr Alias ALIAS[] = {
 // Fields the implementation does not express as one (shift, mask) macro, checked by hand below.
 constexpr const char *SPECIAUX[] = { "SA_HI", "SA_LO", "LSA", "LEA" };
 
-bool est_special(const char *nom)
+bool est_special(const char *name)
 {
 	for (const char *s : SPECIAUX)
-		if (!strcmp(s, nom)) return true;
+		if (!strcmp(s, name)) return true;
 	return false;
 }
 
@@ -79,22 +79,22 @@ const char *nom_source(const char *contrat)
 }
 
 // Finds `#define NOM(...) ((...data[0xN] >> 0xS) & 0xMMMM)` and returns the triple.
-bool macro(const std::string &src, const char *nom, unsigned &mot, unsigned &dec, unsigned &masque)
+bool macro(const std::string &src, const char *name, unsigned &word, unsigned &dec, unsigned &mask)
 {
-	const std::string clef = std::string("#define ") + nom;
+	const std::string clef = std::string("#define ") + name;
 	for (size_t p = src.find(clef); p != std::string::npos; p = src.find(clef, p + 1)) {
 		// the name must end here, so TL does not match TLnnn
 		const char apres = src[p + clef.size()];
 		if (apres != '(' && apres != ' ' && apres != '\t') continue;
 		const size_t fin = src.find('\n', p);
-		const std::string ligne = src.substr(p, fin - p);
-		const size_t d = ligne.find("data[");
+		const std::string line = src.substr(p, fin - p);
+		const size_t d = line.find("data[");
 		if (d == std::string::npos) continue;
 		unsigned m = 0, s = 0, k = 0;
 		// data[0xN] or data[N], then >> 0xS, then & 0xMMMM
-		if (sscanf(ligne.c_str() + d, "data[0x%x] >> 0x%x) & 0x%x", &m, &s, &k) == 3
-		    || sscanf(ligne.c_str() + d, "data[%u] >> 0x%x) & 0x%x", &m, &s, &k) == 3) {
-			mot = m; dec = s; masque = k;
+		if (sscanf(line.c_str() + d, "data[0x%x] >> 0x%x) & 0x%x", &m, &s, &k) == 3
+		    || sscanf(line.c_str() + d, "data[%u] >> 0x%x) & 0x%x", &m, &s, &k) == 3) {
+			word = m; dec = s; mask = k;
 			return true;
 		}
 	}
@@ -104,37 +104,37 @@ bool macro(const std::string &src, const char *nom, unsigned &mot, unsigned &dec
 void partie1()
 {
 	printf("-- PARTIE 1 : les champs contre src/sound/scsp.cpp --\n");
-	const std::string src = lire("src/sound/scsp.cpp");
+	const std::string src = read("src/sound/scsp.cpp");
 	if (src.empty()) {
 		rate("src/sound/scsp.cpp", "introuvable ou vide -- la partie 1 ne peut pas tourner");
 		return;
 	}
 	unsigned vus = 0, specials = 0;
-	struct Bloc { const char *quoi; const scsp_contract::Champ *c; size_t n; };
+	struct Bloc { const char *what; const scsp_contract::Field *c; size_t n; };
 	const Bloc blocs[] = {
-		{ "fente",  scsp_contract::FENTE,  sizeof scsp_contract::FENTE  / sizeof(scsp_contract::Champ) },
-		{ "commun", scsp_contract::COMMUN, sizeof scsp_contract::COMMUN / sizeof(scsp_contract::Champ) },
+		{ "fente",  scsp_contract::SLOT,  sizeof scsp_contract::SLOT  / sizeof(scsp_contract::Field) },
+		{ "commun", scsp_contract::COMMON, sizeof scsp_contract::COMMON / sizeof(scsp_contract::Field) },
 	};
 	for (const Bloc &b : blocs)
 		for (size_t i = 0; i < b.n; i++) {
-			const scsp_contract::Champ &ch = b.c[i];
-			if (est_special(ch.nom)) { ++specials; continue; }
-			unsigned mot = 0, dec = 0, masque = 0;
+			const scsp_contract::Field &ch = b.c[i];
+			if (est_special(ch.name)) { ++specials; continue; }
+			unsigned word = 0, dec = 0, mask = 0;
 			char detail[160];
-			if (!macro(src, nom_source(ch.nom), mot, dec, masque)) {
-				snprintf(detail, sizeof detail, "aucune macro %s dans l'implementation", nom_source(ch.nom));
-				rate(ch.nom, detail);
+			if (!macro(src, nom_source(ch.name), word, dec, mask)) {
+				snprintf(detail, sizeof detail, "aucune macro %s dans l'implementation", nom_source(ch.name));
+				rate(ch.name, detail);
 				continue;
 			}
-			if (mot != ch.mot || dec != ch.decalage || masque != ch.masque) {
+			if (word != ch.word || dec != ch.shift_by || mask != ch.mask) {
 				snprintf(detail, sizeof detail,
 				         "contrat mot %x dec %x masque %04x ; implementation mot %x dec %x masque %04x",
-				         ch.mot, ch.decalage, ch.masque, mot, dec, masque);
-				rate(ch.nom, detail);
+				         ch.word, ch.shift_by, ch.mask, word, dec, mask);
+				rate(ch.name, detail);
 				continue;
 			}
-			snprintf(detail, sizeof detail, "%s mot %x, decalage %x, masque %04x", b.quoi, mot, dec, masque);
-			ok(ch.nom, detail);
+			snprintf(detail, sizeof detail, "%s mot %x, decalage %x, masque %04x", b.what, word, dec, mask);
+			ok(ch.name, detail);
 			++vus;
 		}
 	// SA, LSA and LEA are whole words in the implementation, not (shift, mask) fields.
@@ -148,27 +148,27 @@ void partie1()
 		// Tolerant au blanc : on cherche la macro puis data[0xN] sur sa ligne, et on lit N. Une
 		// comparaison de chaine exacte avait echoue ici sur deux espaces, ce que ce test a attrape --
 		// c'est son travail, mais la rigidite etait la mienne et pas celle de l'implementation.
-		const auto mot_entier = [&src](const char *nom, unsigned attendu) {
-			const std::string clef = std::string("#define ") + nom + "(slot)";
+		const auto mot_entier = [&src](const char *name, unsigned expected) {
+			const std::string clef = std::string("#define ") + name + "(slot)";
 			const size_t p = src.find(clef);
 			char detail[160];
-			if (p == std::string::npos) { rate(nom, "macro introuvable"); return; }
+			if (p == std::string::npos) { rate(name, "macro introuvable"); return; }
 			const size_t fin = src.find('\n', p);
-			const std::string ligne = src.substr(p, fin - p);
+			const std::string line = src.substr(p, fin - p);
 			unsigned n = 0;
-			const size_t d = ligne.find("data[");
-			if (d == std::string::npos || sscanf(ligne.c_str() + d, "data[0x%x])", &n) != 1) {
-				snprintf(detail, sizeof detail, "la macro n'est plus un mot entier : %s", ligne.c_str());
-				rate(nom, detail);
+			const size_t d = line.find("data[");
+			if (d == std::string::npos || sscanf(line.c_str() + d, "data[0x%x])", &n) != 1) {
+				snprintf(detail, sizeof detail, "la macro n'est plus un mot entier : %s", line.c_str());
+				rate(name, detail);
 				return;
 			}
-			if (n != attendu) {
-				snprintf(detail, sizeof detail, "contrat data[0x%x], implementation data[0x%x]", attendu, n);
-				rate(nom, detail);
+			if (n != expected) {
+				snprintf(detail, sizeof detail, "contrat data[0x%x], implementation data[0x%x]", expected, n);
+				rate(name, detail);
 				return;
 			}
 			snprintf(detail, sizeof detail, "mot entier, data[0x%x]", n);
-			ok(nom, detail);
+			ok(name, detail);
 		};
 		mot_entier("LSA", 0x2);
 		mot_entier("LEA", 0x3);
@@ -184,9 +184,9 @@ void partie1()
 void partie2()
 {
 	printf("\n-- PARTIE 2 : les constantes du pilote contre la ROM --\n");
-	const std::string rom = lire("build/fv2-son-68000.bin");
+	const std::string rom = read("build/fv2-son-68000.bin");
 	if (rom.size() < 0x80000) {
-		printf("  passee build/fv2-son-68000.bin absente : tools/son/extraire-son.py la fabrique\n");
+		printf("  passee build/fv2-son-68000.bin absente : tools/sound/extraire-son.py la fabrique\n");
 		printf("        depuis une ROM que le depot ne porte pas. La partie 1 a tourne.\n");
 		return;
 	}
@@ -218,27 +218,27 @@ void partie2()
 
 	// Les trois niveaux, recalcules depuis les SCILV du contrat.
 	for (const scsp_contract::Source &s : scsp_contract::SOURCES) {
-		if (!s.armee) {
+		if (!s.armed) {
 			const bool clair = (scsp_contract::INIT_418_42A[3] >> s.bit & 1) == 0;
-			clair ? ok(s.nom, "non armee dans SCIEB, comme le contrat le dit")
-			      : rate(s.nom, "le contrat la dit non armee, SCIEB la trouve armee");
+			clair ? ok(s.name, "non armee dans SCIEB, comme le contrat le dit")
+			      : rate(s.name, "le contrat la dit non armee, SCIEB la trouve armee");
 			continue;
 		}
-		const unsigned n = scsp_contract::niveau_de(s.bit);
-		const bool armee = (scsp_contract::INIT_418_42A[3] >> s.bit & 1) != 0;
-		if (n == s.niveau && armee) {
+		const unsigned n = scsp_contract::level_of(s.bit);
+		const bool armed = (scsp_contract::INIT_418_42A[3] >> s.bit & 1) != 0;
+		if (n == s.level && armed) {
 			snprintf(detail, sizeof detail, "bit %u, armee, niveau %u", s.bit, n);
-			ok(s.nom, detail);
+			ok(s.name, detail);
 		} else {
 			snprintf(detail, sizeof detail, "bit %u : armee %d, niveau calcule %u, contrat %u",
-			         s.bit, int(armee), n, s.niveau);
-			rate(s.nom, detail);
+			         s.bit, int(armed), n, s.level);
+			rate(s.name, detail);
 		}
 	}
 
 	// La table de hauteur : 192 mots croissants, puis le bouclage.
 	{
-		const unsigned base = scsp_contract::TABLE_FNS_ROM, n = scsp_contract::MOTS_PAR_OCTAVE;
+		const unsigned base = scsp_contract::FNS_ROM_TABLE, n = scsp_contract::MOTS_PAR_OCTAVE;
 		bool croissants = true;
 		unsigned maxi = 0;
 		for (unsigned k = 0; k + 1 < n; k++) {
@@ -246,16 +246,16 @@ void partie2()
 			if (u16(base + 2 * k) > maxi) maxi = u16(base + 2 * k);
 		}
 		if (u16(base + 2 * (n - 1)) > maxi) maxi = u16(base + 2 * (n - 1));
-		const bool boucle = u16(base + 2 * n) < u16(base + 2 * (n - 1));
+		const bool loop = u16(base + 2 * n) < u16(base + 2 * (n - 1));
 		const bool tient  = maxi <= 0x3FF;
-		if (croissants && boucle && tient) {
+		if (croissants && loop && tient) {
 			snprintf(detail, sizeof detail,
 			         "%u mots croissants jusqu'a %04x, et le %u-ieme reboucle : une octave",
 			         n, maxi, n);
 			ok("la table de 0x603D62", detail);
 		} else {
 			snprintf(detail, sizeof detail, "croissants %d, bouclage %d, tient dans FNS %d (max %04x)",
-			         int(croissants), int(boucle), int(tient), maxi);
+			         int(croissants), int(loop), int(tient), maxi);
 			rate("la table de 0x603D62", detail);
 		}
 	}
@@ -269,8 +269,8 @@ int main()
 	partie1();
 	partie2();
 	printf("\n");
-	if (echecs) {
-		printf("%d echec(s). Le contrat et ce qu'il decrit ont divergé : corriger l'un ou l'autre,\n", echecs);
+	if (failures) {
+		printf("%d echec(s). Le contrat et ce qu'il decrit ont divergé : corriger l'un ou l'autre,\n", failures);
 		printf("et pas le test.\n");
 		return 1;
 	}

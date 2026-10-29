@@ -104,9 +104,9 @@ void scsp_mame::midi_in(std::uint8_t byte)
 // -----------------------------------------------------------------------------------------------------
 namespace {
 
-std::unique_ptr<scsp::core> fabrique_mame(scsp::u32 horloge, scsp::u16 *ram, scsp::u32 ram_octets, scsp::sink &puits)
+std::unique_ptr<scsp::core> fabrique_mame(scsp::u32 clock, scsp::u16 *ram, scsp::u32 ram_bytes, scsp::sink &snk)
 {
-	return std::make_unique<scsp_mame>(horloge, ram, ram_octets, puits);
+	return std::make_unique<scsp_mame>(clock, ram, ram_bytes, snk);
 }
 
 bool pose_miroir_mame(scsp::core &c, bool on)
@@ -127,7 +127,7 @@ bool lit_gain_mame(const scsp::core &c, float &out)
 	return false;
 }
 
-const scsp::inscription INSCRIPTION_MAME = { "mame", fabrique_mame, pose_miroir_mame, lit_miroir_mame, lit_gain_mame };
-const scsp::inscrit INSCRIT_MAME{ INSCRIPTION_MAME };
+const scsp::registration INSCRIPTION_MAME = { "mame", fabrique_mame, pose_miroir_mame, lit_miroir_mame, lit_gain_mame };
+const scsp::registered INSCRIT_MAME{ INSCRIPTION_MAME };
 
 } // namespace

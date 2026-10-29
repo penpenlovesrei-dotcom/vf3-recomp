@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Desassemble le programme 68000 de la carte son, et cherche dedans.
 
-  tools/son/desas_son.py <image.bin> --fonctions
-  tools/son/desas_son.py <image.bin> --at 600120 [lignes]
-  tools/son/desas_son.py <image.bin> --cherche 1007c0 [1007ff]
-  tools/son/desas_son.py <image.bin> --carte
+  tools/sound/desas_son.py <image.bin> --fonctions
+  tools/sound/desas_son.py <image.bin> --at 600120 [lignes]
+  tools/sound/desas_son.py <image.bin> --cherche 1007c0 [1007ff]
+  tools/sound/desas_son.py <image.bin> --carte
 
-L'image est celle que tools/son/extraire-son.py ecrit : la ROM son remise dans l'ordre du 68000,
+L'image est celle que tools/sound/extraire-son.py ecrit : la ROM son remise dans l'ordre du 68000,
 basee a 0x600000 comme la carte la mappe (src/sound/soundboard.h).
 
 Pourquoi cet outil a cote de Ghidra : Ghidra sert a LIRE une fonction, celui-ci a CHERCHER dans

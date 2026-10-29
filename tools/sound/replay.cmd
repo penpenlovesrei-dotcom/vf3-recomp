@@ -1,11 +1,11 @@
 @echo off
-rem rejouer.cmd : prend une trace d'acces au SCSP sur une scene, et la rejoue.
+rem replay.cmd : prend une trace d'acces au SCSP sur une scene, et la rejoue.
 rem
 rem Point 2 de l'etape 2 de scsp/docs/scsp_migration_plan.md. Deux controles en une commande :
 rem   1. le rejeu retrouve-t-il le PCM que la carte a produit ? (la trace est-elle complete)
 rem   2. deux coeurs rendent-ils la meme chose ? (la comparaison, quand il y en aura deux)
 rem
-rem   tools\son\rejouer.cmd [jeu] [script] [images] [coeur-a] [coeur-b]
+rem   tools\son\replay.cmd [jeu] [script] [images] [coeur-a] [coeur-b]
 rem
 rem Sans arguments : fvipers2, fv2-fight.txt, 300 images, mame contre mame.
 rem Rien n'est joue a l'ecran : vf3run est sans interface.
@@ -35,8 +35,8 @@ if not exist "build\bin\vf3run.exe" (
   echo build\bin\vf3run.exe manque.
   goto :fin
 )
-if not exist "build\bin\rejouer.exe" (
-  echo build\bin\rejouer.exe manque : make build/bin/rejouer
+if not exist "build\bin\replay.exe" (
+  echo build\bin\replay.exe manque : make build/bin/replay
   goto :fin
 )
 
@@ -56,11 +56,11 @@ set FAUTES=0
 for %%P in (0 1) do (
   echo.
   echo ---- puce %%P : la trace est-elle complete ? ----
-  "build\bin\rejouer.exe" "%OUT%\tr.%%P" --contre "%OUT%\tr.%%P.pcm"
+  "build\bin\replay.exe" "%OUT%\tr.%%P" --against "%OUT%\tr.%%P.pcm"
   if errorlevel 1 set /a FAUTES+=1
   echo.
   echo ---- puce %%P : %COEURA% contre %COEURB% ----
-  "build\bin\rejouer.exe" "%OUT%\tr.%%P" %COEURA% %COEURB%
+  "build\bin\replay.exe" "%OUT%\tr.%%P" %COEURA% %COEURB%
   if errorlevel 1 set /a FAUTES+=1
 )
 

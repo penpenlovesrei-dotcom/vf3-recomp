@@ -5,11 +5,11 @@ derive from MAME's: it is written from `src/sound/scsp_contract.h` -- the hardwa
 their provenance -- and from the seven block tests, which are here.
 
     make test      the seven block tests
-    make mesurer   what the core costs, item by item
+    make measure   what the core costs, item by item
 
 ## What is here, and what is not
 
-The core (`scsp_maison`), its effects DSP (`dsp_maison`), the interface (`scsp_core.h`), the contract, the
+The core (`scsp_own`), its effects DSP (`dsp_own`), the interface (`scsp_core.h`), the contract, the
 selector, the trace format, the bench and the seven block tests. Plus the documents, which are the bulk of
 the work: the knowledge weighs more than the code.
 
@@ -31,7 +31,7 @@ tests.
 ## Where it comes from, and how it gets back
 
 This repository is a `git subtree` of `fv2-recomp`, under the prefix `scsp/`. The paths are the same on
-both sides: `src/sound/scsp_maison.cpp` here is `scsp/src/sound/scsp_maison.cpp` there, so a `diff`
+both sides: `src/sound/scsp_own.cpp` here is `scsp/src/sound/scsp_own.cpp` there, so a `diff`
 between the two reads without translation. From the port, in both directions:
 
     git subtree push --prefix=scsp scsp main      what changed here goes there
@@ -42,5 +42,5 @@ author. That is not the same thing as a dumped archive, and it is the whole poin
 
 **The history starts the day the subsystem took its prefix**, not at its first line. The forty commits
 that made it -- the contract, the seven block tests, the DSP, every measurement -- are in `fv2-recomp`,
-where `git log --follow scsp/src/sound/scsp_maison.cpp` walks back through all of them. A `subtree split`
+where `git log --follow scsp/src/sound/scsp_own.cpp` walks back through all of them. A `subtree split`
 cannot carry them across: before the move, the prefix `scsp/` did not exist.

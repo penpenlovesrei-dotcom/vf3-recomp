@@ -1,6 +1,6 @@
 # Reprise — le son, la journée du 2026-10-28
 
-**Lis `scsp/docs/son.md` d'abord** : il dit où est quoi. Ce fichier-ci ne dit que ce qui a bougé ce jour-là, ce
+**Lis `scsp/docs/sound.md` d'abord** : il dit où est quoi. Ce fichier-ci ne dit que ce qui a bougé ce jour-là, ce
 qui est vérifié, et ce qui reste — avec, à chaque fois, l'instrument qui l'a établi.
 
 Vingt commits, de `7876901` à `d62f732`, poussés sur `mine/fv2`. **Les six points de la liste de reprise du
@@ -18,7 +18,7 @@ maintenant. Détail en `scsp_audit.md` §4 sexies.
 2. **`vf3run` ne fait tourner la carte son qu'avec `--wav`.** Sans lui la sonde comptait zéro et l'affichait
    comme une mesure. L'outil le dit au lancement, et le rapport dit « rien mesuré ».
 3. le rapport n'arrivait qu'aux multiples de 500 images : un rapport final couvre le reste.
-4. les portées `SCSP` et `DSP` ne vivaient que dans le code de MAME ; sur `VF3_SCSP_COEUR=maison` le rapport
+4. les portées `SCSP` et `DSP` ne vivaient que dans le code de MAME ; sur `VF3_SCSP_CORE=own` le rapport
    donnait **97 % au 68000, zéro aux voix, zéro au DSP** — un chiffre faux, pas un trou.
 
 ## 2. Ce que le cœur du projet coûte, dans le jeu
@@ -26,7 +26,7 @@ maintenant. Détail en `scsp_audit.md` §4 sexies.
 Trois passages par cœur, alternés, fenêtres 1500-4200, 18 mesures par cœur, médiane. Les six WAV identiques
 à l'octet.
 
-| | `mame` | `maison` | écart |
+| | `mame` | `own` | écart |
 |---|---|---|---|
 | 68000 (témoin : même code) | 1 015 kc | 947 kc | **−68 kc** — le jeu de la mesure |
 | voix | 443 | 484 | +41 kc, **sous le jeu : ne se lit pas** |
@@ -48,14 +48,14 @@ Toute la mesure est en `scsp_validation.md` §3 c.
 
 ## 4. Sept tests ne traînent plus le cœur de MAME
 
-`banc_scsp.h` incluait les deux classes concrètes pour deux aiguillages de trois lignes. **Chaque cœur
+`scsp_bench.h` incluait les deux classes concrètes pour deux aiguillages de trois lignes. **Chaque cœur
 s'inscrit maintenant dans son propre `.cpp`** (`scsp::inscrit`) : le sélecteur ne nomme plus aucune classe
-concrète, et **ce qui est lié décide ce qui existe**. `make test-sans-mame` construit les sept tests de bloc
-avec `scsp_select.o`, `scsp_maison.o`, `dsp_maison.o` et rien d'autre, et `make test` le refait à chaque fois.
+concrète, et **ce qui est lié décide ce qui existe**. `make test-without-mame` construit les sept tests de bloc
+avec `scsp_select.o`, `scsp_own.o`, `dsp_own.o` et rien d'autre, et `make test` le refait à chaque fois.
 
 ## 5. Le DSP par caractéristique : ce n'est aucune instruction, c'est le socle
 
-`mesurer-coeur --dsp`, des programmes de 112 pas où tous les pas ne font qu'une chose, les deux cœurs côte à
+`measure-core --dsp`, des programmes de 112 pas où tous les pas ne font qu'une chose, les deux cœurs côte à
 côte, coût **propre** socle déduit (`scsp_audit.md` §4 septies). Le socle — 112 pas qui ne font rien — coûte
 **+19 %** au cœur du projet, et le témoin de la forme du jeu a un coût propre **quasi nul**. Le cœur du
 projet est **meilleur** sur la moitié de la table ; il n'est moins bon que sur l'accès mémoire.
@@ -71,7 +71,7 @@ de saut, pas de division, le produit 64 bits est identique chez MAME, et les deu
 
 Défaits (`scsp_audit.md` §4 octies). Cinq octets de plus dans `Pas` : **+7 %**. Les mêmes décisions dans les
 bits libres du mot : **+16 %**. Et un faux gain de 6,9 % a failli être gardé — `mame` dérivait dans le
-dénominateur. D'où `mesurer-coeur --socle`, assez rapide pour entrelacer référence et variante.
+dénominateur. D'où `measure-core --baseline`, assez rapide pour entrelacer référence et variante.
 
 ## 8. Les quatre champs du DSP : cherchés partout, puis éprouvés
 
@@ -86,7 +86,7 @@ quatre fautes injectées sont attrapées **chacune par son cas**.
 chercher, et §4 septies comme §4 octies s'étaient arrêtées sur cette phrase — toutes deux la gardent
 maintenant, datées, avec le renvoi à la mesure qui les corrige.
 
-| par pas de DSP | rapport `maison` / `mame` |
+| par pas de DSP | rapport `own` / `mame` |
 |---|---|
 | instructions retirées | **×1,144** |
 | branchements mal prédits | **×1,010 — identiques** |
@@ -101,7 +101,7 @@ l'arithmétique (§4 nonies le détaille).
 
 MAME porte `u16 *const __restrict rp = ram;` dans son en-tête de boucle ; le projet ne l'avait pas, et c'est
 une vraie promesse avec une explication complète. **Elle ne gagne rien** : −0,08 % au socle, plat sur le jeu.
-Défaite. Et le rapport `maison`/`mame`, qui protégeait des deux lots, **devient un piège** dès qu'un seul
+Défaite. Et le rapport `own`/`mame`, qui protégeait des deux lots, **devient un piège** dès qu'un seul
 côté change : c'est l'absolu du côté modifié qu'il faut lire.
 
 ## 11. Situées jusqu'à la fonction, et pas plus bas
@@ -116,8 +116,8 @@ lignes ; le décalage d'échantillonnage sans PEBS rend les histogrammes par ins
 
 ## 12. Les variantes jugées au compteur, et le classement se renverse
 
-Six variantes construites par `batir-variantes.py`, chacune **passée aux dix tests** avant d'être gardée, et
-jugées par `mesurer-variantes.cmd` sur les **deux** programmes :
+Six variantes construites par `build-variants.py`, chacune **passée aux dix tests** avant d'être gardée, et
+jugées par `measure-variants.cmd` sur les **deux** programmes :
 
 | | socle | **forme du jeu** |
 |---|---|---|
@@ -129,7 +129,7 @@ jugées par `mesurer-variantes.cmd` sur les **deux** programmes :
 
 **La grande gagnante du socle est la pire du jeu** : elle ajoute un test par pas pour éviter un calcul dont
 37 pas sur 112 ont besoin. Le socle **situe** un coût, il ne dit pas ce qu'une modification rend. D'où
-`mesurer-coeur --jeu`. L'instrument est reproductible **à 0,07 point près** d'une séance à l'autre.
+`measure-core --game`. L'instrument est reproductible **à 0,07 point près** d'une séance à l'autre.
 
 **Et les cas 9 à 13 ont arrêté `sortie_groupee` au premier tour** : son masque groupé englobait les écritures
 de `FRCL` et d'`ADRL`. Elle passait tous les autres tests, le rejoueur, et rendait le WAV identique — parce
@@ -161,13 +161,13 @@ circulation tient en une ligne dans chaque sens :
     git subtree push --prefix=scsp scsp main
     git subtree pull --prefix=scsp scsp main
 
-`tools/son/exporter-scsp.py` a disparu : il recopiait les fichiers dans un dossier neuf, donc sans passé.
+`tools/sound/export-scsp.py` a disparu : il recopiait les fichiers dans un dossier neuf, donc sans passé.
 `scsp/LICENSE` est né avec le dépôt — le MIT sans sa liste de tiers, puisque la liste ne s'applique plus :
 rien là-bas ne vient de MAME, et la frontière de licence passe exactement à la limite du préfixe.
 
 **L'histoire ne traverse pas, et il faut le dire.** `git subtree split` suit un chemin, et avant le
 déplacement le chemin `scsp/` n'existait pas : le dépôt autonome commence au jour du préfixe. Les quarante
-commits qui ont fait le cœur restent ici, où `git log --follow scsp/src/sound/scsp_maison.cpp` les remonte
+commits qui ont fait le cœur restent ici, où `git log --follow scsp/src/sound/scsp_own.cpp` les remonte
 tous. Je les ai reconstruits pour voir (filtre sur les 30 anciens chemins, 40 commits, les mêmes blobs au
 sommet) ; les greffer coûtait **une fusion à chaque synchronisation**, et le choix a été de garder
 `subtree push` en une ligne. Le README du dépôt porte cette phrase, pour qui arrive par là.
@@ -231,20 +231,20 @@ Measuring it was stopped before it finished, so the figure above is the only one
 is written in English from here, this paragraph included; the French around it waits for that decision.
 
 Les six points de la liste du matin sont fermés, et ce que j'ai pu nommer en chemin — le pic
-d'attente isolé à 7,4 ms, les cycles de `maison`, l'assembleur sous la fonction — a été **mesuré et écarté**,
+d'attente isolé à 7,4 ms, les cycles de `own`, l'assembleur sous la fonction — a été **mesuré et écarté**,
 pas laissé ouvert.
 
 ## Les outils nouveaux ou changés ce jour-là
 
 | | |
 |---|---|
-| `mesurer-coeur --dsp` | le DSP par caractéristique, les deux cœurs, socle déduit |
-| `mesurer-coeur --socle [cœur]` | le socle seul ; avec un nom de cœur, un seul par processus |
-| `mesurer-coeur --jeu <cœur>` | **le programme de la forme du jeu** — le socle est artificiel |
-| `make test-sans-mame` | les sept tests de bloc liés sans une ligne de MAME |
-| `batir-variantes.py`, `variantes-dsp.py` | une variante par exe, chacune passée aux dix tests |
-| `mesurer-variantes.cmd [socle\|jeu]` | le jugement au compteur matériel — fenêtre **administrateur** |
+| `measure-core --dsp` | le DSP par caractéristique, les deux cœurs, socle déduit |
+| `measure-core --baseline [cœur]` | le socle seul ; avec un nom de cœur, un seul par processus |
+| `measure-core --game <cœur>` | **le programme de la forme du jeu** — le socle est artificiel |
+| `make test-without-mame` | les sept tests de bloc liés sans une ligne de MAME |
+| `build-variants.py`, `dsp-variants.py` | une variante par exe, chacune passée aux dix tests |
+| `measure-variants.cmd [socle\|jeu]` | le jugement au compteur matériel — fenêtre **administrateur** |
 | `git subtree push --prefix=scsp` | le dépôt SCSP autonome, sans rien recopier |
 | `mesurer-concurrence.cmd` | cinq passages, **les deux cœurs** — pour le portable |
 | `VF3_SND_PROF=1` | sans `VF3_PROF`, exige `--wav`, et vaut pour les deux cœurs |
-| trace `# scsp-trace 2` | l'en-tête porte `miroir=0|1` ; une trace v1 est refusée |
+| trace `# scsp-trace 3` | l'en-tête porte `mirror=0|1` ; une trace v1 ou v2 est refusée |

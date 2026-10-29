@@ -10,7 +10,7 @@
 // 44.1 kHz.
 #pragma once
 #include "scsp.h"
-// (plus de scsp_maison.h : le miroir MADRS passait par un dynamic_cast ecrit ici, il passe
+// (plus de scsp_own.h : le miroir MADRS passait par un dynamic_cast ecrit ici, il passe
 // maintenant par scsp_select.h, et la carte ne nomme donc plus que le coeur dont elle tire ses
 // trois extras -- celui de MAME)
 #include "scsp_mame.h"
@@ -83,7 +83,7 @@ private:
 	std::unique_ptr<Bus> bus;
 	std::unique_ptr<m68000_device> cpu;
 	// LES DEUX PUCES, PAR LEUR INTERFACE SEULE (src/sound/scsp_core.h), et le coeur se choisit :
-	// VF3_SCSP_COEUR=mame (par defaut) ou maison, le SCSP du projet (src/sound/scsp_maison.h).
+	// VF3_SCSP_CORE=mame (par defaut) ou maison, le SCSP du projet (src/sound/scsp_own.h).
 	std::unique_ptr<scsp::core> scsp[2];
 
 	// CE QUE LA CARTE DEMANDE AU-DELA DE LA PUCE, et qui n'est pas dans l'interface parce que ce n'est pas
@@ -102,7 +102,7 @@ private:
 	// enveloppe la puce et note chaque appel (src/sound/scsp_trace.h), si bien que la trace passe par UNE
 	// porte au lieu d'etre posee a huit endroits -- et qu'un neuvieme appel ajoute un jour ne peut pas y
 	// echapper en silence. Les `->device()` restent sur scsp[n] : ils ne sont pas l'affaire de la puce.
-	std::unique_ptr<scsp::enregistreur> trace[2];
+	std::unique_ptr<scsp::recorder> trace[2];
 	scsp::core *tete[2] = { nullptr, nullptr };
 	// Ce que la carte branche sous chaque puce : trois methodes au lieu de cinq std::function.
 	struct Sink final : scsp::sink {

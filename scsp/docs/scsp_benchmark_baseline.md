@@ -1,6 +1,6 @@
 # Le banc du son — la ligne de base, et chaque lot mesuré contre elle
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/sound.md](son.md).
 
 Mesuré le 2026-10-24. Machine de Frédéric (Windows 11, g++ 16.1.0 MSYS2, `-O2 -g`), branche `fv2`, ligne de
 base au commit `335c050`. **Un seul banc à la fois** : deux runs lancés ensemble se disputent les cœurs et les
@@ -21,10 +21,10 @@ VF3_PROF=1 build/bin/vf3run.exe "$ROMS/fvipers2.zip" \
 VF3_PROF=1 VF3_SND_PROF=1 build/bin/vf3run.exe ... --wav son.wav --quiet
 
 # le meme, coeur par coeur : trois passages alternes par coeur, fenetres 1500-4200 (audit S4 sexies)
-VF3_PROF=1 VF3_SND_PROF=1 VF3_SCSP_COEUR=mame|maison build/bin/vf3run.exe ... --rec --wav son.wav --quiet
+VF3_PROF=1 VF3_SND_PROF=1 VF3_SCSP_CORE=mame|maison build/bin/vf3run.exe ... --rec --wav son.wav --quiet
 
 # et : le son n'a pas bouge (contre un commit de reference, octet par octet)
-tools\son\comparer-son.cmd fvipers2 tools\scripts\fv2-fight.txt 4200
+tools\son\compare-sound.cmd fvipers2 tools\scripts\fv2-fight.txt 4200
 ```
 
 `$ROMS` = `C:\Users\frede\Documents\SEGA Model 3\ROMs`. `VF3_PROF=1` imprime une ligne toutes les 500 images ;
@@ -150,7 +150,7 @@ doit chercher ailleurs (les tables de panoramique de 256 Ko, l'enveloppe, le LFO
 
 ## Virtua Fighter 3 : vérifié, pas chiffré
 
-Le harnais a été lancé sur `vf3.zip` (`tools\son\comparer-son.cmd vf3 tools\scripts\vf3-match.txt 1200`, puis
+Le harnais a été lancé sur `vf3.zip` (`tools\son\compare-sound.cmd vf3 tools\scripts\vf3-match.txt 1200`, puis
 2400 images) : **son identique à l'octet** dans les deux cas. Son programme DSP a aussi 0 pas qui posent
 `FRCL`, `ADRL`, `YRL` ou `NEGB`, donc il prend le corps maigre lui aussi.
 

@@ -50,7 +50,7 @@ Tout est derrière un lanceur `.cmd` à la racine, et tous épinglent `VF3_DATA`
 | construire | `construire.cmd` | |
 | vérifier | `verifier-vf3.cmd` | |
 | où va le temps de la carte son | `VF3_SND_PROF=1` avec `VF3_PROF=1` | `scsp/docs/scsp_audit.md` |
-| le son n'a pas bougé d'un octet | `tools\son\comparer-son.cmd` | `scsp/docs/scsp_validation.md` |
+| le son n'a pas bougé d'un octet | `tools\son\compare-sound.cmd` | `scsp/docs/scsp_validation.md` |
 | les deux corps du DSP, testés | `make test` | `scsp/docs/scsp_validation.md` |
 
 Et le jeu tourne en **free play** : un seul octet de la NVRAM, `backup[0x17] = 27`.
@@ -732,7 +732,7 @@ scène. Celle-ci contient un combat, et la part des voix y monte.
 
 ### Le son n'a pas bougé d'un échantillon
 
-C'est la condition pour garder un lot, pas un bonus. `tools\son\comparer-son.cmd` construit un arbre de
+C'est la condition pour garder un lot, pas un bonus. `tools\son\compare-sound.cmd` construit un arbre de
 travail d'un commit de référence dans `C:\Temp\fv2-son-ref`, fait jouer la même scène aux deux `vf3run` et
 compare les WAV **octet par octet** :
 
@@ -744,7 +744,7 @@ compare les WAV **octet par octet** :
 ### Le trou que le premier lot a creusé, et qui est bouché
 
 Spécialiser le corps du DSP l'a coupé en deux chemins. Les deux jeux prennent le maigre, vérifié à l'octet ;
-**l'autre n'était vérifié par rien**. `make test` (`tools/son/test_scspdsp.cpp`) l'exerce : une référence qui
+**l'autre n'était vérifié par rien**. `make test` (`tools/sound/test_scspdsp.cpp`) l'exerce : une référence qui
 décode le MPRO **dans** la boucle, comme MAME et Supermodel le font encore, et seize cas qui comparent
 `EFREG`, `TEMP`, `MEMS`, `DEC` et les 524 288 mots de la ligne de retard après **chacun** de 64 échantillons.
 Onze cas atteignent `Run<USES_ALL>`, dont celui qui compte : le programme même des jeux avec `uses` forcé,
@@ -833,7 +833,7 @@ coûte rien (**zéro repatch sur 1500 images**), et le coût est le même avec u
 
 **Ce qui est proposé et pas fait** : annuler le **code** de ces deux commits — `scspdsp.cpp`, `scspdsp.h`,
 `scsp.cpp`, `sound_prof.h` — et **garder tout leur savoir**, les six documents `scsp/docs/scsp_*.md` et le banc
-d'essai `tools/son/test_scspdsp.cpp`, qui ne coûtent rien à l'exécution. Frédéric a demandé une pause avant
+d'essai `tools/sound/test_scspdsp.cpp`, qui ne coûtent rien à l'exécution. Frédéric a demandé une pause avant
 de décider.
 
 **Et une erreur à moi, consignée parce qu'elle a accusé quelqu'un.** J'ai désigné la session « gestion des
@@ -861,7 +861,7 @@ mesure, le jour même où il me l'avait reproché deux fois.
 
 > **Note sur le commit `b0eadeb`.** Il a emporté, sans que je le veuille, des lignes de ce journal qu'une
 > autre session avait écrites et pas encore commises — l'en-tête « État au 2026-10-24 » et le tableau des
-> outils du son (`VF3_SND_PROF`, `tools\son\comparer-son.cmd`, `scsp/docs/scsp_audit.md`,
+> outils du son (`VF3_SND_PROF`, `tools\son\compare-sound.cmd`, `scsp/docs/scsp_audit.md`,
 > `scsp/docs/scsp_validation.md`). **Elles sont d'elle, pas de moi.** `git status` montrait `REPRISE.md` modifié
 > avant que j'y touche et j'ai commis le fichier entier au lieu de ne commettre que mon ajout. La parade
 > existe et avait déjà servi le matin du 2026-10-24 : `git update-index --cacheinfo` pour ne mettre à l'index

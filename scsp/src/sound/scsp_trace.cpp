@@ -10,13 +10,13 @@ namespace scsp {
 namespace {
 
 // Beyond this, the trace does not start at a reset and the initial sweep would be a RAM dump.
-constexpr unsigned MOTS_NON_NULS_MAX = 4096;
+constexpr unsigned MAX_NONZERO_WORDS = 4096;
 
 } // namespace
 
-enregistreur::enregistreur(core &dessous, const char *fichier, unsigned puce, u32 horloge,
-                           const u16 *ram, u32 ram_octets)
-	: m_dessous(dessous)
+recorder::recorder(core &inner, const char *fichier, unsigned chip, u32 clock,
+                           const u16 *ram, u32 ram_bytes)
+	: m_inner(inner)
 {
 	m_f = fopen(fichier, "w");
 	if (!m_f) {
@@ -25,13 +25,13 @@ enregistreur::enregistreur(core &dessous, const char *fichier, unsigned puce, u3
 	}
 	// The initial sweep, and its guard: a trace must start at a reset, otherwise the RAM a replay would
 	// rebuild is not the one the chip had.
-	const u32 mots = ram_octets / 2;
+	const u32 mots = ram_bytes / 2;
 	unsigned n = 0;
 	for (u32 i = 0; i < mots; i++) if (ram[i]) n++;
-	if (n > MOTS_NON_NULS_MAX) {
+	if (n > MAX_NONZERO_WORDS) {
 		fprintf(stderr, "scsp_trace: %u non-zero RAM words at the start (more than %u): this trace does not"
 		                " begin at a reset, and a replay would not have the right RAM. Abandoned.\n",
-		        n, MOTS_NON_NULS_MAX);
+		        n, MAX_NONZERO_WORDS);
 		fclose(m_f);
 		m_f = nullptr;
 		return;
@@ -41,12 +41,12 @@ enregistreur::enregistreur(core &dessous, const char *fichier, unsigned puce, u3
 	// the board with no way to attribute it (scsp_select.h). It is READ BACK from the chip rather than
 	// taken as a parameter: that way there is nothing to remember to tell the recorder, which is the point.
 	bool porte = false;
-	const bool miroir = miroir_madrs(m_dessous, &porte);
+	const bool mirror = madrs_mirror_of(m_inner, &porte);
 	if (!porte)
 		fprintf(stderr, "scsp_trace: this core does not carry the MADRS mirror; the trace records the default"
 		                " (true), which the replay will therefore set as well\n");
-	fprintf(m_f, "# scsp-trace 2 puce=%u horloge=%u ram=%u miroir=%u\n", puce, horloge, ram_octets,
-	        unsigned(miroir));
+	fprintf(m_f, "# scsp-trace 3 chip=%u clock=%u ram=%u mirror=%u\n", chip, clock, ram_bytes,
+	        unsigned(mirror));
 	for (u32 i = 0; i < mots; i++)
 		if (ram[i]) fprintf(m_f, "d %x %x ffff\n", i, ram[i]);
 
@@ -58,141 +58,146 @@ enregistreur::enregistreur(core &dessous, const char *fichier, unsigned puce, u3
 		fprintf(stderr, "scsp_trace: %s does not open; the trace will have no PCM reference\n", pcm.c_str());
 }
 
-enregistreur::~enregistreur()
+recorder::~recorder()
 {
 	if (m_f) fclose(m_f);
 	if (m_pcm) fclose(m_pcm);
 }
 
-void enregistreur::ram_ecrite(u32 mot, u16 data, u16 masque)
+void recorder::ram_written(u32 word, u16 data, u16 mask)
 {
-	if (m_f) fprintf(m_f, "d %x %x %x\n", mot, data, masque);
+	if (m_f) fprintf(m_f, "d %x %x %x\n", word, data, mask);
 }
 
-void enregistreur::reset()
+void recorder::reset()
 {
 	// No line: a reset mid-trace would change the RAM under the replay without its knowing. In any case
 	// the board only rebuilds its cores at SoundBoard::reset, where the trace starts over.
-	m_dessous.reset();
+	m_inner.reset();
 }
 
-u16 enregistreur::read_reg(u32 mot)
+u16 recorder::read_reg(u32 word)
 {
-	if (m_f) fprintf(m_f, "r %x\n", mot);
-	return m_dessous.read_reg(mot);
+	if (m_f) fprintf(m_f, "r %x\n", word);
+	return m_inner.read_reg(word);
 }
 
-void enregistreur::write_reg(u32 mot, u16 data, u16 masque)
+void recorder::write_reg(u32 word, u16 data, u16 mask)
 {
-	if (m_f) fprintf(m_f, "w %x %x %x\n", mot, data, masque);
-	m_dessous.write_reg(mot, data, masque);
+	if (m_f) fprintf(m_f, "w %x %x %x\n", word, data, mask);
+	m_inner.write_reg(word, data, mask);
 }
 
-void enregistreur::run(u32 n, s32 *out)
+void recorder::run(u32 n, s32 *out)
 {
 	if (m_f) fprintf(m_f, "s %u\n", n);
-	m_dessous.run(n, out);
+	m_inner.run(n, out);
 	// AFTER the call, because what is kept is the result and not the request.
 	if (m_pcm && n) fwrite(out, sizeof(s32), std::size_t(n) * 2, m_pcm);
 }
 
-void enregistreur::timer_fired(int lequel)
+void recorder::timer_fired(int which)
 {
-	if (m_f) fprintf(m_f, "t %d\n", lequel);
-	m_dessous.timer_fired(lequel);
+	if (m_f) fprintf(m_f, "t %d\n", which);
+	m_inner.timer_fired(which);
 }
 
-void enregistreur::midi_in(u8 octet)
+void recorder::midi_in(u8 byte)
 {
-	if (m_f) fprintf(m_f, "m %x\n", octet);
-	m_dessous.midi_in(octet);
+	if (m_f) fprintf(m_f, "m %x\n", byte);
+	m_inner.midi_in(byte);
 }
 
-bool rejoue(const char *fichier, core &c, std::vector<u16> &ram, sortie &s, std::string *erreur)
+bool replay(const char *fichier, core &c, std::vector<u16> &ram, output &s, std::string *error)
 {
-	auto dis = [erreur](const std::string &quoi) { if (erreur) *erreur = quoi; return false; };
+	auto say = [error](const std::string &what) { if (error) *error = what; return false; };
 
 	FILE *f = fopen(fichier, "r");
-	if (!f) return dis(std::string("trace not found: ") + fichier);
+	if (!f) return say(std::string("trace not found: ") + fichier);
 
-	char ligne[256];
-	if (!fgets(ligne, sizeof ligne, f)) { fclose(f); return dis("empty trace"); }
-	unsigned puce = 0, horloge = 0, ram_octets = 0, version = 0, miroir = 1;
-	const int champs = sscanf(ligne, "# scsp-trace %u puce=%u horloge=%u ram=%u miroir=%u",
-	                          &version, &puce, &horloge, &ram_octets, &miroir);
-	if (champs == 4 && version == 1) {
+	char line[256];
+	if (!fgets(line, sizeof line, f)) { fclose(f); return say("empty trace"); }
+	unsigned chip = 0, clock = 0, ram_bytes = 0, version = 0, mirror = 1;
+	const int fields = sscanf(line, "# scsp-trace %u chip=%u clock=%u ram=%u mirror=%u",
+	                          &version, &chip, &clock, &ram_bytes, &mirror);
+	// A HEADER IN THE OLD SPELLING IS REFUSED, NOT GUESSED AT, and that rule has already paid for itself
+	// once. Version 1 did not state the MADRS mirror, which CHANGES THE SOUND; assuming it is precisely
+	// what made a replay diverge with no way to say whether it was the core or the trace. Version 2 said
+	// it, under French keys -- `puce=`, `horloge=`, `miroir=` -- which version 3 writes in English. The
+	// sscanf above matches neither, so both land here with a sentence that says what to do rather than a
+	// chip configured from zeros. A clear failure beats a false measurement.
+	if (version == 1 || version == 2) {
 		fclose(f);
-		// REFUSED, NOT GUESSED AT: a version 1 trace does not state the MADRS mirror, which changes the
-		// sound. Assuming it is precisely what made a replay diverge with no way to say whether it was the
-		// core or the trace. A clear failure beats a false measurement.
-		return dis("version 1 trace: it does not state the MADRS mirror, which changes the sound"
-		           " (scsp_select.h). Record it again with VF3_SCSP_TRACE; version 2 carries it.");
+		return say("version " + std::to_string(version) + " trace: version 1 does not state the MADRS"
+		           " mirror, which changes the sound (scsp_select.h), and version 2 states it under the"
+		           " old key names. Record it again with VF3_SCSP_TRACE; version 3 is what this build"
+		           " reads.");
 	}
-	if (champs != 5 || version != 2) {
+	if (fields != 5 || version != 3) {
 		fclose(f);
-		return dis("unknown header: " + std::string(ligne));
+		return say("unknown header: " + std::string(line));
 	}
 	// The mirror BEFORE the first line: words 0x7C0-0x7FF do not go to the same place depending on it, and
 	// the first of those writes comes early in the scene (sample 29 211, measured on 2026-10-28).
-	if (!regle_miroir_madrs(c, miroir != 0)) {
+	if (!set_madrs_mirror_on(c, mirror != 0)) {
 		fclose(f);
-		return dis("this core does not carry the MADRS mirror, which the trace asks for (scsp_select.h)");
+		return say("this core does not carry the MADRS mirror, which the trace asks for (scsp_select.h)");
 	}
-	if (ram_octets / 2 != ram.size())
-		return dis("the trace says " + std::to_string(ram_octets) + " bytes of RAM, the replay has "
+	if (ram_bytes / 2 != ram.size())
+		return say("the trace says " + std::to_string(ram_bytes) + " bytes of RAM, the replay has "
 		           + std::to_string(ram.size() * 2)), fclose(f), false;
 
 	// run()'s buffer, grown on demand: nothing is allocated per sample.
-	std::vector<s32> tampon;
-	unsigned long numero = 1;
-	while (fgets(ligne, sizeof ligne, f)) {
-		numero++;
-		const char k = ligne[0];
+	std::vector<s32> buffer;
+	unsigned long lineno = 1;
+	while (fgets(line, sizeof line, f)) {
+		lineno++;
+		const char k = line[0];
 		if (k == '#' || k == '\n' || k == '\0') continue;
 		unsigned a = 0, b = 0, d = 0;
 		switch (k) {
 		case 'd':
-			if (sscanf(ligne + 1, "%x %x %x", &a, &b, &d) != 3) goto illisible;
-			if (a >= ram.size()) { fclose(f); return dis("line " + std::to_string(numero)
+			if (sscanf(line + 1, "%x %x %x", &a, &b, &d) != 3) goto unreadable;
+			if (a >= ram.size()) { fclose(f); return say("line " + std::to_string(lineno)
 			                                             + ": RAM word out of bounds"); }
 			ram[a] = u16((ram[a] & ~u16(d)) | (u16(b) & u16(d)));
 			break;
 		case 'w':
-			if (sscanf(ligne + 1, "%x %x %x", &a, &b, &d) != 3) goto illisible;
+			if (sscanf(line + 1, "%x %x %x", &a, &b, &d) != 3) goto unreadable;
 			c.write_reg(a, u16(b), u16(d));
 			break;
 		case 'r': {
-			if (sscanf(ligne + 1, "%x", &a) != 1) goto illisible;
+			if (sscanf(line + 1, "%x", &a) != 1) goto unreadable;
 			const u16 v = c.read_reg(a);
-			s.lues.push_back({ c.samples_made(), a, v });
+			s.reads.push_back({ c.samples_made(), a, v });
 			break;
 		}
 		case 'm':
-			if (sscanf(ligne + 1, "%x", &a) != 1) goto illisible;
+			if (sscanf(line + 1, "%x", &a) != 1) goto unreadable;
 			c.midi_in(u8(a));
 			break;
 		case 't':
-			if (sscanf(ligne + 1, "%u", &a) != 1) goto illisible;
+			if (sscanf(line + 1, "%u", &a) != 1) goto unreadable;
 			c.timer_fired(int(a));
 			break;
 		case 's': {
-			if (sscanf(ligne + 1, "%u", &a) != 1) goto illisible;
-			if (tampon.size() < std::size_t(a) * 2) tampon.resize(std::size_t(a) * 2);
-			c.run(a, tampon.data());
-			s.pcm.insert(s.pcm.end(), tampon.begin(), tampon.begin() + std::ptrdiff_t(a) * 2);
+			if (sscanf(line + 1, "%u", &a) != 1) goto unreadable;
+			if (buffer.size() < std::size_t(a) * 2) buffer.resize(std::size_t(a) * 2);
+			c.run(a, buffer.data());
+			s.pcm.insert(s.pcm.end(), buffer.begin(), buffer.begin() + std::ptrdiff_t(a) * 2);
 			break;
 		}
 		default:
-		illisible:
+		unreadable:
 			fclose(f);
-			return dis("line " + std::to_string(numero) + " unreadable: " + std::string(ligne));
+			return say("line " + std::to_string(lineno) + " unreadable: " + std::string(line));
 		}
 	}
 	fclose(f);
 	return true;
 }
 
-std::string compare(const sortie &a, const sortie &b)
+std::string compare(const output &a, const output &b)
 {
 	char t[256];
 
@@ -217,11 +222,11 @@ std::string compare(const sortie &a, const sortie &b)
 		return t;
 	}
 	for (std::size_t i = 0; i < a.irqs.size(); i++) {
-		const sortie::Irq &x = a.irqs[i], &y = b.irqs[i];
-		if (x.ech != y.ech || x.niveau != y.niveau || x.etat != y.etat) {
+		const output::Irq &x = a.irqs[i], &y = b.irqs[i];
+		if (x.smp != y.smp || x.level != y.level || x.state != y.state) {
 			snprintf(t, sizeof t, "interrupt %zu: %s%d at sample %" PRIu64
 			                      " against %s%d at %" PRIu64,
-			         i, x.etat ? "+" : "-", x.niveau, x.ech, y.etat ? "+" : "-", y.niveau, y.ech);
+			         i, x.state ? "+" : "-", x.level, x.smp, y.state ? "+" : "-", y.level, y.smp);
 			return t;
 		}
 	}
@@ -231,26 +236,26 @@ std::string compare(const sortie &a, const sortie &b)
 		return t;
 	}
 	for (std::size_t i = 0; i < a.armes.size(); i++) {
-		const sortie::Arme &x = a.armes[i], &y = b.armes[i];
-		if (x.ech != y.ech || x.lequel != y.lequel || x.echantillons != y.echantillons
+		const output::Arm &x = a.armes[i], &y = b.armes[i];
+		if (x.smp != y.smp || x.which != y.which || x.samples != y.samples
 		    || x.periode != y.periode) {
 			snprintf(t, sizeof t, "arm %zu: timer %d for %u (period %u) at sample %" PRIu64
 			                      " against timer %d for %u (period %u) at %" PRIu64,
-			         i, x.lequel, x.echantillons, x.periode, x.ech,
-			         y.lequel, y.echantillons, y.periode, y.ech);
+			         i, x.which, x.samples, x.periode, x.smp,
+			         y.which, y.samples, y.periode, y.smp);
 			return t;
 		}
 	}
 
-	if (a.lues.size() != b.lues.size()) {
-		snprintf(t, sizeof t, "register reads: %zu against %zu", a.lues.size(), b.lues.size());
+	if (a.reads.size() != b.reads.size()) {
+		snprintf(t, sizeof t, "register reads: %zu against %zu", a.reads.size(), b.reads.size());
 		return t;
 	}
-	for (std::size_t i = 0; i < a.lues.size(); i++) {
-		const sortie::Lue &x = a.lues[i], &y = b.lues[i];
-		if (x.mot != y.mot || x.valeur != y.valeur) {
+	for (std::size_t i = 0; i < a.reads.size(); i++) {
+		const output::Read &x = a.reads[i], &y = b.reads[i];
+		if (x.word != y.word || x.value != y.value) {
 			snprintf(t, sizeof t, "read %zu of word %03x: %04x against %04x (sample %" PRIu64 ")",
-			         i, x.mot, x.valeur, y.valeur, x.ech);
+			         i, x.word, x.value, y.value, x.smp);
 			return t;
 		}
 	}
@@ -260,9 +265,9 @@ std::string compare(const sortie &a, const sortie &b)
 		return t;
 	}
 	for (std::size_t i = 0; i < a.midis.size(); i++)
-		if (a.midis[i].octet != b.midis[i].octet || a.midis[i].ech != b.midis[i].ech) {
+		if (a.midis[i].byte != b.midis[i].byte || a.midis[i].smp != b.midis[i].smp) {
 			snprintf(t, sizeof t, "MIDI byte %zu: %02x at sample %" PRIu64 " against %02x at %" PRIu64,
-			         i, a.midis[i].octet, a.midis[i].ech, b.midis[i].octet, b.midis[i].ech);
+			         i, a.midis[i].byte, a.midis[i].smp, b.midis[i].byte, b.midis[i].smp);
 			return t;
 		}
 

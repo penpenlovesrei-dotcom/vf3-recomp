@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare deux WAV du meme passage, et dit ce qui les separe.
 
-  tools/son/mesurer-madrs.py <wav_a> <wav_b> [--noms "a,b"] [--scene vf3|fv2]
+  tools/sound/mesurer-madrs.py <wav_a> <wav_b> [--noms "a,b"] [--scene vf3|fv2]
 
 Ecrit pour une question precise (docs/fv2-son-programme.md section 5) : le miroir de MADRS replie les
 lignes de retard du DSP sur une seule adresse, et il faut savoir ce que ca fait au son de Virtua

@@ -11,7 +11,7 @@
 //
 // WHAT BELONGS HERE AND WHAT DOES NOT. This file is the chip's interface. What the chip must DO with those
 // registers -- the field positions, the interrupt levels, the timer the music hangs off, the pitch table's
-// unit -- is src/sound/scsp_contract.h, checked by tools/son/test_scsp_contract.cpp. The two are meant to be
+// unit -- is src/sound/scsp_contract.h, checked by tools/sound/test_scsp_contract.cpp. The two are meant to be
 // read together: this one is the shape, that one is the behaviour.
 //
 // AND WHAT IS DELIBERATELY ABSENT. The port's own additions are not in this interface: the per-group gains

@@ -1,7 +1,7 @@
 // scsp_contract.h -- what an SCSP implementation must provide for this port's sound driver to work.
 //
 // WHY THIS FILE EXISTS. The plan for getting off MAME's SCSP (docs/scsp_migration_plan.md) names two
-// prerequisites: a differential harness, which exists (tools/son/comparer-son.cmd), and an INTERFACE
+// prerequisites: a differential harness, which exists (tools/sound/compare-sound.cmd), and an INTERFACE
 // CONTRACT, which did not. What the chip must do was known only as prose scattered through a 2800-line
 // document. This is that contract, in a form an implementation can be written against and a test can check.
 //
@@ -20,7 +20,7 @@
 // halves of the same prerequisite: that document says how an implementation is PLUGGED IN, this header says
 // what it must DO.
 //
-// HOW IT IS KEPT HONEST. tools/son/test_scsp_contract.cpp checks every field below against the macros in
+// HOW IT IS KEPT HONEST. tools/sound/test_scsp_contract.cpp checks every field below against the macros in
 // src/sound/scsp.cpp and every driver constant against the sound ROM. It fails if a macro has moved, and it
 // fails LOUDLY if it cannot find one at all -- a contract that silently stops being checked is worse than no
 // contract.
@@ -41,7 +41,7 @@ namespace scsp_contract {
 // LFORE, STWINH and SDIR are of that kind.
 //
 // So a reader that blindly does `(value & masque) << decalage` writes ZERO for those. That is exactly what
-// happened the first time tools/son/test_scsp_core.cpp ran: the voice stayed silent and the failure message
+// happened the first time tools/sound/test_scsp_core.cpp ran: the voice stayed silent and the failure message
 // blamed the contract, while the fault was in the caller. The two are told apart by the SHAPE of the mask --
 // a contiguous low-bit mask (1, 3, 7, 0x1F, 0x3F...) is a value, anything else is a bit in place:
 //
@@ -49,18 +49,18 @@ namespace scsp_contract {
 //
 // The convention is kept rather than normalised, because the contract's job is to say what the
 // implementation does, and its test compares the two literally.
-struct Champ {
-	const char *nom;
-	unsigned    mot;          // word index inside the block (byte offset = 2 * mot)
-	unsigned    decalage;
-	unsigned    masque;
+struct Field {
+	const char *name;
+	unsigned    word;          // word index inside the block (byte offset = 2 * mot)
+	unsigned    shift_by;
+	unsigned    mask;
 };
 
 // ---------------------------------------------------------------------------------------------------
 // 1. A SLOT. 32 of them per chip, 0x20 bytes each, at 0x000-0x3FF of the register window.
 //    (c) for the positions; the driver's use of each is in the comment.
 // ---------------------------------------------------------------------------------------------------
-inline constexpr Champ FENTE[] = {
+inline constexpr Field SLOT[] = {
 	// word 0x0 (byte 0x00) -- key on, sample control, SA's high nibble
 	{ "KYONEX", 0x0, 0x0, 0x1000 },  // bit 12. The driver pulls the trigger with `ori.b #$8, $0(a5)` (0x6010FC)
 	{ "KYONB",  0x0, 0x0, 0x0800 },  // bit 11
@@ -117,13 +117,13 @@ inline constexpr Champ FENTE[] = {
 // voices with PLFOS 1 (+-7 cents of vibrato) that, taken literally and with MAME's truncated pitch-LFO
 // table, played 3 cents flat and made the reverb they feed ring up to 10 dB longer on Lion's theme. A
 // reimplementation that reads all three bits will NOT sound like this port.
-inline constexpr char PLFOS_ECART[] =
+inline constexpr char PLFOS_QUIRK[] =
 	"PLFOS is masked 0x0006 after a shift of 5, so its low bit is dropped; 3, 5, 7 arrive as 2, 4, 6";
 
 // ---------------------------------------------------------------------------------------------------
 // 2. THE COMMON REGISTERS, at 0x400 and up. (c) for the positions.
 // ---------------------------------------------------------------------------------------------------
-inline constexpr Champ COMMUN[] = {
+inline constexpr Field COMMON[] = {
 	{ "MEM4B",   0x0, 0x0, 0x0200 },  // 0x400 bit 9. The driver writes 0x300 here (0x60016C): MEM4B and
 	{ "DAC18B",  0x0, 0x0, 0x0100 },  // 0x400 bit 8   DAC18B both set, MVOL left at 0 and raised later
 	{ "MVOL",    0x0, 0x0, 0x000F },  // 0x400 bits 3-0
@@ -155,7 +155,7 @@ inline constexpr unsigned MCIRE   = 0x42E;
 
 // AND THESE FOUR DO NOT ALL BEHAVE THE SAME WAY in the implementation we are leaving, which matters because
 // a rewrite that makes them uniform changes behaviour without meaning to. Measured 2026-10-26 by
-// tools/son/test_scsp_regs.cpp, which keeps the three cases:
+// tools/sound/test_scsp_regs.cpp, which keeps the three cases:
 //
 //   0x420 SCIPD : the write is an OR of bit 5 only, so bit 5 can be SET and never cleared by a write.
 //                 That is the intended exception; scsp.cpp says so in a comment.
@@ -189,7 +189,7 @@ inline constexpr unsigned MCIRE   = 0x42E;
 // The driver writes ten words in one run at reset (0x600288 copies them from 0x6002D4 into 0x418-0x42A),
 // so the configuration is not inferred from scattered writes -- it is one table, and these are its values.
 // ---------------------------------------------------------------------------------------------------
-struct Source { const char *nom; unsigned bit; unsigned niveau; bool armee; };
+struct Source { const char *name; unsigned bit; unsigned level; bool armed; };
 
 inline constexpr Source SOURCES[] = {
 	{ "MIDI in", 3, 3, true  },   // SCIPD bit 3 (c); level from SCILV0/1/2 below
@@ -215,7 +215,7 @@ inline constexpr std::uint16_t INIT_418_42A[10] = {
 // The level of a source is its bit read across the three SCILV, low word first:
 //   niveau = (SCILV2[bit] << 2) | (SCILV1[bit] << 1) | SCILV0[bit]
 // With 0x88 / 0x48 / 0x00 that gives MIDI in 3, timer A 2, timer B 1 -- the three SOURCES above.
-inline constexpr unsigned niveau_de(unsigned bit)
+inline constexpr unsigned level_of(unsigned bit)
 {
 	return ((INIT_418_42A[8] >> bit & 1) << 2) | ((INIT_418_42A[7] >> bit & 1) << 1)
 	     | (INIT_418_42A[6] >> bit & 1);
@@ -241,10 +241,10 @@ inline constexpr double   TIMER_A_HZ          = 44100.0 / TIMER_A_ECHANTILLONS; 
 // ---------------------------------------------------------------------------------------------------
 inline constexpr unsigned PAS_PAR_DEMI_TON   = 16;
 inline constexpr unsigned MOTS_PAR_OCTAVE    = 12 * PAS_PAR_DEMI_TON;   // 192
-inline constexpr unsigned MODULO_OCTAVE_OCTETS = 2 * MOTS_PAR_OCTAVE;   // 0x180
-inline constexpr unsigned TABLE_FNS_ROM      = 0x603D62;                // in the sound program ROM
-inline constexpr unsigned BIAIS_OCT          = 0x4000;                  // added before masking 0x7800
-inline constexpr unsigned MASQUE_OCT_FNS     = 0x7BFF;                  // bits 15 and 10 are unused
+inline constexpr unsigned OCTAVE_MODULO_BYTES = 2 * MOTS_PAR_OCTAVE;   // 0x180
+inline constexpr unsigned FNS_ROM_TABLE      = 0x603D62;                // in the sound program ROM
+inline constexpr unsigned OCT_BIAS          = 0x4000;                  // added before masking 0x7800
+inline constexpr unsigned OCT_FNS_MASK     = 0x7BFF;                  // bits 15 and 10 are unused
 
 // TWO WRITERS, TWO FORMULAS, and an implementation of the driver needs both:
 //   0x601390  note on: the semitone count times 32, plus a 1/16 offset, through the ROM table above;
@@ -267,7 +267,7 @@ inline constexpr unsigned MASQUE_OCT_FNS     = 0x7BFF;                  // bits 
 // ---------------------------------------------------------------------------------------------------
 inline constexpr unsigned RINGBUF_BASE   = 0x600;
 inline constexpr unsigned RINGBUF_BASE_2 = 0x640;
-inline constexpr unsigned RINGBUF_ENTREES = 64;
+inline constexpr unsigned RINGBUF_ENTRIES = 64;
 
 // ---------------------------------------------------------------------------------------------------
 // 6. THE EFFECTS DSP.
@@ -288,21 +288,21 @@ inline constexpr unsigned RINGBUF_ENTREES = 64;
 // (b) Measured, and it bears on cost: ~112 DSP steps per sample per chip, 44100 times a second. Under
 // --rec the sound board is 30.5 % of a frame's work and the DSP is about half of that.
 // ---------------------------------------------------------------------------------------------------
-inline constexpr unsigned COEF_BASE  = 0x700, COEF_MOTS  = 64;
-inline constexpr unsigned MADRS_BASE = 0x780, MADRS_MOTS = 32;
-inline constexpr unsigned CONTESTE_BASE = 0x7C0, CONTESTE_MOTS = 32;
-inline constexpr unsigned MPRO_BASE  = 0x800, MPRO_PAS   = 128;
-inline constexpr unsigned PAS_DSP_PAR_ECHANTILLON = 112;   // (b)
+inline constexpr unsigned COEF_BASE  = 0x700, COEF_WORDS  = 64;
+inline constexpr unsigned MADRS_BASE = 0x780, MADRS_WORDS = 32;
+inline constexpr unsigned DISPUTED_BASE = 0x7C0, DISPUTED_WORDS = 32;
+inline constexpr unsigned MPRO_BASE  = 0x800, MPRO_STEP   = 128;
+inline constexpr unsigned DSP_STEPS_PER_SAMPLE = 112;   // (b)
 
 // ---------------------------------------------------------------------------------------------------
 // 7. WHAT THE DRIVER ASSUMES ABOUT THE BOARD, as opposed to the chip.
 // ---------------------------------------------------------------------------------------------------
-inline constexpr unsigned FENTES_PAR_PUCE = 32;
-inline constexpr unsigned PUCES           = 2;
+inline constexpr unsigned SLOTS_PER_CHIP = 32;
+inline constexpr unsigned CHIPS           = 2;
 // A bank register outside the chips, at 0x400001, selects which half of the 16 MB of sample ROM is
 // visible. (a) The sample loader at 0x60288A rewrites it FOR EVERY SAMPLE of a set, not once per set,
 // because two samples of one set can be in two different halves.
-inline constexpr unsigned REGISTRE_BANQUE = 0x400001;
+inline constexpr unsigned BANK_REGISTER = 0x400001;
 // (a) The chips play only from their own RAM; the 68000 copies samples in, 512 bytes a pass, from the
 // banked window (the unrolled copy at 0x601F3C). An implementation that reads samples straight from ROM
 // would not need the copy -- and would then not be running this driver.
@@ -321,10 +321,10 @@ inline constexpr unsigned REGISTRE_BANQUE = 0x400001;
 // chaque lecture, vingt fois par fente, trente-deux fentes, quarante-quatre mille fois par seconde. La
 // mesure a donne le prix de cette version-la : la boucle de fentes deux fois plus lente que celle de MAME
 // (docs/scsp_audit.md §4 quinquies).
-constexpr const Champ *cherche(const Champ *table, std::size_t n, const char *nom)
+constexpr const Field *cherche(const Field *table, std::size_t n, const char *name)
 {
 	for (std::size_t i = 0; i < n; i++) {
-		const char *a = table[i].nom, *b = nom;
+		const char *a = table[i].name, *b = name;
 		while (*a && *a == *b) { ++a; ++b; }
 		if (!*a && !*b) return table + i;
 	}
@@ -333,9 +333,9 @@ constexpr const Champ *cherche(const Champ *table, std::size_t n, const char *no
 
 // A slot's field, by name, or nullptr. The caller decides what a missing name means: a test should die,
 // since a name that is not in the table is a typo and not a condition.
-constexpr const Champ *champ_fente(const char *nom)
+constexpr const Field *slot_field(const char *name)
 {
-	return cherche(FENTE, sizeof FENTE / sizeof *FENTE, nom);
+	return cherche(SLOT, sizeof SLOT / sizeof *SLOT, name);
 }
 
 // Places `valeur` in the 16 words of a slot, where this table says the field lives.
@@ -351,18 +351,18 @@ constexpr const Champ *champ_fente(const char *nom)
 // a bit in place, and this function then OR-ed 0x0006 into word 9 WITH NO SHIFT -- straight onto ALFOWS
 // (bits 4-3) and ALFOS (bits 2-0). A helper that silently writes the wrong field is worse than one that
 // refuses, and only the LFO test's measurement showed it.
-constexpr bool pose(std::uint16_t mot[16], const char *nom, unsigned valeur)
+constexpr bool put(std::uint16_t word[16], const char *name, unsigned value)
 {
-	const Champ *c = champ_fente(nom);
+	const Field *c = slot_field(name);
 	if (!c) return false;
-	const bool bit_en_place = c->decalage == 0 && (c->masque & (c->masque + 1)) != 0;
-	if (bit_en_place) {
-		if (valeur) mot[c->mot] = std::uint16_t(mot[c->mot] | c->masque);
-		else        mot[c->mot] = std::uint16_t(mot[c->mot] & ~c->masque);
+	const bool bit_in_place = c->shift_by == 0 && (c->mask & (c->mask + 1)) != 0;
+	if (bit_in_place) {
+		if (value) word[c->word] = std::uint16_t(word[c->word] | c->mask);
+		else        word[c->word] = std::uint16_t(word[c->word] & ~c->mask);
 		return true;
 	}
-	mot[c->mot] = std::uint16_t((mot[c->mot] & ~(c->masque << c->decalage))
-	                            | ((valeur & c->masque) << c->decalage));
+	word[c->word] = std::uint16_t((word[c->word] & ~(c->mask << c->shift_by))
+	                            | ((value & c->mask) << c->shift_by));
 	return true;
 }
 
@@ -375,7 +375,7 @@ inline constexpr unsigned PLFOS_CHAMP_DECALAGE = 5;
 inline constexpr unsigned PLFOS_CHAMP_LARGEUR  = 0x7;   // le champ du registre, avant que la lecture en jette le bit bas
 
 // ---------------------------------------------------------------------------------------------------
-// 11. PITCH, LFO AND RING MODULATION, measured 2026-10-26 by tools/son/test_scsp_lfo.cpp.
+// 11. PITCH, LFO AND RING MODULATION, measured 2026-10-26 by tools/sound/test_scsp_lfo.cpp.
 //
 // The probe is worth naming because it is exact: with a RAMP whose sample k is 1024*k, the linear
 // interpolation of a straight line is exact, and the left output equals cur_addr minus (frac mod 4). The
@@ -429,7 +429,7 @@ inline constexpr unsigned PLFOS_CHAMP_LARGEUR  = 0x7;   // le champ du registre,
 // ---------------------------------------------------------------------------------------------------
 // 9. THE OSCILLATOR'S LOOPING, which is not what reading the code suggests.
 //
-// Measured 2026-10-26 by tools/son/test_scsp_fentes.cpp, which keeps the exact index sequences. Three
+// Measured 2026-10-26 by tools/sound/test_scsp_fentes.cpp, which keeps the exact index sequences. Three
 // facts, and a reimplementation that misses the third plays one sample too many in every loop:
 //
 //   (1) LSA AND LEA COUNT SAMPLES, while the 16-bit fetch counts BYTES. The fetch takes
@@ -460,7 +460,7 @@ inline constexpr unsigned PLFOS_CHAMP_LARGEUR  = 0x7;   // le champ du registre,
 // ---------------------------------------------------------------------------------------------------
 // 10. THE ENVELOPE, whose shape is two arithmetics and whose times are a table of constants.
 //
-// Measured 2026-10-26 by tools/son/test_scsp_adsr.cpp, which reads the multiplier sample by sample.
+// Measured 2026-10-26 by tools/sound/test_scsp_adsr.cpp, which reads the multiplier sample by sample.
 //
 //   (1) TWO ARITHMETICS, not one. In UpdateSlot the ATTACK state multiplies the sample by the RAW VOLUME
 //       -- `sample * EG_Update(slot) >> SHIFT`, linear -- while every other state goes through
@@ -512,7 +512,7 @@ inline constexpr unsigned PLFOS_CHAMP_LARGEUR  = 0x7;   // le champ du registre,
 //       would make every repeated note in the game click.
 
 // ---------------------------------------------------------------------------------------------------
-// 12. TIMERS AND INTERRUPTS, measured 2026-10-26 by tools/son/test_scsp_irq.cpp.
+// 12. TIMERS AND INTERRUPTS, measured 2026-10-26 by tools/sound/test_scsp_irq.cpp.
 //
 // Measured through the SINK, not through the audio: scsp::sink carries the three ways the chip speaks to
 // the board, and a sink that records everything measures this block without one note of music.
@@ -558,7 +558,7 @@ inline constexpr unsigned PLFOS_CHAMP_LARGEUR  = 0x7;   // le champ du registre,
 //       read hook would leave the interrupt raised forever.
 
 // ---------------------------------------------------------------------------------------------------
-// 13. THE MIX AND THE OUTPUT STAGE, measured 2026-10-26 by tools/son/test_scsp_mix.cpp.
+// 13. THE MIX AND THE OUTPUT STAGE, measured 2026-10-26 by tools/sound/test_scsp_mix.cpp.
 //
 // THREE SEGA-STYLE DECIBEL TABLES, and that is the shape of this block. None is a formula: each is a sum
 // of terms picked bit by bit, which gives gains nothing makes round.

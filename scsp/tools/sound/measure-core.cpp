@@ -1,6 +1,6 @@
-// mesurer-coeur : ce qu'un coeur de SCSP coute, par partie, sans rien d'autre dans la mesure.
+// measure-core : ce qu'un coeur de SCSP coute, par partie, sans rien d'autre dans la mesure.
 //
-// POURQUOI PAS LE REJOUEUR. tools/son/rejouer compare deux coeurs a l'octet, et c'est son travail -- mais
+// POURQUOI PAS LE REJOUEUR. tools/sound/replay compare deux coeurs a l'octet, et c'est son travail -- mais
 // son temps est domine par l'analyse de 81 Mo de texte, identique dans les deux et comptee deux fois. Il
 // donne donc un ECART juste et une part fausse : on y lit "5 % de plus" sans savoir de quoi.
 //
@@ -22,13 +22,13 @@
 // +20 % sans dire de quoi. Des programmes de 112 pas ou tous les pas ne font qu'une chose repondent a ca.
 // Son en-tete est plus bas, juste avant la table.
 //
-//   tools/son/mesurer-coeur [coeur] [echantillons]      les quatre postes
-//   tools/son/mesurer-coeur --dsp [echantillons]        le DSP par caracteristique, les deux coeurs
-//   tools/son/mesurer-coeur --socle [echantillons]      le socle seul, sept passages : de quoi entrelacer
+//   tools/sound/measure-core [coeur] [echantillons]      les quatre postes
+//   tools/sound/measure-core --dsp [echantillons]        le DSP par caracteristique, les deux coeurs
+//   tools/sound/measure-core --baseline [echantillons]      le socle seul, sept passages : de quoi entrelacer
 //                                                       une reference et une variante du meme fichier
-//   tools/son/mesurer-coeur --socle <coeur> [n]         UN seul coeur, et le processus ne fait que ca :
+//   tools/sound/measure-core --baseline <coeur> [n]         UN seul coeur, et le processus ne fait que ca :
 //                                                       de quoi qu'un compteur materiel l'attribue
-//   tools/son/mesurer-coeur --jeu <coeur> [n]           le meme, sur le programme de la FORME DU JEU --
+//   tools/sound/measure-core --game <coeur> [n]           le meme, sur le programme de la FORME DU JEU --
 //                                                       le socle est artificiel, celui-ci est ce qui compte
 #include "../../src/sound/scsp_contract.h"
 #include "../../src/sound/scsp_select.h"
@@ -45,16 +45,16 @@
 
 namespace {
 
-constexpr std::uint32_t RAM_OCTETS = 0x100000;
+constexpr std::uint32_t RAM_BYTES = 0x100000;
 
-struct Muet final : scsp::sink {
+struct Silent final : scsp::sink {
 	void irq(int, bool) override {}
 	void midi_out(std::uint8_t) override {}
 	void timer(int, std::uint32_t, std::uint32_t) override {}
 };
 
-// Un pas de programme DSP, par ses champs (meme encodage que tools/son/test_scsp_dsp.cpp).
-struct Pas {
+// Un pas de programme DSP, par ses champs (meme encodage que tools/sound/test_scsp_dsp.cpp).
+struct DecodedStep {
 	unsigned tra = 0, twt = 0, twa = 0, xsel = 0, ysel = 0, ira = 0, iwt = 0, iwa = 0;
 	unsigned table = 0, mwt = 0, mrd = 0, ewt = 0, ewa = 0, shift = 0, zero = 0, bsel = 0;
 	unsigned nofl = 0, coef = 0, masa = 0;
@@ -78,15 +78,15 @@ struct Pas {
 	}
 };
 
-struct Banc {
-	std::vector<std::uint16_t> ram = std::vector<std::uint16_t>(RAM_OCTETS / 2, 0);
-	Muet muet;
+struct Bench {
+	std::vector<std::uint16_t> ram = std::vector<std::uint16_t>(RAM_BYTES / 2, 0);
+	Silent silent;
 	std::unique_ptr<scsp::core> c;
 
-	explicit Banc(const char *nom)
+	explicit Bench(const char *name)
 	{
-		c = scsp::make(nom, 45158400 / 2, ram.data(), RAM_OCTETS, muet);
-		if (!c) { fprintf(stderr, "coeur inconnu : %s\n", nom); std::exit(2); }
+		c = scsp::make(name, 45158400 / 2, ram.data(), RAM_BYTES, silent);
+		if (!c) { fprintf(stderr, "coeur inconnu : %s\n", name); std::exit(2); }
 		c->reset();
 		c->write_reg(0x400 / 2, 0x0300 | 0x000F, 0xFFFF);   // MEM4MB, DAC18B, MVOL a fond
 		// Une onde a 0x1000 : un carre, qui n'a aucun echantillon nul.
@@ -97,35 +97,35 @@ struct Banc {
 	{
 		for (unsigned f = 0; f < n; f++) {
 			const std::uint32_t base = f * 0x10;
-			std::uint16_t mot[16] = {};
-			auto pose = [&](const char *nom, unsigned v) { scsp_contract::pose(mot, nom, v); };
-			pose("SA_LO", 0x1000);
-			pose("LSA", 0); pose("LEA", 256); pose("LPCTL", 1);
-			pose("AR", 0x1C); pose("D1R", 2); pose("D2R", 1); pose("RR", 8); pose("DL", 12);
-			pose("TL", 0x20); pose("DISDL", 7); pose("DIPAN", f & 0x1F);
-			pose("EFSDL", f < 16 ? 4 : 0); pose("EFPAN", 0);
-			pose("ISEL", f & 0xF); pose("IMXL", 4);
-			pose("OCT", f & 7); pose("FNS", (f * 37) & 0x3FF);
-			pose("LFOF", 20); pose("ALFOS", 3); pose("ALFOWS", f & 3);
-			pose("KYONB", 1);
-			for (unsigned w = 1; w < 16; w++) c->write_reg(base + w, mot[w], 0xFFFF);
-			c->write_reg(base + 0, mot[0], 0xFFFF);
+			std::uint16_t word[16] = {};
+			auto put = [&](const char *name, unsigned v) { scsp_contract::put(word, name, v); };
+			put("SA_LO", 0x1000);
+			put("LSA", 0); put("LEA", 256); put("LPCTL", 1);
+			put("AR", 0x1C); put("D1R", 2); put("D2R", 1); put("RR", 8); put("DL", 12);
+			put("TL", 0x20); put("DISDL", 7); put("DIPAN", f & 0x1F);
+			put("EFSDL", f < 16 ? 4 : 0); put("EFPAN", 0);
+			put("ISEL", f & 0xF); put("IMXL", 4);
+			put("OCT", f & 7); put("FNS", (f * 37) & 0x3FF);
+			put("LFOF", 20); put("ALFOS", 3); put("ALFOWS", f & 3);
+			put("KYONB", 1);
+			for (unsigned w = 1; w < 16; w++) c->write_reg(base + w, word[w], 0xFFFF);
+			c->write_reg(base + 0, word[0], 0xFFFF);
 		}
 		// KYONEX en dernier : il balaie les trente-deux fentes d'un coup.
 		std::uint16_t dec[16] = {};
-		scsp_contract::pose(dec, "KYONEX", 1);
-		std::uint16_t mot0 = 0;
-		(void) mot0;
+		scsp_contract::put(dec, "KYONEX", 1);
+		std::uint16_t word0 = 0;
+		(void) word0;
 		c->write_reg(0, std::uint16_t(c->read_reg(0) | dec[0]), 0xFFFF);
 	}
 
 	// Pose un programme quelconque : MPRO, les 64 COEF, les 32 MADRS, puis le mot qui declenche Start.
 	// Sort de programme_dsp() pour que le banc par caracteristique s'en serve aussi.
-	void programme(const std::vector<Pas> &pas)
+	void program(const std::vector<DecodedStep> &step)
 	{
 		for (unsigned i = 0; i < 128; i++) {
 			std::uint16_t m[4] = { 0, 0, 0, 0 };
-			if (i < pas.size()) pas[i].mots(m);
+			if (i < step.size()) step[i].mots(m);
 			for (unsigned k = 0; k < 4; k++) c->write_reg((0x800 + i * 8 + k * 2) / 2, m[k], 0xFFFF);
 		}
 		for (unsigned i = 0; i < 64; i++) c->write_reg((0x700 + i * 2) / 2, std::uint16_t(0x2000 + i * 13), 0xFFFF);
@@ -136,9 +136,9 @@ struct Banc {
 	void programme_dsp()
 	{
 		// 112 pas, de la forme que la sonde a relevee sur le jeu.
-		std::vector<Pas> pas(112);
+		std::vector<DecodedStep> step(112);
 		for (unsigned i = 0; i < 112; i++) {
-			Pas &p = pas[i];
+			DecodedStep &p = step[i];
 			p.ira = i % 32;                 // l'entree vient de MEMS : 108 pas sur 112
 			p.xsel = 1;
 			p.ysel = 1;                     // COEF : 87 pas sur 112
@@ -153,22 +153,22 @@ struct Banc {
 			if (i % 3 == 1)  p.bsel = 1;
 			p.shift = i % 4;
 		}
-		programme(pas);
+		program(step);
 	}
 };
 
 // Le temps de run(), et rien d'autre. Le puits volatil empeche le compilateur de tout jeter.
-double chronometre(scsp::core &c, unsigned echantillons, volatile std::int64_t &puits)
+double stopwatch(scsp::core &c, unsigned samples, volatile std::int64_t &snk)
 {
 	constexpr unsigned TRANCHE = 256;
-	std::vector<std::int32_t> tampon(TRANCHE * 2);
+	std::vector<std::int32_t> buffer(TRANCHE * 2);
 	const auto t0 = std::chrono::steady_clock::now();
-	for (unsigned fait = 0; fait < echantillons; fait += TRANCHE) {
-		const unsigned n = std::min(TRANCHE, echantillons - fait);
-		c.run(n, tampon.data());
+	for (unsigned fait = 0; fait < samples; fait += TRANCHE) {
+		const unsigned n = std::min(TRANCHE, samples - fait);
+		c.run(n, buffer.data());
 		std::int64_t s = 0;
-		for (unsigned i = 0; i < n * 2; i++) s += tampon[i];
-		puits += s;
+		for (unsigned i = 0; i < n * 2; i++) s += buffer[i];
+		snk += s;
 	}
 	return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 }
@@ -194,86 +194,86 @@ double chronometre(scsp::core &c, unsigned echantillons, volatile std::int64_t &
 //
 // LES QUATRE RARES SONT DANS LA TABLE, et ils y repondent a une autre question : le jeu ne les pose jamais
 // (§5), donc c'est le seul endroit du depot ou leur cout se lit. Chez le coeur du projet ils font en plus
-// basculer dsp_maison vers son second corps (`template <bool RARES>`), et la ligne le mesure donc aussi.
+// basculer dsp_own vers son second corps (`template <bool RARES>`), et la ligne le mesure donc aussi.
 // -----------------------------------------------------------------------------------------------------
 
-constexpr unsigned PAS_PAR_PROGRAMME = 112;   // la longueur relevee sur le jeu (docs/scsp_audit.md §5)
+constexpr unsigned STEPS_PER_PROGRAM = 112;   // la longueur relevee sur le jeu (docs/scsp_audit.md §5)
 
 struct Caracteristique {
-	const char *nom;
-	const char *quoi;
-	void (*pose)(Pas &p, unsigned i);
+	const char *name;
+	const char *what;
+	void (*put)(DecodedStep &p, unsigned i);
 };
 
 // Le socle : 112 pas qui font le moins possible. ZERO met B a zero, rien n'entre, rien ne sort.
-void socle(Pas &p, unsigned) { p.zero = 1; }
+void baseline(DecodedStep &p, unsigned) { p.zero = 1; }
 
-const Caracteristique CARACTERISTIQUES[] = {
+const Caracteristique CHARACTERISTICS[] = {
 	{ "socle", "112 pas qui ne font rien : le plancher de la boucle de pas",
-	  [](Pas &, unsigned) {} },
+	  [](DecodedStep &, unsigned) {} },
 	{ "IRA -> MEMS", "l'entree depuis la fenetre memoire, 108 pas sur 112 dans le jeu",
-	  [](Pas &p, unsigned i) { p.ira = i % 32; p.xsel = 1; } },
+	  [](DecodedStep &p, unsigned i) { p.ira = i % 32; p.xsel = 1; } },
 	{ "COEF", "la lecture du coefficient, 87 pas sur 112 dans le jeu",
-	  [](Pas &p, unsigned i) { p.ysel = 1; p.coef = i % 64; } },
+	  [](DecodedStep &p, unsigned i) { p.ysel = 1; p.coef = i % 64; } },
 	{ "le produit", "B + X * Y : l'entree, le coefficient et l'accumulation ensemble",
-	  [](Pas &p, unsigned i) { p.ira = i % 32; p.xsel = 1; p.ysel = 1; p.coef = i % 64;
+	  [](DecodedStep &p, unsigned i) { p.ira = i % 32; p.xsel = 1; p.ysel = 1; p.coef = i % 64;
 	                           p.tra = i % 128; p.bsel = 1; } },
 	{ "TWT", "l'ecriture dans TEMP, 39 pas sur 112 dans le jeu",
-	  [](Pas &p, unsigned i) { p.twt = 1; p.twa = (i * 7) % 128; } },
+	  [](DecodedStep &p, unsigned i) { p.twt = 1; p.twa = (i * 7) % 128; } },
 	{ "IWT", "l'ecriture dans MEMS",
-	  [](Pas &p, unsigned i) { p.iwt = 1; p.iwa = i % 32; } },
+	  [](DecodedStep &p, unsigned i) { p.iwt = 1; p.iwa = i % 32; } },
 	{ "MRD (NOFL)", "la lecture memoire SANS empaquetage, 23 pas sur 112 dans le jeu",
-	  [](Pas &p, unsigned i) { p.mrd = 1; p.nofl = 1; p.masa = i % 32; } },
+	  [](DecodedStep &p, unsigned i) { p.mrd = 1; p.nofl = 1; p.masa = i % 32; } },
 	{ "MRD + UNPACK", "la meme, EMPAQUETEE : la difference est le cout de UNPACK",
-	  [](Pas &p, unsigned i) { p.mrd = 1; p.nofl = 0; p.masa = i % 32; } },
+	  [](DecodedStep &p, unsigned i) { p.mrd = 1; p.nofl = 0; p.masa = i % 32; } },
 	{ "MWT (NOFL)", "l'ecriture memoire sans empaquetage, 10 pas sur 112 dans le jeu",
-	  [](Pas &p, unsigned i) { p.mwt = 1; p.nofl = 1; p.masa = i % 32; } },
+	  [](DecodedStep &p, unsigned i) { p.mwt = 1; p.nofl = 1; p.masa = i % 32; } },
 	{ "MWT + PACK", "la meme, EMPAQUETEE : la difference est le cout de PACK",
-	  [](Pas &p, unsigned i) { p.mwt = 1; p.nofl = 0; p.masa = i % 32; } },
+	  [](DecodedStep &p, unsigned i) { p.mwt = 1; p.nofl = 0; p.masa = i % 32; } },
 	{ "ADREB + NXADR", "les deux modificateurs d'adresse, par-dessus une lecture",
-	  [](Pas &p, unsigned i) { p.mrd = 1; p.nofl = 1; p.masa = i % 32; p.adreb = 1; p.nxadr = 1; } },
+	  [](DecodedStep &p, unsigned i) { p.mrd = 1; p.nofl = 1; p.masa = i % 32; p.adreb = 1; p.nxadr = 1; } },
 	{ "EWT", "la sortie vers EFREG, 5 pas sur 112 dans le jeu",
-	  [](Pas &p, unsigned i) { p.ewt = 1; p.ewa = i % 16; } },
+	  [](DecodedStep &p, unsigned i) { p.ewt = 1; p.ewa = i % 16; } },
 	{ "SHIFT 1 (ecrete)", "le decalage qui sature",
-	  [](Pas &p, unsigned i) { p.ira = i % 32; p.xsel = 1; p.shift = 1; } },
+	  [](DecodedStep &p, unsigned i) { p.ira = i % 32; p.xsel = 1; p.shift = 1; } },
 	{ "SHIFT 3 (reboucle)", "le decalage qui reboucle",
-	  [](Pas &p, unsigned i) { p.ira = i % 32; p.xsel = 1; p.shift = 3; } },
+	  [](DecodedStep &p, unsigned i) { p.ira = i % 32; p.xsel = 1; p.shift = 3; } },
 	{ "FRCL", "un des quatre que le jeu ne pose JAMAIS (§5)",
-	  [](Pas &p, unsigned) { p.frcl = 1; } },
+	  [](DecodedStep &p, unsigned) { p.frcl = 1; } },
 	{ "ADRL", "idem",
-	  [](Pas &p, unsigned) { p.adrl = 1; } },
+	  [](DecodedStep &p, unsigned) { p.adrl = 1; } },
 	{ "YRL", "idem",
-	  [](Pas &p, unsigned) { p.yrl = 1; } },
+	  [](DecodedStep &p, unsigned) { p.yrl = 1; } },
 	{ "NEGB", "idem",
-	  [](Pas &p, unsigned i) { p.tra = i % 128; p.bsel = 1; p.negb = 1; } },
+	  [](DecodedStep &p, unsigned i) { p.tra = i % 128; p.bsel = 1; p.negb = 1; } },
 	{ "les quatre rares", "les quatre ensemble : chez le coeur du projet, c'est le second corps",
-	  [](Pas &p, unsigned i) { p.tra = i % 128; p.bsel = 1;
+	  [](DecodedStep &p, unsigned i) { p.tra = i % 128; p.bsel = 1;
 	                           p.frcl = 1; p.adrl = 1; p.yrl = 1; p.negb = 1; } },
 };
 
 // Le temps par pas de DSP, mediane de trois passages : une seule mesure se fait porter par le voisinage.
-double ns_par_pas(const char *coeur, const Caracteristique &k, unsigned n, volatile std::int64_t &puits)
+double ns_par_pas(const char *the_core, const Caracteristique &k, unsigned n, volatile std::int64_t &snk)
 {
 	double v[3];
-	for (int essai = 0; essai < 3; essai++) {
-		Banc b(coeur);
-		std::vector<Pas> pas(PAS_PAR_PROGRAMME);
-		for (unsigned i = 0; i < PAS_PAR_PROGRAMME; i++) { socle(pas[i], i); k.pose(pas[i], i); }
-		b.programme(pas);
-		v[essai] = chronometre(*b.c, n, puits) * 1e9 / (double(n) * PAS_PAR_PROGRAMME);
+	for (int trial = 0; trial < 3; trial++) {
+		Bench b(the_core);
+		std::vector<DecodedStep> step(STEPS_PER_PROGRAM);
+		for (unsigned i = 0; i < STEPS_PER_PROGRAM; i++) { baseline(step[i], i); k.put(step[i], i); }
+		b.program(step);
+		v[trial] = stopwatch(*b.c, n, snk) * 1e9 / (double(n) * STEPS_PER_PROGRAM);
 	}
 	std::sort(v, v + 3);
 	return v[1];
 }
 
 // Le temoin : le programme de la forme du jeu, par le meme chronometre et la meme unite.
-double ns_par_pas_du_jeu(const char *coeur, unsigned n, volatile std::int64_t &puits)
+double ns_par_pas_du_jeu(const char *the_core, unsigned n, volatile std::int64_t &snk)
 {
 	double v[3];
-	for (int essai = 0; essai < 3; essai++) {
-		Banc b(coeur);
+	for (int trial = 0; trial < 3; trial++) {
+		Bench b(the_core);
 		b.programme_dsp();
-		v[essai] = chronometre(*b.c, n, puits) * 1e9 / (double(n) * PAS_PAR_PROGRAMME);
+		v[trial] = stopwatch(*b.c, n, snk) * 1e9 / (double(n) * STEPS_PER_PROGRAM);
 	}
 	std::sort(v, v + 3);
 	return v[1];
@@ -284,28 +284,28 @@ double ns_par_pas_du_jeu(const char *coeur, unsigned n, volatile std::int64_t &p
 // l'un des deux corps, ce que Start laisse derriere lui) se divise par le nombre de pas et se deguise en
 // cout par pas. Trois longueurs le separent -- la PENTE est le cout d'un pas, l'ORDONNEE A L'ORIGINE est ce
 // que l'echantillon coute avant son premier pas.
-void socle_par_longueur(unsigned n, volatile std::int64_t &puits)
+void baseline_by_length(unsigned n, volatile std::int64_t &snk)
 {
 	const unsigned longueurs[3] = { 16, 48, 112 };
 	printf("\nLE SOCLE, PAR LONGUEUR DE PROGRAMME : par pas ou par echantillon ?\n\n");
 	printf("  %-8s %12s %12s %12s\n", "coeur", "16 pas", "48 pas", "112 pas");
 	printf("  %-8s %12s %12s %12s\n", "", "ns/ech", "ns/ech", "ns/ech");
 	double ns[2][3] = {};
-	const char *coeurs[2] = { "mame", "maison" };
+	const char *cores[2] = { "mame", "own" };
 	for (int ic = 0; ic < 2; ic++) {
 		for (int il = 0; il < 3; il++) {
 			double v[3];
-			for (int essai = 0; essai < 3; essai++) {
-				Banc b(coeurs[ic]);
-				std::vector<Pas> pas(longueurs[il]);
-				for (unsigned i = 0; i < longueurs[il]; i++) socle(pas[i], i);
-				b.programme(pas);
-				v[essai] = chronometre(*b.c, n, puits) * 1e9 / double(n);
+			for (int trial = 0; trial < 3; trial++) {
+				Bench b(cores[ic]);
+				std::vector<DecodedStep> step(longueurs[il]);
+				for (unsigned i = 0; i < longueurs[il]; i++) baseline(step[i], i);
+				b.program(step);
+				v[trial] = stopwatch(*b.c, n, snk) * 1e9 / double(n);
 			}
 			std::sort(v, v + 3);
 			ns[ic][il] = v[1];
 		}
-		printf("  %-8s %12.1f %12.1f %12.1f\n", coeurs[ic], ns[ic][0], ns[ic][1], ns[ic][2]);
+		printf("  %-8s %12.1f %12.1f %12.1f\n", cores[ic], ns[ic][0], ns[ic][1], ns[ic][2]);
 	}
 	// La pente entre 16 et 112 pas, et ce qui reste quand on la retire : deux points suffisent, le troisieme
 	// est la pour dire si c'est bien une droite.
@@ -313,9 +313,9 @@ void socle_par_longueur(unsigned n, volatile std::int64_t &puits)
 	for (int ic = 0; ic < 2; ic++) {
 		const double pente = (ns[ic][2] - ns[ic][0]) / double(longueurs[2] - longueurs[0]);
 		const double origine = ns[ic][0] - pente * double(longueurs[0]);
-		const double attendu48 = origine + pente * double(longueurs[1]);
-		printf("  %-8s %14.3f %18.1f %14s\n", coeurs[ic], pente, origine,
-		       (std::abs(attendu48 - ns[ic][1]) < 0.06 * ns[ic][1]) ? "droite" : "PAS DROITE");
+		const double expected48 = origine + pente * double(longueurs[1]);
+		printf("  %-8s %14.3f %18.1f %14s\n", cores[ic], pente, origine,
+		       (std::abs(expected48 - ns[ic][1]) < 0.06 * ns[ic][1]) ? "droite" : "PAS DROITE");
 	}
 	const double pente_a = (ns[0][2] - ns[0][0]) / 96.0, pente_b = (ns[1][2] - ns[1][0]) / 96.0;
 	const double orig_a = ns[0][0] - pente_a * 16.0, orig_b = ns[1][0] - pente_b * 16.0;
@@ -331,7 +331,7 @@ void socle_par_longueur(unsigned n, volatile std::int64_t &puits)
 	       "  separent rien et il faut plus de longueurs.)\n");
 }
 
-// `--socle` : le socle seul, et rien d'autre. Il existe pour une raison precise -- le socle porte TOUT
+// `--baseline` : le socle seul, et rien d'autre. Il existe pour une raison precise -- le socle porte TOUT
 // l'ecart du DSP (docs/scsp_audit.md §4 septies), et le chercher demande de comparer des CONSTRUCTIONS
 // differentes du meme fichier, donc d'entrelacer reference et variante. La table complete coute trop cher
 // pour ca ; celle-ci tient en deux secondes, et elle fait SEPT passages au lieu de trois parce que c'est un
@@ -343,46 +343,46 @@ void socle_par_longueur(unsigned n, volatile std::int64_t &puits)
 // les branchements mal predits et les cycles du processus SONT ceux du socle de ce coeur-la, a la mise en
 // route pres, qui est la meme des deux cotes.
 //
-//   mesurer-coeur --socle [echantillons]            les deux coeurs, pour lire l'ecart tout de suite
-//   mesurer-coeur --socle <coeur> [echantillons]    un seul, pour qu'un compteur externe l'attribue
-// `--jeu <coeur> [n]` : LE PROGRAMME DE LA FORME DU JEU, un seul coeur, aucune voix. C'est `--socle` pour
+//   measure-core --baseline [echantillons]            les deux coeurs, pour lire l'ecart tout de suite
+//   measure-core --baseline <coeur> [echantillons]    un seul, pour qu'un compteur externe l'attribue
+// `--game <coeur> [n]` : LE PROGRAMME DE LA FORME DU JEU, un seul coeur, aucune voix. C'est `--baseline` pour
 // le programme qui compte, et il a fallu une mesure pour qu'il existe : le 2026-10-28, la combinaison des
 // quatre variantes gagnait **29,3 %** sur le socle et **rien de mesurable** sur celui-ci
 // (docs/scsp_audit.md §4 nonies). Le socle est un programme ou les 112 pas font tous la meme chose ; il
 // situe un cout, il ne dit pas ce qu'une modification rend dans le jeu.
 //
-// Un seul coeur par processus, pour la meme raison que `--socle <coeur>` : un compteur materiel totalise
+// Un seul coeur par processus, pour la meme raison que `--baseline <coeur>` : un compteur materiel totalise
 // par processus, et nos binaires MinGW ne lui donnent aucun nom de fonction.
-int banc_jeu(const char *coeur, unsigned n)
+int bench_game(const char *the_core, unsigned n)
 {
-	volatile std::int64_t puits = 0;
+	volatile std::int64_t snk = 0;
 	double v[7];
-	for (int essai = 0; essai < 7; essai++) {
-		Banc b(coeur);
+	for (int trial = 0; trial < 7; trial++) {
+		Bench b(the_core);
 		b.programme_dsp();
-		v[essai] = chronometre(*b.c, n, puits) * 1e9 / (double(n) * PAS_PAR_PROGRAMME);
+		v[trial] = stopwatch(*b.c, n, snk) * 1e9 / (double(n) * STEPS_PER_PROGRAM);
 	}
 	std::sort(v, v + 7);
 	printf("jeu %u, coeur \"%s\" SEUL : %.3f ns/pas [%.3f-%.3f] ; %llu pas de DSP executes  (puits %lld)\n",
-	       n, coeur, v[3], v[0], v[6],
-	       (unsigned long long)(7ull * n * PAS_PAR_PROGRAMME), (long long) puits);
+	       n, the_core, v[3], v[0], v[6],
+	       (unsigned long long)(7ull * n * STEPS_PER_PROGRAM), (long long) snk);
 	return 0;
 }
 
-int banc_socle(unsigned n, const char *seul)
+int bench_baseline(unsigned n, const char *seul)
 {
-	volatile std::int64_t puits = 0;
+	volatile std::int64_t snk = 0;
 	double v[2][7];
-	const char *coeurs[2] = { "mame", "maison" };
-	const int de = seul ? (strcmp(seul, "maison") == 0 ? 1 : 0) : 0;
+	const char *cores[2] = { "mame", "own" };
+	const int de = seul ? (strcmp(seul, "own") == 0 ? 1 : 0) : 0;
 	const int a_ = seul ? de : 0, b_ = seul ? de + 1 : 2;
 	for (int ic = a_; ic < b_; ic++)
-		for (int essai = 0; essai < 7; essai++) {
-			Banc b(coeurs[ic]);
-			std::vector<Pas> pas(PAS_PAR_PROGRAMME);
-			for (unsigned i = 0; i < PAS_PAR_PROGRAMME; i++) socle(pas[i], i);
-			b.programme(pas);
-			v[ic][essai] = chronometre(*b.c, n, puits) * 1e9 / (double(n) * PAS_PAR_PROGRAMME);
+		for (int trial = 0; trial < 7; trial++) {
+			Bench b(cores[ic]);
+			std::vector<DecodedStep> step(STEPS_PER_PROGRAM);
+			for (unsigned i = 0; i < STEPS_PER_PROGRAM; i++) baseline(step[i], i);
+			b.program(step);
+			v[ic][trial] = stopwatch(*b.c, n, snk) * 1e9 / (double(n) * STEPS_PER_PROGRAM);
 		}
 	for (int ic = a_; ic < b_; ic++) std::sort(v[ic], v[ic] + 7);
 	if (seul) {
@@ -391,43 +391,43 @@ int banc_socle(unsigned n, const char *seul)
 		const double ns = v[de][3];
 		printf("socle %u, coeur \"%s\" SEUL : %.3f ns/pas [%.3f-%.3f] ; %llu pas de DSP executes"
 		       "  (puits %lld)\n",
-		       n, coeurs[de], ns, v[de][0], v[de][6],
-		       (unsigned long long)(7ull * n * PAS_PAR_PROGRAMME), (long long) puits);
+		       n, cores[de], ns, v[de][0], v[de][6],
+		       (unsigned long long)(7ull * n * STEPS_PER_PROGRAM), (long long) snk);
 		return 0;
 	}
 	const double a = v[0][3], b = v[1][3];
 	printf("socle %u : mame %.3f [%.3f-%.3f]  maison %.3f [%.3f-%.3f]  ecart %+.3f  rapport %.3f"
 	       "  (puits %lld)\n",
-	       n, a, v[0][0], v[0][6], b, v[1][0], v[1][6], b - a, a > 0 ? b / a : 0.0, (long long) puits);
+	       n, a, v[0][0], v[0][6], b, v[1][0], v[1][6], b - a, a > 0 ? b / a : 0.0, (long long) snk);
 	return 0;
 }
 
-int banc_dsp(unsigned n)
+int bench_dsp(unsigned n)
 {
-	printf("mesurer-coeur --dsp : le DSP par caracteristique, %u echantillons par cas,\n"
+	printf("measure-core --dsp : le DSP par caracteristique, %u echantillons par cas,\n"
 	       "mediane de trois passages, 112 pas par programme. Les deux coeurs, et l'ecart.\n\n", n);
 	// Les trois dernieres colonnes sont le COUT PROPRE : la valeur moins le socle. C'est elles qu'il faut
 	// lire, et pas le temps brut -- le socle est dans chaque ligne, et il porte deja un ecart.
 	printf("  %-20s %9s %9s %9s %9s %9s %9s\n",
-	       "caracteristique", "mame", "maison", "ecart", "mame", "maison", "ecart");
+	       "caracteristique", "mame", "own", "ecart", "mame", "own", "ecart");
 	printf("  %-20s %9s %9s %9s %9s %9s %9s\n",
 	       "", "ns/pas", "ns/pas", "ns/pas", "propre", "propre", "propre");
 
-	volatile std::int64_t puits = 0;
+	volatile std::int64_t snk = 0;
 	double socle_a = 0, socle_b = 0;
-	for (const Caracteristique &k : CARACTERISTIQUES) {
-		const double a = ns_par_pas("mame", k, n, puits);
-		const double b = ns_par_pas("maison", k, n, puits);
-		if (!strcmp(k.nom, "socle")) {
+	for (const Caracteristique &k : CHARACTERISTICS) {
+		const double a = ns_par_pas("mame", k, n, snk);
+		const double b = ns_par_pas("own", k, n, snk);
+		if (!strcmp(k.name, "socle")) {
 			socle_a = a; socle_b = b;
-			printf("  %-20s %9.3f %9.3f %+9.3f %9s %9s %9s\n", k.nom, a, b, b - a, "--", "--", "--");
+			printf("  %-20s %9.3f %9.3f %+9.3f %9s %9s %9s\n", k.name, a, b, b - a, "--", "--", "--");
 			continue;
 		}
-		printf("  %-20s %9.3f %9.3f %+9.3f %9.3f %9.3f %+9.3f\n", k.nom, a, b, b - a,
+		printf("  %-20s %9.3f %9.3f %+9.3f %9.3f %9.3f %+9.3f\n", k.name, a, b, b - a,
 		       a - socle_a, b - socle_b, (b - socle_b) - (a - socle_a));
 	}
-	const double ja = ns_par_pas_du_jeu("mame", n, puits);
-	const double jb = ns_par_pas_du_jeu("maison", n, puits);
+	const double ja = ns_par_pas_du_jeu("mame", n, snk);
+	const double jb = ns_par_pas_du_jeu("own", n, snk);
 	printf("\n  %-20s %9.3f %9.3f %+9.3f %9.3f %9.3f %+9.3f   <- LE TEMOIN\n", "la forme du jeu", ja, jb,
 	       jb - ja, ja - socle_a, jb - socle_b, (jb - socle_b) - (ja - socle_a));
 	printf("\nCE QU'IL FAUT LIRE, dans cet ordre :\n"
@@ -440,8 +440,8 @@ int banc_dsp(unsigned n)
 	       "     c'est ce banc qu'il faut croire le moins -- 112 pas identiques n'ont ni le cache ni les\n"
 	       "     dependances du vrai programme (en-tete de ce fichier).\n",
 	       socle_a, socle_b, socle_b - socle_a, 100.0 * (socle_b / socle_a - 1.0));
-	socle_par_longueur(n, puits);
-	printf("\n(puits %lld, pour que rien ne soit optimise au loin)\n", (long long) puits);
+	baseline_by_length(n, snk);
+	printf("\n(puits %lld, pour que rien ne soit optimise au loin)\n", (long long) snk);
 	return 0;
 }
 
@@ -450,36 +450,36 @@ int banc_dsp(unsigned n)
 int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--dsp"))
-		return banc_dsp(argc > 2 ? unsigned(strtoul(argv[2], nullptr, 10)) : 400000);
-	if (argc > 2 && !strcmp(argv[1], "--jeu"))
-		return banc_jeu(argv[2], argc > 3 ? unsigned(strtoul(argv[3], nullptr, 10)) : 400000);
-	if (argc > 1 && !strcmp(argv[1], "--socle")) {
-		// `--socle [n]` ou `--socle <coeur> [n]` : un argument qui n'est pas un nombre est un nom de coeur.
+		return bench_dsp(argc > 2 ? unsigned(strtoul(argv[2], nullptr, 10)) : 400000);
+	if (argc > 2 && !strcmp(argv[1], "--game"))
+		return bench_game(argv[2], argc > 3 ? unsigned(strtoul(argv[3], nullptr, 10)) : 400000);
+	if (argc > 1 && !strcmp(argv[1], "--baseline")) {
+		// `--baseline [n]` ou `--baseline <coeur> [n]` : un argument qui n'est pas un nombre est un nom de coeur.
 		const bool nomme = argc > 2 && !isdigit((unsigned char)argv[2][0]);
 		const char *seul = nomme ? argv[2] : nullptr;
 		const int in = nomme ? 3 : 2;
-		return banc_socle(argc > in ? unsigned(strtoul(argv[in], nullptr, 10)) : 600000, seul);
+		return bench_baseline(argc > in ? unsigned(strtoul(argv[in], nullptr, 10)) : 600000, seul);
 	}
 
-	const char *nom = argc > 1 ? argv[1] : "mame";
+	const char *name = argc > 1 ? argv[1] : "mame";
 	const unsigned n = argc > 2 ? unsigned(strtoul(argv[2], nullptr, 10)) : 2000000;
 
-	printf("mesurer-coeur : coeur \"%s\", %u echantillons par cas\n\n", nom, n);
+	printf("measure-core : coeur \"%s\", %u echantillons par cas\n\n", name, n);
 	printf("  %-14s %10s %12s %14s\n", "cas", "secondes", "ns/ech", "%% d'un coeur");
 
-	volatile std::int64_t puits = 0;
-	struct Cas { const char *nom; unsigned voix; bool dsp; };
-	const Cas cas[] = { { "a vide", 0, false }, { "fentes", 32, false },
+	volatile std::int64_t snk = 0;
+	struct Case { const char *name; unsigned voix; bool dsp; };
+	const Case cases[] = { { "a vide", 0, false }, { "fentes", 32, false },
 	                    { "DSP", 0, true }, { "les deux", 32, true } };
-	for (const Cas &k : cas) {
-		Banc b(nom);
+	for (const Case &k : cases) {
+		Bench b(name);
 		if (k.dsp) b.programme_dsp();
 		if (k.voix) b.voix(k.voix);
-		const double s = chronometre(*b.c, n, puits);
+		const double s = stopwatch(*b.c, n, snk);
 		// La part d'un coeur : le temps mis pour produire n echantillons, contre leur duree reelle.
-		const double duree = double(n) / 44100.0;
-		printf("  %-14s %10.3f %12.1f %13.2f\n", k.nom, s, s * 1e9 / n, 100.0 * s / duree);
+		const double duration = double(n) / 44100.0;
+		printf("  %-14s %10.3f %12.1f %13.2f\n", k.name, s, s * 1e9 / n, 100.0 * s / duration);
 	}
-	printf("\n(puits %lld, pour que rien ne soit optimise au loin)\n", (long long) puits);
+	printf("\n(puits %lld, pour que rien ne soit optimise au loin)\n", (long long) snk);
 	return 0;
 }

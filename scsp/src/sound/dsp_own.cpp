@@ -1,4 +1,4 @@
-#include "dsp_maison.h"
+#include "dsp_own.h"
 
 #include "sound_prof.h"
 
@@ -15,10 +15,10 @@ namespace {
 //
 // The replay found it 1 064 053 samples in: EFREG[2] was saturating at 0x8000 where it should have been
 // zero. A left shift then an arithmetic right shift does both at once.
-inline dsp_maison::s32 sext(dsp_maison::s32 v, unsigned bits)
+inline dsp_own::s32 sext(dsp_own::s32 v, unsigned bits)
 {
-	const unsigned reste = 32 - bits;
-	return dsp_maison::s32(dsp_maison::u32(v) << reste) >> reste;
+	const unsigned rest = 32 - bits;
+	return dsp_own::s32(dsp_own::u32(v) << rest) >> rest;
 }
 
 // -----------------------------------------------------------------------------------------------------
@@ -34,10 +34,10 @@ inline dsp_maison::s32 sext(dsp_maison::s32 v, unsigned bits)
 // as 0x67FE -- and those three numbers are recorded in the specification.
 // -----------------------------------------------------------------------------------------------------
 
-dsp_maison::u16 empaquete(dsp_maison::s32 v)
+dsp_own::u16 pack(dsp_own::s32 v)
 {
 	const int signe = (v >> 23) & 1;
-	dsp_maison::u32 motif = dsp_maison::u32(v ^ (v << 1)) & 0xFFFFFF;
+	dsp_own::u32 motif = dsp_own::u32(v ^ (v << 1)) & 0xFFFFFF;
 	int exposant = 0;
 	for (int k = 0; k < 12; k++) {
 		if (motif & 0x800000) break;
@@ -50,15 +50,15 @@ dsp_maison::u16 empaquete(dsp_maison::s32 v)
 	v &= 0x7FF;
 	v |= signe << 15;
 	v |= exposant << 11;
-	return dsp_maison::u16(v);
+	return dsp_own::u16(v);
 }
 
-dsp_maison::s32 depaquete(dsp_maison::u16 v)
+dsp_own::s32 unpack(dsp_own::u16 v)
 {
 	const int signe = (v >> 15) & 1;
 	int exposant = (v >> 11) & 0xF;
 	const int mantisse = v & 0x7FF;
-	dsp_maison::s32 r = mantisse << 11;
+	dsp_own::s32 r = mantisse << 11;
 	if (exposant > 11) {
 		exposant = 11;
 		r |= signe << 22;
@@ -74,7 +74,7 @@ dsp_maison::s32 depaquete(dsp_maison::u16 v)
 
 } // namespace
 
-void dsp_maison::Init()
+void dsp_own::Init()
 {
 	for (auto &v : COEF) v = 0;
 	for (auto &v : MADRS) v = 0;
@@ -84,20 +84,20 @@ void dsp_maison::Init()
 	for (auto &v : MIXS) v = 0;
 	for (auto &v : EXTS) v = 0;
 	for (auto &v : EFREG) v = 0;
-	for (auto &p : m_prog) p = Pas();
-	m_dernier = 0;
+	for (auto &p : m_prog) p = DecodedStep();
+	m_last = 0;
 	m_acc = m_memval = m_frc_reg = m_y_reg = m_adrs_reg = 0;
 	m_dec = 0;
 	RBP = 0;
 	RBL = 8 * 1024;        // what an RBL of zero means
-	m_arrete = true;       // until Start has happened, nothing runs
+	m_stopped = true;       // until Start has happened, nothing runs
 }
 
-void dsp_maison::Decode(int pas)
+void dsp_own::Decode(int step)
 {
-	if (pas < 0 || pas >= 128) return;
-	const u16 *m = MPRO + pas * 4;
-	Pas &p = m_prog[pas];
+	if (step < 0 || step >= 128) return;
+	const u16 *m = MPRO + step * 4;
+	DecodedStep &p = m_prog[step];
 	p.tra   = u8((m[0] >> 8) & 0x7F);
 	p.twa   = u8(m[0] & 0x7F);
 	p.ysel  = u8((m[1] >> 13) & 3);
@@ -131,9 +131,9 @@ void dsp_maison::Decode(int pas)
 	p.f = f;
 }
 
-void dsp_maison::Start()
+void dsp_own::Start()
 {
-	m_arrete = false;
+	m_stopped = false;
 	// THE LAST USEFUL STEP: the program stops at the last non-zero step. An entirely zero program
 	// therefore does nothing at all, which the specification's first case checks.
 	int i = 127;
@@ -141,30 +141,30 @@ void dsp_maison::Start()
 		const u16 *m = MPRO + i * 4;
 		if (m[0] || m[1] || m[2] || m[3]) break;
 	}
-	m_dernier = i + 1;
-	for (int pas = 0; pas < 128; pas++) Decode(pas);
+	m_last = i + 1;
+	for (int step = 0; step < 128; step++) Decode(step);
 	// Recomputed from scratch over the whole program, not accumulated: this is the only moment at which
 	// one can know whether the four rare controls are used anywhere.
-	m_rares = false;
-	for (int pas = 0; pas < m_dernier; pas++) if (m_prog[pas].f & I_RARES) m_rares = true;
+	m_rare = false;
+	for (int step = 0; step < m_last; step++) if (m_prog[step].f & I_RARES) m_rare = true;
 }
 
-void dsp_maison::SetSample(s32 echantillon, s32 sel, s32 mxl)
+void dsp_own::SetSample(s32 sample, s32 sel, s32 mxl)
 {
 	(void) mxl;   // the level is already applied by the caller, as the chip's mix does
-	MIXS[sel & 0xF] += echantillon;
+	MIXS[sel & 0xF] += sample;
 }
 
-void dsp_maison::Step()
+void dsp_own::Step()
 {
-	if (m_arrete) return;
-	// The body without the controls this program does not use (dsp_maison.h: m_rares).
-	if (m_rares) boucle<true>();
-	else         boucle<false>();
+	if (m_stopped) return;
+	// The body without the controls this program does not use (dsp_own.h: m_rares).
+	if (m_rare) loop<true>();
+	else         loop<false>();
 }
 
 template <bool RARES>
-void dsp_maison::boucle()
+void dsp_own::loop()
 {
 
 	// EFREG STARTS FROM ZERO ON EVERY SAMPLE. EWT adds, so without this clearing the effects output would
@@ -172,24 +172,24 @@ void dsp_maison::boucle()
 	for (auto &v : EFREG) v = 0;
 
 	const u32 dec = m_dec, rbl = RBL, rbp = RBP;
-	const int dernier = m_dernier;
+	const int dernier = m_last;
 
-	for (int pas = 0; pas < dernier; ++pas) {
-		const Pas &I = m_prog[pas];
+	for (int step = 0; step < dernier; ++step) {
+		const DecodedStep &I = m_prog[step];
 		const u32 f = I.f;
 
 		// --- the input
-		s32 entree;
-		if (I.ira <= 0x1F)      entree = MEMS[I.ira];
-		else if (I.ira <= 0x2F) entree = MIXS[I.ira - 0x20] << 4;    // MIXS is 20 bits
-		else if (I.ira <= 0x31) entree = EXTS[I.ira - 0x30] << 8;    // EXTS is 16 of them
+		s32 input;
+		if (I.ira <= 0x1F)      input = MEMS[I.ira];
+		else if (I.ira <= 0x2F) input = MIXS[I.ira - 0x20] << 4;    // MIXS is 20 bits
+		else if (I.ira <= 0x31) input = EXTS[I.ira - 0x30] << 8;    // EXTS is 16 of them
 		else return;                                                 // beyond that, the step gives up
-		entree = sext(entree, 24);
+		input = sext(input, 24);
 
 		if ((f & I_IWT)) {
 			// MEMVAL comes from an MRD of a PREVIOUS step: the memory read does not arrive in the same step.
 			MEMS[I.iwa] = m_memval;
-			if (I.ira == I.iwa) entree = m_memval;
+			if (I.ira == I.iwa) input = m_memval;
 		}
 
 		// --- the operands. The same TEMP word feeds B and X: read and extended once.
@@ -200,7 +200,7 @@ void dsp_maison::boucle()
 			b = (f & I_BSEL) ? m_acc : tempv;
 			if constexpr (RARES) if ((f & I_NEGB)) b = 0 - b;
 		}
-		const s32 x = (f & I_XSEL) ? entree : tempv;
+		const s32 x = (f & I_XSEL) ? input : tempv;
 
 		// COEF FIRST, as in MAME and for its reason: 87 of the game's 112 steps take it
 		// (docs/scsp_audit.md §5), and it is case 1, hence the second arm of a switch written in order.
@@ -209,7 +209,7 @@ void dsp_maison::boucle()
 		else if (I.ysel == 0) y = m_frc_reg;
 		else if (I.ysel == 2) y = (m_y_reg >> 11) & 0x1FFF;
 		else                  y = (m_y_reg >> 4) & 0x0FFF;
-		if constexpr (RARES) if ((f & I_YRL)) m_y_reg = entree;
+		if constexpr (RARES) if ((f & I_YRL)) m_y_reg = input;
 
 		// --- THE SHIFTER, AND IT IS ONE STEP BEHIND THE ACCUMULATOR.
 		//
@@ -229,8 +229,8 @@ void dsp_maison::boucle()
 		// THE SUM IS DONE IN 64 BITS AND THEN TRUNCATED, not the other way round: truncating the product
 		// before adding B is not the same thing as soon as either of them leaves a 32-bit integer's range.
 		y = sext(y, 13);
-		const s64 produit = (s64(x) * s64(y)) >> 12;
-		m_acc = s32(produit + b);
+		const s64 product = (s64(x) * s64(y)) >> 12;
+		m_acc = s32(product + b);
 
 		if ((f & I_TWT)) TEMP[(I.twa + dec) & 0x7F] = shifted;
 
@@ -238,24 +238,24 @@ void dsp_maison::boucle()
 
 		// --- the delay line
 		if ((f & I_MRD) || (f & I_MWT)) {
-			u32 adresse = MADRS[I.masa];
-			if (!(f & I_TABLE)) adresse += dec;
-			if ((f & I_ADREB)) adresse += u32(m_adrs_reg) & 0x0FFF;
-			if ((f & I_NXADR)) adresse++;
+			u32 address = MADRS[I.masa];
+			if (!(f & I_TABLE)) address += dec;
+			if ((f & I_ADREB)) address += u32(m_adrs_reg) & 0x0FFF;
+			if ((f & I_NXADR)) address++;
 			// Without TABLE, the address wraps inside the delay line; with it, it sweeps 64 kwords.
-			if (!(f & I_TABLE)) adresse &= rbl - 1;
-			else          adresse &= 0xFFFF;
-			adresse += rbp << 12;
-			adresse <<= 1;
+			if (!(f & I_TABLE)) address &= rbl - 1;
+			else          address &= 0xFFFF;
+			address += rbp << 12;
+			address <<= 1;
 			// AND THE ACCESSES ONLY HAPPEN ON AN ODD STEP. An MRD at step 0 reads nothing: that is why the
 			// programs interleave empty steps.
-			if (pas & 1) {
-				if ((f & I_MRD)) m_memval = (f & I_NOFL) ? (s32(lire_mot(adresse)) << 8) : depaquete(lire_mot(adresse));
-				if ((f & I_MWT)) ecrire_mot(adresse, (f & I_NOFL) ? u16(shifted >> 8) : empaquete(shifted));
+			if (step & 1) {
+				if ((f & I_MRD)) m_memval = (f & I_NOFL) ? (s32(read_word(address)) << 8) : unpack(read_word(address));
+				if ((f & I_MWT)) write_word(address, (f & I_NOFL) ? u16(shifted >> 8) : pack(shifted));
 			}
 		}
 
-		if constexpr (RARES) if ((f & I_ADRL)) m_adrs_reg = (I.shift == 3) ? ((shifted >> 12) & 0x0FFF) : (entree >> 16);
+		if constexpr (RARES) if ((f & I_ADRL)) m_adrs_reg = (I.shift == 3) ? ((shifted >> 12) & 0x0FFF) : (input >> 16);
 
 		// EWT ADDS, it does not assign: several steps can feed the same effects output.
 		if ((f & I_EWT)) EFREG[I.ewa] = s16(EFREG[I.ewa] + s16(shifted >> 8));

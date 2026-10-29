@@ -92,13 +92,13 @@ struct SoundBoard::Bus : m68000_bus
 		}
 		switch (a >> 20) {
 		case 0x0: case 0x2: {
-			const int puce = (a >> 20) == 2;
-			const u32 mot = (a & 0xFFFFF) >> 1;
-			u16 &w = b.ram[puce][mot];
+			const int chip = (a >> 20) == 2;
+			const u32 word = (a & 0xFFFFF) >> 1;
+			u16 &w = b.ram[chip][word];
 			w = (w & ~mem_mask) | (data & mem_mask);
 			// La trace doit les porter : la puce joue depuis la RAM, et un rejeu sans elles n'aurait aucun
 			// echantillon a jouer. C'est l'un des quatre manques de VF3_SCSP_WLOG (scsp_trace.h).
-			if (b.trace[puce]) b.trace[puce]->ram_ecrite(mot, data, mem_mask);
+			if (b.trace[chip]) b.trace[chip]->ram_written(word, data, mem_mask);
 			break;
 		}
 		case 0x1:
@@ -149,45 +149,45 @@ void SoundBoard::reset()
 		pcm[n].clear();
 		sinks[n].b = this;
 		sinks[n].n = n;
-		// LE COEUR SE CHOISIT. Par defaut celui de MAME, pour que rien ne change sans qu'on le demande ;
-		// VF3_SCSP_COEUR=maison prend celui du projet (src/sound/scsp_maison.h), identique a l'octet au
-		// rejoueur mais sans les trois extras ci-dessous.
-		static const char *nom = []() {
-			const char *e = getenv("VF3_SCSP_COEUR");
+		// THE CORE IS CHOSEN HERE. MAME's by default, so that nothing changes unless it is asked for;
+		// VF3_SCSP_CORE=own takes the project's (src/sound/scsp_own.h), byte-identical under the
+		// replayer but without the three extras below.
+		static const char *name = []() {
+			const char *e = getenv("VF3_SCSP_CORE");
 			return e && *e ? e : "mame";
 		}();
-		scsp[n] = scsp::make(nom, 45158400 / 2, ram[n].data(), uint32_t(ram[n].size() * 2), sinks[n]);
-		if (!scsp[n]) { fprintf(stderr, "soundboard: coeur \"%s\" inconnu ; connus : %s\n",
-		                        nom, scsp::noms_connus()); std::exit(2); }
+		scsp[n] = scsp::make(name, 45158400 / 2, ram[n].data(), uint32_t(ram[n].size() * 2), sinks[n]);
+		if (!scsp[n]) { fprintf(stderr, "soundboard: unknown core \"%s\"; known: %s\n",
+		                        name, scsp::known_names()); std::exit(2); }
 		extras[n] = dynamic_cast<scsp_mame *>(scsp[n].get());
 		if (!extras[n] && n == 0)
-			fprintf(stderr, "son: coeur \"%s\" -- les gains par groupe, la sonde d'energie et le journal"
-			                " des key-on ne s'appliquent pas (soundboard.h)\n", nom);
-		// LE MIROIR MADRS SE POSE AVANT LA TRACE, et l'ordre est la lecon d'une divergence : c'est le seul
-		// des quatre extras qui change le son, il change par jeu (soundboard.h) et il ne passe pas par
-		// scsp::core. Pose APRES l'enregistreur -- comme il l'etait -- il n'entrait pas dans l'en-tete de la
-		// trace, un rejeu le supposait `true`, et sur Fighting Vipers 2 ou il vaut faux le rejeu divergeait
-		// de la carte a l'echantillon 772 067 (scsp/docs/scsp_validation.md §3 c). Pose ici, l'enregistreur le
-		// RELIT de la puce : il n'y a plus rien a penser a lui dire.
+			fprintf(stderr, "sound: core \"%s\" -- the per-group gains, the energy probe and the key-on"
+			                " log do not apply (soundboard.h)\n", name);
+		// THE MADRS MIRROR IS SET BEFORE THE TRACE, and the order is a divergence's lesson: it is the only
+		// one of the four extras that changes the sound, it changes per game (soundboard.h) and it does not
+		// go through scsp::core. Set AFTER the recorder -- as it used to be -- it did not go into the
+		// trace's header, a replay assumed it `true`, and on Fighting Vipers 2 where it is false the replay
+		// diverged from the board at sample 772 067 (scsp/docs/scsp_validation.md §3 c). Set here, the
+		// recorder READS it back from the chip: there is nothing left to remember to tell it.
 		{
 			const char *sep = getenv("VF3_SCSP_MADRS_SEPARATE"), *mir = getenv("VF3_SCSP_MADRS_MIRROR");
 			const bool on = (sep && *sep == '1') ? false : (mir && *mir == '1') ? true : madrs_mirror;
-			// Les deux coeurs le portent, chacun sur sa classe concrete, par la porte unique de
-			// scsp_select.h -- l'interface ne le porte pas, parce que ce n'est pas l'affaire de la puce
-			// mais du jeu (scsp_core.h).
-			if (!scsp::regle_miroir_madrs(*scsp[n], on) && n == 0)
-				fprintf(stderr, "son: coeur \"%s\" -- le miroir MADRS ne s'y pose pas (scsp_select.h)\n", nom);
+			// Both cores carry it, each on its own concrete class, through the single door of
+			// scsp_select.h -- the interface does not carry it, because it is not the chip's business
+			// but the game's (scsp_core.h).
+			if (!scsp::set_madrs_mirror_on(*scsp[n], on) && n == 0)
+				fprintf(stderr, "sound: core \"%s\" -- the MADRS mirror does not set on it (scsp_select.h)\n", name);
 		}
-		// VF3_SCSP_TRACE=f : la trace d'acces, un fichier par puce (f.0 et f.1), pour tools/son/rejouer.
-		// Elle commence ICI, a la remise a zero, parce que la RAM y est connue -- huit mots, les vecteurs du
-		// 68000 que la carte vient d'y copier. L'enregistreur le verifie au lieu de le supposer.
+		// VF3_SCSP_TRACE=f: the access trace, one file per chip (f.0 and f.1), for tools/sound/replay.
+		// It begins HERE, at the reset, because the RAM is known there -- eight words, the 68000's vectors
+		// that the board has just copied into it. The recorder checks that rather than assuming it.
 		tete[n] = scsp[n].get();
 		trace[n].reset();
 		if (const char *base = getenv("VF3_SCSP_TRACE")) {
 			const std::string f = std::string(base) + "." + std::to_string(n);
-			auto e = std::make_unique<scsp::enregistreur>(*scsp[n], f.c_str(), unsigned(n), 45158400 / 2,
+			auto e = std::make_unique<scsp::recorder>(*scsp[n], f.c_str(), unsigned(n), 45158400 / 2,
 			                                             ram[n].data(), uint32_t(ram[n].size() * 2));
-			if (e->bon()) { tete[n] = e.get(); trace[n] = std::move(e); }
+			if (e->good()) { tete[n] = e.get(); trace[n] = std::move(e); }
 		}
 		if (extras[n]) extras[n]->device().group_of = [this, n](int slot) { return group_of(n, slot); };
 		if (extras[n]) for (int g = 0; g < 2; g++) extras[n]->device().set_group_gain(g, volume[g]);

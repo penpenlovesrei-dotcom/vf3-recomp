@@ -32,25 +32,25 @@
 
 namespace {
 
-int echecs = 0;
+int failures = 0;
 
-void ok(const char *quoi, const std::string &d) { printf("  ok     %-40s %s\n", quoi, d.c_str()); }
-void rate(const char *quoi, const std::string &d) { printf("  FAILED %-40s %s\n", quoi, d.c_str()); ++echecs; }
+void ok(const char *what, const std::string &d) { printf("  ok     %-40s %s\n", what, d.c_str()); }
+void rate(const char *what, const std::string &d) { printf("  FAILED %-40s %s\n", what, d.c_str()); ++failures; }
 
-struct Muet final : scsp::sink {
+struct Silent final : scsp::sink {
 	void irq(int, bool) override {}
 	void midi_out(std::uint8_t) override {}
 	void timer(int, std::uint32_t, std::uint32_t) override {}
 };
 
-constexpr std::uint32_t RAM_OCTETS = 0x100000;
+constexpr std::uint32_t RAM_BYTES = 0x100000;
 
 // The words we do not write, with the reason.
-bool intouchable(std::uint32_t octet, const char *&pourquoi)
+bool untouchable(std::uint32_t byte, const char *&pourquoi)
 {
-	if (octet < 0x400 && (octet & 0x1F) == 0x00) { pourquoi = "a slot's word 0: KYONEX triggers the voices"; return true; }
-	if (octet == 0x400) { pourquoi = "MVOL, MEM4MB, DAC18B: change the output of everything else"; return true; }
-	if (octet == 0x416) { pourquoi = "DEXE: starts a DMA and would write into sound RAM"; return true; }
+	if (byte < 0x400 && (byte & 0x1F) == 0x00) { pourquoi = "a slot's word 0: KYONEX triggers the voices"; return true; }
+	if (byte == 0x400) { pourquoi = "MVOL, MEM4MB, DAC18B: change the output of everything else"; return true; }
+	if (byte == 0x416) { pourquoi = "DEXE: starts a DMA and would write into sound RAM"; return true; }
 	return false;
 }
 
@@ -58,21 +58,21 @@ bool intouchable(std::uint32_t octet, const char *&pourquoi)
 // to the chip. So it goes through scsp_select.h, which makes it answer through the REGISTERED core -- this
 // was the third copy of the same dynamic_cast in this repository, and it linked MAME into this test for
 // nothing.
-bool pose_miroir(scsp::core &c, bool on) { return scsp::regle_miroir_madrs(c, on); }
+bool set_mirror(scsp::core &c, bool on) { return scsp::set_madrs_mirror_on(c, on); }
 
 } // namespace
 
 int main(int argc, char **argv)
 {
-	const char *nom = argc > 1 ? argv[1] : "mame";
-	printf("test_scsp_regs: what a write reads back as, through scsp::core -- core \"%s\"\n\n", nom);
+	const char *name = argc > 1 ? argv[1] : "mame";
+	printf("test_scsp_regs: what a write reads back as, through scsp::core -- core \"%s\"\n\n", name);
 
-	std::vector<std::uint16_t> ram(RAM_OCTETS / 2, 0);
-	Muet muet;
-	std::unique_ptr<scsp::core> p = scsp::make(nom, 45158400 / 2, ram.data(), RAM_OCTETS, muet);
+	std::vector<std::uint16_t> ram(RAM_BYTES / 2, 0);
+	Silent silent;
+	std::unique_ptr<scsp::core> p = scsp::make(name, 45158400 / 2, ram.data(), RAM_BYTES, silent);
 	if (!p) return 2;
-	scsp::core &coeur = *p;
-	coeur.reset();
+	scsp::core &the_core = *p;
+	the_core.reset();
 
 	// ---- 1. each word's useful mask, measured
 	//
@@ -83,37 +83,37 @@ int main(int argc, char **argv)
 	// not clear them, and the subtraction was erasing precisely the bit being looked for. So we measure
 	// what GOES UP on a write, and separately what STAYS raised when zero is written back.
 	const std::size_t N_MOTS = 0x430 / 2;
-	std::vector<std::uint16_t> monte(N_MOTS, 0), colle(N_MOTS, 0);
-	unsigned sautes = 0;
-	for (std::uint32_t octet = 0; octet < 0x430; octet += 2) {
+	std::vector<std::uint16_t> raises(N_MOTS, 0), sticks(N_MOTS, 0);
+	unsigned skipped = 0;
+	for (std::uint32_t byte = 0; byte < 0x430; byte += 2) {
 		const char *pourquoi = nullptr;
-		if (intouchable(octet, pourquoi)) { ++sautes; continue; }
-		const std::uint32_t mot = octet / 2;
-		coeur.write_reg(mot, 0x0000, 0xFFFF);
-		const std::uint16_t a0 = coeur.read_reg(mot);
-		coeur.write_reg(mot, 0xFFFF, 0xFFFF);
-		const std::uint16_t a1 = coeur.read_reg(mot);
-		coeur.write_reg(mot, 0x0000, 0xFFFF);
-		const std::uint16_t a2 = coeur.read_reg(mot);
-		monte[mot] = std::uint16_t(a1 & ~a0);        // what a write raises
-		colle[mot] = std::uint16_t(a1 & a2 & ~a0);   // ... and that does not come down
+		if (untouchable(byte, pourquoi)) { ++skipped; continue; }
+		const std::uint32_t word = byte / 2;
+		the_core.write_reg(word, 0x0000, 0xFFFF);
+		const std::uint16_t a0 = the_core.read_reg(word);
+		the_core.write_reg(word, 0xFFFF, 0xFFFF);
+		const std::uint16_t a1 = the_core.read_reg(word);
+		the_core.write_reg(word, 0x0000, 0xFFFF);
+		const std::uint16_t a2 = the_core.read_reg(word);
+		raises[word] = std::uint16_t(a1 & ~a0);        // what a write raises
+		sticks[word] = std::uint16_t(a1 & a2 & ~a0);   // ... and that does not come down
 	}
-	ok("sweep from 0x000 to 0x42F", std::to_string(0x430 / 2 - sautes) + " words written and read back, "
-	   + std::to_string(sautes) + " left aside");
+	ok("sweep from 0x000 to 0x42F", std::to_string(0x430 / 2 - skipped) + " words written and read back, "
+	   + std::to_string(skipped) + " left aside");
 
 	// ---- 2. the three set aside are indeed the ones named, and no others
 	{
-		unsigned fentes = 0, autres = 0;
-		for (std::uint32_t octet = 0; octet < 0x430; octet += 2) {
+		unsigned slots = 0, autres = 0;
+		for (std::uint32_t byte = 0; byte < 0x430; byte += 2) {
 			const char *p = nullptr;
-			if (!intouchable(octet, p)) continue;
-			if (octet < 0x400) ++fentes; else ++autres;
+			if (!untouchable(byte, p)) continue;
+			if (byte < 0x400) ++slots; else ++autres;
 		}
-		const bool juste = fentes == 32 && autres == 2 && sautes == fentes + autres;
-		juste ? ok("the ones set aside are named", std::to_string(fentes) + " slot word 0s + 0x400 + 0x416")
+		const bool correct = slots == 32 && autres == 2 && skipped == slots + autres;
+		correct ? ok("the ones set aside are named", std::to_string(slots) + " slot word 0s + 0x400 + 0x416")
 		      : rate("the ones set aside are named",
-		             std::to_string(fentes) + " slots and " + std::to_string(autres) + " others, for "
-		             + std::to_string(sautes) + " skipped");
+		             std::to_string(slots) + " slots and " + std::to_string(autres) + " others, for "
+		             + std::to_string(skipped) + " skipped");
 	}
 
 	// ---- 3. the interrupt-pending registers: read-only EXCEPT bit 5
@@ -135,24 +135,24 @@ int main(int argc, char **argv)
 	// We record all three as they are: the first version of this test called 0x42E "MCIPD" and passed for
 	// the wrong reason. A rewrite will decide to reproduce the asymmetry or to correct it, but it will
 	// decide while looking at it.
-	for (auto [octet, nom] : { std::pair<std::uint32_t, const char *>{ 0x420, "SCIPD (0x420)" },
+	for (auto [byte, name] : { std::pair<std::uint32_t, const char *>{ 0x420, "SCIPD (0x420)" },
 	                           std::pair<std::uint32_t, const char *>{ 0x42C, "MCIPD (0x42C)" },
 	                           std::pair<std::uint32_t, const char *>{ 0x42E, "MCIRE (0x42E)" } }) {
-		const std::uint16_t mo = monte[octet / 2], co = colle[octet / 2];
+		const std::uint16_t mo = raises[byte / 2], co = sticks[byte / 2];
 		char d[64];
 		snprintf(d, sizeof d, "raises 0x%04x, sticks 0x%04x", mo, co);
 		// And bit 5 STICKS: it is a write that SETS it, not one that copies it. A rewrite doing an
 		// assignment would pass the first half of this test and fail the second.
 		(mo == 0x0020 && co == 0x0020)
-			? ok(nom, std::string(d) + ": bit 5 alone, and it stays raised")
-			: rate(nom, std::string(d) + ", expected raises and sticks 0x0020");
+			? ok(name, std::string(d) + ": bit 5 alone, and it stays raised")
+			: rate(name, std::string(d) + ", expected raises and sticks 0x0020");
 	}
 
 	// ---- 3 bis. SCIRE, the twin that does NOT have the exception
 	// The previous case's asymmetry is checked from its other end: on the slave side it is SCIPD that is
 	// ORed, on the master side it is MCIRE. So SCIRE must be a whole register.
 	{
-		const std::uint16_t mo = monte[0x422 / 2];
+		const std::uint16_t mo = raises[0x422 / 2];
 		char d[64];
 		snprintf(d, sizeof d, "raises 0x%04x", mo);
 		(mo == 0xFFFF) ? ok("SCIRE (0x422)", std::string(d) + ": a whole register, no exception on this side")
@@ -165,7 +165,7 @@ int main(int argc, char **argv)
 	// writes MSLC and reads straight back to find a free slot, and this core returns it the state of the
 	// chosen slot -- deliberate behaviour, see UpdateRegR case 8's comment in scsp.cpp.
 	{
-		const std::uint16_t m404 = monte[0x404 / 2], m408 = monte[0x408 / 2];
+		const std::uint16_t m404 = raises[0x404 / 2], m408 = raises[0x408 / 2];
 		char d[160];
 		snprintf(d, sizeof d, "0x404 raises 0x%04x (the low byte is the incoming MIDI queue), "
 		                      "0x408 raises 0x%04x (MSLC/CA/SGC/EG, recomputed on every read)", m404, m408);
@@ -178,17 +178,17 @@ int main(int argc, char **argv)
 	// The contract says where each field lives (scsp_contract.h); here we check that the register KEEPS
 	// it. A field that does not read back is a field a rewrite can lose with nothing to shout about it.
 	{
-		std::string perdus;
-		for (const scsp_contract::Champ &c : scsp_contract::FENTE) {
-			if (c.mot == 0) continue;   // word 0 is not written (KYONEX)
-			const bool en_place = (c.masque & (c.masque + 1)) != 0;
-			const std::uint16_t attendu = std::uint16_t(en_place ? c.masque : (c.masque << c.decalage));
+		std::string lost;
+		for (const scsp_contract::Field &c : scsp_contract::SLOT) {
+			if (c.word == 0) continue;   // word 0 is not written (KYONEX)
+			const bool in_place = (c.mask & (c.mask + 1)) != 0;
+			const std::uint16_t expected = std::uint16_t(in_place ? c.mask : (c.mask << c.shift_by));
 			// slot 0: word c.mot is at byte 2 * c.mot
-			const std::uint16_t m = monte[c.mot];
-			if ((m & attendu) != attendu) perdus += std::string(perdus.empty() ? "" : ", ") + c.nom;
+			const std::uint16_t m = raises[c.word];
+			if ((m & expected) != expected) lost += std::string(lost.empty() ? "" : ", ") + c.name;
 		}
-		perdus.empty() ? ok("a slot's 34 fields all read back", "no bit lost by the register")
-		               : rate("a slot's 34 fields all read back", "lost: " + perdus);
+		lost.empty() ? ok("a slot's 34 fields all read back", "no bit lost by the register")
+		               : rate("a slot's 34 fields all read back", "lost: " + lost);
 	}
 
 	// ---- 5. the disputed range 0x7C0-0x7FF, described and not judged
@@ -202,25 +202,25 @@ int main(int argc, char **argv)
 	// so it is set through the object and not through the interface -- the only place in this file that
 	// goes below scsp::core, and that is owned: this test characterises THAT core.
 	{
-		std::string lignes;
-		bool juste = true;
-		for (bool miroir : { false, true }) {
-			pose_miroir(coeur, miroir);
-			coeur.write_reg(0x7C0 / 2, 0x1234, 0xFFFF);
-			coeur.write_reg(0x780 / 2, 0x5678, 0xFFFF);   // MADRS[0] by the low route, afterwards
-			const std::uint16_t haut = coeur.read_reg(0x7C0 / 2);
-			const std::uint16_t bas = coeur.read_reg(0x780 / 2);
+		std::string lines;
+		bool correct = true;
+		for (bool mirror : { false, true }) {
+			set_mirror(the_core, mirror);
+			the_core.write_reg(0x7C0 / 2, 0x1234, 0xFFFF);
+			the_core.write_reg(0x780 / 2, 0x5678, 0xFFFF);   // MADRS[0] by the low route, afterwards
+			const std::uint16_t high = the_core.read_reg(0x7C0 / 2);
+			const std::uint16_t low = the_core.read_reg(0x780 / 2);
 			char t[128];
 			snprintf(t, sizeof t, "%smirror %s: 0x7C0 reads 0x%04x, 0x780 reads 0x%04x",
-			         lignes.empty() ? "" : " | ", miroir ? "on " : "off", haut, bas);
-			lignes += t;
+			         lines.empty() ? "" : " | ", mirror ? "on " : "off", high, low);
+			lines += t;
 			// Mirror off: 0x7C0 has its own storage, so it keeps 0x1234 and 0x780 keeps 0x5678.
 			// Mirror on: both are the same word, so the second write wins both times.
-			juste = juste && (miroir ? (haut == 0x5678 && bas == 0x5678) : (haut == 0x1234 && bas == 0x5678));
+			correct = correct && (mirror ? (high == 0x5678 && low == 0x5678) : (high == 0x1234 && low == 0x5678));
 		}
-		pose_miroir(coeur, true);   // we hand the core back in the state we took it in
-		juste ? ok("0x7C0-0x7FF: what this core does with it", lignes)
-		      : rate("0x7C0-0x7FF: what this core does with it", lignes + " -- not what was recorded");
+		set_mirror(the_core, true);   // we hand the core back in the state we took it in
+		correct ? ok("0x7C0-0x7FF: what this core does with it", lines)
+		      : rate("0x7C0-0x7FF: what this core does with it", lines + " -- not what was recorded");
 	}
 
 	// ---- 6. the map of the masks, so that a rewrite has a target and not an intention
@@ -229,19 +229,19 @@ int main(int argc, char **argv)
 	// the array stops at 0x42E, and printed the memory after it -- 374b, c473, 44d0, which were the
 	// registers of nothing. An overrun returns figures, and figures look like a measurement.
 	printf("\n-- what a write raises, by word (.... = untouchable, * = sticky) --\n");
-	for (std::uint32_t octet = 0; octet < 0x430; octet += 0x20) {
-		printf("  %03x ", octet);
-		for (std::uint32_t k = 0; k < 0x20 && octet + k < 0x430; k += 2) {
-			const std::uint32_t mot = (octet + k) / 2;
+	for (std::uint32_t byte = 0; byte < 0x430; byte += 0x20) {
+		printf("  %03x ", byte);
+		for (std::uint32_t k = 0; k < 0x20 && byte + k < 0x430; k += 2) {
+			const std::uint32_t word = (byte + k) / 2;
 			const char *p = nullptr;
-			if (intouchable(octet + k, p)) printf("  .... ");
-			else printf("  %04x%c", monte[mot], colle[mot] ? '*' : ' ');
+			if (untouchable(byte + k, p)) printf("  .... ");
+			else printf("  %04x%c", raises[word], sticks[word] ? '*' : ' ');
 		}
 		printf("\n");
 	}
 
 	printf("\n");
-	if (echecs) { printf("%d failure(s).\n", echecs); return 1; }
+	if (failures) { printf("%d failure(s).\n", failures); return 1; }
 	printf("all cases pass\n");
 	return 0;
 }

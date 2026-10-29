@@ -4,7 +4,7 @@
 // in the same binary, the same sequence of accesses replayed through both [...] and the comparison of the
 // PCM, the observable state, the interrupts and the timers -- not just the WAV."
 //
-// WHY THE EXISTING HARNESS IS NOT ENOUGH. tools/son/comparer-son.cmd compares the FINAL MIX, two WAVs. It
+// WHY THE EXISTING HARNESS IS NOT ENOUGH. tools/sound/compare-sound.cmd compares the FINAL MIX, two WAVs. It
 // has proved its worth -- it found one missing pair of samples out of 3 219 865 -- but it only sees what
 // comes out of the speaker. A rewritten block can be wrong in a way the mix hides: an interrupt one sample
 // too early, a timer armed for the wrong duration, a register read that returns something else. The 68000
@@ -20,7 +20,7 @@
 // THE FORMAT, text, one line per event, so that it reads and diffs like the project's other logs. The
 // events are in the order the board made them, which is the whole point:
 //
-//     # scsp-trace 2 puce=N horloge=H ram=B miroir=0|1
+//     # scsp-trace 3 chip=N clock=H ram=B mirror=0|1
 //     d <word> <data> <mask>    a write to sound RAM (word = index of the WORD in RAM)
 //     w <word> <data> <mask>    write_reg
 //     r <word>                  read_reg (a read has side effects, and its value compares)
@@ -34,7 +34,7 @@
 // trace does not record. Without that check, a replay that diverges leaves two explanations -- the core is
 // different, or the trace is incomplete -- and there is no way to pick.
 //
-// `miroir` ARRIVED LATER, AND WHY HAS TO BE SAID, because it is the kind of thing nobody works out twice.
+// `mirror` ARRIVED LATER, AND WHY HAS TO BE SAID, because it is the kind of thing nobody works out twice.
 // The MADRS mirror is not an ACCESS: it is set once, before the trace starts, it does not go through
 // scsp::core (it is the game's business, not the chip's), and IT CHANGES THE SOUND -- true for Virtua
 // Fighter 3, false for Fighting Vipers 2. So a trace that does not state it does NOT carry everything the
@@ -65,32 +65,32 @@
 namespace scsp {
 
 // What a core PRODUCED during a replay: everything that leaves the chip, timestamped in samples.
-struct sortie {
-	struct Irq  { std::uint64_t ech; int niveau; bool etat; };
-	struct Midi { std::uint64_t ech; u8 octet; };
-	struct Arme { std::uint64_t ech; int lequel; u32 echantillons, periode; };
-	struct Lue  { std::uint64_t ech; u32 mot; u16 valeur; };
+struct output {
+	struct Irq  { std::uint64_t smp; int level; bool state; };
+	struct Midi { std::uint64_t smp; u8 byte; };
+	struct Arm { std::uint64_t smp; int which; u32 samples, periode; };
+	struct Read  { std::uint64_t smp; u32 word; u16 value; };
 
 	std::vector<Irq>  irqs;
 	std::vector<Midi> midis;
-	std::vector<Arme> armes;
-	std::vector<Lue>  lues;     // the values returned by read_reg
+	std::vector<Arm> armes;
+	std::vector<Read>  reads;     // the values returned by read_reg
 	std::vector<s32>  pcm;      // interleaved left/right, on the 18-bit scale
 };
 
 // The sink that records everything, for a replay. It asks the core for the instant, so it must be given it.
 class puits_notant final : public sink {
 public:
-	explicit puits_notant(sortie &s) : m_s(s) {}
+	explicit puits_notant(output &s) : m_s(s) {}
 	void suit(const core *c) { m_c = c; }
 
-	void irq(int niveau, bool etat) override { m_s.irqs.push_back({ ou(), niveau, etat }); }
-	void midi_out(u8 octet) override { m_s.midis.push_back({ ou(), octet }); }
-	void timer(int lequel, u32 ech, u32 per) override { m_s.armes.push_back({ ou(), lequel, ech, per }); }
+	void irq(int level, bool state) override { m_s.irqs.push_back({ ou(), level, state }); }
+	void midi_out(u8 byte) override { m_s.midis.push_back({ ou(), byte }); }
+	void timer(int which, u32 smp, u32 per) override { m_s.armes.push_back({ ou(), which, smp, per }); }
 
 private:
 	std::uint64_t ou() const { return m_c ? m_c->samples_made() : 0; }
-	sortie &m_s;
+	output &m_s;
 	const core *m_c = nullptr;
 };
 
@@ -99,31 +99,31 @@ private:
 // It is a decorator and not a change to the board, for a substantive reason: if the recording lived in
 // soundboard.cpp it would have to be placed at eight sites, and the ninth call added one day would escape
 // the trace with nothing to say so. Here there is only one door.
-class enregistreur final : public core {
+class recorder final : public core {
 public:
 	// `dessous` must outlive the recorder. `ram` is used for the initial sweep. The PCM goes into
 	// `<file>.pcm`.
-	enregistreur(core &dessous, const char *fichier, unsigned puce, u32 horloge,
-	             const u16 *ram, u32 ram_octets);
-	~enregistreur() override;
+	recorder(core &inner, const char *fichier, unsigned chip, u32 clock,
+	             const u16 *ram, u32 ram_bytes);
+	~recorder() override;
 
 	// True if the file is open and the initial sweep was accepted. False: the trace is abandoned and a
 	// message has already gone to stderr -- the recorder then merely passes the calls through.
-	bool bon() const { return m_f != nullptr; }
+	bool good() const { return m_f != nullptr; }
 
 	// A write to sound RAM, which the board makes without going through the core.
-	void ram_ecrite(u32 mot, u16 data, u16 masque);
+	void ram_written(u32 word, u16 data, u16 mask);
 
 	void reset() override;
-	u16  read_reg(u32 mot) override;
-	void write_reg(u32 mot, u16 data, u16 masque) override;
+	u16  read_reg(u32 word) override;
+	void write_reg(u32 word, u16 data, u16 mask) override;
 	void run(u32 n, s32 *out) override;
-	void timer_fired(int lequel) override;
-	void midi_in(u8 octet) override;
-	std::uint64_t samples_made() const override { return m_dessous.samples_made(); }
+	void timer_fired(int which) override;
+	void midi_in(u8 byte) override;
+	std::uint64_t samples_made() const override { return m_inner.samples_made(); }
 
 private:
-	core &m_dessous;
+	core &m_inner;
 	FILE *m_f = nullptr;
 	FILE *m_pcm = nullptr;
 };
@@ -132,11 +132,11 @@ private:
 //
 // `ram` is the RAM `c` was given at construction: the `d` lines go into it. `erreur` receives the reason
 // for a failure (file missing, unknown header, unreadable line); nothing is guessed silently.
-bool rejoue(const char *fichier, core &c, std::vector<u16> &ram, sortie &s, std::string *erreur);
+bool replay(const char *fichier, core &c, std::vector<u16> &ram, output &s, std::string *error);
 
 // THE COMPARISON: returns an empty string if the two outputs are identical, otherwise THE FIRST
 // divergence, named and located. Only one, because after the first the two cores are no longer telling the
 // same story and the rest teaches nothing.
-std::string compare(const sortie &a, const sortie &b);
+std::string compare(const output &a, const output &b);
 
 } // namespace scsp

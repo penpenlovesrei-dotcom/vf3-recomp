@@ -1,6 +1,6 @@
 # Audit du sous-système sonore — ce qu'il y a, ce qu'il coûte
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/son.md](son.md).
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/sound.md](son.md).
 
 Écrit le 2026-10-24, sur la branche `fv2` au commit `335c050`, machine de Frédéric (Windows 11, g++ 16.1.0
 MSYS2, `-O2`). Toutes les mesures de ce document ont été exécutées ; les commandes sont données telles quelles
@@ -109,7 +109,7 @@ VF3_PROF=1 VF3_SND_PROF=1 build/bin/vf3run.exe ... --wav son.wav --quiet
 **`--wav` n'est pas décoratif dans cette commande : sans lui `vf3run` ne fait pas tourner la carte son du
 tout**, et la sonde n'a rien à compter. Elle le dit maintenant, au lieu de sortir une ligne de zéros ; les
 trois autres manières dont ce branchement se taisait sont en §4 sexies. Les deux portées `SCSP` et `DSP`
-vivent des deux côtés depuis le 2026-10-28, donc le rapport vaut pour `VF3_SCSP_COEUR=maison` aussi.
+vivent des deux côtés depuis le 2026-10-28, donc le rapport vaut pour `VF3_SCSP_CORE=own` aussi.
 
 **L'instrumentation a été vérifiée, comme le demande toute mesure qui se respecte** : sur la même scène de 4200
 images, sondes éteintes puis allumées, le temps de la carte son est le même à ~0,5 % près (1,60/1,75/1,83/1,83/1,85/1,89/2,03/2,02
@@ -118,7 +118,7 @@ imprime lui-même ce que ses `rdtsc` coûtent (~58 kcycles par image sur ~4000, 
 
 ### Le son n'a pas bougé
 
-`tools/son/comparer-son.cmd <jeu> <script> <images> [commit]` fait jouer la même scène au `vf3run` de la branche
+`tools/sound/compare-sound.cmd <jeu> <script> <images> [commit]` fait jouer la même scène au `vf3run` de la branche
 et à celui d'un commit de référence (un arbre de travail à part, `C:\Temp\fv2-son-ref`), et compare les deux WAV
 **octet par octet**. Pour une optimisation, l'identité exacte est la seule réponse acceptable ; il n'y a pas de
 tolérance à élargir. Le script a été exécuté sur les deux jeux ; son verdict est au §7.
@@ -323,7 +323,7 @@ mesure que la musique s'est chargée, ce qui en fait le second poste et non le t
 
 §4 quater finissait sur une réserve nommée : la sonde mesure l'attente bloquante et non la concurrence,
 et pour l'isoler **il faudrait la même scène son coupé**. Mesuré le 2026-10-28 sur le même portable —
-**AMD A9-9425, deux cœurs, deux processeurs logiques**, pas de SMT — par `tools/son/mesurer-concurrence.cmd`,
+**AMD A9-9425, deux cœurs, deux processeurs logiques**, pas de SMT — par `tools/sound/mesurer-concurrence.cmd`,
 qui a gagné ce jour-là une seconde dimension : **le cœur**.
 
 Cinq passages de 4 000 images, même scène, avec fenêtre. Médianes sur 70 à 76 relevés par cas :
@@ -374,14 +374,14 @@ répondre à la question** :
 
 | | |
 |---|---|
-| `tools/son/rejouer` | compare les deux cœurs **à l'octet** sur la même trace. Son temps est dominé par l'analyse de 81 Mo de texte, identique dans les deux et comptée deux fois : il donne un écart juste et une **part fausse** |
-| `tools/son/mesurer-coeur` | ne chronomètre que `run()`, et **sépare les postes** : à vide, les fentes seules, le DSP seul, les deux. C'est lui qui dit où aller |
+| `tools/sound/replay` | compare les deux cœurs **à l'octet** sur la même trace. Son temps est dominé par l'analyse de 81 Mo de texte, identique dans les deux et comptée deux fois : il donne un écart juste et une **part fausse** |
+| `tools/sound/measure-core` | ne chronomètre que `run()`, et **sépare les postes** : à vide, les fentes seules, le DSP seul, les deux. C'est lui qui dit où aller |
 
 ### Par poste, 32 voix et un programme de 112 pas
 
 En pourcentage d'un cœur, 400 000 échantillons par cas :
 
-| poste | `mame` | `maison`, première version | `maison`, après mesure |
+| poste | `mame` | `own`, première version | `own`, après mesure |
 |---|---|---|---|
 | à vide | 0,15 | 0,21 | 0,13 |
 | **les fentes** | **2,10** | **4,44** | **2,48** |
@@ -449,9 +449,9 @@ chacun rend une mesure **vide ou fausse sans le dire**, ce qui est pire qu'une e
 
 Et un quatrième, qui n'était pas un trou mais **un chiffre faux** : les deux portées `SCSP` et `DSP` ne
 vivaient que dans `src/sound/scsp.cpp` et `scspdsp.cpp`, donc dans le cœur de MAME seul. Sur
-`VF3_SCSP_COEUR=maison`, le rapport donnait **97 % au 68000, zéro aux voix et zéro au DSP** — non pas des
+`VF3_SCSP_CORE=own`, le rapport donnait **97 % au 68000, zéro aux voix et zéro au DSP** — non pas des
 cases vides, mais une attribution fausse, puisque la part imbriquée que la formule retire du 68000 valait
-alors zéro. Les deux portées sont maintenant dans `scsp_maison::run` **aux endroits qui répondent** à
+alors zéro. Les deux portées sont maintenant dans `scsp_own::run` **aux endroits qui répondent** à
 `DoMasterSamples` et à `m_DSP.Step()`. Le témoin que les deux mesures sont comparables : les deux cœurs
 comptent désormais **2 886 portées par image, et ~58 kcycles de `rdtsc`** chacun — le surcoût de la sonde
 s'annule dans la comparaison au lieu de la biaiser.
@@ -459,12 +459,12 @@ s'annule dans la comparaison au lieu de la biaiser.
 ### Le protocole, parce qu'un seul passage ne concluait pas
 
 Un passage par cœur donnait entre +3 % et +5 % selon la fenêtre, avec une fenêtre **sous** 1 — c'est-à-dire
-rien. Donc : **trois passages par cœur, alternés** (`mame`, `maison`, `mame`, … pour que la dérive thermique
+rien. Donc : **trois passages par cœur, alternés** (`mame`, `own`, `mame`, … pour que la dérive thermique
 ne porte pas la conclusion), fenêtres **1500-4200** seulement — `--rec` n'est chaud qu'après le second
 passage du recompilateur, vers l'image 1000 — soit **18 mesures de 500 images par cœur**, et la médiane.
 
 ```bash
-VF3_PROF=1 VF3_SND_PROF=1 VF3_SCSP_COEUR=mame|maison build/bin/vf3run.exe "<ROMs>/fvipers2.zip" \
+VF3_PROF=1 VF3_SND_PROF=1 VF3_SCSP_CORE=mame|maison build/bin/vf3run.exe "<ROMs>/fvipers2.zip" \
     --script tools/scripts/fv2-fight.txt --frames 4200 --rec --wav son.wav --quiet
 ```
 
@@ -476,7 +476,7 @@ comparaison porte bien sur le même travail.
 
 Coût propre de chaque pièce, en **kcycles par image**, médiane des 18 mesures (l'étendue entre crochets) :
 
-| pièce | `mame` | `maison` | écart |
+| pièce | `mame` | `own` | écart |
 |---|---|---|---|
 | boucle+timers | 46 [44-48] | 45 [43-46] | −2 kc (−3,8 %) |
 | 68000 | 1 015 [959-1047] | 947 [896-1045] | **−68 kc (−6,7 %)** |
@@ -497,10 +497,10 @@ images — 180 463 pas par image de part et d'autre :
 | | cycles par pas de DSP |
 |---|---|
 | `mame` | **9,60** [9,1-10,7] |
-| `maison` | **11,50** [11,0-12,4] |
+| `own` | **11,50** [11,0-12,4] |
 | écart | **+19,8 %** |
 
-**+19,8 % contre le +20 % que `tools/son/mesurer-coeur` donne hors du jeu.** Deux instruments qui ne
+**+19,8 % contre le +20 % que `tools/sound/measure-core` donne hors du jeu.** Deux instruments qui ne
 partagent rien — un banc de 400 000 échantillons sans carte ni 68000 d'un côté, le jeu entier de l'autre —
 tombent sur le même nombre. C'est le meilleur contrôle qu'on puisse avoir des deux.
 
@@ -508,7 +508,7 @@ tombent sur le même nombre. C'est le meilleur contrôle qu'on puisse avoir des 
 
 Le même +266 kc par image, selon ce à quoi on le rapporte :
 
-| rapporté à | `mame` | `maison` | |
+| rapporté à | `mame` | `own` | |
 |---|---|---|---|
 | **la puce seule** (la carte son moins le 68000) | 2 269 kc | 2 535 kc | **+11,7 %** — et c'est exactement le « 11 à 14 % » du banc de §4 quinquies, retrouvé dans le jeu |
 | **toute la carte son** (le 68000 compris) | 3 284 kc | 3 550 kc | **+8,1 %** — le 68000 interprété pèse 31 % de la carte et **dilue** le surcoût |
@@ -536,7 +536,7 @@ et c'est ce qui compte.
    entre zéro et le chiffre du banc, et elle ne tranche pas. Il faudrait un profilage à l'instruction, que
    `VF3_SND_PROF` ne fait pas — ses portées sont trop grosses pour une boucle de 32 fentes.
 2. **Rien sur l'hôte**, où le son est sur son propre fil (§4 ter) : `VF3_SND_HOST` et
-   `tools/son/mesurer-hote.cmd` sont les instruments de cette question, et ils n'ont pas été relancés sur le
+   `tools/sound/measure-host.cmd` sont les instruments de cette question, et ils n'ont pas été relancés sur le
    cœur du projet.
 3. **Rien sur une autre machine.** Un seul processeur de bureau, une seule scène. La mesure sur le portable
    deux cœurs (§4 quater) n'a pas été refaite avec les deux cœurs.
@@ -547,7 +547,7 @@ et c'est ce qui compte.
 ## 4 septies. Le DSP par caractéristique : ce n'est aucune instruction, c'est le socle
 
 §4 sexies laissait le DSP à **+19,8 % par pas** et disait qu'un cran plus fin demandait « un profilage à
-l'instruction que ce poste n'a pas ». **Écrit le 2026-10-28** : `tools/son/mesurer-coeur --dsp`, et il n'a
+l'instruction que ce poste n'a pas ». **Écrit le 2026-10-28** : `tools/sound/measure-core --dsp`, et il n'a
 pas fallu de profileur.
 
 ### L'instrument
@@ -561,14 +561,14 @@ Et la colonne qui compte est le **coût propre** — la valeur moins le socle. L
 le socle est dans chaque ligne, et il porte déjà un écart.
 
 ```bash
-build/bin/mesurer-coeur --dsp 600000
+build/bin/measure-core --dsp 600000
 ```
 
 ### Ce que ça donne
 
 600 000 échantillons par cas, 112 pas par programme, ns par pas de DSP :
 
-| caractéristique | `mame` | `maison` | écart | **propre `mame`** | **propre `maison`** | **écart propre** |
+| caractéristique | `mame` | `own` | écart | **propre `mame`** | **propre `own`** | **écart propre** |
 |---|---|---|---|---|---|---|
 | **socle** (112 pas qui ne font rien) | **2,722** | **3,242** | **+0,520** | — | — | — |
 | IRA → MEMS | 2,642 | 3,238 | +0,596 | −0,079 | −0,004 | +0,075 |
@@ -605,7 +605,7 @@ build/bin/mesurer-coeur --dsp 600000
 2. **LE CŒUR DU PROJET EST MEILLEUR SUR LA MOITIÉ DES CARACTÉRISTIQUES**, et il faut le dire aussi : COEF
    (−0,209), IWT (−0,194), le produit, `SHIFT 1` (−0,494), et **les quatre champs rares** (−0,33 à −0,65).
    Ces derniers s'expliquent : les poser fait basculer les deux cœurs vers leur second corps, et celui de
-   `dsp_maison` est moins cher que `Run<USES_ALL>`. **C'est le seul endroit du dépôt où le coût de ces
+   `dsp_own` est moins cher que `Run<USES_ALL>`. **C'est le seul endroit du dépôt où le coût de ces
    quatre-là se lit**, puisque le jeu ne les pose jamais (§5).
 
 3. **LE SEUL POSTE OÙ IL EST VRAIMENT MOINS BON EST L'ACCÈS MÉMOIRE** : `MRD` **+0,72**, `MWT` **+0,73**,
@@ -623,7 +623,7 @@ que l'échantillon coûte avant son premier pas.
 | | 16 pas | 48 pas | 112 pas | → ns par pas | → ns par échantillon |
 |---|---|---|---|---|---|
 | `mame` | 72,6 | 159,2 | 303,2 | **2,402** | 34,2 |
-| `maison` | 86,3 | 188,2 | 365,0 | **2,903** | 39,8 |
+| `own` | 86,3 | 188,2 | 365,0 | **2,903** | 39,8 |
 
 **L'écart est par pas : +0,50 ns (+21 %)**, et il l'est aux deux passages (+0,50 et +0,65). Sur un programme
 de 112 pas, la part par échantillon ne pèse que **±0,05 ns par pas, moins de 10 % de l'écart du socle** :
@@ -637,12 +637,12 @@ est publiable.**
 
 ### Ce qu'il reste à faire, et dans cet ordre
 
-1. **Lire l'assembleur engendré** des deux boucles de pas — `g++ -S -O2` sur `dsp_maison::boucle<false>`
+1. **Lire l'assembleur engendré** des deux boucles de pas — `g++ -S -O2` sur `dsp_own::boucle<false>`
    contre `SCSPDSP::Run<0>` — **sur le chemin inévitable seulement**, maintenant que le banc dit lequel.
    C'était inutile avant : on aurait comparé deux pages en cherchant quoi.
 2. **Deux hypothèses structurelles sont déjà mortes**, et par inspection, pas par raisonnement : le cœur du
    projet a bien ses **deux corps** (`template <bool RARES> void boucle()`), et son pas décodé est **plus
-   petit** que celui de MAME — 16 octets contre 28 (`dsp_maison::Pas` contre `SCSPDSP::Inst`). Ce n'est donc
+   petit** que celui de MAME — 16 octets contre 28 (`dsp_own::Pas` contre `SCSPDSP::Inst`). Ce n'est donc
    ni la spécialisation qui manque, ni l'empreinte du programme en cache.
 3. **Puis l'accès mémoire**, le second poste, avec le même banc pour juger.
 
@@ -651,7 +651,7 @@ La barre est posée d'avance, comme pour les trois lots du §7 : **WAV identique
 
 ### Puis l'assembleur, et il fallait d'abord resserrer la question
 
-Lu le 2026-10-28, `g++ -S -O2` sur les deux boucles de pas — `dsp_maison::boucle<false>` contre
+Lu le 2026-10-28, `g++ -S -O2` sur les deux boucles de pas — `dsp_own::boucle<false>` contre
 `SCSPDSP::Run<0>` — **et seulement apres que le banc ait dit que c'etait le socle**. Lu avant, on aurait
 compare deux pages de cent quarante instructions en cherchant quoi.
 
@@ -659,7 +659,7 @@ compare deux pages de cent quarante instructions en cherchant quoi.
 
 | hypothese | ce qui l'a tuee |
 |---|---|
-| il manque la specialisation des deux corps | `dsp_maison` les a : `template <bool RARES> void boucle()` |
+| il manque la specialisation des deux corps | `dsp_own` les a : `template <bool RARES> void boucle()` |
 | le pas decode est plus gros, donc plus de cache | il est **plus petit** : 16 octets contre 28 (`Pas` contre `Inst`) |
 | un `switch` compile en table de saut, donc un branchement indirect | **zero** saut indirect des deux cotes |
 | une division, ou une multiplication lente | aucune des deux n'en a |
@@ -671,7 +671,7 @@ compare deux pages de cent quarante instructions en cherchant quoi.
 | | instructions | **branchements** | mouvements |
 |---|---|---|---|
 | `SCSPDSP::Run<0>` | 108 | **16** | 37 |
-| `dsp_maison::boucle<false>` | **145** | **31** | 36 |
+| `dsp_own::boucle<false>` | **145** | **31** | 36 |
 
 **+34 % d'instructions et presque DEUX FOIS les branchements, pour le meme algorithme.** Voila le cout, et
 il est la : le chemin inevitable d'un pas est plus branchu chez le coeur du projet. Les `cmpb` le disent
@@ -682,7 +682,7 @@ il est la : le chemin inevitable d'un pas est plus branchu chez le coeur du proj
 Pour confirmer, une experience **jetable** : enlever une piece du chemin inevitable, mesurer le socle,
 remettre. Chaque variante rend le DSP faux, donc rien n'en est garde — seul le chiffre l'est. Et chaque
 variante est **encadree par une mesure de la reference**, parce qu'un premier essai a vu l'ecart de
-reference bouger de +0,41 a +0,98 selon le moment : c'est pour ca que `--socle` existe, assez rapide pour
+reference bouger de +0,41 a +0,98 selon le moment : c'est pour ca que `--baseline` existe, assez rapide pour
 entrelacer.
 
 600 000 echantillons, sept passages par mesure. « referme » est la part de l'ecart de reference qui
@@ -752,13 +752,13 @@ Les deux font exactement ce que §4 septies demandait — la chaine `IRA` devien
 `switch` deviennent des indicateurs deja poses, et le `return` de la chaine est trouve une fois au `Start`
 plutot que teste a chaque pas. Ils ne differaient que par **ou ranger les decisions** :
 
-| | ce qui change | socle `maison` | rapport au socle `mame` |
+| | ce qui change | socle `own` | rapport au socle `mame` |
 |---|---|---|---|
 | **l'original** | — | 3,48 — 3,57 | **1,22** |
 | **lot A** | cinq octets de plus dans `Pas` : `src`, `idx`, `ira_dec`, `y_src`, `y_dec` | 3,50 — 3,56 | **1,30** |
 | **lot B** | les memes decisions rangees dans les bits libres du mot d'indicateurs | 4,24 — 4,33 | **1,42** |
 
-Mesure par `mesurer-coeur --socle 600000`, trois fois chacun, **dans la meme seance** — c'est pour ca que
+Mesure par `measure-core --baseline 600000`, trois fois chacun, **dans la meme seance** — c'est pour ca que
 cette comparaison vaut quelque chose, le socle de `mame` ayant lui-meme derive de 2,70 a 3,21 entre le debut
 et la fin des essais.
 
@@ -794,8 +794,8 @@ et la fin des essais.
 
 ### Ce qui a ete garde de ces deux lots
 
-**Rien dans `src/`.** `dsp_maison.{h,cpp}` sont revenus a l'identique, et les trois mesures de l'original
-ci-dessus ont ete refaites apres le retour pour le verifier. Ce qui reste est `mesurer-coeur --socle`, ecrit
+**Rien dans `src/`.** `dsp_own.{h,cpp}` sont revenus a l'identique, et les trois mesures de l'original
+ci-dessus ont ete refaites apres le retour pour le verifier. Ce qui reste est `measure-core --baseline`, ecrit
 pour ces essais et qui sert a tout essai suivant : il entrelace une reference et une variante du meme
 fichier, ce qu'il fallait pour voir que le lot A perdait 7 % quand la machine, elle, derivait de 19 %.
 
@@ -820,15 +820,15 @@ Quatre tentatives, et aucune des trois premieres ne dit qu'elle echoue :
 | `-on PROC_THREAD+LOADER+PMC_PROFILE` | **celui-la marche.** `PMC_PROFILE : PMC sampling events`, et `xperf -providers K` le nomme lui-meme |
 
 Et un piege de plus, qui n'est pas d'`xperf` : nos binaires sortent de MinGW, donc en **DWARF sans PDB**, que
-`xperf` ne lit pas. Il n'aurait nomme aucune fonction. D'ou `mesurer-coeur --socle <coeur>`, ecrit pour
+`xperf` ne lit pas. Il n'aurait nomme aucune fonction. D'ou `measure-core --baseline <coeur>`, ecrit pour
 l'occasion : **un seul coeur par processus**, et les compteurs du processus sont alors ceux du socle de ce
 coeur-la. 99,9 % des echantillons tombent dans notre propre module ; le reste est du bruit noyau.
 
 ### Ce que le compteur dit
 
-Deux captures, `--socle mame 2000000` et `--socle maison 2000000`, 1 568 000 000 pas de DSP chacune :
+Deux captures, `--baseline mame 2000000` et `--baseline own 2000000`, 1 568 000 000 pas de DSP chacune :
 
-| | `mame` | `maison` | rapport |
+| | `mame` | `own` | rapport |
 |---|---|---|---|
 | **instructions retirees** | 1 404 064 ech. | 1 605 796 ech. | **×1,144 — +14,4 %** |
 | **branchements mal predits** | 608 ech. | 614 ech. | **×1,010 — identiques** |
@@ -844,7 +844,7 @@ cotes. C'est tout ce dont la question avait besoin.
 ### Les deux conclusions
 
 1. **CE NE SONT PAS LES BRANCHEMENTS.** `BranchMispredictsRetired` est le meme a 1 % pres — environ un rate
-   tous les quarante pas, des deux cotes. Les 31 branchements de `dsp_maison::boucle` contre les 16 de MAME
+   tous les quarante pas, des deux cotes. Les 31 branchements de `dsp_own::boucle` contre les 16 de MAME
    sont donc **parfaitement predits** : ils coutent leur decodage, pas leur raté. L'hypothese de §4 septies
    tombe pour de bon, et elle explique enfin pourquoi les deux lots de §4 octies perdaient — **ils
    enlevaient quelque chose qui ne coutait rien**, en ajoutant du cache (lot A) ou du deballage de bits
@@ -875,14 +875,14 @@ C'etait une explication complete, elegante, et attribuable a une ligne manquante
 
 **Elle ne gagne rien. Defaite.**
 
-| | `maison`, ns par echantillon | |
+| | `own`, ns par echantillon | |
 |---|---|---|
 | socle, A/B encadre | rapport 1,2180 → 1,2170 | **−0,08 %**, et les trois rapports se chevauchent |
 | forme du jeu (33 pas sur 112 font un acces) | 593,4 → 595,4 | plat |
 
-**ET IL FAUT DIRE COMMENT J'AI FAILLI LA GARDER.** Sur le programme du jeu, le RAPPORT `maison`/`mame`
+**ET IL FAUT DIRE COMMENT J'AI FAILLI LA GARDER.** Sur le programme du jeu, le RAPPORT `own`/`mame`
 tombait de 1,161 a 1,081 -- un gain de 6,9 %, net sur trois tours. Il etait faux : `mame` y passait de
-~515 a ~551 ns **alors que seul `dsp_maison.cpp` avait change.** Mon pilote lancait toujours « sans » puis
+~515 a ~551 ns **alors que seul `dsp_own.cpp` avait change.** Mon pilote lancait toujours « sans » puis
 « avec », donc la machine chauffait et gonflait le denominateur du second. Le gain etait la derive, en
 entier. Le rapport, qui protegeait des deux lots du §4 octies, devient un piege des que **un seul des deux
 cotes** change : c'est alors l'ABSOLU du cote modifie qu'il faut lire, et lui ne bougeait pas.
@@ -912,10 +912,10 @@ echantillon a un nom.
 **Et le resultat deplace le chiffre, parce qu'il faut APPARIER les fonctions** -- elles ne portent pas le
 meme nom des deux cotes, et un tableau qui les compare par nom ne donne rien :
 
-| | `mame` | `maison` | ecart |
+| | `mame` | `own` | ecart |
 |---|---|---|---|
 | **la boucle de pas** | `Run<0>` **1 249 810** | `boucle<false>` **1 494 867** | **+19,6 %** |
-| l'enveloppe par echantillon | `DoMasterSamples` + `Step` + `run` **127 858** | `scsp_maison::run` + `Step` **107 746** | **−15,7 %** |
+| l'enveloppe par echantillon | `DoMasterSamples` + `Step` + `run` **127 858** | `scsp_own::run` + `Step` **107 746** | **−15,7 %** |
 | `lround`, `ceil`, `log2l` | 20 842 | ~190 | — |
 | **tout le processus** | 1 404 064 | 1 605 796 | +14,4 % |
 
@@ -960,7 +960,7 @@ lots du §4 octies rejuges sur un chiffre dur, et toute tentative suivante avec 
 
 ### Ce qui manque encore, et c'est une seule chose
 
-**Le rapport des CYCLES.** La capture de `mame` est faite ; celle de `maison` ne l'est pas. Avec les deux on
+**Le rapport des CYCLES.** La capture de `mame` est faite ; celle de `own` ne l'est pas. Avec les deux on
 saurait s'il y a, en plus des 14,4 % d'instructions, une perte d'IPC — le quotient le laisse deviner : 14,4 %
 d'instructions en plus devraient donner 3,107 ns par pas, et le banc en mesure environ 3,35. Il resterait
 donc **environ 8 % a expliquer autrement** que par le nombre d'instructions. La commande est dans la reprise.
@@ -968,7 +968,7 @@ donc **environ 8 % a expliquer autrement** que par le nombre d'instructions. La 
 ### Les cinq variantes sont pretes, et attendent une fenetre administrateur
 
 Preparees le 2026-10-28. Chacune est une transformation **equivalente au comportement pres** de
-`src/sound/dsp_maison.cpp` qui attaque le NOMBRE D'INSTRUCTIONS du chemin inevitable, la ou va l'ecart :
+`src/sound/dsp_own.cpp` qui attaque le NOMBRE D'INSTRUCTIONS du chemin inevitable, la ou va l'ecart :
 
 | variante | ce qu'elle attaque |
 |---|---|
@@ -978,9 +978,9 @@ Preparees le 2026-10-28. Chacune est une transformation **equivalente au comport
 | `shift_deux_bits` | le `switch` a quatre cas pose deux questions independantes ; deux bits du mot d'indicateurs les posent une fois, **sans grossir le pas decode** -- c'est ce qui avait coule le lot B |
 | `ysel_coef_premier` | MAME teste `YSEL == 1` en premier, et pour sa raison : 87 des 112 pas du jeu le prennent (§5). Sans effet sur le socle ; c'est le programme du jeu que ca viserait |
 
-**Les exes sont construits et deja verifies** -- `python tools/son/batir-variantes.py` les fabrique un par un,
+**Les exes sont construits et deja verifies** -- `python tools/sound/build-variants.py` les fabrique un par un,
 lance **les dix tests** a chaque fois, et ne garde que celles dont les 24 fichiers sont au vert. La fenetre
-administrateur n'a donc rien a compiler : `tools/son/mesurer-variantes.cmd` enchaine capture, exe, arret,
+administrateur n'a donc rien a compiler : `tools/sound/measure-variants.cmd` enchaine capture, exe, arret,
 une fois par variante, et verifie d'abord que les compteurs sont programmables pour ne pas faire decouvrir
 au troisieme tour que la fenetre n'etait pas elevee.
 
@@ -1017,7 +1017,7 @@ Fighting Vipers 2 :
 
 ### Cherchés dans tous les jeux que ce portage sert, et toujours à zéro
 
-Le tableau ci-dessus ne portait **qu'un programme d'un seul jeu**, et l'en-tête de `dsp_maison.h` en tirait
+Le tableau ci-dessus ne portait **qu'un programme d'un seul jeu**, et l'en-tête de `dsp_own.h` en tirait
 la phrase « les programmes de ce jeu les laissent à zéro ». **Élargi le 2026-10-28** : `dspprog` lu sur tous
 les sets que `src/machine/romset.cpp` connaît, en attraction et à travers un combat entier.
 
@@ -1042,8 +1042,8 @@ Trois choses à en tirer :
    relu ce jour, il donne les mêmes douze nombres.
 3. **La question n'est donc pas close par un jeu.** Il n'y a pas de programme à aller chercher qui
    exercerait ces quatre champs et ferait du rejoueur leur juge à l'octet. Ce qui reste est d'étendre la
-   **spécification** — `tools/son/test_scsp_dsp.cpp`, qui juge déjà les deux cœurs, et dont
-   `tools/son/test_scspdsp.cpp` porte déjà les cas équivalents pour le DSP de MAME. Avec ce que ça achète
+   **spécification** — `tools/sound/test_scsp_dsp.cpp`, qui juge déjà les deux cœurs, et dont
+   `tools/sound/test_scspdsp.cpp` porte déjà les cas équivalents pour le DSP de MAME. Avec ce que ça achète
    et ce que ça n'achète pas : la cohérence avec la cible déclarée, et non la preuve que MAME a raison
    (`docs/scsp_references.md` : jamais le consensus entre émulateurs comme preuve).
 
@@ -1162,13 +1162,13 @@ fidélité qui n'achète rien ne se garde pas. Le résultat négatif, lui, est c
 - **SIMD** : la boucle du DSP est une chaîne de dépendances (`ACC` se nourrit de lui-même par `BSEL`), elle ne
   se vectorise pas.
 - **Le remplacement du SCSP de MAME** par une implémentation autonome : le code n'a pas été entamé, mais
-  **les deux préalables existent désormais**. Le harnais différentiel : `tools/son/comparer-son.cmd`. Et le
+  **les deux préalables existent désormais**. Le harnais différentiel : `tools/sound/compare-sound.cmd`. Et le
   contrat, en deux morceaux qui ne disent pas la même chose :
   - `docs/scsp_architecture.md` — **l'interface C++** entre `SoundBoard` et le chip, et ce qu'elle traîne
     de MAME ;
   - `src/sound/scsp_contract.h` — **le contrat matériel** : ce que le pilote attend de la puce, champ par
     champ, avec la provenance de chaque nombre et les écarts assumés marqués comme tels. Écrit le
-    2026-10-25, et **vérifié** par `tools/son/test_scsp_contract.cpp` contre `scsp.cpp` et contre la ROM.
+    2026-10-25, et **vérifié** par `tools/sound/test_scsp_contract.cpp` contre `scsp.cpp` et contre la ROM.
 - ~~**Les mesures sous `--rec`**~~ : **faites le 2026-10-25**, voir §4 bis. La part du son passe de 9,6 % à
   **30,5 %**, la carte étant 4,3 fois plus rapide et le son inchangé. **Et dans l'hôte, mesuré le
   2026-10-26** (§4 ter) : le fil du son travaille **1,49 ms par image** et **le jeu ne l'attend jamais** —

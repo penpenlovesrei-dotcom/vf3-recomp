@@ -1,6 +1,6 @@
 # Le programme son, lu dans son code
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [scsp/docs/son.md](son.md).
+> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [scsp/docs/sound.md](son.md).
 
 Commencé le 2026-10-24. **C'est un début, pas un relevé complet** : le programme fait 512 Ko et ce qui suit
 en couvre une poignée de fonctions. Chaque ligne dit où elle a été lue.
@@ -30,7 +30,7 @@ big-endian. Les vecteurs de reset le disent sans appel :
 Et après l'échange, les vecteurs 2 et 3 tombent à `006005AC` et `006005B0`, dans la ROM eux aussi. Quatre
 vecteurs sains contre un faux.
 
-`tools/son/extraire-son.py` fait l'extraction et l'échange, et **refuse d'écrire** si le PC de reset ne tombe
+`tools/sound/extraire-son.py` fait l'extraction et l'échange, et **refuse d'écrire** si le PC de reset ne tombe
 pas dans la ROM programme — pour qu'une image fausse ne se désassemble pas pendant une heure.
 
 **Les deux jeux donnent le même SSP et le même PC de reset** (`00002000` / `00600120`) : c'est le même pilote,
@@ -999,8 +999,8 @@ mesure.
 
 ### Et ce que ça fait entendre : bien moins que le mécanisme ne le laissait croire
 
-Mesuré juste après (`tools/son/comparer-madrs.cmd vf3`, 2400 images de `vf3-match.txt`, les deux passages
-produits sans fenêtre et comparés par `tools/son/mesurer-madrs.py`) :
+Mesuré juste après (`tools/sound/compare-madrs.cmd vf3`, 2400 images de `vf3-match.txt`, les deux passages
+produits sans fenêtre et comparés par `tools/sound/mesurer-madrs.py`) :
 
 | | miroir (l'actuel) | séparé | écart |
 |---|---|---|---|
@@ -1056,7 +1056,7 @@ dont une seule compte vraiment :
 | 15,08 s | 1,42 s | 4 | −78,3 dBFS — niveau du bit de poids faible |
 | 16,58 s | 5,26 s | **1** | −90,3 dBFS — un seul LSB, inaudible par tout compte |
 
-`tools/son/audibilite.py` (rapport bruit/masque, avec étalement du masquage, seuil absolu d'audition et bruit
+`tools/sound/audibilite.py` (rapport bruit/masque, avec étalement du masquage, seuil absolu d'audition et bruit
 de pièce) place ce moment à **+32 dB au-dessus du seuil** — parce qu'il tombe dans un silence, où rien ne le
 masque. `build/extrait-vf3-AB.wav` le rend évident : 11,8 à 14,6 s, les deux versions à la suite, +18 dB.
 
@@ -2786,7 +2786,7 @@ le parcours récursif s'arrête sur un `jmp (An)`, donc **tout ce qui ne s'attei
 était invisible** — y compris les trois gestionnaires de cette section. La recherche rendait un compte
 complet en apparence sur la moitié du programme.
 
-`tools/son/desas_son.py` sème maintenant les onze sauts calculés (les quatre tables de mots, les quatre
+`tools/sound/desas_son.py` sème maintenant les onze sauts calculés (les quatre tables de mots, les quatre
 tables de créneaux, les quatre entrées de bloc déroulé), ce qui porte le parcours de 95 à **184 fonctions et
 4 453 instructions**. Le témoin : `0x6019A6`, la lecture de `0xEE9` par CC 7, que j'avais lue à la main et
 que l'ancien parcours ne trouvait pas — elle apparaît. Et `--cherche` **imprime sa portée avant ses
@@ -2989,12 +2989,12 @@ répondre : il faudrait un Model 3 et une mesure. C'est noté comme tel et non c
 
 | | |
 |---|---|
-| extraire la ROM et remettre les octets d'aplomb | `tools/son/extraire-son.py <jeu.zip> <sortie.bin>` |
-| importer dans Ghidra et analyser, sans interface | `tools\son\importer-son.cmd` |
+| extraire la ROM et remettre les octets d'aplomb | `tools/sound/extraire-son.py <jeu.zip> <sortie.bin>` |
+| importer dans Ghidra et analyser, sans interface | `tools\son\import-sound.cmd` |
 | semer les points d'entrée avant l'analyse | `tools/ghidra/FV2SonSetup.java` (en `-preScript`) |
-| **chercher** dans tout le programme | `tools/son/desas_son.py <image> --cherche 100600 1006ff` |
-| lire une fonction depuis une frontière sûre | `tools/son/desas_son.py <image> --at 600780 26` |
-| la table des vecteurs | `tools/son/desas_son.py <image> --carte` |
+| **chercher** dans tout le programme | `tools/sound/desas_son.py <image> --cherche 100600 1006ff` |
+| lire une fonction depuis une frontière sûre | `tools/sound/desas_son.py <image> --at 600780 26` |
+| la table des vecteurs | `tools/sound/desas_son.py <image> --carte` |
 | ouvrir les quatre tables de saut à Ghidra | `tools/ghidra/FV2SonTablesDeSaut.java` |
 | résoudre les cinq derniers `jmp (An)` | `tools/ghidra/FV2SonSautsIndirects.java` |
 | déclarer les données, rattacher les blocs déroulés, recompter | `tools/ghidra/FV2SonDonnees.java` |

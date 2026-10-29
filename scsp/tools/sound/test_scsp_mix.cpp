@@ -18,8 +18,8 @@
 // Les trois sont lues ici dans leur entier, parce qu'une reecriture qui les remplacerait par une
 // exponentielle reguliere ne se trahirait nulle part ailleurs.
 //
-// Le montage -- un coeur neuf par cas, la RAM, le keyage -- est dans tools/son/banc_scsp.h.
-#include "banc_scsp.h"
+// Le montage -- un coeur neuf par cas, la RAM, le keyage -- est dans tools/sound/scsp_bench.h.
+#include "scsp_bench.h"
 
 #include <cstdio>
 #include <string>
@@ -27,16 +27,16 @@
 
 namespace {
 
-using banc::Banc;
-using banc::pose;
+using bench::Bench;
+using bench::put;
 
-int echecs = 0;
+int failures = 0;
 
-void ok(const char *quoi, const std::string &d) { printf("  ok    %-40s %s\n", quoi, d.c_str()); }
-void rate(const char *quoi, const std::string &d) { printf("  ECHEC %-40s %s\n", quoi, d.c_str()); ++echecs; }
+void ok(const char *what, const std::string &d) { printf("  ok    %-40s %s\n", what, d.c_str()); }
+void rate(const char *what, const std::string &d) { printf("  ECHEC %-40s %s\n", what, d.c_str()); ++failures; }
 
-constexpr std::uint32_t ONDE = 0x1000;
-constexpr int CONTINU = 8192;
+constexpr std::uint32_t WAVE = 0x1000;
+constexpr int STEADY = 8192;
 
 // Une voix dont il ne reste que le melange : l'enveloppe posee a plat, pas de LFO, une source constante.
 //
@@ -45,20 +45,20 @@ constexpr int CONTINU = 8192;
 // de ce fichier mesurait donc TL avec SDIR=1 et trouvait huit fois le meme gain, sans que rien n'ait l'air
 // casse. On pose l'enveloppe a plat a la place (AR=0x1F, D1R=D2R=0, DL=0 : le multiplicateur vaut 4096 des
 // le deuxieme echantillon, cf. le bloc 3), ce qui laisse TL agir.
-void melange_a_nu(std::uint16_t mot[16])
+void melange_a_nu(std::uint16_t word[16])
 {
-	pose(mot, "SA_HI", ONDE >> 16);
-	pose(mot, "SA_LO", ONDE & 0xFFFF);
-	pose(mot, "OCT",   0);
-	pose(mot, "FNS",   0);
-	pose(mot, "LPCTL", 1);
-	pose(mot, "LSA",   0);
-	pose(mot, "LEA",   256);
-	pose(mot, "AR",    0x1F);
-	pose(mot, "D1R",   0);
-	pose(mot, "D2R",   0);
-	pose(mot, "DL",    0);
-	pose(mot, "KYONB", 1);
+	put(word, "SA_HI", WAVE >> 16);
+	put(word, "SA_LO", WAVE & 0xFFFF);
+	put(word, "OCT",   0);
+	put(word, "FNS",   0);
+	put(word, "LPCTL", 1);
+	put(word, "LSA",   0);
+	put(word, "LEA",   256);
+	put(word, "AR",    0x1F);
+	put(word, "D1R",   0);
+	put(word, "D2R",   0);
+	put(word, "DL",    0);
+	put(word, "KYONB", 1);
 }
 
 // Le gain du melange, sur les deux canaux, au quatrieme echantillon : le premier passe par le chemin ATTACK
@@ -69,17 +69,17 @@ void melange_a_nu(std::uint16_t mot[16])
 // version de ce fichier le laissait eteint et lisait 516 la ou la table dit 518, 23196 la ou elle dit 23197 :
 // trois tables de decibels fausses de deux unites, par la faute d'un bit de configuration.
 std::pair<std::int32_t, std::int32_t> gain(unsigned disdl, unsigned dipan, unsigned tl,
-                                           bool dac18b = true, int source = CONTINU)
+                                           bool dac18b = true, int source = STEADY)
 {
-	Banc b;
-	b.continu(ONDE, 256, source);
-	if (!dac18b) b.coeur.write_reg(0x400 / 2, 0x0200 | 0x000F, 0xFFFF);   // MEM4MB seul : DAC18B efface
-	std::uint16_t mot[16] = {};
-	melange_a_nu(mot);
-	pose(mot, "DISDL", disdl);
-	pose(mot, "DIPAN", dipan);
-	pose(mot, "TL",    tl);
-	b.keye(0, mot);
+	Bench b;
+	b.steady(WAVE, 256, source);
+	if (!dac18b) b.the_core.write_reg(0x400 / 2, 0x0200 | 0x000F, 0xFFFF);   // MEM4MB seul : DAC18B efface
+	std::uint16_t word[16] = {};
+	melange_a_nu(word);
+	put(word, "DISDL", disdl);
+	put(word, "DIPAN", dipan);
+	put(word, "TL",    tl);
+	b.key(0, word);
 	return b.stereo(4);
 }
 
@@ -87,7 +87,7 @@ std::pair<std::int32_t, std::int32_t> gain(unsigned disdl, unsigned dipan, unsig
 
 int main(int argc, char **argv)
 {
-	if (argc > 1) banc::nom_du_coeur() = argv[1];
+	if (argc > 1) bench::core_name() = argv[1];
 	printf("test_scsp_mix : le melange et le rendu, par scsp::core\n\n");
 
 	// ---- 1. L'ECHELLE, ET LE FACTEUR QUATRE QUI VIENT DE LA TABLE
@@ -97,13 +97,13 @@ int main(int argc, char **argv)
 	// l'expliquer -- il n'est ni dans l'adaptateur ni dans l'etage de sortie, il est ici.
 	{
 		const auto [g, d] = gain(7, 0, 0);
-		(g == 4 * CONTINU && d == 4 * CONTINU)
+		(g == 4 * STEADY && d == 4 * STEADY)
 			? ok("plein niveau au centre : quatre fois l'echantillon",
-			     std::to_string(CONTINU) + " en RAM ressort a " + std::to_string(g) + " a gauche et "
+			     std::to_string(STEADY) + " en RAM ressort a " + std::to_string(g) + " a gauche et "
 			     + std::to_string(d) + " a droite")
 			: rate("plein niveau au centre : quatre fois l'echantillon",
 			       "obtenu " + std::to_string(g) + " et " + std::to_string(d)
-			       + ", attendu " + std::to_string(4 * CONTINU) + " des deux cotes");
+			       + ", attendu " + std::to_string(4 * STEADY) + " des deux cotes");
 	}
 
 	// ---- 2. DISDL : LES HUIT NIVEAUX DE SDLT, ET LE ZERO QUI EST UN SILENCE
@@ -114,17 +114,17 @@ int main(int argc, char **argv)
 		// Mesures, et non calculees : FIX tronque un flottant, donc les entiers ne sont pas ceux qu'un
 		// calcul en decibels donne a la main. La derniere unite vient de la table, pas de la physique.
 		const int attendus[8] = { 0, 518, 1036, 2066, 4124, 8230, 16422, 32768 };
-		std::string lignes;
-		bool juste = true;
+		std::string lines;
+		bool correct = true;
 		for (unsigned s = 0; s < 8; s++) {
 			const auto [g, d] = gain(s, 0, 0);
 			char t[48];
-			snprintf(t, sizeof t, "%s%u->%d", lignes.empty() ? "" : " ", s, g);
-			lignes += t;
-			if (g != attendus[s] || d != attendus[s]) { juste = false; lignes += "(att " + std::to_string(attendus[s]) + ")"; }
+			snprintf(t, sizeof t, "%s%u->%d", lines.empty() ? "" : " ", s, g);
+			lines += t;
+			if (g != attendus[s] || d != attendus[s]) { correct = false; lines += "(att " + std::to_string(attendus[s]) + ")"; }
 		}
-		juste ? ok("DISDL : les huit niveaux, 0 etant muet", lignes)
-		      : rate("DISDL : les huit niveaux, 0 etant muet", lignes);
+		correct ? ok("DISDL : les huit niveaux, 0 etant muet", lines)
+		      : rate("DISDL : les huit niveaux, 0 etant muet", lines);
 	}
 
 	// ---- 3. TL : HUIT BITS, HUIT NOMBRES DE DECIBELS
@@ -133,24 +133,24 @@ int main(int argc, char **argv)
 	// (0.4, 0.8, puis 1.5 et non 1.6), et c'est exactement le genre de detail qu'une reecriture "propre"
 	// arrondit sans le voir.
 	{
-		struct Cas { unsigned tl; int attendu; const char *db; };
-		const Cas cas[] = {
+		struct Case { unsigned tl; int expected; const char *db; };
+		const Case cases[] = {
 			{ 0x01, 31292, "-0.4 dB" }, { 0x02, 29884, "-0.8 dB" }, { 0x04, 27570, "-1.5 dB" },
 			{ 0x08, 23196, "-3 dB"   }, { 0x10, 16422, "-6 dB"   }, { 0x20,  8230, "-12 dB" },
 			{ 0x40,  2066, "-24 dB"  }, { 0x80,   130, "-48 dB"  },
 		};
-		std::string lignes;
-		bool juste = true;
-		for (const Cas &c : cas) {
+		std::string lines;
+		bool correct = true;
+		for (const Case &c : cases) {
 			const auto [g, d] = gain(7, 0, c.tl);
 			(void) d;
 			char t[48];
-			snprintf(t, sizeof t, "%s%02x->%d", lignes.empty() ? "" : " ", c.tl, g);
-			lignes += t;
-			if (g != c.attendu) { juste = false; lignes += "(att " + std::to_string(c.attendu) + ")"; }
+			snprintf(t, sizeof t, "%s%02x->%d", lines.empty() ? "" : " ", c.tl, g);
+			lines += t;
+			if (g != c.expected) { correct = false; lines += "(att " + std::to_string(c.expected) + ")"; }
 		}
-		juste ? ok("TL : un nombre de dB par bit", lignes)
-		      : rate("TL : un nombre de dB par bit", lignes);
+		correct ? ok("TL : un nombre de dB par bit", lines)
+		      : rate("TL : un nombre de dB par bit", lines);
 	}
 
 	// ---- 4. DIPAN : LE BIT 4 CHOISIT LE CANAL ATTENUE, ET LE CANAL OPPOSE RESTE A FOND
@@ -159,28 +159,28 @@ int main(int argc, char **argv)
 	// plein niveau. Une reecriture qui ferait une loi de panoramique continue -- un cosinus, une racine --
 	// changerait le niveau absolu de toutes les voix non centrees du jeu.
 	{
-		struct Cas { unsigned dipan; int g, d; const char *quoi; };
-		const Cas cas[] = {
+		struct Case { unsigned dipan; int g, d; const char *what; };
+		const Case cases[] = {
 			{ 0x00, 32768, 32768, "centre : les deux a fond" },
 			{ 0x01, 23196, 32768, "-3 dB a gauche seulement" },
 			{ 0x02, 16422, 32768, "-6 dB a gauche" },
 			{ 0x11, 32768, 23196, "le bit 4 : -3 dB a droite" },
 			{ 0x12, 32768, 16422, "-6 dB a droite" },
 		};
-		std::string lignes;
-		bool juste = true;
-		for (const Cas &c : cas) {
+		std::string lines;
+		bool correct = true;
+		for (const Case &c : cases) {
 			const auto [g, d] = gain(7, c.dipan, 0);
 			char t[64];
-			snprintf(t, sizeof t, "%s%02x->%d/%d", lignes.empty() ? "" : " ", c.dipan, g, d);
-			lignes += t;
+			snprintf(t, sizeof t, "%s%02x->%d/%d", lines.empty() ? "" : " ", c.dipan, g, d);
+			lines += t;
 			if (g != c.g || d != c.d) {
-				juste = false;
-				lignes += "(att " + std::to_string(c.g) + "/" + std::to_string(c.d) + ")";
+				correct = false;
+				lines += "(att " + std::to_string(c.g) + "/" + std::to_string(c.d) + ")";
 			}
 		}
-		juste ? ok("DIPAN attenue UN canal, l'autre reste plein", lignes)
-		      : rate("DIPAN attenue UN canal, l'autre reste plein", lignes);
+		correct ? ok("DIPAN attenue UN canal, l'autre reste plein", lines)
+		      : rate("DIPAN attenue UN canal, l'autre reste plein", lines);
 	}
 
 	// ---- 5. DIPAN 0x0F COUPE LE CANAL NET, ET CE N'EST PAS LA SOMME DES QUATRE BITS
@@ -227,14 +227,14 @@ int main(int argc, char **argv)
 	// l'ecretage qui decide -- pas une saturation douce, un couperet. On le mesure en keyant deux fentes sur
 	// la meme onde.
 	{
-		Banc b;
-		b.continu(ONDE, 256, CONTINU);
+		Bench b;
+		b.steady(WAVE, 256, STEADY);
 		for (unsigned f = 0; f < 5; f++) {       // cinq voix a 4 x 8192 = 163840 chacune : largement au-dela
-			std::uint16_t mot[16] = {};
-			melange_a_nu(mot);
-			pose(mot, "DISDL", 7);
-			pose(mot, "DIPAN", 0);
-			b.keye(f, mot);
+			std::uint16_t word[16] = {};
+			melange_a_nu(word);
+			put(word, "DISDL", 7);
+			put(word, "DIPAN", 0);
+			b.key(f, word);
 		}
 		const auto [g, d] = b.stereo(4);
 		char t[112];
@@ -259,17 +259,17 @@ int main(int argc, char **argv)
 	{
 		const auto [plein, pd] = gain(7, 0, 0);
 		(void) pd;
-		Banc b;
-		b.continu(ONDE, 256, CONTINU);
-		b.coeur.write_reg(0x400 / 2, 0x0200 | 0x0000, 0xFFFF);   // MVOL = 0, le silence demande
-		std::uint16_t mot[16] = {};
-		melange_a_nu(mot);
-		pose(mot, "DISDL", 7);
-		pose(mot, "DIPAN", 0);
-		b.keye(0, mot);
-		const auto [muet_g, muet_d] = b.stereo(4);
-		(void) muet_d;
-		const float expose = banc::gain_expose(b.coeur);
+		Bench b;
+		b.steady(WAVE, 256, STEADY);
+		b.the_core.write_reg(0x400 / 2, 0x0200 | 0x0000, 0xFFFF);   // MVOL = 0, le silence demande
+		std::uint16_t word[16] = {};
+		melange_a_nu(word);
+		put(word, "DISDL", 7);
+		put(word, "DIPAN", 0);
+		b.key(0, word);
+		const auto [muet_g, silent_d] = b.stereo(4);
+		(void) silent_d;
+		const float expose = bench::exposed_gain(b.the_core);
 		char t[144];
 		snprintf(t, sizeof t, "MVOL=0 : la puce rend toujours %d (contre %d a MVOL=15), et expose un gain de %.3f",
 		         muet_g, plein, double(expose));
@@ -302,7 +302,7 @@ int main(int argc, char **argv)
 	}
 
 	printf("\n");
-	if (echecs) { printf("%d echec(s).\n", echecs); return 1; }
+	if (failures) { printf("%d echec(s).\n", failures); return 1; }
 	printf("all cases pass\n");
 	return 0;
 }

@@ -12,7 +12,7 @@
 // pour les six autres blocs -- ecrire le test, puis le bloc -- a ceci pres que la cible du test est ici une
 // machine et non un comportement de sortie.
 //
-// IL DISTINGUE LES DEUX COEURS DEPUIS LE 2026-10-27, et c'etait tout son objet : `src/sound/dsp_maison`
+// IL DISTINGUE LES DEUX COEURS DEPUIS LE 2026-10-27, et c'etait tout son objet : `src/sound/dsp_own`
 // existe, il ne partage pas une ligne avec celui de MAME, et ce fichier dit cas par cas s'il tombe juste --
 // sans qu'on ait a comparer des WAV. `make test` le lance avec les deux noms de coeur.
 //
@@ -68,7 +68,7 @@
 //   LES ACCES MEMOIRE SUR UN PAS IMPAIR : `if (MRD && (step & 1))`, et de meme pour MWT. Un MRD au pas 0
 //     ne lit rien du tout.
 // -----------------------------------------------------------------------------------------------------
-#include "banc_scsp.h"
+#include "scsp_bench.h"
 
 #include <cstdio>
 #include <string>
@@ -76,16 +76,16 @@
 
 namespace {
 
-using banc::Banc;
+using bench::Bench;
 
-int echecs = 0;
+int failures = 0;
 
-void ok(const char *quoi, const std::string &d) { printf("  ok    %-42s %s\n", quoi, d.c_str()); }
-void rate(const char *quoi, const std::string &d) { printf("  ECHEC %-42s %s\n", quoi, d.c_str()); ++echecs; }
+void ok(const char *what, const std::string &d) { printf("  ok    %-42s %s\n", what, d.c_str()); }
+void rate(const char *what, const std::string &d) { printf("  ECHEC %-42s %s\n", what, d.c_str()); ++failures; }
 
 // Un pas de programme, construit par ses champs plutot qu'en hexadecimal : un programme ecrit en nombres
 // bruts est illisible, et c'est la lisibilite qui fait d'un test une specification.
-struct Pas {
+struct DecodedStep {
 	unsigned tra = 0, twt = 0, twa = 0;
 	unsigned xsel = 0, ysel = 0, ira = 0, iwt = 0, iwa = 0;
 	unsigned table = 0, mwt = 0, mrd = 0, ewt = 0, ewa = 0, adrl = 0, frcl = 0, shift = 0;
@@ -108,9 +108,9 @@ struct Pas {
 
 // LE PAS DE MAINTIEN : il conserve ACC et rend donc SHIFTED disponible un pas de plus. B = ACC (ZERO=0,
 // BSEL=1), X = TEMP[0] = 0, donc ACC = 0 + ACC.
-inline Pas maintien()
+inline DecodedStep hold()
 {
-	Pas p;
+	DecodedStep p;
 	p.bsel = 1;      // B = ACC
 	p.zero = 0;
 	p.xsel = 0;      // X = TEMP[TRA] = 0
@@ -118,48 +118,48 @@ inline Pas maintien()
 }
 
 // Le banc du DSP : pose un programme, le lance, relit l'etat.
-struct BancDsp {
-	Banc b;
+struct BenchDsp {
+	Bench b;
 
-	BancDsp()
+	BenchDsp()
 	{
 		// RBL et RBP : la ligne de retard, 8 kmots a l'origine 0 de la RAM son.
-		b.coeur.write_reg(0x402 / 2, 0x0000, 0xFFFF);
+		b.the_core.write_reg(0x402 / 2, 0x0000, 0xFFFF);
 	}
 
 	// Pose le programme et le DEMARRE. L'ecriture du dernier mot du pas 0x7E (0xBF0) est ce qui declenche
 	// Start() -- la puce n'a pas d'autre signal, et c'est donc le dernier mot a ecrire.
-	void programme(const std::vector<Pas> &pas)
+	void program(const std::vector<DecodedStep> &step)
 	{
 		for (unsigned i = 0; i < 128; i++) {
 			std::uint16_t m[4] = { 0, 0, 0, 0 };
-			if (i < pas.size()) pas[i].mots(m);
+			if (i < step.size()) step[i].mots(m);
 			for (unsigned k = 0; k < 4; k++)
-				b.coeur.write_reg((0x800 + i * 8 + k * 2) / 2, m[k], 0xFFFF);
+				b.the_core.write_reg((0x800 + i * 8 + k * 2) / 2, m[k], 0xFFFF);
 		}
 		// Le mot qui declenche Start n'est ecrit qu'une fois le reste pose.
-		b.coeur.write_reg(0xBF0 / 2, 0, 0xFFFF);
+		b.the_core.write_reg(0xBF0 / 2, 0, 0xFFFF);
 	}
 
-	void coef(unsigned i, std::int16_t v) { b.coeur.write_reg((0x700 + i * 2) / 2, std::uint16_t(v), 0xFFFF); }
-	void madrs(unsigned i, std::uint16_t v) { b.coeur.write_reg((0x780 + i * 2) / 2, v, 0xFFFF); }
+	void coef(unsigned i, std::int16_t v) { b.the_core.write_reg((0x700 + i * 2) / 2, std::uint16_t(v), 0xFFFF); }
+	void madrs(unsigned i, std::uint16_t v) { b.the_core.write_reg((0x780 + i * 2) / 2, v, 0xFFFF); }
 
 	// Un echantillon de DSP. Aucune voix ne joue : Step() tourne de toute facon, une fois par echantillon.
-	void un_pas() { b.gauche(1); }
+	void one_step() { b.left(1); }
 
 	std::int32_t temp(unsigned i)
 	{
-		const std::uint32_t h = b.coeur.read_reg((0xC00 + i * 4) / 2);
-		const std::uint32_t l = b.coeur.read_reg((0xC00 + i * 4 + 2) / 2);
+		const std::uint32_t h = b.the_core.read_reg((0xC00 + i * 4) / 2);
+		const std::uint32_t l = b.the_core.read_reg((0xC00 + i * 4 + 2) / 2);
 		return std::int32_t((h << 16) | l);
 	}
 	std::int32_t mems(unsigned i)
 	{
-		const std::uint32_t h = b.coeur.read_reg((0xE00 + i * 4) / 2);
-		const std::uint32_t l = b.coeur.read_reg((0xE00 + i * 4 + 2) / 2);
+		const std::uint32_t h = b.the_core.read_reg((0xE00 + i * 4) / 2);
+		const std::uint32_t l = b.the_core.read_reg((0xE00 + i * 4 + 2) / 2);
 		return std::int32_t((h << 16) | l);
 	}
-	std::int16_t efreg(unsigned i) { return std::int16_t(b.coeur.read_reg((0xEC0 + i * 2) / 2)); }
+	std::int16_t efreg(unsigned i) { return std::int16_t(b.the_core.read_reg((0xEC0 + i * 2) / 2)); }
 };
 
 std::string hex(std::int32_t v)
@@ -173,16 +173,16 @@ std::string hex(std::int32_t v)
 
 int main(int argc, char **argv)
 {
-	if (argc > 1) banc::nom_du_coeur() = argv[1];
-	printf("test_scsp_dsp : le jeu d'instructions du DSP, coeur \"%s\"\n\n", banc::nom_du_coeur());
+	if (argc > 1) bench::core_name() = argv[1];
+	printf("test_scsp_dsp : le jeu d'instructions du DSP, coeur \"%s\"\n\n", bench::core_name());
 
 	// ---- 1. UN PROGRAMME VIDE NE FAIT RIEN, et EFREG est remis a zero a chaque echantillon
 	// C'est le controle qui doit passer avant tous les autres : si un programme de zeros bougeait quelque
 	// chose, aucune mesure suivante ne voudrait dire quoi que ce soit.
 	{
-		BancDsp d;
-		d.programme({});
-		for (int k = 0; k < 4; k++) d.un_pas();
+		BenchDsp d;
+		d.program({});
+		for (int k = 0; k < 4; k++) d.one_step();
 		bool propre = true;
 		for (unsigned i = 0; i < 16; i++) if (d.efreg(i) != 0) propre = false;
 		for (unsigned i = 0; i < 128; i++) if (d.temp(i) != 0) propre = false;
@@ -199,13 +199,13 @@ int main(int argc, char **argv)
 	// `if (MRD && (step & 1))` et de meme pour MWT. Un programme qui lirait la RAM au pas 0 ne lirait rien.
 	// C'est pourquoi tous les cas ci-dessous placent leurs acces memoire sur un pas impair.
 	{
-		BancDsp d;
-		Pas p;
+		BenchDsp d;
+		DecodedStep p;
 		p.ysel = 1; p.coef = 0;        // Y = COEF[0] >> 3
 		p.ewt = 1; p.ewa = 0;          // EFREG[0] += SHIFTED >> 8
 		d.coef(0, 0x4000);
-		d.programme({ p });
-		d.un_pas();
+		d.program({ p });
+		d.one_step();
 		const std::int16_t e = d.efreg(0);
 		(e == 0) ? ok("EWT sans entree : zero", "X et B viennent de TEMP[0], qui est nul")
 		         : rate("EWT sans entree : zero", "EFREG[0] = " + std::to_string(e));
@@ -222,15 +222,15 @@ int main(int argc, char **argv)
 	// TEMP apres l'y avoir mis. Ce cas-ci se contente donc de montrer que TWT ECRIT bien dans TEMP, ce qui
 	// se relit directement.
 	{
-		BancDsp d;
-		Pas p0;
+		BenchDsp d;
+		DecodedStep p0;
 		p0.ysel = 1; p0.coef = 0;      // Y = COEF[0] >> 3 = 0x4000 >> 3 = 0x800
 		p0.zero = 1;                   // B = 0, donc ACC = X * Y >> 12 avec X = TEMP[0] = 0
 		p0.twt = 1; p0.twa = 1;        // TEMP[1 + dec] = SHIFTED
 		p0.shift = 0;
 		d.coef(0, 0x4000);
-		d.programme({ p0 });
-		d.un_pas();
+		d.program({ p0 });
+		d.one_step();
 		// SHIFTED vaut 0, donc TEMP recoit 0 : ce qu'on verifie est que l'ECRITURE a lieu a l'index attendu,
 		// en la refaisant avec une valeur non nulle au cas suivant. Ici on enregistre l'index touche.
 		ok("TWT ecrit dans TEMP", "l'index ecrit est (TWA + dec) & 0x7F, dec descendant d'un par echantillon");
@@ -245,26 +245,26 @@ int main(int argc, char **argv)
 	// NOFL=1 evite PACK/UNPACK : la valeur passe telle quelle, decalee de huit. C'est le cas simple, et
 	// PACK est mesure plus bas.
 	{
-		BancDsp d;
+		BenchDsp d;
 		// La ligne de retard commence a RBP<<12 ; MADRS[0]=0 et TABLE=1 pour ne pas ajouter `dec`.
 		d.b.ram[0] = 0x1234;
 		d.madrs(0, 0);
 
-		Pas p0;                        // pas 0 : rien (les acces memoire veulent un pas impair)
-		Pas p1;                        // pas 1 : MRD -> MEMVAL
+		DecodedStep p0;                        // pas 0 : rien (les acces memoire veulent un pas impair)
+		DecodedStep p1;                        // pas 1 : MRD -> MEMVAL
 		p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
-		Pas p2;                        // pas 2 : IWT range MEMVAL dans MEMS[0]
+		DecodedStep p2;                        // pas 2 : IWT range MEMVAL dans MEMS[0]
 		p2.iwt = 1; p2.iwa = 0;
-		Pas p3;                        // pas 3 : X = MEMS[0], Y = COEF[0] -> ACC
+		DecodedStep p3;                        // pas 3 : X = MEMS[0], Y = COEF[0] -> ACC
 		p3.xsel = 1; p3.ira = 0;
 		p3.ysel = 1; p3.coef = 0;
 		p3.zero = 1;                   // B = 0
-		Pas p4 = maintien();           // pas 4 : LE SHIFTER voit enfin l'ACC du pas 3
+		DecodedStep p4 = hold();           // pas 4 : LE SHIFTER voit enfin l'ACC du pas 3
 		p4.shift = 0;
 		p4.ewt = 1; p4.ewa = 0;
 		d.coef(0, 0x4000);             // Y = 0x4000 >> 3 = 0x800
-		d.programme({ p0, p1, p2, p3, p4 });
-		d.un_pas();
+		d.program({ p0, p1, p2, p3, p4 });
+		d.one_step();
 
 		// MEMVAL = rword << 8 = 0x123400. MEMS[0] le recoit. X = 0x123400 (24 bits signes).
 		// ACC = (0x123400 * 0x800) >> 12 = 0x123400 / 2 = 0x91A00 ; SHIFT=0 ecrete a 24 bits signes.
@@ -295,33 +295,33 @@ int main(int argc, char **argv)
 		// 0x7FFF. A 2 le double REBOUCLE et devient negatif. La difference entre saturer et reboucler est
 		// tout l'interet du champ : un reverb dont le shifter reboucle ne sature pas, il claque.
 		const std::int16_t attendus[4] = { 0x7F89, 0x7FFF, static_cast<std::int16_t>(0xFF12), 0x7F89 };
-		std::string lignes;
-		bool juste = true;
+		std::string lines;
+		bool correct = true;
 		for (unsigned s = 0; s < 4; s++) {
-			BancDsp d;
+			BenchDsp d;
 			d.b.ram[0] = 0x7F91;       // de quoi depasser 24 bits apres le produit
 			d.madrs(0, 0);
-			Pas p0;
-			Pas p1; p1.mrd = 1; p1.table = 1; p1.nofl = 1;
-			Pas p2; p2.iwt = 1; p2.iwa = 0;
-			Pas p3;
+			DecodedStep p0;
+			DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.nofl = 1;
+			DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
+			DecodedStep p3;
 			p3.xsel = 1; p3.ira = 0;
 			p3.ysel = 1; p3.coef = 0;
 			p3.zero = 1;
-			Pas p4 = maintien();       // le decalage s'applique a l'ACC du pas precedent
+			DecodedStep p4 = hold();       // le decalage s'applique a l'ACC du pas precedent
 			p4.shift = s;
 			p4.ewt = 1; p4.ewa = 0;
 			d.coef(0, 0x7FF8);         // Y = 0x7FF8 >> 3 = 0xFFF, soit presque 1.0 en 1.12
-			d.programme({ p0, p1, p2, p3, p4 });
-			d.un_pas();
+			d.program({ p0, p1, p2, p3, p4 });
+			d.one_step();
 			const std::int16_t e = d.efreg(0);
 			char t[48];
-			snprintf(t, sizeof t, "%s%u->%04x", lignes.empty() ? "" : " ", s, unsigned(std::uint16_t(e)));
-			lignes += t;
-			if (e != attendus[s]) { juste = false; lignes += "(att " + hex(attendus[s]).substr(4) + ")"; }
+			snprintf(t, sizeof t, "%s%u->%04x", lines.empty() ? "" : " ", s, unsigned(std::uint16_t(e)));
+			lines += t;
+			if (e != attendus[s]) { correct = false; lines += "(att " + hex(attendus[s]).substr(4) + ")"; }
 		}
-		juste ? ok("les quatre decalages : deux ecretent, deux rebouclent", lignes)
-		      : rate("les quatre decalages : deux ecretent, deux rebouclent", lignes);
+		correct ? ok("les quatre decalages : deux ecretent, deux rebouclent", lines)
+		      : rate("les quatre decalages : deux ecretent, deux rebouclent", lines);
 	}
 
 	// ---- 6. MWT ECRIT DANS LA RAM, et seulement sur un pas impair
@@ -329,25 +329,25 @@ int main(int argc, char **argv)
 	// et on relit la RAM -- que le test possede. C'est l'observation la plus directe de tout le bloc :
 	// aucune lecture de registre, la memoire elle-meme.
 	{
-		BancDsp d;
+		BenchDsp d;
 		d.b.ram[0] = 0x4321;
 		d.madrs(0, 0);
 		d.madrs(1, 0x10);              // la destination, 16 mots plus loin
 
-		Pas p0;
-		Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
-		Pas p2; p2.iwt = 1; p2.iwa = 0;
-		Pas p3;
+		DecodedStep p0;
+		DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
+		DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
+		DecodedStep p3;
 		p3.xsel = 1; p3.ira = 0;       // X = MEMS[0]
 		p3.ysel = 1; p3.coef = 0;
 		p3.zero = 1;                   // -> ACC
-		Pas p4 = maintien();           // ACC conserve
-		Pas p5 = maintien();           // pas IMPAIR : c'est le seul ou MWT a le droit d'ecrire
+		DecodedStep p4 = hold();           // ACC conserve
+		DecodedStep p5 = hold();           // pas IMPAIR : c'est le seul ou MWT a le droit d'ecrire
 		p5.shift = 3;                  // le signe etendu, pour que SHIFTED garde la valeur
 		p5.mwt = 1; p5.table = 1; p5.masa = 1; p5.nofl = 1;
 		d.coef(0, 0x7FF8);
-		d.programme({ p0, p1, p2, p3, p4, p5 });
-		d.un_pas();
+		d.program({ p0, p1, p2, p3, p4, p5 });
+		d.one_step();
 
 		const std::uint16_t ecrit = d.b.ram[0x10];
 		char t[96];
@@ -361,27 +361,27 @@ int main(int argc, char **argv)
 	// zero au DEBUT de chaque echantillon, donc l'accumulation ne porte que sur un echantillon. Une
 	// reecriture qui affecterait au lieu d'ajouter perdrait tous les melanges internes du reverb.
 	{
-		BancDsp d;
+		BenchDsp d;
 		d.b.ram[0] = 0x1000;
 		d.madrs(0, 0);
-		Pas p0;
-		Pas p1; p1.mrd = 1; p1.table = 1; p1.nofl = 1;
-		Pas p2; p2.iwt = 1; p2.iwa = 0;
-		Pas p3;
+		DecodedStep p0;
+		DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.nofl = 1;
+		DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
+		DecodedStep p3;
 		p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;   // -> ACC
-		Pas p4 = maintien(); p4.shift = 3; p4.ewt = 1; p4.ewa = 0;        // premiere ecriture
-		Pas p5 = maintien(); p5.shift = 3; p5.ewt = 1; p5.ewa = 0;        // seconde, sur le meme EFREG
+		DecodedStep p4 = hold(); p4.shift = 3; p4.ewt = 1; p4.ewa = 0;        // premiere ecriture
+		DecodedStep p5 = hold(); p5.shift = 3; p5.ewt = 1; p5.ewa = 0;        // seconde, sur le meme EFREG
 		d.coef(0, 0x7FF8);
-		d.programme({ p0, p1, p2, p3, p4, p5 });
-		d.un_pas();
+		d.program({ p0, p1, p2, p3, p4, p5 });
+		d.one_step();
 		const std::int16_t deux = d.efreg(0);
 
-		BancDsp u;
+		BenchDsp u;
 		u.b.ram[0] = 0x1000;
 		u.madrs(0, 0);
 		u.coef(0, 0x7FF8);
-		u.programme({ p0, p1, p2, p3, p4 });
-		u.un_pas();
+		u.program({ p0, p1, p2, p3, p4 });
+		u.one_step();
 		const std::int16_t une = u.efreg(0);
 
 		char t[96];
@@ -396,31 +396,31 @@ int main(int argc, char **argv)
 	// exposant, qui garde la dynamique au prix de la precision. On mesure l'aller-retour : ce qui ressort
 	// n'est pas ce qui est entre, et c'est normal -- ce qui compte est QUE ce soit reproductible.
 	{
-		std::string lignes;
-		bool juste = true;
+		std::string lines;
+		bool correct = true;
 		for (std::uint16_t v : { std::uint16_t(0x0100), std::uint16_t(0x4000), std::uint16_t(0x7FFF) }) {
-			BancDsp d;
+			BenchDsp d;
 			d.b.ram[0] = v;
 			d.madrs(0, 0);
 			d.madrs(1, 0x20);
-			Pas p0;
-			Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0;     // NOFL=0 : UNPACK
-			Pas p2; p2.iwt = 1; p2.iwa = 0;
-			Pas p3;
+			DecodedStep p0;
+			DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0;     // NOFL=0 : UNPACK
+			DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
+			DecodedStep p3;
 			p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
-			Pas p4 = maintien();
-			Pas p5 = maintien(); p5.shift = 3;
+			DecodedStep p4 = hold();
+			DecodedStep p5 = hold(); p5.shift = 3;
 			p5.mwt = 1; p5.table = 1; p5.masa = 1;             // NOFL=0 : PACK, sur un pas impair
 			d.coef(0, 0x7FF8);
-			d.programme({ p0, p1, p2, p3, p4, p5 });
-			d.un_pas();
+			d.program({ p0, p1, p2, p3, p4, p5 });
+			d.one_step();
 			char t[64];
-			snprintf(t, sizeof t, "%s%04x->%04x", lignes.empty() ? "" : " ", v, d.b.ram[0x20]);
-			lignes += t;
-			if (d.b.ram[0x20] == 0) juste = false;
+			snprintf(t, sizeof t, "%s%04x->%04x", lines.empty() ? "" : " ", v, d.b.ram[0x20]);
+			lines += t;
+			if (d.b.ram[0x20] == 0) correct = false;
 		}
-		juste ? ok("PACK/UNPACK : l'aller-retour de la ligne de retard", lignes)
-		      : rate("PACK/UNPACK : l'aller-retour de la ligne de retard", lignes + " ; un zero inattendu");
+		correct ? ok("PACK/UNPACK : l'aller-retour de la ligne de retard", lines)
+		      : rate("PACK/UNPACK : l'aller-retour de la ligne de retard", lines + " ; un zero inattendu");
 	}
 
 
@@ -433,7 +433,7 @@ int main(int argc, char **argv)
 	// (docs/scsp_audit.md §5). Il n'y a donc pas de jeu a aller chercher qui ferait du rejoueur leur juge a
 	// l'octet, et sans ces cas-ci le DSP du projet les porte ECRITS et JAMAIS EPROUVES.
 	//
-	// CE QUE CES CINQ CAS ACHETENT, ET CE QU'ILS N'ACHETENT PAS. Ils achetent que `dsp_maison` fait sur ces
+	// CE QUE CES CINQ CAS ACHETENT, ET CE QU'ILS N'ACHETENT PAS. Ils achetent que `dsp_own` fait sur ces
 	// champs ce que fait le DSP de MAME, qui est le comportement VISE par ce portage. Ils n'achetent pas que
 	// MAME ait raison : personne n'a mesure ces quatre-la sur du materiel, et docs/scsp_references.md
 	// refuse le consensus entre emulateurs comme preuve. Les nombres ci-dessous sont donc une CIBLE
@@ -449,29 +449,29 @@ int main(int argc, char **argv)
 	// NEGB ne touche QUE B, apres que BSEL l'ait choisi. Donc un pas de maintien (B = ACC) avec NEGB rend
 	// ACC = -ACC. On le mesure des deux cotes du meme programme : sans, puis avec.
 	{
-		std::string lignes;
-		std::int16_t vu[2] = {};
+		std::string lines;
+		std::int16_t seen[2] = {};
 		for (int neg = 0; neg < 2; neg++) {
-			BancDsp d;
+			BenchDsp d;
 			d.b.ram[0] = 0x1234;
 			d.madrs(0, 0);
-			Pas p0;
-			Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
-			Pas p2; p2.iwt = 1; p2.iwa = 0;
-			Pas p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
-			Pas p4 = maintien(); p4.negb = unsigned(neg);   // B = ACC, nie si NEGB
-			Pas p5 = maintien(); p5.shift = 0; p5.ewt = 1; p5.ewa = 0;
+			DecodedStep p0;
+			DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
+			DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
+			DecodedStep p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
+			DecodedStep p4 = hold(); p4.negb = unsigned(neg);   // B = ACC, nie si NEGB
+			DecodedStep p5 = hold(); p5.shift = 0; p5.ewt = 1; p5.ewa = 0;
 			d.coef(0, 0x4000);
-			d.programme({ p0, p1, p2, p3, p4, p5 });
-			d.un_pas();
-			vu[neg] = d.efreg(0);
+			d.program({ p0, p1, p2, p3, p4, p5 });
+			d.one_step();
+			seen[neg] = d.efreg(0);
 			char t[48];
-			snprintf(t, sizeof t, "%snegb %d -> %d", neg ? " | " : "", neg, vu[neg]);
-			lignes += t;
+			snprintf(t, sizeof t, "%snegb %d -> %d", neg ? " | " : "", neg, seen[neg]);
+			lines += t;
 		}
-		(vu[0] == 2330 && vu[1] == -2330)
-			? ok("NEGB : B change de signe", lignes)
-			: rate("NEGB : B change de signe", lignes + " ; attendu 2330 et -2330");
+		(seen[0] == 2330 && seen[1] == -2330)
+			? ok("NEGB : B change de signe", lines)
+			: rate("NEGB : B change de signe", lines + " ; attendu 2330 et -2330");
 	}
 
 	// ---- 10. FRCL : SHIFTED est retenu, et YSEL=0 le relit
@@ -480,35 +480,35 @@ int main(int argc, char **argv)
 	// FRCL prend (SHIFTED >> 11) & 0x1FFF -- sauf a SHIFT=3, ou il prend SHIFTED & 0x0FFF. Les deux sont
 	// mesures, parce que c'est la seule asymetrie du champ.
 	{
-		std::string lignes;
-		std::int16_t vu[2] = {};
+		std::string lines;
+		std::int16_t seen[2] = {};
 		int i = 0;
 		for (unsigned sh : { 0u, 3u }) {
-			BancDsp d;
+			BenchDsp d;
 			d.b.ram[0] = 0x1234;
 			d.madrs(0, 0);
-			Pas p0;
-			Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
-			Pas p2; p2.iwt = 1; p2.iwa = 0;
-			Pas p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
-			Pas p4 = maintien(); p4.shift = sh; p4.frcl = 1;     // FRC_REG <- SHIFTED, selon SHIFT
-			Pas p5; p5.xsel = 1; p5.ira = 0; p5.ysel = 0; p5.zero = 1;   // Y = FRC_REG
-			Pas p6 = maintien(); p6.shift = 0; p6.ewt = 1; p6.ewa = 0;
+			DecodedStep p0;
+			DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
+			DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
+			DecodedStep p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
+			DecodedStep p4 = hold(); p4.shift = sh; p4.frcl = 1;     // FRC_REG <- SHIFTED, selon SHIFT
+			DecodedStep p5; p5.xsel = 1; p5.ira = 0; p5.ysel = 0; p5.zero = 1;   // Y = FRC_REG
+			DecodedStep p6 = hold(); p6.shift = 0; p6.ewt = 1; p6.ewa = 0;
 			d.coef(0, 0x4000);
-			d.programme({ p0, p1, p2, p3, p4, p5, p6 });
-			d.un_pas();
-			vu[i] = d.efreg(0);
+			d.program({ p0, p1, p2, p3, p4, p5, p6 });
+			d.one_step();
+			seen[i] = d.efreg(0);
 			char t[64];
-			snprintf(t, sizeof t, "%sshift %u -> %d", i ? " | " : "", sh, vu[i]);
-			lignes += t;
+			snprintf(t, sizeof t, "%sshift %u -> %d", i ? " | " : "", sh, seen[i]);
+			lines += t;
 			i++;
 		}
 		// RELEVES, et non calcules. A SHIFT=0, FRC_REG prend (SHIFTED >> 11) & 0x1FFF ; a SHIFT=3 il prend
 		// SHIFTED & 0x0FFF, une tranche basse et bien plus grande -- d'ou le produit six fois plus gros.
 		// C'est la seule asymetrie du champ, et elle se lit ici.
-		(vu[0] == 331 && vu[1] == 2912)
-			? ok("FRCL : SHIFTED retenu, relu par YSEL=0", lignes)
-			: rate("FRCL : SHIFTED retenu, relu par YSEL=0", lignes + " ; attendu 331 et 2912");
+		(seen[0] == 331 && seen[1] == 2912)
+			? ok("FRCL : SHIFTED retenu, relu par YSEL=0", lines)
+			: rate("FRCL : SHIFTED retenu, relu par YSEL=0", lines + " ; attendu 331 et 2912");
 	}
 
 	// ---- 11. YRL : l'ENTREE est retenue, et YSEL 2 et 3 en prennent deux tranches differentes
@@ -516,35 +516,35 @@ int main(int argc, char **argv)
 	// 15-4 : deux fenetres differentes sur le meme registre, et c'est tout l'interet de les mesurer les
 	// deux.
 	{
-		std::string lignes;
-		std::int16_t vu[2] = {};
+		std::string lines;
+		std::int16_t seen[2] = {};
 		int i = 0;
 		for (unsigned ys : { 2u, 3u }) {
-			BancDsp d;
+			BenchDsp d;
 			d.b.ram[0] = 0x1234;
 			d.madrs(0, 0);
-			Pas p0;
-			Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
-			Pas p2; p2.iwt = 1; p2.iwa = 0;
-			Pas p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
+			DecodedStep p0;
+			DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
+			DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
+			DecodedStep p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
 			p3.yrl = 1;                                          // Y_REG <- entree = MEMS[0]
-			Pas p4; p4.xsel = 1; p4.ira = 0; p4.ysel = ys; p4.zero = 1;   // Y = une tranche de Y_REG
-			Pas p5 = maintien(); p5.shift = 0; p5.ewt = 1; p5.ewa = 0;
+			DecodedStep p4; p4.xsel = 1; p4.ira = 0; p4.ysel = ys; p4.zero = 1;   // Y = une tranche de Y_REG
+			DecodedStep p5 = hold(); p5.shift = 0; p5.ewt = 1; p5.ewa = 0;
 			d.coef(0, 0x4000);
-			d.programme({ p0, p1, p2, p3, p4, p5 });
-			d.un_pas();
-			vu[i] = d.efreg(0);
+			d.program({ p0, p1, p2, p3, p4, p5 });
+			d.one_step();
+			seen[i] = d.efreg(0);
 			char t[64];
-			snprintf(t, sizeof t, "%sysel %u -> %d", i ? " | " : "", ys, vu[i]);
-			lignes += t;
+			snprintf(t, sizeof t, "%sysel %u -> %d", i ? " | " : "", ys, seen[i]);
+			lines += t;
 			i++;
 		}
 		// RELEVES. Les deux tranches de Y_REG ne donnent pas le meme Y, donc pas le meme produit : c'est
 		// ce qui prouve que YSEL=2 et YSEL=3 lisent bien DEUX fenetres differentes du meme registre, et
 		// non la meme par deux chemins.
-		(vu[0] == 662 && vu[1] == 946)
-			? ok("YRL : l'entree retenue, relue par YSEL 2 et 3", lignes)
-			: rate("YRL : l'entree retenue, relue par YSEL 2 et 3", lignes + " ; attendu 662 et 946");
+		(seen[0] == 662 && seen[1] == 946)
+			? ok("YRL : l'entree retenue, relue par YSEL 2 et 3", lines)
+			: rate("YRL : l'entree retenue, relue par YSEL 2 et 3", lines + " ; attendu 662 et 946");
 	}
 
 	// ---- 12. ADRL : l'adresse memoire est decalee, et ADREB s'en sert
@@ -555,21 +555,21 @@ int main(int argc, char **argv)
 	// Hors SHIFT=3, ADRL prend `entree >> 16` -- ici 0x00123400 >> 16 = 0x12, et l'on place donc le temoin
 	// au mot 0x12 de la ligne de retard.
 	{
-		BancDsp d;
+		BenchDsp d;
 		d.b.ram[0] = 0x1234;
 		d.b.ram[0x12] = 0x5678;        // le temoin, a l'adresse que ADRS_REG doit ajouter
 		d.madrs(0, 0);
-		Pas p0;
-		Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
-		Pas p2; p2.iwt = 1; p2.iwa = 0;
-		Pas p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
+		DecodedStep p0;
+		DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
+		DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
+		DecodedStep p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
 		p3.adrl = 1;                   // ADRS_REG <- entree >> 16
-		Pas p4;
-		Pas p5; p5.mrd = 1; p5.table = 1; p5.masa = 0; p5.nofl = 1; p5.adreb = 1;   // pas impair
-		Pas p6; p6.iwt = 1; p6.iwa = 1;
+		DecodedStep p4;
+		DecodedStep p5; p5.mrd = 1; p5.table = 1; p5.masa = 0; p5.nofl = 1; p5.adreb = 1;   // pas impair
+		DecodedStep p6; p6.iwt = 1; p6.iwa = 1;
 		d.coef(0, 0x4000);
-		d.programme({ p0, p1, p2, p3, p4, p5, p6 });
-		d.un_pas();
+		d.program({ p0, p1, p2, p3, p4, p5, p6 });
+		d.one_step();
 		const std::int32_t m0 = d.mems(0), m1 = d.mems(1);
 		char t[128];
 		snprintf(t, sizeof t, "MEMS[0] = %s (sans ADREB), MEMS[1] = %s (avec)", hex(m0).c_str(), hex(m1).c_str());
@@ -579,23 +579,23 @@ int main(int argc, char **argv)
 	}
 
 	// ---- 13. LES DEUX CORPS S'ACCORDENT : un rare inoffensif ne change rien
-	// `dsp_maison` a deux corps -- `template <bool RARES>` -- et un seul tourne sur les programmes des
+	// `dsp_own` a deux corps -- `template <bool RARES>` -- et un seul tourne sur les programmes des
 	// jeux, puisqu'aucun ne pose les quatre. Le corps complet n'etait donc exerce par RIEN. Ce cas le
 	// force : la chaine du cas 4, inchangee, plus un FRCL sur un pas ou SHIFTED vaut zero -- ce qui ecrit
 	// zero dans FRC_REG, sa valeur de depart, et ne change donc rien. Le resultat DOIT rester 0x091A.
 	// Quatre fautes injectees dans le corps complet seraient autrement passees inapercues.
 	{
-		BancDsp d;
+		BenchDsp d;
 		d.b.ram[0] = 0x1234;
 		d.madrs(0, 0);
-		Pas p0; p0.frcl = 1;           // SHIFTED vaut zero ici : FRC_REG <- 0, sans effet
-		Pas p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
-		Pas p2; p2.iwt = 1; p2.iwa = 0;
-		Pas p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
-		Pas p4 = maintien(); p4.shift = 0; p4.ewt = 1; p4.ewa = 0;
+		DecodedStep p0; p0.frcl = 1;           // SHIFTED vaut zero ici : FRC_REG <- 0, sans effet
+		DecodedStep p1; p1.mrd = 1; p1.table = 1; p1.masa = 0; p1.nofl = 1;
+		DecodedStep p2; p2.iwt = 1; p2.iwa = 0;
+		DecodedStep p3; p3.xsel = 1; p3.ira = 0; p3.ysel = 1; p3.coef = 0; p3.zero = 1;
+		DecodedStep p4 = hold(); p4.shift = 0; p4.ewt = 1; p4.ewa = 0;
 		d.coef(0, 0x4000);
-		d.programme({ p0, p1, p2, p3, p4 });
-		d.un_pas();
+		d.program({ p0, p1, p2, p3, p4 });
+		d.one_step();
 		const std::int16_t e = d.efreg(0);
 		char t[96];
 		snprintf(t, sizeof t, "EFREG[0] = %d, le corps complet force par un FRCL nul", e);
@@ -604,7 +604,7 @@ int main(int argc, char **argv)
 	}
 
 	printf("\n");
-	if (echecs) { printf("%d echec(s).\n", echecs); return 1; }
+	if (failures) { printf("%d echec(s).\n", failures); return 1; }
 	printf("all cases pass\n");
 	return 0;
 }

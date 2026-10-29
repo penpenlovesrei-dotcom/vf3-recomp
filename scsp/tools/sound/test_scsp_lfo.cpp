@@ -23,8 +23,8 @@
 // question sur les cadences se repond par l'ALFO, qui n'a pas d'adresse et supporte donc les mesures
 // longues.
 //
-// Le montage -- un coeur neuf par cas, la RAM, le keyage -- est dans tools/son/banc_scsp.h.
-#include "banc_scsp.h"
+// Le montage -- un coeur neuf par cas, la RAM, le keyage -- est dans tools/sound/scsp_bench.h.
+#include "scsp_bench.h"
 
 #include <cstdio>
 #include <set>
@@ -33,58 +33,58 @@
 
 namespace {
 
-using banc::Banc;
-using banc::pose;
+using bench::Bench;
+using bench::put;
 
-int echecs = 0;
+int failures = 0;
 
-void ok(const char *quoi, const std::string &d) { printf("  ok    %-40s %s\n", quoi, d.c_str()); }
-void rate(const char *quoi, const std::string &d) { printf("  ECHEC %-40s %s\n", quoi, d.c_str()); ++echecs; }
+void ok(const char *what, const std::string &d) { printf("  ok    %-40s %s\n", what, d.c_str()); }
+void rate(const char *what, const std::string &d) { printf("  ECHEC %-40s %s\n", what, d.c_str()); ++failures; }
 
-constexpr std::uint32_t ONDE = 0x1000;
+constexpr std::uint32_t WAVE = 0x1000;
 constexpr int PAS_RAMPE = 1024;      // la rampe qui fait de la sortie l'accumulateur de phase
-constexpr int CONTINU = 8192;        // l'onde plate qui fait de la sortie un gain
+constexpr int STEADY = 8192;        // l'onde plate qui fait de la sortie un gain
 constexpr int PAR_MULT = 8;
 
 // L'oscillateur a nu : pas d'enveloppe (SDIR), pleine sortie directe au centre.
-void phase_a_nu(std::uint16_t mot[16])
+void phase_a_nu(std::uint16_t word[16])
 {
-	pose(mot, "SA_HI", ONDE >> 16);
-	pose(mot, "SA_LO", ONDE & 0xFFFF);
-	pose(mot, "SDIR",  1);
-	pose(mot, "DISDL", 7);
-	pose(mot, "DIPAN", 0);
-	pose(mot, "LPCTL", 1);
-	pose(mot, "LSA",   0);
-	pose(mot, "LEA",   32);
-	pose(mot, "KYONB", 1);
+	put(word, "SA_HI", WAVE >> 16);
+	put(word, "SA_LO", WAVE & 0xFFFF);
+	put(word, "SDIR",  1);
+	put(word, "DISDL", 7);
+	put(word, "DIPAN", 0);
+	put(word, "LPCTL", 1);
+	put(word, "LSA",   0);
+	put(word, "LEA",   32);
+	put(word, "KYONB", 1);
 }
 
 // L'enveloppe a plat : ce qui reste de variable est l'ALFO.
-void gain_a_nu(std::uint16_t mot[16])
+void gain_a_nu(std::uint16_t word[16])
 {
-	pose(mot, "SA_HI", ONDE >> 16);
-	pose(mot, "SA_LO", ONDE & 0xFFFF);
-	pose(mot, "DISDL", 7);
-	pose(mot, "DIPAN", 0);
-	pose(mot, "TL",    0);
-	pose(mot, "OCT",   0);
-	pose(mot, "FNS",   0);
-	pose(mot, "LPCTL", 1);
-	pose(mot, "LSA",   0);
-	pose(mot, "LEA",   256);
-	pose(mot, "AR",    0x1F);
-	pose(mot, "D1R",   0);
-	pose(mot, "D2R",   0);
-	pose(mot, "DL",    0);
-	pose(mot, "KYONB", 1);
+	put(word, "SA_HI", WAVE >> 16);
+	put(word, "SA_LO", WAVE & 0xFFFF);
+	put(word, "DISDL", 7);
+	put(word, "DIPAN", 0);
+	put(word, "TL",    0);
+	put(word, "OCT",   0);
+	put(word, "FNS",   0);
+	put(word, "LPCTL", 1);
+	put(word, "LSA",   0);
+	put(word, "LEA",   256);
+	put(word, "AR",    0x1F);
+	put(word, "D1R",   0);
+	put(word, "D2R",   0);
+	put(word, "DL",    0);
+	put(word, "KYONB", 1);
 }
 
 // Le pas de lecture, lu sur le deuxieme echantillon.
-std::int32_t pas_mesure(Banc &b, unsigned fente = 0)
+std::int32_t pas_mesure(Bench &b, unsigned slot = 0)
 {
-	(void) fente;
-	const std::vector<std::int32_t> g = b.gauche(2);
+	(void) slot;
+	const std::vector<std::int32_t> g = b.left(2);
 	return g[1] - g[0];   // g[0] vaut zero, cur_addr partant de zero
 }
 
@@ -93,9 +93,9 @@ std::int32_t pas_mesure(Banc &b, unsigned fente = 0)
 // (4096), si bien qu'un gain de 256 y sort a 255. Mais ce retrait DECALE TOUT D'UN CRAN par rapport aux
 // index de la table du LFO, et la premiere version des cas ci-dessous cherchait ses reperes un cran trop
 // loin. m[k] correspond donc a l'index (k + 2) modulo 256 de la table.
-std::vector<int> gains(Banc &b, unsigned n)
+std::vector<int> gains(Bench &b, unsigned n)
 {
-	const std::vector<std::int32_t> g = b.gauche(n + 1);
+	const std::vector<std::int32_t> g = b.left(n + 1);
 	std::vector<int> m(n);
 	for (unsigned i = 0; i < n; i++) m[i] = int(g[i + 1] / PAR_MULT);
 	return m;
@@ -105,7 +105,7 @@ std::vector<int> gains(Banc &b, unsigned n)
 
 int main(int argc, char **argv)
 {
-	if (argc > 1) banc::nom_du_coeur() = argv[1];
+	if (argc > 1) bench::core_name() = argv[1];
 	printf("test_scsp_lfo : le pas, les LFO et la modulation, par scsp::core\n\n");
 
 	// ---- 1. LE PAS, par OCT et FNS, lu et non compte
@@ -114,8 +114,8 @@ int main(int argc, char **argv)
 	// 0xF vaut -1, le champ 0x8 vaut -8 -- et une reecriture qui le lirait comme un non signe jouerait huit
 	// octaves trop haut sur la moitie des notes.
 	{
-		struct Cas { unsigned oct, fns; std::int32_t pas; const char *quoi; };
-		const Cas cas[] = {
+		struct Case { unsigned oct, fns; std::int32_t step; const char *what; };
+		const Case cases[] = {
 			{ 0x0, 0x000, 4096, "OCT=0 FNS=0 : un echantillon par echantillon" },
 			{ 0x0, 0x200, 6144, "FNS a mi-course : une fois et demie" },
 			{ 0x0, 0x3FF, 8188, "FNS au maximum : presque le double" },
@@ -124,24 +124,24 @@ int main(int argc, char **argv)
 			{ 0xE, 0x000, 1024, "OCT=-2 : le quart" },
 			{ 0x8, 0x000,   16, "OCT=-8 (champ 0x8) : le minimum" },
 		};
-		std::string lignes;
-		bool juste = true;
-		for (const Cas &c : cas) {
-			Banc b;
-			b.rampe(ONDE, 32, PAS_RAMPE);
-			std::uint16_t mot[16] = {};
-			phase_a_nu(mot);
-			pose(mot, "OCT", c.oct);
-			pose(mot, "FNS", c.fns);
-			b.keye(0, mot);
+		std::string lines;
+		bool correct = true;
+		for (const Case &c : cases) {
+			Bench b;
+			b.ramp(WAVE, 32, PAS_RAMPE);
+			std::uint16_t word[16] = {};
+			phase_a_nu(word);
+			put(word, "OCT", c.oct);
+			put(word, "FNS", c.fns);
+			b.key(0, word);
 			const std::int32_t p = pas_mesure(b);
 			char t[64];
-			snprintf(t, sizeof t, "%s%x/%03x->%d", lignes.empty() ? "" : " ", c.oct, c.fns, p);
-			lignes += t;
-			if (p != c.pas) { juste = false; lignes += "(attendu " + std::to_string(c.pas) + ")"; }
+			snprintf(t, sizeof t, "%s%x/%03x->%d", lines.empty() ? "" : " ", c.oct, c.fns, p);
+			lines += t;
+			if (p != c.step) { correct = false; lines += "(attendu " + std::to_string(c.step) + ")"; }
 		}
-		juste ? ok("le pas par OCT et FNS", lignes)
-		      : rate("le pas par OCT et FNS", lignes);
+		correct ? ok("le pas par OCT et FNS", lines)
+		      : rate("le pas par OCT et FNS", lines);
 	}
 
 	// ---- 2. HUIT DES TRENTE-DEUX CADENCES DE LFO SONT MORTES
@@ -162,14 +162,14 @@ int main(int argc, char **argv)
 	{
 		std::string mortes, vivantes;
 		for (unsigned lfof = 0; lfof < 32; lfof++) {
-			Banc b;
-			b.continu(ONDE, 256, CONTINU);
-			std::uint16_t mot[16] = {};
-			gain_a_nu(mot);
-			pose(mot, "LFOF", lfof);
-			pose(mot, "ALFOWS", 0);     // dent de scie : toute phase qui bouge change le gain
-			pose(mot, "ALFOS", 7);
-			b.keye(0, mot);
+			Bench b;
+			b.steady(WAVE, 256, STEADY);
+			std::uint16_t word[16] = {};
+			gain_a_nu(word);
+			put(word, "LFOF", lfof);
+			put(word, "ALFOWS", 0);     // dent de scie : toute phase qui bouge change le gain
+			put(word, "ALFOS", 7);
+			b.key(0, word);
 			const std::vector<int> m = gains(b, 4096);
 			bool bouge = false;
 			for (int v : m) if (v != m[0]) { bouge = true; break; }
@@ -198,14 +198,14 @@ int main(int argc, char **argv)
 	// valeurs, sauf aux deux bouts de la dent de scie, qui sont exacts.
 	{
 		auto formes = [](unsigned alfows) {
-			Banc b;
-			b.continu(ONDE, 256, CONTINU);
-			std::uint16_t mot[16] = {};
-			gain_a_nu(mot);
-			pose(mot, "LFOF", 31);
-			pose(mot, "ALFOWS", alfows);
-			pose(mot, "ALFOS", 7);
-			b.keye(0, mot);
+			Bench b;
+			b.steady(WAVE, 256, STEADY);
+			std::uint16_t word[16] = {};
+			gain_a_nu(word);
+			put(word, "LFOF", 31);
+			put(word, "ALFOWS", alfows);
+			put(word, "ALFOS", 7);
+			b.key(0, word);
 			return gains(b, 256);
 		};
 
@@ -214,15 +214,15 @@ int main(int argc, char **argv)
 		// parce que la phase est incrementee avant la lecture.
 		{
 			const std::vector<int> m = formes(0);
-			bool monte = true;
-			for (std::size_t i = 1; i <= 253; i++) if (m[i] < m[i - 1]) { monte = false; break; }
-			(monte && m[0] == 256 && m[253] == 4096 && m[254] == 256)
+			bool raises = true;
+			for (std::size_t i = 1; i <= 253; i++) if (m[i] < m[i - 1]) { raises = false; break; }
+			(raises && m[0] == 256 && m[253] == 4096 && m[254] == 256)
 				? ok("ALFOWS=0 dent de scie", "monotone de " + std::to_string(m[0]) + " a "
 				     + std::to_string(m[253]) + " sur 254 echantillons, puis le repli a "
 				     + std::to_string(m[254]))
 				: rate("ALFOWS=0 dent de scie", "attendu 256 ... 4096 puis 256 ; obtenu "
 				       + std::to_string(m[0]) + " ... " + std::to_string(m[253]) + " puis "
-				       + std::to_string(m[254]) + (monte ? "" : ", et non monotone"));
+				       + std::to_string(m[254]) + (raises ? "" : ", et non monotone"));
 		}
 		// carre : deux valeurs, et rien entre les deux
 		{
@@ -271,27 +271,27 @@ int main(int argc, char **argv)
 	// empeche l'appel, donc la phase de l'ALFO n'avance meme pas.
 	{
 		const int attendus[8] = { 4096, 3904, 3728, 3440, 2896, 2048, 1024, 256 };
-		std::string lignes;
-		bool juste = true;
+		std::string lines;
+		bool correct = true;
 		for (unsigned alfos = 0; alfos < 8; alfos++) {
-			Banc b;
-			b.continu(ONDE, 256, CONTINU);
-			std::uint16_t mot[16] = {};
-			gain_a_nu(mot);
-			pose(mot, "LFOF", 31);
-			pose(mot, "ALFOWS", 1);     // carre : le creux est une valeur franche
-			pose(mot, "ALFOS", alfos);
-			b.keye(0, mot);
+			Bench b;
+			b.steady(WAVE, 256, STEADY);
+			std::uint16_t word[16] = {};
+			gain_a_nu(word);
+			put(word, "LFOF", 31);
+			put(word, "ALFOWS", 1);     // carre : le creux est une valeur franche
+			put(word, "ALFOS", alfos);
+			b.key(0, word);
 			const std::vector<int> m = gains(b, 256);
 			int creux = m[0];
 			for (int v : m) if (v < creux) creux = v;
 			char t[48];
-			snprintf(t, sizeof t, "%s%u->%d", lignes.empty() ? "" : " ", alfos, creux);
-			lignes += t;
-			if (creux != attendus[alfos]) { juste = false; lignes += "(att " + std::to_string(attendus[alfos]) + ")"; }
+			snprintf(t, sizeof t, "%s%u->%d", lines.empty() ? "" : " ", alfos, creux);
+			lines += t;
+			if (creux != attendus[alfos]) { correct = false; lines += "(att " + std::to_string(attendus[alfos]) + ")"; }
 		}
-		juste ? ok("ALFOS : le creux par profondeur", lignes)
-		      : rate("ALFOS : le creux par profondeur", lignes);
+		correct ? ok("ALFOS : le creux par profondeur", lines)
+		      : rate("ALFOS : le creux par profondeur", lines);
 	}
 
 	// ---- 5. PLFOS PERD SON BIT BAS, ET C'EST VOULU
@@ -309,33 +309,33 @@ int main(int argc, char **argv)
 	// valant zero -- et un test qui s'en servirait ne mesurerait pas la divergence, il la reproduirait.
 	// C'est le seul champ de la table dans ce cas (scsp_contract.h section 8).
 	{
-		std::string lignes;
-		bool juste = true;
-		std::int32_t pas[8] = {};
+		std::string lines;
+		bool correct = true;
+		std::int32_t step[8] = {};
 		for (unsigned plfos = 0; plfos < 8; plfos++) {
-			Banc b;
-			b.rampe(ONDE, 32, PAS_RAMPE);
-			std::uint16_t mot[16] = {};
-			phase_a_nu(mot);
-			pose(mot, "OCT", 0);
-			pose(mot, "FNS", 0);
-			pose(mot, "LFOF", 31);
-			pose(mot, "PLFOWS", 1);     // carre : au depart la phase est au sommet, le pas est constant
-			mot[0x9] = std::uint16_t((mot[0x9] & ~(scsp_contract::PLFOS_CHAMP_LARGEUR << scsp_contract::PLFOS_CHAMP_DECALAGE))
+			Bench b;
+			b.ramp(WAVE, 32, PAS_RAMPE);
+			std::uint16_t word[16] = {};
+			phase_a_nu(word);
+			put(word, "OCT", 0);
+			put(word, "FNS", 0);
+			put(word, "LFOF", 31);
+			put(word, "PLFOWS", 1);     // carre : au depart la phase est au sommet, le pas est constant
+			word[0x9] = std::uint16_t((word[0x9] & ~(scsp_contract::PLFOS_CHAMP_LARGEUR << scsp_contract::PLFOS_CHAMP_DECALAGE))
 			                         | ((plfos & scsp_contract::PLFOS_CHAMP_LARGEUR) << scsp_contract::PLFOS_CHAMP_DECALAGE));
-			b.keye(0, mot);
-			pas[plfos] = pas_mesure(b);
+			b.key(0, word);
+			step[plfos] = pas_mesure(b);
 			char t[48];
-			snprintf(t, sizeof t, "%s%u->%d", lignes.empty() ? "" : " ", plfos, pas[plfos]);
-			lignes += t;
+			snprintf(t, sizeof t, "%s%u->%d", lines.empty() ? "" : " ", plfos, step[plfos]);
+			lines += t;
 		}
 		for (unsigned k = 0; k < 8; k += 2)
-			if (pas[k] != pas[k + 1]) juste = false;
-		const bool module = pas[2] != pas[0];
-		(juste && module)
-			? ok("PLFOS par paires : le bit bas est jete", lignes + " (0=1, 2=3, 4=5, 6=7)")
+			if (step[k] != step[k + 1]) correct = false;
+		const bool module = step[2] != step[0];
+		(correct && module)
+			? ok("PLFOS par paires : le bit bas est jete", lines + " (0=1, 2=3, 4=5, 6=7)")
 			: rate("PLFOS par paires : le bit bas est jete",
-			       lignes + (module ? " : une paire differe" : " : aucune modulation, la sonde est muette"));
+			       lines + (module ? " : une paire differe" : " : aucune modulation, la sonde est muette"));
 	}
 
 	// ---- 6. LA MODULATION PAR ANNEAU : la profondeur est 24, et le bit bas de MDL est ignore
@@ -354,34 +354,34 @@ int main(int argc, char **argv)
 		// smp = ((V + V) / 2) << 10 >> (24 - (MDL & 0xE)), puis << 1 pour le 16 bits : le decalage en
 		// echantillons vaut donc (V << 10) >> (24 - (MDL & 0xE)).
 		const int attendus[10] = { 1, 1, 4, 4, 16, 16, 64, 64, 256, 256 };
-		std::string lignes;
-		bool juste = true;
+		std::string lines;
+		bool correct = true;
 		for (unsigned mdl = 0; mdl < 10; mdl++) {
-			Banc b;
-			b.rampe(ONDE, 400, 100);
-			b.coeur.write_reg(0x300 + XSL, std::uint16_t(V), 0xFFFF);   // 0x600 + 2*XSL en octets
-			std::uint16_t mot[16] = {};
-			phase_a_nu(mot);
-			pose(mot, "OCT", 0);
-			pose(mot, "FNS", 0);
-			pose(mot, "LEA", 400);
-			pose(mot, "STWINH", 1);     // la fente n'ecrit pas dans l'anneau
-			pose(mot, "MDL", mdl);
-			pose(mot, "MDXSL", XSL);
-			pose(mot, "MDYSL", XSL);
-			b.keye(0, mot);
-			const std::int32_t sortie = b.gauche(1)[0];
-			const int decalage = int(sortie / (4 * 100));
+			Bench b;
+			b.ramp(WAVE, 400, 100);
+			b.the_core.write_reg(0x300 + XSL, std::uint16_t(V), 0xFFFF);   // 0x600 + 2*XSL en octets
+			std::uint16_t word[16] = {};
+			phase_a_nu(word);
+			put(word, "OCT", 0);
+			put(word, "FNS", 0);
+			put(word, "LEA", 400);
+			put(word, "STWINH", 1);     // la fente n'ecrit pas dans l'anneau
+			put(word, "MDL", mdl);
+			put(word, "MDXSL", XSL);
+			put(word, "MDYSL", XSL);
+			b.key(0, word);
+			const std::int32_t output = b.left(1)[0];
+			const int shift_by = int(output / (4 * 100));
 			char t[48];
-			snprintf(t, sizeof t, "%s%x->%d", lignes.empty() ? "" : " ", mdl, decalage);
-			lignes += t;
-			if (decalage != attendus[mdl] || sortie % (4 * 100) != 0) {
-				juste = false;
-				lignes += "(att " + std::to_string(attendus[mdl]) + ")";
+			snprintf(t, sizeof t, "%s%x->%d", lines.empty() ? "" : " ", mdl, shift_by);
+			lines += t;
+			if (shift_by != attendus[mdl] || output % (4 * 100) != 0) {
+				correct = false;
+				lines += "(att " + std::to_string(attendus[mdl]) + ")";
 			}
 		}
-		juste ? ok("MDL : profondeur 24, bit bas jete", lignes + " (les paires sont egales)")
-		      : rate("MDL : profondeur 24, bit bas jete", lignes);
+		correct ? ok("MDL : profondeur 24, bit bas jete", lines + " (les paires sont egales)")
+		      : rate("MDL : profondeur 24, bit bas jete", lines);
 	}
 
 	// ---- 7. LE GARDE DE LA MODULATION PORTE SUR TROIS CHAMPS, PAS SUR MDL
@@ -391,24 +391,24 @@ int main(int argc, char **argv)
 	// n'examinerait que MDL perdrait le premier comportement et ne s'en apercevrait sur aucun jeu qui
 	// laisse MDXSL a zero.
 	{
-		Banc b;
-		b.rampe(ONDE, 400, 100);
-		b.coeur.write_reg(0x300, std::uint16_t(16384), 0xFFFF);   // l'anneau plein a l'entree 0
-		std::uint16_t mot[16] = {};
-		phase_a_nu(mot);
-		pose(mot, "OCT", 0);
-		pose(mot, "FNS", 0);
-		pose(mot, "LEA", 400);
-		pose(mot, "STWINH", 1);
-		pose(mot, "MDL", 0);
-		pose(mot, "MDXSL", 0);
-		pose(mot, "MDYSL", 0);
-		b.keye(0, mot);
-		const std::int32_t sortie = b.gauche(1)[0];
-		(sortie == 0) ? ok("MDL, MDXSL et MDYSL nuls : aucune modulation",
+		Bench b;
+		b.ramp(WAVE, 400, 100);
+		b.the_core.write_reg(0x300, std::uint16_t(16384), 0xFFFF);   // l'anneau plein a l'entree 0
+		std::uint16_t word[16] = {};
+		phase_a_nu(word);
+		put(word, "OCT", 0);
+		put(word, "FNS", 0);
+		put(word, "LEA", 400);
+		put(word, "STWINH", 1);
+		put(word, "MDL", 0);
+		put(word, "MDXSL", 0);
+		put(word, "MDYSL", 0);
+		b.key(0, word);
+		const std::int32_t output = b.left(1)[0];
+		(output == 0) ? ok("MDL, MDXSL et MDYSL nuls : aucune modulation",
 		                   "l'anneau vaut 16384 et la sortie reste a l'echantillon 0")
 		              : rate("MDL, MDXSL et MDYSL nuls : aucune modulation",
-		                     "sortie " + std::to_string(sortie) + ", attendu 0");
+		                     "sortie " + std::to_string(output) + ", attendu 0");
 	}
 
 	// ---- 8. LFORE : ce que ce coeur en fait, c'est-a-dire rien
@@ -420,15 +420,15 @@ int main(int argc, char **argv)
 	{
 		std::int32_t avec = 0, sans = 0;
 		for (int i = 0; i < 2; i++) {
-			Banc b;
-			b.continu(ONDE, 256, CONTINU);
-			std::uint16_t mot[16] = {};
-			gain_a_nu(mot);
-			pose(mot, "LFOF", 31);
-			pose(mot, "ALFOWS", 0);
-			pose(mot, "ALFOS", 7);
-			pose(mot, "LFORE", unsigned(i));
-			b.keye(0, mot);
+			Bench b;
+			b.steady(WAVE, 256, STEADY);
+			std::uint16_t word[16] = {};
+			gain_a_nu(word);
+			put(word, "LFOF", 31);
+			put(word, "ALFOWS", 0);
+			put(word, "ALFOS", 7);
+			put(word, "LFORE", unsigned(i));
+			b.key(0, word);
 			const std::vector<int> m = gains(b, 64);
 			(i ? avec : sans) = m[63];
 		}
@@ -440,7 +440,7 @@ int main(int argc, char **argv)
 	}
 
 	printf("\n");
-	if (echecs) { printf("%d echec(s).\n", echecs); return 1; }
+	if (failures) { printf("%d echec(s).\n", failures); return 1; }
 	printf("all cases pass\n");
 	return 0;
 }

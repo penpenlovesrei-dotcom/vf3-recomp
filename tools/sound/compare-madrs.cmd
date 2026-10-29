@@ -1,7 +1,7 @@
 @echo off
 rem Les deux sons de la MEME scene, avec et sans le miroir de MADRS, SANS FENETRE, puis la mesure.
 rem
-rem   tools\son\comparer-madrs.cmd [jeu] [script] [images]
+rem   tools\son\compare-madrs.cmd [jeu] [script] [images]
 rem     defaut : vf3  tools\scripts\vf3-match.txt  2400
 rem
 rem Pourquoi : le miroir replie les lignes de retard du DSP sur une adresse (mesure du 2026-10-24,

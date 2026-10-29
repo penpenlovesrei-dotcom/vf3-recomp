@@ -1,7 +1,7 @@
 @echo off
 rem Importe le programme 68000 de la carte son dans Ghidra, sans interface, et l'analyse.
 rem
-rem   tools\son\importer-son.cmd
+rem   tools\son\import-sound.cmd
 rem
 rem Ce que ca fait, et pourquoi dans cet ordre :
 rem   1. extrait epr-20600a.21 de fvipers2.zip et ECHANGE chaque paire d'octets. Le fichier de

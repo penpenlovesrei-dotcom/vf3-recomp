@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 # THE VARIANTS TO BE JUDGED ON THE INSTRUCTION COUNTER.
 #
-# Each one is a transformation of dsp_maison.cpp that must be EQUIVALENT down to behaviour -- which the ten
+# Each one is a transformation of dsp_own.cpp that must be EQUIVALENT down to behaviour -- which the ten
 # tests verify before it is kept. Each attacks the INSTRUCTION COUNT of a step's unavoidable path, which is
 # where the gap sits (+19.6% in the loop, docs/scsp_audit.md §4 nonies).
 #
 # This file measures nothing: it builds one exe per variant. The judging needs an administrator window, and
-# it is mesurer-variantes.cmd that does it, one capture per exe.
+# it is measure-variants.cmd that does it, one capture per exe.
 #
 # TWO OF THE FIVE WERE ADOPTED INTO THE SOURCE on 2026-10-28, so their "before" fragment no longer exists:
 # `shift_deux_bits` and `ysel_coef_premier`, hence `tout` and `gagnantes` with them. The builder will
