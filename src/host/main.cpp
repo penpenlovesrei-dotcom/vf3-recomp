@@ -3838,7 +3838,17 @@ int main(int argc, char **argv)
 	auto close_options = [&] {
 		const bool changed = options.changed;
 		options.changed = false;
-		enter(cstate::PLAY, "OPTIONS closed");
+		// BACK TO THE LIST, NOT TO THE GAME. OPTIONS is a door INSIDE the list -- it is reached from no
+		// other place -- so leaving it belongs one step up, not all the way out. It went to PLAY, which
+		// dropped the player on the game's title screen with the list gone: Frederic, the 2026-10-29,
+		// "sortir du menu option renvoie a l'ecran titre au lieu du menu principal". The line was written
+		// when the list had no state of its own and closed itself to let OPTIONS have the screen; the table
+		// has made that untrue (console_state.h). enter() refuses MENU if the list is not there and falls
+		// back to PLAY, which is the old behaviour kept for the one case that still wants it.
+		enter(cstate::MENU, "OPTIONS closed");
+		// AND ON THE LINE IT WAS OPENED FROM. Showing the list puts its cursor back on the first line, so
+		// coming out of OPTIONS jumped to ARCADE -- a page you left is a page you come back to.
+		if (cplay.ui.at == cstate::MENU) modes.sel = fv2_mode_list::OPTIONS;
 		fprintf(stderr, "the console's OPTIONS: closed, %s\n", changed ? "a setting changed" : "nothing changed");
 	};
 	auto choose_mode = [&](int line) {
