@@ -1,74 +1,74 @@
 @echo off
-rem Ce que le son coute A L'HOTE, ou la carte tourne sur un fil a elle. Une commande, sans fenetre.
+rem What the sound costs THE HOST, where the board runs on a thread of its own. One command, no window.
 rem
-rem   tools\sound\measure-host.cmd [secondes]      (120 par defaut)
+rem   tools\sound\measure-host.cmd [seconds]      (120 by default)
 rem
-rem POURQUOI CE N'EST PAS LE CHIFFRE DE vf3run. Dans le lanceur la carte son est DANS la boucle d'image,
-rem donc son temps est celui de l'image : 30,5 % sous --rec (scsp/docs/scsp_audit.md sect. 4 bis). Dans l'hote elle est
-rem sur un fil a elle, une image en retard, et son cout se separe en deux :
+rem WHY THIS IS NOT vf3run's FIGURE. In the launcher the sound board is INSIDE the frame loop, so its
+rem time is the frame's: 30.5 % under --rec (scsp/docs/scsp_audit.md sect. 4 bis). In the host it is on a
+rem thread of its own, one frame behind, and its cost splits in two:
 rem
-rem   le cout CPU    -- le travail du fil, qu'il faut bien faire quelque part ;
-rem   le cout d'IMAGE -- le temps que le fil du jeu passe BLOQUE a l'attendre, dans finish_frame. Si c'est
-rem                     zero, le son ne coute RIEN a la cadence, quel que soit le CPU qu'il brule.
+rem   the CPU cost    -- the thread's work, which has to be done somewhere;
+rem   the FRAME cost  -- the time the game's thread spends BLOCKED waiting for it, in finish_frame. If
+rem                      that is zero, the sound costs the frame rate NOTHING, whatever CPU it burns.
 rem
-rem Mesure le 2026-10-26 sur la machine de Frederic : le fil travaille 1,49 ms par image, le jeu l'attend
-rem 0,000 ms (maximum 0,016), periode 17,38 ms -- donc 8,5 % d'un coeur et 0,00 % de l'image (sect. 4 ter).
+rem Measured on 2026-10-26 on Frederic's machine: the thread works 1.49 ms per frame, the game waits for
+rem it 0.000 ms (maximum 0.016), period 17.38 ms -- so 8.5 % of a core and 0.00 % of the frame (sect. 4 ter).
 rem
-rem CE QUE CETTE MESURE-LA N'ETABLIT PAS, et c'est pourquoi ce script existe : UNE SEULE MACHINE, avec des
-rem coeurs a revendre. Sur DEUX COEURS -- un portable AMD, un Steam Deck -- le fil du son est en concurrence
-rem avec celui du jeu et celui des images, et l'attente pourrait cesser d'etre nulle. C'est la seule mesure du
-rem cahier des charges qui demande une autre machine.
+rem WHAT THAT MEASUREMENT DOES NOT ESTABLISH, and that is why this script exists: ONE MACHINE, with cores
+rem to spare. On TWO CORES -- an AMD laptop, a Steam Deck -- the sound's thread competes with the game's
+rem and with the pictures', and the wait could stop being nil. It is the only measurement in the
+rem specification that needs another machine.
 rem
-rem SANS FENETRE (VF3_HIDDEN=1) : rien ne s'affiche, aucun son ne sort, la carte son tourne quand meme. Le
-rem cadencement reste celui du Model 3 -- la sonde imprime la periode, et c'est a 17,38 ms qu'on voit qu'elle
-rem est juste. Les premieres centaines d'images ne comptent pas, le temps que ca se cale.
-rem IL MARCHE A PLAT. Pour mesurer sur une autre machine on n'emporte pas le depot : on copie un dossier qui
-rem contient vf3.exe, ses DLL, la ROM et ce script, et on clique dessus. Le script cherche l'exe a cote de
-rem lui d'abord, puis dans build\bin ; et la ROM a cote de lui, puis au chemin habituel.
+rem NO WINDOW (VF3_HIDDEN=1): nothing is displayed, no sound comes out, the sound board runs all the same.
+rem The pacing is still the Model 3's -- the probe prints the period, and it is at 17.38 ms that one sees
+rem it is right. The first few hundred frames do not count, while it settles.
+rem IT WORKS FLAT. To measure on another machine the repository is not carried over: one copies a folder
+rem holding vf3.exe, its DLLs, the ROM and this script, and clicks on it. The script looks for the exe
+rem beside itself first, then in build\bin; and for the ROM beside itself, then at the usual path.
 setlocal
-set SECONDES=%1
-if "%SECONDES%"=="" set SECONDES=120
+set SECONDS=%1
+if "%SECONDS%"=="" set SECONDS=120
 
 set EXE=
 if exist "%~dp0vf3.exe" set EXE=%~dp0vf3.exe
 if "%EXE%"=="" if exist "%~dp0..\..\build\bin\vf3.exe" set EXE=%~dp0..\..\build\bin\vf3.exe
 if "%EXE%"=="" (
-  echo vf3.exe introuvable, ni a cote de ce script ni dans build\bin.
-  echo Construire ^(make build/bin/vf3^), ou copier l'exe et ses DLL a cote de ce script.
-  goto :fin
+  echo vf3.exe not found, neither beside this script nor in build\bin.
+  echo Build it ^(make build/bin/vf3^), or copy the exe and its DLLs beside this script.
+  goto :done
 )
 
 set ROM=
 if exist "%~dp0fvipers2.zip" set ROM=%~dp0fvipers2.zip
 if "%ROM%"=="" if exist "C:\Users\frede\Documents\SEGA Model 3\ROMs\fvipers2.zip" set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\fvipers2.zip
 if "%ROM%"=="" (
-  echo fvipers2.zip introuvable, ni a cote de ce script ni dans Documents\SEGA Model 3\ROMs.
-  goto :fin
+  echo fvipers2.zip not found, neither beside this script nor in Documents\SEGA Model 3\ROMs.
+  goto :done
 )
 
-rem Le dossier de donnees, pour que le journal atterrisse a un endroit qu'on sait lire. Sans ca il suit le
-rem zip, et on le cherche.
-set VF3_DATA=%~dp0mesure-hote
+rem The data folder, so that the log lands somewhere we know to read. Without it, it follows the zip and
+rem then has to be looked for.
+set VF3_DATA=%~dp0measure-host
 if not exist "%VF3_DATA%" mkdir "%VF3_DATA%"
 
 set VF3_HIDDEN=1
 set VF3_SND_PROF=1
 set VF3_SND_HOST=500
-set VF3_QUIT_AFTER_S=%SECONDES%
+set VF3_QUIT_AFTER_S=%SECONDS%
 
-echo ---- %SECONDES% secondes sans fenetre, patienter ----
+echo ---- %SECONDS% seconds with no window, please wait ----
 "%EXE%" "%ROM%"
 echo.
-echo ---- ce que le son a coute a l'hote ----
+echo ---- what the sound cost the host ----
 findstr /b "sndhost" "%VF3_DATA%\log.txt"
 echo.
-echo ---- et le partage interne a la carte ----
+echo ---- and the split inside the board ----
 findstr /b "sndprof" "%VF3_DATA%\log.txt"
 echo.
-echo Le journal entier : "%VF3_DATA%\log.txt"
+echo The whole log: "%VF3_DATA%\log.txt"
 echo.
-echo CE QU'IL FAUT LIRE : la colonne "le jeu l'attend". Si elle est a 0,000 le son ne coute rien a la
-echo cadence. Et la "periode" doit etre a 17,38 ms une fois calee -- sinon la machine ne tient pas le
-echo rythme du Model 3 et le reste de la ligne ne veut plus dire la meme chose.
-:fin
+echo WHAT TO READ: the "the game waits" column. If it is at 0.000 the sound costs the frame rate
+echo nothing. And the "period" must be at 17.38 ms once settled -- otherwise the machine is not keeping
+echo the Model 3's pace and the rest of the line no longer means the same thing.
+:done
 endlocal

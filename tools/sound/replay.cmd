@@ -1,75 +1,75 @@
 @echo off
-rem replay.cmd : prend une trace d'acces au SCSP sur une scene, et la rejoue.
+rem replay.cmd : takes a trace of the SCSP's accesses over a scene, and replays it.
 rem
-rem Point 2 de l'etape 2 de scsp/docs/scsp_migration_plan.md. Deux controles en une commande :
-rem   1. le rejeu retrouve-t-il le PCM que la carte a produit ? (la trace est-elle complete)
-rem   2. deux coeurs rendent-ils la meme chose ? (la comparaison, quand il y en aura deux)
+rem Point 2 of step 2 of scsp/docs/scsp_migration_plan.md. Two checks in one command:
+rem   1. does the replay find the PCM the board produced again? (is the trace complete)
+rem   2. do two cores render the same thing? (the comparison, once there are two)
 rem
-rem   tools\sound\replay.cmd [jeu] [script] [images] [coeur-a] [coeur-b]
+rem   tools\sound\replay.cmd [game] [script] [frames] [core-a] [core-b]
 rem
-rem Sans arguments : fvipers2, fv2-fight.txt, 300 images, mame contre mame.
-rem Rien n'est joue a l'ecran : vf3run est sans interface.
+rem With no arguments: fvipers2, fv2-fight.txt, 300 frames, mame against mame.
+rem Nothing is played on screen: vf3run has no interface.
 rem
-rem Ce fichier est en ASCII pur : cmd lit les accents dans sa page de code ANSI et casse le decoupage des
-rem lignes, ce qui donne des "'m' n'est pas reconnu" incomprehensibles.
+rem This file is pure ASCII: cmd reads accents in its ANSI code page and breaks the line splitting,
+rem which gives incomprehensible "'m' is not recognized" errors.
 setlocal
-set JEU=%1
+set GAME=%1
 set SCRIPT=%2
-set IMAGES=%3
-set COEURA=%4
-set COEURB=%5
-if "%JEU%"=="" set JEU=fvipers2
+set FRAMES=%3
+set COREA=%4
+set COREB=%5
+if "%GAME%"=="" set GAME=fvipers2
 if "%SCRIPT%"=="" set SCRIPT=tools\scripts\fv2-fight.txt
-if "%IMAGES%"=="" set IMAGES=300
-if "%COEURA%"=="" set COEURA=mame
-if "%COEURB%"=="" set COEURB=mame
-set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\%JEU%.zip
-set OUT=%TEMP%\son-rejeu
+if "%FRAMES%"=="" set FRAMES=300
+if "%COREA%"=="" set COREA=mame
+if "%COREB%"=="" set COREB=mame
+set ROM=C:\Users\frede\Documents\SEGA Model 3\ROMs\%GAME%.zip
+set OUT=%TEMP%\sound-replay
 cd /d "%~dp0..\.."
 
 if not exist "%ROM%" (
-  echo La ROM %ROM% n'est pas la.
-  goto :fin
+  echo The ROM %ROM% is not there.
+  goto :done
 )
 if not exist "build\bin\vf3run.exe" (
-  echo build\bin\vf3run.exe manque.
-  goto :fin
+  echo build\bin\vf3run.exe is missing.
+  goto :done
 )
 if not exist "build\bin\replay.exe" (
-  echo build\bin\replay.exe manque : make build/bin/replay
-  goto :fin
+  echo build\bin\replay.exe is missing: make build/bin/replay
+  goto :done
 )
 
 if not exist "%OUT%" mkdir "%OUT%"
 del /q "%OUT%\tr.*" 2>nul
 
-echo ---- la trace, %IMAGES% images de %SCRIPT% ----
+echo ---- the trace, %FRAMES% frames of %SCRIPT% ----
 set VF3_SCSP_TRACE=%OUT%\tr
-"build\bin\vf3run.exe" "%ROM%" --script "%SCRIPT%" --frames %IMAGES% --wav "%OUT%\son.wav" --quiet
+"build\bin\vf3run.exe" "%ROM%" --script "%SCRIPT%" --frames %FRAMES% --wav "%OUT%\sound.wav" --quiet
 set VF3_SCSP_TRACE=
 if errorlevel 1 (
-  echo vf3run a echoue.
-  goto :fin
+  echo vf3run failed.
+  goto :done
 )
 
-set FAUTES=0
+set FAULTS=0
 for %%P in (0 1) do (
   echo.
-  echo ---- puce %%P : la trace est-elle complete ? ----
+  echo ---- chip %%P : is the trace complete? ----
   "build\bin\replay.exe" "%OUT%\tr.%%P" --against "%OUT%\tr.%%P.pcm"
-  if errorlevel 1 set /a FAUTES+=1
+  if errorlevel 1 set /a FAULTS+=1
   echo.
-  echo ---- puce %%P : %COEURA% contre %COEURB% ----
-  "build\bin\replay.exe" "%OUT%\tr.%%P" %COEURA% %COEURB%
-  if errorlevel 1 set /a FAUTES+=1
+  echo ---- chip %%P : %COREA% against %COREB% ----
+  "build\bin\replay.exe" "%OUT%\tr.%%P" %COREA% %COREB%
+  if errorlevel 1 set /a FAULTS+=1
 )
 
 echo.
-if "%FAUTES%"=="0" (
-  echo TOUT CONCORDE. Les traces sont dans %OUT%.
+if "%FAULTS%"=="0" (
+  echo EVERYTHING AGREES. The traces are in %OUT%.
 ) else (
-  echo %FAUTES% controle^(s^) en echec. Les traces sont dans %OUT%.
+  echo %FAULTS% check^(s^) failed. The traces are in %OUT%.
 )
 
-:fin
+:done
 endlocal

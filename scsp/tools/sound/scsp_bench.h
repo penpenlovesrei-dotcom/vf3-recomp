@@ -67,7 +67,7 @@ struct Bench {
 		the_core.write_reg(0x400 / 2, 0x0300 | 0x000F, 0xFFFF);
 	}
 
-	// A ramp of 16-bit samples at byte address `sa`: sample k is k * pas.
+	// A ramp of 16-bit samples at byte address `sa`: sample k is k * step.
 	void ramp(std::uint32_t sa, unsigned n, int step)
 	{
 		for (unsigned k = 0; k < n; k++)

@@ -10,9 +10,9 @@
 // 44.1 kHz.
 #pragma once
 #include "scsp.h"
-// (plus de scsp_own.h : le miroir MADRS passait par un dynamic_cast ecrit ici, il passe
-// maintenant par scsp_select.h, et la carte ne nomme donc plus que le coeur dont elle tire ses
-// trois extras -- celui de MAME)
+// (no more scsp_own.h: the MADRS mirror used to go through a dynamic_cast written here, it now goes
+// through scsp_select.h, so the board no longer names anything but the core it draws its three extras
+// from -- MAME's)
 #include "scsp_mame.h"
 #include "scsp_select.h"
 #include "scsp_trace.h"
@@ -82,29 +82,30 @@ private:
 	struct Bus;
 	std::unique_ptr<Bus> bus;
 	std::unique_ptr<m68000_device> cpu;
-	// LES DEUX PUCES, PAR LEUR INTERFACE SEULE (src/sound/scsp_core.h), et le coeur se choisit :
-	// VF3_SCSP_CORE=mame (par defaut) ou maison, le SCSP du projet (src/sound/scsp_own.h).
+	// THE TWO CHIPS, THROUGH THEIR INTERFACE ALONE (src/sound/scsp_core.h), and the core is chosen:
+	// VF3_SCSP_CORE=mame (the default) or own, the project's SCSP (src/sound/scsp_own.h).
 	std::unique_ptr<scsp::core> scsp[2];
 
-	// CE QUE LA CARTE DEMANDE AU-DELA DE LA PUCE, et qui n'est pas dans l'interface parce que ce n'est pas
-	// l'affaire d'un SCSP : les gains par groupe du partage musique/effets, la sonde d'energie, le journal
-	// des key-on. `scsp_core.h` dit pourquoi ils n'y sont pas.
+	// WHAT THE BOARD ASKS FOR BEYOND THE CHIP, and which is not in the interface because it is not a
+	// SCSP's business: the per-group gains of the music/effects split, the energy probe, the key-on log.
+	// `scsp_core.h` says why they are not there.
 	//
-	// ILS NE SONT POUR L'INSTANT QUE DANS LE COEUR DE MAME, et ce pointeur -- non proprietaire, nul quand
-	// l'autre coeur tourne -- est la MESURE de ce qui reste a faire. Les gains par groupe sont le seul des
-	// trois qui compte pour le joueur, et ils sont INERTES tant que les deux volumes valent 1
-	// (scsp_device::set_group_gain) : c'est pourquoi le coeur du projet est utilisable sans eux, et pourquoi
-	// la carte le dit au lieu de les laisser tomber en silence.
+	// THEY ARE IN MAME'S CORE ALONE FOR NOW, and this pointer -- non-owning, null when the other core is
+	// running -- is the MEASURE of what is left to do. The per-group gains are the only one of the three
+	// that matters to the player, and they are INERT as long as both volumes are 1
+	// (scsp_device::set_group_gain): that is why the project's core is usable without them, and why the
+	// board says so instead of letting them fall silently.
 	scsp_mame *extras[2] = { nullptr, nullptr };
-	// LA TETE PAR LAQUELLE LA CARTE PARLE A LA PUCE, et c'est `head[n]` et non `scsp[n]` qu'il faut appeler.
+	// THE HEAD THROUGH WHICH THE BOARD SPEAKS TO THE CHIP, and it is `head[n]` and not `scsp[n]` that must
+	// be called.
 	//
-	// Sans VF3_SCSP_TRACE elle vaut scsp[n].get() et ne coute rien. Avec, c'est un scsp::enregistreur qui
-	// enveloppe la puce et note chaque appel (src/sound/scsp_trace.h), si bien que la trace passe par UNE
-	// porte au lieu d'etre posee a huit endroits -- et qu'un neuvieme appel ajoute un jour ne peut pas y
-	// echapper en silence. Les `->device()` restent sur scsp[n] : ils ne sont pas l'affaire de la puce.
+	// Without VF3_SCSP_TRACE it is scsp[n].get() and costs nothing. With it, it is a scsp::recorder that
+	// wraps the chip and notes every call (src/sound/scsp_trace.h), so that the trace goes through ONE door
+	// instead of being laid at eight places -- and so that a ninth call added one day cannot escape it
+	// silently. The `->device()` calls stay on scsp[n]: they are not the chip's business.
 	std::unique_ptr<scsp::recorder> trace[2];
 	scsp::core *head[2] = { nullptr, nullptr };
-	// Ce que la carte branche sous chaque puce : trois methodes au lieu de cinq std::function.
+	// What the board plugs underneath each chip: three methods instead of five std::function.
 	struct Sink final : scsp::sink {
 		SoundBoard *b = nullptr;
 		int n = 0;
@@ -113,22 +114,23 @@ private:
 		void timer(int which, std::uint32_t samples, std::uint32_t period) override;
 	};
 	Sink sinks[2];
-	// Les echantillons de la trame, accumules par sync_sound() au fil des acces registre, et melanges a la
-	// fin. En entiers signes a l'echelle 18 bits (scsp_mame::PLEINE_ECHELLE), comme la puce les a.
+	// The frame's samples, accumulated by sync_sound() as the register accesses come, and mixed at the end.
+	// In signed integers on the 18-bit scale (scsp_mame::FULL_SCALE), as the chip has them.
 	std::vector<std::int32_t> pcm[2];
-	// Remet les deux puces a l'heure du 68000. A APPELER AVANT TOUT ACCES REGISTRE : l'ancienne classe le
-	// faisait d'elle-meme (son write() commencait par update()), l'interface neuve ne le fait pas -- c'est
-	// le prix du temps pousse, et le §2 de l'architecture le dit : "l'appelant garantit que le temps est a
-	// jour avant d'y toucher". Sans cet appel, toute la trame serait fabriquee d'un coup a la fin et les
-	// ecritures ne tomberaient plus au meme endroit dans le son.
-	// UNE SEULE PUCE, celle qu'on touche. L'ancien chemin n'avancait que celle-la (son write() appelait
-	// update() sur elle seule) ; remettre les DEUX a l'heure a chaque acces fabrique un echantillon de
-	// l'autre trop tot, et le harnais l'a vu : une paire perdue sur 4200 images et tout le son decale d'un
-	// echantillon a partir de l'image 1006, ou le pilote charge un programme DSP en 2450 ecritures.
+	// Brings the two chips up to the 68000's time. TO BE CALLED BEFORE ANY REGISTER ACCESS: the old class
+	// did it of its own accord (its write() began with update()), the new interface does not -- that is the
+	// price of pushed time, and §2 of the architecture says so: "the caller guarantees that time is up to
+	// date before touching it". Without this call the whole frame would be made in one go at the end and the
+	// writes would no longer fall at the same place in the sound.
+	// ONE CHIP ONLY, the one being touched. The old path advanced that one alone (its write() called update()
+	// on it alone); bringing BOTH up to date at every access makes a sample of the other one too early, and
+	// the harness saw it: one pair lost out of 4200 frames and the whole sound shifted by one sample from
+	// frame 1006 on, where the driver loads a DSP program in 2450 writes.
 	void sync_sound(int n);
 	void sync_sound() { sync_sound(0); sync_sound(1); }
-	// Le nombre d'octets MIDI que la carte a jetes (elle n'en fait rien aujourd'hui), compte plutot que tu.
-	std::uint64_t midi_out_jetes = 0;
+	// How many MIDI bytes the board has thrown away (it does nothing with them today), counted rather than
+	// kept quiet.
+	std::uint64_t midi_out_dropped = 0;
 	std::vector<uint16_t> ram[2];
 	int frames = 0;   // run() calls (tests' logs)
 	const std::vector<uint8_t> *rom = nullptr, *samples = nullptr;

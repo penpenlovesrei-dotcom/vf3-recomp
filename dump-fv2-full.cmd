@@ -6,7 +6,7 @@ rem cells 11 to 14.
 rem
 rem   Textures3D-dump\fvipers2\        the PNGs and their textures.csv
 rem   Textures3D-dump\ram\             the state read at frame 3300 of each run
-rem   Textures3D-dump\couverture.txt   who was played in each run
+rem   Textures3D-dump\coverage.txt     who was played in each run
 rem
 rem ALLOW AN HOUR. Nothing to watch, nothing to press.
 rem

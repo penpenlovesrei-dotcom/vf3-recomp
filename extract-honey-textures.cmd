@@ -2,9 +2,9 @@
 rem Fighting Vipers 2: puts on the desktop every texture of Honey's basic
 rem costume, in both of its colours.
 rem
-rem   Desktop\Honey-costume-de-base\couleur-1\    HONEY confirmed with punch
-rem   Desktop\Honey-costume-de-base\couleur-2\    HONEY, one UP before the punch
-rem   Desktop\Honey-costume-de-base\RELEVE.txt    how the sorting was done
+rem   Desktop\Honey-basic-costume\colour-1\    HONEY confirmed with punch
+rem   Desktop\Honey-basic-costume\colour-2\    HONEY, one UP before the punch
+rem   Desktop\Honey-basic-costume\SURVEY.txt    how the sorting was done
 rem
 rem Three windowless runs, identical in everything but one thing each: Honey with
 rem punch; Honey with one press of UP on her cell before the punch, which is what
@@ -47,28 +47,28 @@ rem language.
 for /f %%q in ('py -3 -I -c "import time;print(time.strftime(chr(37)+chr(89)+chr(37)+chr(109)+chr(37)+chr(100)+chr(45)+chr(37)+chr(72)+chr(37)+chr(77)))"') do set "WHEN=%%q"
 if "%WHEN%"=="" set "WHEN=capture"
 set "CAPT=%~dp0captures-textures-honey\%WHEN%"
-mkdir "%CAPT%\couleur1" 2>nul
-mkdir "%CAPT%\couleur2" 2>nul
-mkdir "%CAPT%\temoin"   2>nul
+mkdir "%CAPT%\colour1" 2>nul
+mkdir "%CAPT%\colour2" 2>nul
+mkdir "%CAPT%\control"  2>nul
 
 echo.
 echo --- 1/3  HONEY, the first colour (punch) ---
-"build\bin\vf3run.exe" "%ROM%" --script "tools\scripts\fv2-honey-tex-c1.txt" --hd-dump "%CAPT%\couleur1" --rec --quiet
+"build\bin\vf3run.exe" "%ROM%" --script "tools\scripts\fv2-honey-tex-c1.txt" --hd-dump "%CAPT%\colour1" --rec --quiet
 echo     code %ERRORLEVEL%
 
 echo.
 echo --- 2/3  HONEY, the second colour (UP then punch) ---
-"build\bin\vf3run.exe" "%ROM%" --script "tools\scripts\fv2-honey-tex-c2.txt" --hd-dump "%CAPT%\couleur2" --rec --quiet
+"build\bin\vf3run.exe" "%ROM%" --script "tools\scripts\fv2-honey-tex-c2.txt" --hd-dump "%CAPT%\colour2" --rec --quiet
 echo     code %ERRORLEVEL%
 
 echo.
 echo --- 3/3  EMI, the control (punch) ---
-"build\bin\vf3run.exe" "%ROM%" --script "tools\scripts\fv2-emi-tex.txt" --hd-dump "%CAPT%\temoin" --rec --quiet
+"build\bin\vf3run.exe" "%ROM%" --script "tools\scripts\fv2-emi-tex.txt" --hd-dump "%CAPT%\control" --rec --quiet
 echo     code %ERRORLEVEL%
 
 echo.
 echo --- sorting ---
-set "OUT=%USERPROFILE%\Desktop\Honey-costume-de-base"
+set "OUT=%USERPROFILE%\Desktop\Honey-basic-costume"
 py -3 -I "tools\fv2\honey_textures.py" "%CAPT%" "%OUT%" || goto :failed
 
 echo.

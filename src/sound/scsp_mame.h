@@ -1,8 +1,8 @@
 // scsp_mame.h -- MAME's SCSP presented through the new interface.
 //
-// Step 3 of scsp/docs/scsp_migration_plan.md, and the plan says why it comes first: "l'interface posée d'abord
-// sur le coeur de MAME : un adaptateur qui présente l'ancien coeur à travers le contrat neuf. C'est le geste
-// qui décide si le contrat tient, et il ne coûte rien à défaire."
+// Step 3 of scsp/docs/scsp_migration_plan.md, and the plan says why it comes first: "the interface laid on
+// MAME's core first: an adapter that presents the old core through the new contract. It is the move that
+// decides whether the contract holds, and it costs nothing to undo."
 //
 // WHAT IT PROVES, AND WHAT IT DOES NOT. Wrapping the old core cannot prove anything about numbers -- the
 // samples are the old core's either way. What it proves is that the SHAPE of scsp_core.h is sufficient: that
@@ -53,8 +53,8 @@ public:
 
 	// The old class, for the port's extras during the changeover. Nothing in scsp_core.h needs it.
 	scsp_device &device() { return *m_dev; }
-	// Et en lecture seule, pour qui ne fait que RELIRE un de ces extras -- la trace relit le miroir MADRS
-	// pour l'ecrire dans son en-head (scsp_select.h).
+	// And read-only, for whoever only REREADS one of those extras -- the trace rereads the MADRS mirror
+	// to write it into its header (scsp_select.h).
 	const scsp_device &device_const() const { return *m_dev; }
 
 	// How many MIDI-out BITS the old core emitted that this adapter could not turn into bytes. Read it
@@ -62,7 +62,7 @@ public:
 	std::uint64_t midi_out_bits_dropped() const { return m_bits_dropped; }
 
 	// The scale run() reports on, so a caller never has to guess: +-131072, 18 bits signed.
-	static constexpr std::int32_t PLEINE_ECHELLE = 131072;
+	static constexpr std::int32_t FULL_SCALE = 131072;
 
 private:
 	std::unique_ptr<scsp_device> m_dev;

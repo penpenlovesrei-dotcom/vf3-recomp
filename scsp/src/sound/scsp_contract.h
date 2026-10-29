@@ -169,14 +169,14 @@ inline constexpr unsigned MCIRE   = 0x42E;
 //
 // WHAT THIS COSTS VF3: nothing measurable, and that is itself a measurement rather than a hope. All 28
 // accesses to the SCSP's common registers in the whole reached program are absolute long addresses
-// (disasm_sound.py --cherche 100400 1005ff), and not one of them names 0x42C or 0x42E; the only other form is
+// (disasm_sound.py --search 100400 1005ff), and not one of them names 0x42C or 0x42E; the only other form is
 // the `lea $100418, a0` at 0x60028C, whose loop copies exactly the ten words 0x418-0x42A that section 3's
 // table holds. So the driver never touches MCIPD or MCIRE. A rewrite may reproduce the asymmetry or fix it
 // deliberately -- but it should not discover it by ear, and it should not "clean it up" believing it is
 // unobservable on other hardware.
 //
-// AND THE SEARCH THAT PROVED IT HAD TO BE AIMED FIRST: `--cherche 0x42c` returns nothing, but so does
-// `--cherche 0x418`, a register the driver demonstrably writes. The board maps the chip at 0x100000
+// AND THE SEARCH THAT PROVED IT HAD TO BE AIMED FIRST: `--search 0x42c` returns nothing, but so does
+// `--search 0x418`, a register the driver demonstrably writes. The board maps the chip at 0x100000
 // (soundboard.h), so the program names 0x100418, never 0x418. A probe that answers "0 found" to a question
 // it cannot see is worse than no probe.
 
@@ -225,9 +225,9 @@ inline constexpr unsigned level_of(unsigned bit)
 //   (a) the ten-word table above says TIMA = 0xCE with prescaler 0;
 //   (a) snd_irq2 reloads TIMA from [0x60806A] on every tick, and that ROM word is 0x00CE;
 //   (b) src/sound/scsp.cpp already measured "50 samples, 882 a second, a sample short".
-inline constexpr unsigned TIMER_A_COMPTE      = 0xCE;
-inline constexpr unsigned TIMER_A_ECHANTILLONS = 0x100 - TIMER_A_COMPTE;   // 50
-inline constexpr double   TIMER_A_HZ          = 44100.0 / TIMER_A_ECHANTILLONS;   // 882
+inline constexpr unsigned TIMER_A_COUNT      = 0xCE;
+inline constexpr unsigned TIMER_A_SAMPLES = 0x100 - TIMER_A_COUNT;   // 50
+inline constexpr double   TIMER_A_HZ          = 44100.0 / TIMER_A_SAMPLES;   // 882
 
 // ---------------------------------------------------------------------------------------------------
 // 4. PITCH. (a) read in 0x601390, (b) the table checked against a sine fit.
@@ -239,9 +239,9 @@ inline constexpr double   TIMER_A_HZ          = 44100.0 / TIMER_A_ECHANTILLONS; 
 // An implementation does not need this -- it is the driver's arithmetic, not the chip's. It is here
 // because a reimplementation of the DRIVER would, and because it pins what OCT/FNS must accept.
 // ---------------------------------------------------------------------------------------------------
-inline constexpr unsigned PAS_PAR_DEMI_TON   = 16;
-inline constexpr unsigned MOTS_PAR_OCTAVE    = 12 * PAS_PAR_DEMI_TON;   // 192
-inline constexpr unsigned OCTAVE_MODULO_BYTES = 2 * MOTS_PAR_OCTAVE;   // 0x180
+inline constexpr unsigned STEPS_PER_SEMITONE   = 16;
+inline constexpr unsigned WORDS_PER_OCTAVE    = 12 * STEPS_PER_SEMITONE;   // 192
+inline constexpr unsigned OCTAVE_MODULO_BYTES = 2 * WORDS_PER_OCTAVE;   // 0x180
 inline constexpr unsigned FNS_ROM_TABLE      = 0x603D62;                // in the sound program ROM
 inline constexpr unsigned OCT_BIAS          = 0x4000;                  // added before masking 0x7800
 inline constexpr unsigned OCT_FNS_MASK     = 0x7BFF;                  // bits 15 and 10 are unused

@@ -3,9 +3,9 @@ rem Redoes docs\fv2-honey.md's measurement: the same fight with HONEY, three
 rem times, and the only thing that changes between the three is written in RAM.
 rem Without a window, on the recompiled code; allow some ten minutes.
 rem
-rem   captures-honey\temoin     the game as it stands
-rem   captures-honey\armure     Honey's lower armour destroyed
-rem   captures-honey\trente     destroyed, and thirty wins in a row
+rem   captures-honey\control     the game as it stands
+rem   captures-honey\armour     Honey's lower armour destroyed
+rem   captures-honey\thirty     destroyed, and thirty wins in a row
 rem
 rem What has to be looked at, and it is the whole subject: pictures 1 to 3 are
 rem from the round where the armour falls, pictures 4 to 6 from the round AFTER.
@@ -35,26 +35,26 @@ set TRENTE=58143B=0,58143A=0,581439=0,581438=40
 set SCRIPT=tools\scripts\fv2-honey-rounds.txt
 
 if exist "captures-honey" rmdir /s /q "captures-honey"
-mkdir "captures-honey\temoin"
-mkdir "captures-honey\armure"
-mkdir "captures-honey\trente"
+mkdir "captures-honey\control"
+mkdir "captures-honey\armour"
+mkdir "captures-honey\thirty"
 
 echo --- control: the game as it stands ---
-"build\bin\vf3run.exe" "%ROM%" --script %SCRIPT% --shots "captures-honey\temoin" --rec --quiet
+"build\bin\vf3run.exe" "%ROM%" --script %SCRIPT% --shots "captures-honey\control" --rec --quiet
 
 echo --- the lower armour destroyed ---
 set "VF3_POKE=%ARMURE%"
 set VF3_POKE_FRAMES=3200-5700
-"build\bin\vf3run.exe" "%ROM%" --script %SCRIPT% --shots "captures-honey\armure" --rec --quiet
+"build\bin\vf3run.exe" "%ROM%" --script %SCRIPT% --shots "captures-honey\armour" --rec --quiet
 
 echo --- the lower armour destroyed, and thirty wins in a row ---
 set "VF3_POKE=%ARMURE%,%TRENTE%"
-"build\bin\vf3run.exe" "%ROM%" --script %SCRIPT% --shots "captures-honey\trente" --rec --quiet
+"build\bin\vf3run.exe" "%ROM%" --script %SCRIPT% --shots "captures-honey\thirty" --rec --quiet
 set "VF3_POKE="
 set "VF3_POKE_FRAMES="
 
 echo.
 echo ---- finished (code %ERRORLEVEL%) ----
-start "" "%~dp0captures-honey\armure"
-start "" "%~dp0captures-honey\trente"
+start "" "%~dp0captures-honey\armour"
+start "" "%~dp0captures-honey\thirty"
 pause

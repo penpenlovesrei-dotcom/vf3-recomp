@@ -2703,7 +2703,7 @@ short-circuited if `0xEFB` is non-zero (`tst.b $efb.w / bne -> rts`).
 
 ### The four globals, and where they are set
 
-Found with `--cherche` **after seeding the jump tables into the walker** — see below, because the same search
+Found with `--search` **after seeding the jump tables into the walker** — see below, because the same search
 previously returned a false count without saying so.
 
 | | what it does | set by |
@@ -2756,14 +2756,14 @@ is **`KYONEX`**, so that is where the note started.
 
 ### And why the walker returned a false count
 
-`--cherche ee9` gave **4 uses**. It gives **9**. The difference is not a bug in the search: the recursive
+`--search ee9` gave **4 uses**. It gives **9**. The difference is not a bug in the search: the recursive
 walk stops at a `jmp (An)`, so **everything reachable only through a jump table was invisible** — including
 this section's three handlers. The search returned an apparently complete count over half the program.
 
 `tools/sound/disasm_sound.py` now seeds the eleven computed jumps (the four word tables, the four slot tables,
 the four unrolled-block entries), which brings the walk from 95 to **184 functions and 4 453 instructions**.
 The control: `0x6019A6`, CC 7's read of `0xEE9`, which I had read by hand and that the old walk did not find
-— it appears. And `--cherche` **prints its scope before its results**, because a count returned by an
+— it appears. And `--search` **prints its scope before its results**, because a count returned by an
 incomplete walk looks like a complete count.
 
 
@@ -2966,9 +2966,9 @@ take a Model 3 and a measurement. It is noted as such and not as open.
 | extract the ROM and put the bytes the right way round | `tools/sound/extract-sound.py <game.zip> <out.bin>` |
 | import into Ghidra and analyse, headless | `tools\sound\import-sound.cmd` |
 | seed the entry points before the analysis | `tools/ghidra/FV2SoundSetup.java` (as `-preScript`) |
-| **search** the whole program | `tools/sound/disasm_sound.py <image> --cherche 100600 1006ff` |
+| **search** the whole program | `tools/sound/disasm_sound.py <image> --search 100600 1006ff` |
 | read a function from a safe boundary | `tools/sound/disasm_sound.py <image> --at 600780 26` |
-| the vector table | `tools/sound/disasm_sound.py <image> --carte` |
+| the vector table | `tools/sound/disasm_sound.py <image> --map` |
 | open the four jump tables to Ghidra | `tools/ghidra/FV2SoundJumpTables.java` |
 | resolve the last five `jmp (An)` | `tools/ghidra/FV2SoundIndirectJumps.java` |
 | declare the data, attach the unrolled blocks, recount | `tools/ghidra/FV2SoundData.java` |
@@ -2978,7 +2978,7 @@ To run one of these scripts headless, on the already-imported project:
 
 ```
 "...\ghidra_12.1.2_PUBLIC\support\analyzeHeadless.bat" C:\Temp\fv2-ghidra FV2SON ^
-  -process fv2-son-68000.bin -noanalysis -scriptPath <repo>\tools\ghidra -postScript <Script>.java
+  -process fv2-sound-68000.bin -noanalysis -scriptPath <repo>\tools\ghidra -postScript <Script>.java
 ```
 
 Add `-readOnly` for those that must write nothing (`FV2SoundList`). And **filter the output with care**: three

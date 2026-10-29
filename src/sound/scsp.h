@@ -71,8 +71,8 @@ public:
 	// The DSP's MADRS mirror, which belongs to the game and not to the chip: see m_madrs_mirror below, and
 	// SoundBoard::madrs_mirror, which sets it from the set once the chip is made.
 	void set_madrs_mirror(bool on) { m_madrs_mirror = on; }
-	// Et il se RELIT, parce qu'une trace doit pouvoir le noter : il change le son, et un rejeu qui le
-	// supposait divergeait sans qu'on puisse dire si c'etait le coeur ou la trace (scsp_select.h).
+	// And it READS BACK, because a trace has to be able to note it: it changes the sound, and a replay that
+	// assumed it diverged with no way to say whether the core or the trace was at fault (scsp_select.h).
 	bool madrs_mirror() const { return m_madrs_mirror; }
 
 	// Separate volumes for groups of voices (not the chip's: a host's mixer). The board says
@@ -85,10 +85,10 @@ public:
 	std::function<int(int slot)> group_of;   // or, if set, asked as each voice starts
 	int slot_group(int slot) const { return m_slot_group[slot & 31]; }
 	const SCSPDSP &dsp() const { return m_DSP; }
-	// L'etat vivant d'une fente, en lecture seule, pour comparer ce coeur a un autre : c'est par ces trois
-	// nombres qu'on DATE une divergence au lieu de la constater a la sortie. Ajoute le 2026-10-27 pour
-	// trouver le premier echantillon ou l'adresse de lecture d'une fente s'ecarte entre les deux coeurs --
-	// une derive peut rester inaudible un million d'echantillons, puis sortir d'une unite.
+	// A slot's live state, read-only, to compare this core against another: it is by these three numbers
+	// that one DATES a divergence instead of noting it at the output. Added on 2026-10-27 to find the first
+	// sample where a slot's read address parts company between the two cores -- a drift can stay inaudible
+	// for a million samples, then come out by one unit.
 	u32 slot_cur_addr(int slot) const { return m_Slots[slot & 31].cur_addr; }
 	int slot_eg_state(int slot) const { return m_Slots[slot & 31].EG.state; }
 	s32 slot_eg_volume(int slot) const { return m_Slots[slot & 31].EG.volume; }

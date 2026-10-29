@@ -54,7 +54,7 @@ this work is **knowledge**, and knowledge that cannot be found again is lost. He
 | | |
 |---|---|
 | `tools/sound/extract-sound.py` | extracts the 68000's ROM from a `.zip` **and swaps the bytes** — without which nothing disassembles. It is the prerequisite for all the rest |
-| `tools/sound/disasm_sound.py` | **searches** the 512 KB: `--cherche`, `--at`, `--fonctions`, `--carte`. It seeds the eleven computed jumps, without which it sees only half the program |
+| `tools/sound/disasm_sound.py` | **searches** the 512 KB: `--search`, `--at`, `--functions`, `--map`. It seeds the eleven computed jumps, without which it sees only half the program |
 | `tools/sound/import-sound.cmd` | imports the ROM into Ghidra, with no interface |
 | `tools/ghidra/FV2SoundSetup.java` | seeds the entry points **before** the analysis (as `-preScript`) |
 | `tools/ghidra/FV2SoundJumpTables.java` | opens the four jump tables — 41 functions to 90 |
@@ -84,7 +84,7 @@ it**; that is this subsystem's rule, and it has just been caught out several tim
 | `VF3_SCSP_WLOG=f` | the register-write trail, to READ: frame by frame, chip 0 only. Not enough to replay — see `VF3_SCSP_TRACE` | `soundboard.cpp` |
 | `VF3_SCSP_CORE=n` | **which SCSP core the board uses**: `mame` (the default) or `own`, the project's SCSP. The per-group gains, the energy probe and the key-on log apply to the first only, and the board says so at start-up | `soundboard.cpp` |
 | `VF3_SCSP_TRACE=f` | **the replayable trace**: `f.0` and `f.1`, every access to the sample, RAM writes included, plus `f.N.pcm` as a reference | `scsp_trace.h` |
-| `VF3_SCSP_RESTE=N` | what the two chips leave in the buffers, every N frames — a remainder that **grows** would be the sign of a desynchronisation | `soundboard.cpp` |
+| `VF3_SCSP_LEFTOVER=N` | what the two chips leave in the buffers, every N frames — a remainder that **grows** would be the sign of a desynchronisation | `soundboard.cpp` |
 | `VF3_KEYON_LOG=1` | the note key-ons | `soundboard.cpp` |
 | `VF3_SCSP_SOLO=n` | listen to one slot only | `soundboard.cpp` |
 | `VF3_SCSP_MADRS_MIRROR`, `VF3_SCSP_MADRS_SEPARATE` | force one side or the other of the `0x7C0-0x7FF` question | `soundboard.cpp` |
@@ -112,7 +112,7 @@ it**; that is this subsystem's rule, and it has just been caught out several tim
 | `tools/sound/test_scsp_irq.cpp` | **the three timers, the five interrupt lines and the DMA**, measured through the **sink** and not through the sound: integers are compared, not gains. Pins down `timer_samples`'s `+1`, the third deliberate divergence. 11 cases. Block 6 |
 | `tools/sound/test_scsp_mix.cpp` | **the mixing and the output**: the **three decibel tables the Sega way** (`TL`, `DIPAN`, `SDLT`) read in full and on **both** channels, plus a check that cross-validates them against each other with no recorded value. 9 cases. Block 7 |
 
-The second part of the contract's test stands down, **with a visible line**, when `build/fv2-son-68000.bin`
+The second part of the contract's test stands down, **with a visible line**, when `build/fv2-sound-68000.bin`
 is not there — it comes from a ROM the repository does not carry.
 
 ## 6. The nine documents

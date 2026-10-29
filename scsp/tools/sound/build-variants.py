@@ -17,12 +17,12 @@
 import io, os, re, shutil, subprocess, sys
 
 SP = os.path.dirname(os.path.abspath(__file__))
-DEPOT = os.path.abspath(os.path.join(SP, "..", ".."))
-CPP = os.path.join(DEPOT, 'src', 'sound', 'dsp_own.cpp')
-H = os.path.join(DEPOT, 'src', 'sound', 'dsp_own.h')
-SORTIE = os.path.join(DEPOT, 'build', 'bin', 'variantes')
-ORIG_CPP = os.path.join(DEPOT, 'build', 'v-orig.cpp')
-ORIG_H = os.path.join(DEPOT, 'build', 'v-orig.h')
+REPO = os.path.abspath(os.path.join(SP, "..", ".."))
+CPP = os.path.join(REPO, 'src', 'sound', 'dsp_own.cpp')
+H = os.path.join(REPO, 'src', 'sound', 'dsp_own.h')
+OUT = os.path.join(REPO, 'build', 'bin', 'variants')
+ORIG_CPP = os.path.join(REPO, 'build', 'v-orig.cpp')
+ORIG_H = os.path.join(REPO, 'build', 'v-orig.h')
 
 VARIANTS = []
 exec(io.open(os.path.join(SP, 'dsp-variants.py'), encoding='utf-8').read())
@@ -34,51 +34,51 @@ MAKE = r"C:\msys64\usr\bin\make.exe"
 
 shutil.copyfile(CPP, ORIG_CPP)
 shutil.copyfile(H, ORIG_H)
-os.makedirs(SORTIE, exist_ok=True)
+os.makedirs(OUT, exist_ok=True)
 
-def restaure():
+def restore():
     shutil.copyfile(ORIG_CPP, CPP)
     shutil.copyfile(ORIG_H, H)
 
-def applique(patches):
-    restaure()
+def apply_patches(patches):
+    restore()
     for p in patches:
-        vieux, neuf = p[0], p[1]
-        cible = H if (len(p) > 2 and p[2] == 'h') else CPP
-        s = io.open(cible, encoding='utf-8').read()
-        if s.count(vieux) != 1:
-            return f"fragment not found in {os.path.basename(cible)} ({s.count(vieux)} times)"
-        io.open(cible, 'w', encoding='utf-8', newline='').write(s.replace(vieux, neuf))
+        old, new = p[0], p[1]
+        target = H if (len(p) > 2 and p[2] == 'h') else CPP
+        s = io.open(target, encoding='utf-8').read()
+        if s.count(old) != 1:
+            return f"fragment not found in {os.path.basename(target)} ({s.count(old)} times)"
+        io.open(target, 'w', encoding='utf-8', newline='').write(s.replace(old, new))
     return None
 
-def construit(cibles):
-    r = subprocess.run([MAKE, 'CXX=g++'] + cibles + ['-j8'], cwd=DEPOT, env=ENV,
+def build(targets):
+    r = subprocess.run([MAKE, 'CXX=g++'] + targets + ['-j8'], cwd=REPO, env=ENV,
                        capture_output=True, text=True, errors='replace')
     return r.returncode == 0, (r.stdout + r.stderr)
 
 print("ONE EXE PER VARIANT, each verified by the ten tests before being kept.\n")
-gardees, refusees = [], []
-for nom, quoi, patches in VARIANTS:
-    err = applique(patches)
+kept, refused = [], []
+for name, what, patches in VARIANTS:
+    err = apply_patches(patches)
     if err:
-        refusees.append((nom, err)); print(f"  {nom:<20} REFUSED: {err}"); continue
-    ok, journal = construit(['build/bin/measure-core', 'test'])
+        refused.append((name, err)); print(f"  {name:<20} REFUSED: {err}"); continue
+    ok, log = build(['build/bin/measure-core', 'test'])
     if not ok:
-        bout = [l for l in journal.split('\n') if 'rror' in l or 'FAILED' in l][:2]
-        refusees.append((nom, 'build or test failed')); print(f"  {nom:<20} REFUSED: {bout}")
+        bit = [l for l in log.split('\n') if 'rror' in l or 'FAILED' in l][:2]
+        refused.append((name, 'build or test failed')); print(f"  {name:<20} REFUSED: {bit}")
         continue
-    verts = journal.count('all cases pass')
-    if verts < 24:
-        refusees.append((nom, f'{verts} files green instead of 24'))
-        print(f"  {nom:<20} REFUSED: {verts} files green instead of 24"); continue
-    exe = os.path.join(SORTIE, f'mc-{nom}.exe')
-    shutil.copyfile(os.path.join(DEPOT, 'build', 'bin', 'measure-core.exe'), exe)
-    gardees.append((nom, quoi))
-    print(f"  {nom:<20} ok, 24 files green  ->  build/bin/variantes/mc-{nom}.exe")
+    green = log.count('all cases pass')
+    if green < 24:
+        refused.append((name, f'{green} files green instead of 24'))
+        print(f"  {name:<20} REFUSED: {green} files green instead of 24"); continue
+    exe = os.path.join(OUT, f'mc-{name}.exe')
+    shutil.copyfile(os.path.join(REPO, 'build', 'bin', 'measure-core.exe'), exe)
+    kept.append((name, what))
+    print(f"  {name:<20} ok, 24 files green  ->  build/bin/variants/mc-{name}.exe")
 
-restaure()
-construit(['build/bin/measure-core'])
-print(f"\n  kept: {len(gardees)}; refused: {len(refusees)}")
+restore()
+build(['build/bin/measure-core'])
+print(f"\n  kept: {len(kept)}; refused: {len(refused)}")
 print("  (src/ is restored, and measure-core rebuilt from the original)")
-io.open(os.path.join(DEPOT, 'build', 'variants-kept.txt'), 'w', encoding='utf-8').write(
-    '\n'.join(f"{n}\t{q}" for n, q in gardees))
+io.open(os.path.join(REPO, 'build', 'variants-kept.txt'), 'w', encoding='utf-8').write(
+    '\n'.join(f"{n}\t{q}" for n, q in kept))

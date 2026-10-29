@@ -390,7 +390,7 @@ void run_case(const char *name, const ProgSpec &sp, unsigned expect_uses, u32 rb
 	const unsigned got = p.dsp.uses;
 	const char *body = (force_uses < 0 ? got : unsigned(force_uses)) == 0 ? "Run<0>" : "Run<USES_ALL>";
 	if (got != expect_uses) {
-		printf("  ECHEC %-34s uses vaut %u, attendu %u\n", name, got, expect_uses);
+		printf("  FAIL  %-34s uses is %u, expected %u\n", name, got, expect_uses);
 		failures++;
 		return;
 	}
@@ -400,12 +400,12 @@ void run_case(const char *name, const ProgSpec &sp, unsigned expect_uses, u32 rb
 	for (int s = 0; s < SAMPLES; s++) {
 		const std::string bad = p.step_and_compare(r, s);
 		if (!bad.empty()) {
-			printf("  ECHEC %-34s %s : %s\n", name, body, bad.c_str());
+			printf("  FAIL  %-34s %s: %s\n", name, body, bad.c_str());
 			failures++;
 			return;
 		}
 	}
-	printf("  ok    %-34s %-14s %d pas, %d echantillons, uses %u\n", name, body, p.dsp.LastStep, SAMPLES, got);
+	printf("  ok    %-34s %-14s %d steps, %d samples, uses %u\n", name, body, p.dsp.LastStep, SAMPLES, got);
 }
 
 // The four controls must still DO something in the generic body: the same program with them and
@@ -423,7 +423,7 @@ void check_controls_bite(const char *name, const ProgSpec &with)
 	a.setup(with, 0, 8 * 1024);
 	b.setup(without, 0, 8 * 1024);
 	if (a.dsp.uses != SCSPDSP::USES_ALL || b.dsp.uses != 0) {
-		printf("  ECHEC %-34s les deux programmes ne diffèrent pas par uses (%u / %u)\n",
+		printf("  FAIL  %-34s the two programs do not differ by uses (%u / %u)\n",
 		       name, a.dsp.uses, b.dsp.uses);
 		failures++;
 		return;
@@ -431,13 +431,13 @@ void check_controls_bite(const char *name, const ProgSpec &with)
 	Rng ra(with.seed ^ 0x9e3779b9), rb(with.seed ^ 0x9e3779b9);
 	for (int s = 0; s < SAMPLES; s++) { a.step_and_compare(ra, s); b.step_and_compare(rb, s); }
 	if (a.ram_a == b.ram_a) {
-		printf("  ECHEC %-34s les quatre contrôles ne changent rien à la RAM de retard\n", name);
+		printf("  FAIL  %-34s the four controls change nothing in the delay RAM\n", name);
 		failures++;
 		return;
 	}
 	int n = 0;
 	for (u32 i = 0; i < RAM_WORDS; i++) n += a.ram_a[i] != b.ram_a[i];
-	printf("  ok    %-34s %-14s %d mots de RAM de retard changent avec les quatre\n", name, "effet", n);
+	printf("  ok    %-34s %-14s %d delay RAM words change with the four\n", name, "effect", n);
 }
 
 // A step rewritten after Start, through Decode alone: uses must GAIN the bit (scspdsp.h says it is
@@ -448,7 +448,7 @@ void check_decode_gains_a_bit(const char *name)
 	Pair p;
 	p.setup(sp, 0, 8 * 1024);
 	if (p.dsp.uses != 0) {
-		printf("  ECHEC %-34s uses vaut %u avant la réécriture, attendu 0\n", name, p.dsp.uses);
+		printf("  FAIL  %-34s uses is %u before the rewrite, expected 0\n", name, p.dsp.uses);
 		failures++;
 		return;
 	}
@@ -458,7 +458,7 @@ void check_decode_gains_a_bit(const char *name)
 	p.dsp.MPRO[st * 4 + 2] = p.ref.MPRO[st * 4 + 2] = w2;
 	p.dsp.Decode(st);
 	if (!(p.dsp.uses & SCSPDSP::USES_FRCL)) {
-		printf("  ECHEC %-34s Decode n'a pas ajouté USES_FRCL (uses %u)\n", name, p.dsp.uses);
+		printf("  FAIL  %-34s Decode did not add USES_FRCL (uses %u)\n", name, p.dsp.uses);
 		failures++;
 		return;
 	}
@@ -466,12 +466,12 @@ void check_decode_gains_a_bit(const char *name)
 	for (int s = 0; s < SAMPLES; s++) {
 		const std::string bad = p.step_and_compare(r, s);
 		if (!bad.empty()) {
-			printf("  ECHEC %-34s %s\n", name, bad.c_str());
+			printf("  FAIL  %-34s %s\n", name, bad.c_str());
 			failures++;
 			return;
 		}
 	}
-	printf("  ok    %-34s %-14s uses passe de 0 à %u sans Start\n", name, "Run<USES_ALL>", p.dsp.uses);
+	printf("  ok    %-34s %-14s uses goes from 0 to %u with no Start\n", name, "Run<USES_ALL>", p.dsp.uses);
 }
 
 // Start works `uses` out afresh over the whole program; Decode only ever adds (scspdsp.h). So an
@@ -484,7 +484,7 @@ void check_start_recomputes_uses(const char *name)
 	Pair p;
 	p.setup({ 0xBEEF, 48, SCSPDSP::USES_ALL, 0 }, 0, 8 * 1024);
 	if (p.dsp.uses != SCSPDSP::USES_ALL) {
-		printf("  ECHEC %-34s uses vaut %u sur le premier programme, attendu %u\n",
+		printf("  FAIL  %-34s uses is %u on the first program, expected %u\n",
 		       name, p.dsp.uses, SCSPDSP::USES_ALL);
 		failures++;
 		return;
@@ -492,7 +492,7 @@ void check_start_recomputes_uses(const char *name)
 	Rng r1(0xBEEF ^ 0x9e3779b9);
 	for (int s = 0; s < 8; s++) {
 		const std::string bad = p.step_and_compare(r1, s);
-		if (!bad.empty()) { printf("  ECHEC %-34s %s\n", name, bad.c_str()); failures++; return; }
+		if (!bad.empty()) { printf("  FAIL  %-34s %s\n", name, bad.c_str()); failures++; return; }
 	}
 
 	// the same object, handed a program that needs none of the four
@@ -503,7 +503,7 @@ void check_start_recomputes_uses(const char *name)
 	p.dsp.Start();
 	p.ref.start();
 	if (p.dsp.uses != 0) {
-		printf("  ECHEC %-34s uses reste à %u après un Start sur un programme qui n'en pose aucun\n",
+		printf("  FAIL  %-34s uses stays at %u after a Start on a program that sets none\n",
 		       name, p.dsp.uses);
 		failures++;
 		return;
@@ -511,50 +511,50 @@ void check_start_recomputes_uses(const char *name)
 	Rng r2(0x1234 ^ 0x9e3779b9);
 	for (int s = 0; s < SAMPLES; s++) {
 		const std::string bad = p.step_and_compare(r2, s);
-		if (!bad.empty()) { printf("  ECHEC %-34s %s\n", name, bad.c_str()); failures++; return; }
+		if (!bad.empty()) { printf("  FAIL  %-34s %s\n", name, bad.c_str()); failures++; return; }
 	}
-	printf("  ok    %-34s %-14s uses revient de %u à 0 au Start suivant\n", name, "Run<0>", SCSPDSP::USES_ALL);
+	printf("  ok    %-34s %-14s uses comes back from %u to 0 on the next Start\n", name, "Run<0>", SCSPDSP::USES_ALL);
 }
 
 } // namespace
 
 int main()
 {
-	printf("test_scspdsp : les deux corps de SCSPDSP::Step contre une référence qui décode dans la boucle\n");
-	printf("%d échantillons par programme, %d mots de RAM de retard comparés après chacun\n\n", SAMPLES, RAM_WORDS);
+	printf("test_scspdsp: SCSPDSP::Step's two bodies against a reference that decodes inside the loop\n");
+	printf("%d samples per program, %d words of delay RAM compared after each one\n\n", SAMPLES, RAM_WORDS);
 
-	printf("-- le corps maigre, celui que les deux jeux prennent --\n");
-	run_case("aucun des quatre", { 0x1234, 48, 0, SCSPDSP::USES_ALL }, 0);
-	run_case("aucun des quatre, autre graine", { 0x7A5E, 112, 0, SCSPDSP::USES_ALL }, 0);
+	printf("-- the lean body, the one both games take --\n");
+	run_case("none of the four", { 0x1234, 48, 0, SCSPDSP::USES_ALL }, 0);
+	run_case("none of the four, another seed", { 0x7A5E, 112, 0, SCSPDSP::USES_ALL }, 0);
 
-	printf("\n-- LE CORPS GENERIQUE, que rien n'exerçait --\n");
-	// le même programme, mais Step forcé sur l'autre corps : les deux doivent donner la même chose
-	run_case("aucun des quatre, corps forcé", { 0x1234, 48, 0, SCSPDSP::USES_ALL }, 0, 0, 8 * 1024,
+	printf("\n-- THE GENERIC BODY, which nothing exercised --\n");
+	// the same program, but Step forced onto the other body: the two must give the same thing
+	run_case("none of the four, body forced", { 0x1234, 48, 0, SCSPDSP::USES_ALL }, 0, 0, 8 * 1024,
 	         SCSPDSP::USES_ALL);
-	run_case("les quatre ensemble", { 0xBEEF, 48, SCSPDSP::USES_ALL, 0 }, SCSPDSP::USES_ALL);
-	run_case("les quatre, programme long", { 0x51D5, 112, SCSPDSP::USES_ALL, 0 }, SCSPDSP::USES_ALL);
-	run_case("FRCL seul", { 0xF001, 48, SCSPDSP::USES_FRCL, SCSPDSP::USES_ALL ^ SCSPDSP::USES_FRCL },
+	run_case("the four together", { 0xBEEF, 48, SCSPDSP::USES_ALL, 0 }, SCSPDSP::USES_ALL);
+	run_case("the four, long program", { 0x51D5, 112, SCSPDSP::USES_ALL, 0 }, SCSPDSP::USES_ALL);
+	run_case("FRCL alone", { 0xF001, 48, SCSPDSP::USES_FRCL, SCSPDSP::USES_ALL ^ SCSPDSP::USES_FRCL },
 	         SCSPDSP::USES_FRCL);
-	run_case("ADRL seul", { 0xA002, 48, SCSPDSP::USES_ADRL, SCSPDSP::USES_ALL ^ SCSPDSP::USES_ADRL },
+	run_case("ADRL alone", { 0xA002, 48, SCSPDSP::USES_ADRL, SCSPDSP::USES_ALL ^ SCSPDSP::USES_ADRL },
 	         SCSPDSP::USES_ADRL);
-	run_case("YRL seul", { 0x9003, 48, SCSPDSP::USES_YRL, SCSPDSP::USES_ALL ^ SCSPDSP::USES_YRL },
+	run_case("YRL alone", { 0x9003, 48, SCSPDSP::USES_YRL, SCSPDSP::USES_ALL ^ SCSPDSP::USES_YRL },
 	         SCSPDSP::USES_YRL);
-	run_case("NEGB seul", { 0x1804, 48, SCSPDSP::USES_NEGB, SCSPDSP::USES_ALL ^ SCSPDSP::USES_NEGB },
+	run_case("NEGB alone", { 0x1804, 48, SCSPDSP::USES_NEGB, SCSPDSP::USES_ALL ^ SCSPDSP::USES_NEGB },
 	         SCSPDSP::USES_NEGB);
 
-	printf("\n-- l'adressage de la ligne de retard, et le pas qui abandonne --\n");
-	run_case("RBL 64k, RBP 3, les quatre", { 0xD00D, 64, SCSPDSP::USES_ALL, 0 }, SCSPDSP::USES_ALL,
+	printf("\n-- the delay line's addressing, and the step that gives up --\n");
+	run_case("RBL 64k, RBP 3, the four", { 0xD00D, 64, SCSPDSP::USES_ALL, 0 }, SCSPDSP::USES_ALL,
 	         3, 64 * 1024);
-	run_case("RBL 16k, RBP 1, les quatre", { 0x16B1, 64, SCSPDSP::USES_ALL, 0 }, SCSPDSP::USES_ALL,
+	run_case("RBL 16k, RBP 1, the four", { 0x16B1, 64, SCSPDSP::USES_ALL, 0 }, SCSPDSP::USES_ALL,
 	         1, 16 * 1024);
-	// IRA > 0x31 abandonne tout le pas : ni DEC ni MIXS ne bougent, et la référence fait pareil
-	run_case("IRA hors plage au pas 20", { 0xAB07, 48, SCSPDSP::USES_ALL, 0, 20 }, SCSPDSP::USES_ALL);
-	run_case("IRA hors plage au pas 0", { 0xAB08, 48, SCSPDSP::USES_ALL, 0, 0 }, SCSPDSP::USES_ALL);
+	// IRA > 0x31 gives up the whole step: neither DEC nor MIXS moves, and the reference does the same
+	run_case("IRA out of range at step 20", { 0xAB07, 48, SCSPDSP::USES_ALL, 0, 20 }, SCSPDSP::USES_ALL);
+	run_case("IRA out of range at step 0", { 0xAB08, 48, SCSPDSP::USES_ALL, 0, 0 }, SCSPDSP::USES_ALL);
 
-	printf("\n-- ce que les quatre contrôles changent, et uses gagné sans Start --\n");
-	check_controls_bite("les quatre mordent", { 0xBEEF, 48, SCSPDSP::USES_ALL, 0 });
-	check_decode_gains_a_bit("Decode ajoute un bit");
-	check_start_recomputes_uses("Start recalcule uses");
+	printf("\n-- what the four controls change, and uses gained with no Start --\n");
+	check_controls_bite("the four bite", { 0xBEEF, 48, SCSPDSP::USES_ALL, 0 });
+	check_decode_gains_a_bit("Decode adds a bit");
+	check_start_recomputes_uses("Start recomputes uses");
 
 	printf("\n%s\n", failures ? "*** SOME CASES FAILED ***" : "all cases pass");
 	return failures ? 1 : 0;

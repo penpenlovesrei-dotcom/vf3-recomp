@@ -41,8 +41,8 @@ struct SoundBoard::Bus : m68000_bus
 			return u16(0x18 + ((a >> 1) & 7));   // the autovectors
 		a &= 0xFFFFFE;
 		switch (a >> 20) {
-		// Les deux puces a l'heure AVANT de les lire : l'interface neuve ne remet pas le temps a jour
-		// d'elle-meme (soundboard.h, sync_sound).
+		// The two chips up to date BEFORE reading them: the new interface does not bring time up to date
+		// of its own accord (soundboard.h, sync_sound).
 		case 0x1: b.sync_sound(0); return b.head[0]->read_reg((a & 0xFFF) >> 1);
 		case 0x3: b.sync_sound(1); return b.head[1]->read_reg((a & 0xFFF) >> 1);
 		default: return peek(a);
@@ -96,8 +96,8 @@ struct SoundBoard::Bus : m68000_bus
 			const u32 word = (a & 0xFFFFF) >> 1;
 			u16 &w = b.ram[chip][word];
 			w = (w & ~mem_mask) | (data & mem_mask);
-			// La trace doit les porter : la puce joue depuis la RAM, et un rejeu sans elles n'aurait aucun
-			// echantillon a jouer. C'est l'un des quatre manques de VF3_SCSP_WLOG (scsp_trace.h).
+			// The trace has to carry them: the chip plays from RAM, and a replay without them would have
+			// no sample to play. It is one of VF3_SCSP_WLOG's four gaps (scsp_trace.h).
 			if (b.trace[chip]) b.trace[chip]->ram_written(word, data, mem_mask);
 			break;
 		}
@@ -144,7 +144,7 @@ void SoundBoard::reset()
 	for (auto &c : timers) for (auto &t : c) t = Timer();
 	bus = std::make_unique<Bus>(*this);
 	cpu = std::make_unique<m68000_device>(*bus, uint32_t(CLOCK));
-	midi_out_jetes = 0;
+	midi_out_dropped = 0;
 	for (int n = 0; n < 2; n++) {
 		pcm[n].clear();
 		sinks[n].b = this;
@@ -246,7 +246,7 @@ void SoundBoard::set_volumes(float music, float effects)
 uint16_t SoundBoard::reg_word(int n, uint32_t i)
 {
 	sync_sound(n);
-	return head[n]->read_reg(i);   // (c'etait un ->device().read : l'interface suffit)
+	return head[n]->read_reg(i);   // (this used to be a ->device().read: the interface is enough)
 }
 
 void SoundBoard::energy_on(bool on)
@@ -282,51 +282,50 @@ void SoundBoard::fire_due()
 		}
 }
 
-// Ce que la carte fait des trois evenements de la puce. L'ancien cablage etait cinq std::function posees a
-// la construction ; voici les memes gestes, nommes et non plus anonymes.
+// What the board does with the chip's three events. The old wiring was five std::function laid down at
+// construction; here are the same moves, named rather than anonymous.
 void SoundBoard::Sink::irq(int level, bool on)
 {
-	if (n != 0) return;   // seule la premiere puce est reliee aux lignes du 68000
+	if (n != 0) return;   // only the first chip is wired to the 68000's lines
 	b->cpu->set_input_line(level, on ? ASSERT_LINE : CLEAR_LINE);
 }
 
 void SoundBoard::Sink::midi_out(std::uint8_t)
 {
-	// La carte n'en fait rien -- mais le pilote s'en sert en TROIS endroits (un 0xF0 tous les dix tics, une
-	// recopie par piste, un MIDI thru : docs/fv2-sound-program.md), donc on COMPTE plutot que de taire.
-	++b->midi_out_jetes;
+	// The board does nothing with it -- but the driver uses it in THREE places (a 0xF0 every ten ticks, a
+	// per-track copy, a MIDI thru: docs/fv2-sound-program.md), so we COUNT rather than keep quiet.
+	++b->midi_out_dropped;
 }
 
 void SoundBoard::Sink::timer(int which, std::uint32_t samples, std::uint32_t period)
 {
 	Timer &tm = b->timers[n][which];
 	if (samples == 0) { tm.on = false; return; }
-	// L'interface compte en ECHANTILLONS, la carte en cycles du 68000 : 11 289 600 / 44 100 = 256 tout rond,
-	// donc la conversion est exacte pour les timers A-C, que l'ancien code arrondissait de toute facon au
-	// multiple de 256 juste en dessous.
+	// The interface counts in SAMPLES, the board in 68000 cycles: 11 289 600 / 44 100 = 256 exactly, so the
+	// conversion is exact for timers A-C, which the old code rounded down to a multiple of 256 anyway.
 	//
-	// ET C'EST LE SECOND ENDROIT OU LE DECOUPAGE DU §2 NE TIENT PAS TOUT A FAIT : les horloges du recepteur
-	// et de l'emetteur MIDI (TIMER_RCV, TIMER_TRA) ne sont PAS quantifiees a 256 par l'ancien code, elles
-	// gardent la precision du cycle. Les passer en echantillons la perd. Ce que ca change s'entend ou ne
-	// s'entend pas, et c'est au harnais differentiel de le dire -- pas a moi de le supposer.
+	// AND THIS IS THE SECOND PLACE WHERE §2'S SPLIT DOES NOT QUITE HOLD: the MIDI receiver's and
+	// transmitter's clocks (TIMER_RCV, TIMER_TRA) are NOT quantised to 256 by the old code, they keep the
+	// cycle's precision. Passing them through samples loses it. Whether that is audible or not is for the
+	// differential harness to say -- not for me to assume.
 	tm.on = true;
 	tm.at = b->cycles_now() + std::max<std::uint64_t>(1, std::uint64_t(samples) * 256);
 	if (which < scsp_device::TIMER_RCV) tm.at = std::max(tm.at / 256 * 256, b->cycles_now() + 1);
 	tm.period = period ? std::max<std::uint64_t>(1, std::uint64_t(period) * 256) : 0;
 }
 
-// Remet les deux puces a l'heure du 68000, en poussant ce qu'elles doivent. Voir soundboard.h : sans cet
-// appel avant chaque acces registre, les ecritures ne tomberaient plus au meme endroit dans le son.
+// Brings the two chips up to the 68000's time, pushing what they owe. See soundboard.h: without this call
+// before every register access, the writes would no longer fall at the same place in the sound.
 void SoundBoard::sync_sound(int n)
 {
 	if (!scsp[n]) return;
-	// A l'horloge `cible` il doit exister cible + 1 echantillons : l'ancien coeur compte INCLUSIVEMENT,
-	// l'echantillon d'indice 0 compris (scsp_mame.cpp, sample_index). Sans ce +1 le tout premier echantillon
-	// de la partie n'etait jamais fabrique -- une paire sur 3 219 865, que seul le harnais a vue.
-	const uint64_t veut = cycles_now() / 256 + 1;
-	const uint64_t fait = head[n]->samples_made();
-	if (veut <= fait) return;
-	const uint32_t k = uint32_t(veut - fait);
+	// At clock `target` there must exist target + 1 samples: the old core counts INCLUSIVELY, sample index 0
+	// included (scsp_mame.cpp, sample_index). Without that +1 the game's very first sample was never made --
+	// one pair out of 3 219 865, which only the harness saw.
+	const uint64_t want = cycles_now() / 256 + 1;
+	const uint64_t made = head[n]->samples_made();
+	if (want <= made) return;
+	const uint32_t k = uint32_t(want - made);
 	const size_t base = pcm[n].size();
 	pcm[n].resize(base + size_t(k) * 2);
 	head[n]->run(k, pcm[n].data() + base);
@@ -362,15 +361,15 @@ void SoundBoard::run(double seconds, std::vector<int16_t> &out)
 		sndprof::Scope prof_flush(sndprof::FLUSH);
 		sync_sound();
 	}
-	// Les echantillons accumules au fil de la trame par sync_sound(), en entiers a l'echelle 18 bits.
-	// L'ancien chemin lisait des flottants de la puce ; la reconversion est EXACTE (scsp_mame.h, note 2),
-	// donc diviser ici par PLEINE_ECHELLE rend exactement ce que l'ancien chemin rendait.
+	// The samples accumulated through the frame by sync_sound(), in integers on the 18-bit scale. The old
+	// path read floats from the chip; the conversion back is EXACT (scsp_mame.h, note 2), so dividing by
+	// FULL_SCALE here gives exactly what the old path gave.
 	std::vector<std::int32_t> &a = pcm[0], &b = pcm[1];
 	const size_t n = std::min(a.size(), b.size());
-	constexpr double ECHELLE = 1.0 / scsp_mame::PLEINE_ECHELLE;
-	// MVOL, LE VOLUME MAITRE, SE LIT DANS LE REGISTRE : la puce ne l'applique pas elle-meme, elle l'expose
-	// seulement (scsp_contract.h §13 point 7), et un registre se lit par l'interface. Ce ->device()-la etait
-	// donc une dette gratuite.
+	constexpr double SCALE = 1.0 / scsp_mame::FULL_SCALE;
+	// MVOL, THE MASTER VOLUME, IS READ FROM THE REGISTER: the chip does not apply it itself, it only exposes
+	// it (scsp_contract.h §13 point 7), and a register is read through the interface. That ->device() was a
+	// debt for nothing.
 	auto mvol = [&](int n) { return float(head[n]->read_reg(0x400 / 2) & 0x000F) / 15.0f; };
 	float ga = mvol(0), gb = mvol(1);
 	static const int solo = getenv("VF3_SCSP_SOLO") ? atoi(getenv("VF3_SCSP_SOLO")) : -1;   // (tests: one SCSP alone)
@@ -381,8 +380,8 @@ void SoundBoard::run(double seconds, std::vector<int16_t> &out)
 	constexpr double CEILING = 0.891, RELEASE = 1.0 / (0.1 * 44100);
 	sndprof::Scope prof_mix(sndprof::MIX);
 	for (size_t i = 0; i + 1 < n; i += 2) {
-		double l = (double(a[i]) * ECHELLE * ga + double(b[i]) * ECHELLE * gb) * gain,
-		       r = (double(a[i + 1]) * ECHELLE * ga + double(b[i + 1]) * ECHELLE * gb) * gain;
+		double l = (double(a[i]) * SCALE * ga + double(b[i]) * SCALE * gb) * gain,
+		       r = (double(a[i + 1]) * SCALE * ga + double(b[i + 1]) * SCALE * gb) * gain;
 		if (gain > 1.0) {
 			const double peak = std::max(std::fabs(l), std::fabs(r));
 			const double want = peak > CEILING ? CEILING / peak : 1.0;
@@ -395,14 +394,14 @@ void SoundBoard::run(double seconds, std::vector<int16_t> &out)
 	}
 	a.erase(a.begin(), a.begin() + n);
 	b.erase(b.begin(), b.begin() + n);
-	// VF3_SCSP_RESTE=N : ce que les deux puces laissent derriere elles, toutes les N images. La carte ne
-	// melange que min(puce 0, puce 1) : si l'une est en avance d'un echantillon a la fin d'une trame, cet
-	// echantillon attend la suivante. C'est normal ; ce qui ne l'est pas serait un reste qui GRANDIT.
-	if (static const unsigned long tous = getenv("VF3_SCSP_RESTE")
-	                                    ? strtoul(getenv("VF3_SCSP_RESTE"), nullptr, 10) : 0;
-	    tous && frames % tous == 0)
-		fprintf(stderr, "reste image %llu : puce 0 %zu paires, puce 1 %zu paires (melangees %zu)\n",
+	// VF3_SCSP_LEFTOVER=N: what the two chips leave behind them, every N frames. The board mixes only
+	// min(chip 0, chip 1): if one is a sample ahead at the end of a frame, that sample waits for the next
+	// one. That is normal; what would not be is a leftover that GROWS.
+	if (static const unsigned long every = getenv("VF3_SCSP_LEFTOVER")
+	                                     ? strtoul(getenv("VF3_SCSP_LEFTOVER"), nullptr, 10) : 0;
+	    every && frames % every == 0)
+		fprintf(stderr, "leftover frame %llu: chip 0 %zu pairs, chip 1 %zu pairs (mixed %zu)\n",
 		        (unsigned long long)frames, a.size() / 2, b.size() / 2, n / 2);
-	// (les deux restes, s'il y en a, repartent avec la trame suivante : c'est ce que l'ancien chemin faisait
-	// de m_out, et le decalage d'un echantillon entre les deux puces ne doit pas se perdre)
+	// (the two leftovers, if any, go on with the next frame: that is what the old path did with m_out, and
+	// the one-sample offset between the two chips must not be lost)
 }
