@@ -371,8 +371,8 @@ constexpr bool put(std::uint16_t word[16], const char *name, unsigned value)
 // implementation READS out of a THREE-bit register field (bits 7-5 of word 9); the field itself is 7 wide.
 // So `pose(mot, "PLFOS", 1)` cannot put a 1 in the register -- `1 & 6` is zero -- and a test that wants to
 // show the deviation must write the register's bits itself. Every other field's mask is also its width.
-inline constexpr unsigned PLFOS_CHAMP_DECALAGE = 5;
-inline constexpr unsigned PLFOS_CHAMP_LARGEUR  = 0x7;   // le champ du registre, avant que la lecture en jette le bit bas
+inline constexpr unsigned PLFOS_FIELD_SHIFT = 5;
+inline constexpr unsigned PLFOS_FIELD_WIDTH  = 0x7;   // le champ du registre, avant que la lecture en jette le bit bas
 
 // ---------------------------------------------------------------------------------------------------
 // 11. PITCH, LFO AND RING MODULATION, measured 2026-10-26 by tools/sound/test_scsp_lfo.cpp.
