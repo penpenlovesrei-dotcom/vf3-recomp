@@ -315,13 +315,12 @@ inline constexpr unsigned BANK_REGISTER = 0x400001;
 // test_scsp_core.cpp alone, and it shifted blindly: KYONB went out as zero, the voice stayed silent, and
 // the failure message accused the contract.
 // ---------------------------------------------------------------------------------------------------
-// CONSTEXPR, et ce n'est pas une coquetterie : appelee avec un nom litteral, la recherche se fait a la
-// COMPILATION et le champ devient un decalage et un masque connus. Sans cela, un coeur qui lit ses champs
-// par cette table paie une recherche -- ou, a peine mieux, un controle d'initialisation de statique -- a
-// chaque lecture, vingt fois par fente, trente-deux fentes, quarante-quatre mille fois par seconde. La
-// mesure a donne le prix de cette version-la : la boucle de fentes deux fois plus lente que celle de MAME
-// (docs/scsp_audit.md §4 quinquies).
-constexpr const Field *cherche(const Field *table, std::size_t n, const char *name)
+// CONSTEXPR, and that is not an affectation: called with a literal name, the search happens at COMPILE
+// TIME and the field becomes a known shift and a known mask. Without it, a core that reads its fields
+// through this table pays for a search -- or, barely better, a static's initialisation check -- on every
+// read, twenty times per slot, thirty-two slots, forty-four thousand times a second. The measurement gave
+// that version's price: the slot loop twice as slow as MAME's (docs/scsp_audit.md §4 quinquies).
+constexpr const Field *find_field(const Field *table, std::size_t n, const char *name)
 {
 	for (std::size_t i = 0; i < n; i++) {
 		const char *a = table[i].name, *b = name;
@@ -335,7 +334,7 @@ constexpr const Field *cherche(const Field *table, std::size_t n, const char *na
 // since a name that is not in the table is a typo and not a condition.
 constexpr const Field *slot_field(const char *name)
 {
-	return cherche(SLOT, sizeof SLOT / sizeof *SLOT, name);
+	return find_field(SLOT, sizeof SLOT / sizeof *SLOT, name);
 }
 
 // Places `valeur` in the 16 words of a slot, where this table says the field lives.

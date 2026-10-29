@@ -7,7 +7,7 @@
 # them one by one to src/sound/dsp_own.{h,cpp}, builds, runs ALL TEN TESTS, and keeps the exe only if
 # all 24 files are green. src/ is restored at the end, and measure-core rebuilt from the original.
 #
-# WHY THE VERIFICATION IS IN THIS SCRIPT AND NOT BESIDE IT. On 2026-10-28, the `sortie_groupee` variant
+# WHY THE VERIFICATION IS IN THIS SCRIPT AND NOT BESIDE IT. On 2026-10-28, the `grouped_output` variant
 # grouped a step's four output tests into a single mask -- and swept up along the way the writes of FRCL
 # and ADRL, which live between TWT's and EWT's. It passed ALL the other tests, would have passed the
 # replayer and produced a byte-identical WAV, because NO game sets those two fields. Only cases 9 to 13 of
@@ -24,7 +24,7 @@ SORTIE = os.path.join(DEPOT, 'build', 'bin', 'variantes')
 ORIG_CPP = os.path.join(DEPOT, 'build', 'v-orig.cpp')
 ORIG_H = os.path.join(DEPOT, 'build', 'v-orig.h')
 
-VARIANTES = []
+VARIANTS = []
 exec(io.open(os.path.join(SP, 'dsp-variants.py'), encoding='utf-8').read())
 
 ENV = dict(os.environ)
@@ -58,7 +58,7 @@ def construit(cibles):
 
 print("ONE EXE PER VARIANT, each verified by the ten tests before being kept.\n")
 gardees, refusees = [], []
-for nom, quoi, patches in VARIANTES:
+for nom, quoi, patches in VARIANTS:
     err = applique(patches)
     if err:
         refusees.append((nom, err)); print(f"  {nom:<20} REFUSED: {err}"); continue

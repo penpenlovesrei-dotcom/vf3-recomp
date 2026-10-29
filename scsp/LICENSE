@@ -19,10 +19,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ---
-Ce depot ne contient RIEN qui vienne de MAME. Le coeur de MAME (`scsp.cpp`, `scspdsp.cpp`,
-`scsp_mame.cpp`), sous BSD-3-Clause avec ses ayants droit, reste dans `fv2-recomp` : la frontiere de
-licence passe exactement a la limite de ce depot, et c'est pourquoi il est a part.
+This repository contains NOTHING that comes from MAME. MAME's core (`scsp.cpp`, `scspdsp.cpp`,
+`scsp_mame.cpp`), under BSD-3-Clause with its own rights holders, stays in `fv2-recomp`: the licence
+boundary runs exactly at this repository's edge, and that is why it is kept apart.
 
-Le Yamaha SCSP (YMF292) est un circuit de Yamaha, et Virtua Fighter 3 comme Fighting Vipers 2
-appartiennent a SEGA. Ni l'un ni les autres ne sont ici : ce depot n'a que du code ecrit pour ce projet,
-et les mesures qui l'ont guide.
+The Yamaha SCSP (YMF292) is a Yamaha chip, and Virtua Fighter 3 and Fighting Vipers 2 alike belong to
+SEGA. Neither is here: this repository holds only code written for this project, and the measurements
+that guided it.

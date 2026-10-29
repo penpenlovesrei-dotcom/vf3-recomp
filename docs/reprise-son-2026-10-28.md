@@ -121,18 +121,18 @@ judged by `measure-variants.cmd` over **both** programs:
 
 | | baseline | **the game's shape** |
 |---|---|---|
-| `ysel_coef_premier` | −1.55% | **−3.09%** |
-| `shift_deux_bits` | −3.03% | **−1.17%** |
-| `sortie_groupee` | −6.02% | +0.85% |
-| `tout` | — | +3.28% |
-| **`entree_paresseuse`** | **−15.00%** | **+4.68%** |
+| `ysel_coef_first` | −1.55% | **−3.09%** |
+| `shift_two_bits` | −3.03% | **−1.17%** |
+| `grouped_output` | −6.02% | +0.85% |
+| `all_four` | — | +3.28% |
+| **`lazy_input`** | **−15.00%** | **+4.68%** |
 
 **The baseline's big winner is the game's worst**: it adds one test per step to avoid a computation that 37
 steps out of 112 need. The baseline **locates** a cost, it does not say what a change is worth. Hence
 `measure-core --game`. The instrument is reproducible **to within 0.07 points** from one session to the
 next.
 
-**And cases 9 to 13 stopped `sortie_groupee` on the first round**: its grouped mask swept up the writes of
+**And cases 9 to 13 stopped `grouped_output` on the first round**: its grouped mask swept up the writes of
 `FRCL` and of `ADRL`. It passed all the other tests, the replayer, and produced an identical WAV — because
 no game sets those fields. That is what those cases really buy, and it is not what I had announced: **they
 protect those four fields against our own optimisations.**

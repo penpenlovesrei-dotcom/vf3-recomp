@@ -1,9 +1,9 @@
 // scsp_core.h -- the interface an SCSP implementation presents to this port's sound board.
 //
 // This is step 3 of docs/scsp_migration_plan.md, and the plan is explicit that it comes FIRST, before the
-// replayer and before any autonomous code: "l'interface posée d'abord sur le coeur de MAME : un adaptateur
-// qui présente l'ancien coeur à travers le contrat neuf. C'est le geste qui décide si le contrat tient, et
-// il ne coûte rien à défaire."
+// replayer and before any autonomous code: "the interface laid on MAME's core first -- an adapter that
+// presents the old core through the new contract. It is the move that decides whether the contract holds,
+// and it costs nothing to undo."
 //
 // The shape below is the one docs/scsp_architecture.md section 2 designed, implemented as designed rather
 // than redesigned here. Its one rule: THE CORE KNOWS NEITHER THE PC, NOR MAME, NOR THE 68000. It knows
@@ -39,8 +39,9 @@ struct sink {
 	// first chip is wired to the 68000.
 	//
 	// AND THIS IS WHERE THE DESIGN DID NOT HOLD, which is what step 3 exists to find out. The architecture
-	// (docs/scsp_architecture.md section 2) proposed `irq(int level)` with 0 for none -- "le niveau demandé,
-	// pas une ligne a la fois" -- and that is one method too few. Read in src/sound/scsp.cpp on 2026-10-26:
+	// (docs/scsp_architecture.md section 2) proposed `irq(int level)` with 0 for none -- "the level asked
+	// for, not one line at a time" -- and that is one method too few. Read in src/sound/scsp.cpp on
+	// 2026-10-26:
 	// the chip drops FOUR different lines independently (m_IrqTimA, m_IrqTimBC, m_IrqCPU, m_IrqMidi, plus
 	// line 0), and it can drop one while another is still raised. A single "the level I am asking for" cannot
 	// say which one went away, and a board that guessed would clear the wrong one.

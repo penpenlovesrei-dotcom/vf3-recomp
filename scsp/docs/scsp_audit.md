@@ -969,11 +969,11 @@ behaviour** that attacks the NUMBER OF INSTRUCTIONS of the unavoidable path, whe
 
 | variant | what it attacks |
 |---|---|
-| `temoin` | the code as it is, so that the other four compare against something measured the same day on the same machine |
-| `sortie_groupee` | a baseline step does none of the four outputs and yet tests them one by one: a single mask rules them all out |
-| `entree_paresseuse` | `entree` is computed at every step and **thrown away** in the baseline — XSEL zero, IWT zero, rare readers outside the lean body. Three comparisons, a load and a sign extension for nothing. **MAME does not do that either** |
-| `shift_deux_bits` | the four-case `switch` asks two independent questions; two bits of the flags word ask them once, **without growing the decoded step** — which is what sank batch B |
-| `ysel_coef_premier` | MAME tests `YSEL == 1` first, and for its reason: 87 of the game's 112 steps take it (§5). No effect on the baseline; it is the game's program this would aim at |
+| `control` | the code as it is, so that the other four compare against something measured the same day on the same machine |
+| `grouped_output` | a baseline step does none of the four outputs and yet tests them one by one: a single mask rules them all out |
+| `lazy_input` | `entree` is computed at every step and **thrown away** in the baseline — XSEL zero, IWT zero, rare readers outside the lean body. Three comparisons, a load and a sign extension for nothing. **MAME does not do that either** |
+| `shift_two_bits` | the four-case `switch` asks two independent questions; two bits of the flags word ask them once, **without growing the decoded step** — which is what sank batch B |
+| `ysel_coef_first` | MAME tests `YSEL == 1` first, and for its reason: 87 of the game's 112 steps take it (§5). No effect on the baseline; it is the game's program this would aim at |
 
 **The exes are built and already verified** — `python tools/sound/build-variants.py` makes them one by one,
 runs **the ten tests** every time, and keeps only those whose 24 files are green. So the administrator
@@ -981,7 +981,7 @@ window has nothing to compile: `tools/sound/measure-variants.cmd` chains capture
 variant, and checks first that the counters are programmable so as not to discover on the third round that
 the window was not elevated.
 
-**AND ONE OF THE FIVE WAS REFUSED ON THE FIRST ROUND, BY CASES 9 TO 13.** `sortie_groupee` grouped the four
+**AND ONE OF THE FIVE WAS REFUSED ON THE FIRST ROUND, BY CASES 9 TO 13.** `grouped_output` grouped the four
 output tests into a mask that swept up along the way the writes of `FRCL` and of `ADRL` — they live BETWEEN
 `TWT`'s and `EWT`'s. So a step that sets only `FRCL` was skipping them. It passed **all** the other tests,
 would have passed the replayer and produced a byte-identical WAV, because no game sets those two fields.
@@ -1045,7 +1045,7 @@ Three things to take from it:
 
 **AND WHAT THEY REALLY BUY IS NOT WHAT I HAD ANNOUNCED.** I had written that those five cases buy
 consistency with the declared target, and not proof that MAME is right — which is true and stays true. But
-**four hours after writing them, they stopped an optimisation**: §4 nonies' `sortie_groupee` variant
+**four hours after writing them, they stopped an optimisation**: §4 nonies' `grouped_output` variant
 grouped a step's output tests into a mask that swept up the writes of `FRCL` and of `ADRL`. It passed all
 the other tests, would have passed the replayer and produced a byte-identical WAV — **because no game sets
 those two fields**, and nothing else looks at them. **Those cases protect the four fields against our own

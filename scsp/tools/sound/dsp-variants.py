@@ -9,42 +9,42 @@
 # it is measure-variants.cmd that does it, one capture per exe.
 #
 # TWO OF THE FIVE WERE ADOPTED INTO THE SOURCE on 2026-10-28, so their "before" fragment no longer exists:
-# `shift_deux_bits` and `ysel_coef_premier`, hence `tout` and `gagnantes` with them. The builder will
+# `shift_two_bits` and `ysel_coef_first`, hence `all_four` and `winners` with them. The builder will
 # refuse them by saying the fragment is not there, and that refusal is correct -- they are kept here as the
 # record of what was tried and what it was worth. A fragment that stops matching is also what happens when
 # the comments around it are reworded: translating this subsystem into English broke the two others until
 # their text was brought back into line below, and the builder said so rather than measuring nothing.
 
 # --- the source fragments, as they stand today
-ENTREE = """		// --- the input
-		s32 entree;
-		if (I.ira <= 0x1F)      entree = MEMS[I.ira];
-		else if (I.ira <= 0x2F) entree = MIXS[I.ira - 0x20] << 4;    // MIXS is 20 bits
-		else if (I.ira <= 0x31) entree = EXTS[I.ira - 0x30] << 8;    // EXTS is 16 of them
+INPUT_FRAGMENT = """		// --- the input
+		s32 input;
+		if (I.ira <= 0x1F)      input = MEMS[I.ira];
+		else if (I.ira <= 0x2F) input = MIXS[I.ira - 0x20] << 4;    // MIXS is 20 bits
+		else if (I.ira <= 0x31) input = EXTS[I.ira - 0x30] << 8;    // EXTS is 16 of them
 		else return;                                                 // beyond that, the step gives up
-		entree = sext(entree, 24);
+		input = sext(input, 24);
 """
 
-# The four-case switch on YSEL, as it was BEFORE `ysel_coef_premier` was adopted. Kept for the record.
+# The four-case switch on YSEL, as it was BEFORE `ysel_coef_first` was adopted. Kept for the record.
 YSEL = """		s32 y = 0;
 		switch (I.ysel) {
 		case 0: y = m_frc_reg; break;
-		case 1: y = COEF[I.coef] >> 3; break;       // COEF fait 16 bits, Y en veut 13
+		case 1: y = COEF[I.coef] >> 3; break;       // COEF is 16 bits, Y wants 13
 		case 2: y = (m_y_reg >> 11) & 0x1FFF; break;
 		case 3: y = (m_y_reg >> 4) & 0x0FFF; break;
 		}"""
 
-SORTIES = """		if ((f & I_TWT)) TEMP[(I.twa + dec) & 0x7F] = shifted;"""
+OUTPUTS_FRAGMENT = """		if ((f & I_TWT)) TEMP[(I.twa + dec) & 0x7F] = shifted;"""
 
-VARIANTES = [
+VARIANTS = [
 
- ("temoin", "the code as it stands, so the other five have something to compare against", []),
+ ("control", "the code as it stands, so the other five have something to compare against", []),
 
  # 1. A baseline step does NONE of the four outputs: TWT, MRD, MWT, EWT are all zero. It tests them one by
  #    one all the same, so four tests for nothing. A single grouped test rules them all out.
- ("sortie_groupee",
+ ("grouped_output",
   "one mask test for the four outputs and the two rare ones, instead of six",
-  [(SORTIES,
+  [(OUTPUTS_FRAGMENT,
     """		// ONE TEST FOR THE FOUR OUTPUTS. A step that writes nothing -- and there are many -- used to
 		// test them one by one. The grouped mask rules them out at once, and the individual tests stay
 		// inside for the steps that do write.
@@ -65,9 +65,9 @@ VARIANTES = [
  # 2. `entree` is computed on every step, and in the baseline it serves NO purpose: XSEL is zero, IWT zero,
  #    and the two rare readers are outside the lean body. Three comparisons, a load and a sign extension
  #    for a discarded value. The give-up, for its part, depends only on the program: Start finds it once.
- ("entree_paresseuse",
+ ("lazy_input",
   "the input computed only by the steps that read it; the give-up resolved at Start",
-  [(ENTREE,
+  [(INPUT_FRAGMENT,
     """		// --- the input, COMPUTED ONLY IF THIS STEP READS IT. In the baseline it serves no purpose:
 		// XSEL is zero, IWT zero, and the two rare readers are outside the lean body. The give-up (IRA
 		// beyond 0x31) depends only on the program, so Start finds it once: see m_abandon.
@@ -83,7 +83,7 @@ VARIANTES = [
  # 3. ADOPTED on 2026-10-28. The four-case `switch` on SHIFT asks two independent questions: double first,
  #    then clamp or sign-extend. Asked as such, the four cases no longer need a switch -- and WITHOUT
  #    growing the decoded step, since the two bits go into the flags word.
- ("shift_deux_bits",
+ ("shift_two_bits",
   "the SHIFT switch replaced by two bits of the flags word",
   [("""		s32 shifted = 0;
 		switch (I.shift) {
@@ -114,7 +114,7 @@ VARIANTES = [
  # 4. ADOPTED on 2026-10-28. MAME tests YSEL == 1 FIRST, and its comment says why: 87 of the game's 112
  #    steps take it. The project's switch put case 0 first, which is the rarest in the game. No effect on
  #    the baseline (where YSEL is zero everywhere) -- it is the game's program this would aim at.
- ("ysel_coef_premier",
+ ("ysel_coef_first",
   "COEF tested first in the choice of Y, as in MAME",
   [(YSEL,
     """		// COEF FIRST, as in MAME and for its reason: 87 of the game's 112 steps take it
@@ -132,28 +132,28 @@ VARIANTES = [
 # Measured on 2026-10-28: -15.00%, -6.02%, -3.03% and -1.55% of instructions removed each, against the
 # control.
 #
-# WRITTEN INSIDE THE LITERAL FIRST, through `VARIANTES[1:]`, it was EMPTY: the name is not yet bound at
+# WRITTEN INSIDE THE LITERAL FIRST, through `VARIANTS[1:]`, it was EMPTY: the name is not yet bound at
 # that point, and the scripts that read this file by `exec` pre-define it to []. So the variant passed the
 # ten tests and measured exactly like the control, which looked like a result.
-VARIANTES.append(("tout", "the four that won ON THE BASELINE, together",
-                  [p for _, _, patches in VARIANTES[1:] for p in patches]))
+VARIANTS.append(("all_four", "the four that won ON THE BASELINE, together",
+                  [p for _, _, patches in VARIANTS[1:] for p in patches]))
 
 # AND THE ONES THAT WIN WHERE IT COUNTS. Measured on 2026-10-28 on the instruction counter, over BOTH
 # programs, and the ranking almost entirely reverses:
 #
 #                        baseline     the game's shape
-#   ysel_coef_premier    -1.55%           -3.06%       <- wins on both sides
-#   shift_deux_bits      -3.03%           -1.10%       <- wins on both sides
-#   sortie_groupee       -6.02%           +0.91%
-#   tout                                  +3.27%
-#   entree_paresseuse   -15.00%           +4.75%       <- the baseline's big winner, the game's worst
+#   ysel_coef_first    -1.55%           -3.06%       <- wins on both sides
+#   shift_two_bits      -3.03%           -1.10%       <- wins on both sides
+#   grouped_output       -6.02%           +0.91%
+#   all_four                              +3.27%
+#   lazy_input   -15.00%           +4.75%       <- the baseline's big winner, the game's worst
 #
-# `entree_paresseuse` adds one test per step to avoid computing an input that, in the real program, 37
+# `lazy_input` adds one test per step to avoid computing an input that, in the real program, 37
 # steps out of 112 need through XSEL and 23 through IWT (docs/scsp_audit.md §5). So it pays the test AND
 # the computation. In the baseline, XSEL is zero EVERYWHERE: the input is computed there and then thrown
 # away 112 times per sample, and that is the only place where its laziness pays.
 #
 # The baseline locates a cost; it does not say what a change is worth. It took both programs.
-NOMS_GAGNANTES = ('ysel_coef_premier', 'shift_deux_bits')
-VARIANTES.append(("gagnantes", "the two that win on the game's program",
-                  [p for n, _, patches in VARIANTES for p in patches if n in NOMS_GAGNANTES]))
+WINNING_NAMES = ('ysel_coef_first', 'shift_two_bits')
+VARIANTS.append(("winners", "the two that win on the game's program",
+                  [p for n, _, patches in VARIANTS for p in patches if n in WINNING_NAMES]))

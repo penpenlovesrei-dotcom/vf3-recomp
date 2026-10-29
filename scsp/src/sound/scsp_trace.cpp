@@ -25,9 +25,9 @@ recorder::recorder(core &inner, const char *fichier, unsigned chip, u32 clock,
 	}
 	// The initial sweep, and its guard: a trace must start at a reset, otherwise the RAM a replay would
 	// rebuild is not the one the chip had.
-	const u32 mots = ram_bytes / 2;
+	const u32 words = ram_bytes / 2;
 	unsigned n = 0;
-	for (u32 i = 0; i < mots; i++) if (ram[i]) n++;
+	for (u32 i = 0; i < words; i++) if (ram[i]) n++;
 	if (n > MAX_NONZERO_WORDS) {
 		fprintf(stderr, "scsp_trace: %u non-zero RAM words at the start (more than %u): this trace does not"
 		                " begin at a reset, and a replay would not have the right RAM. Abandoned.\n",
@@ -40,14 +40,14 @@ recorder::recorder(core &inner, const char *fichier, unsigned chip, u32 clock,
 	// it is set before the trace starts, it CHANGES THE SOUND, and a replay that assumed it diverged from
 	// the board with no way to attribute it (scsp_select.h). It is READ BACK from the chip rather than
 	// taken as a parameter: that way there is nothing to remember to tell the recorder, which is the point.
-	bool porte = false;
-	const bool mirror = madrs_mirror_of(m_inner, &porte);
-	if (!porte)
+	bool carried = false;
+	const bool mirror = madrs_mirror_of(m_inner, &carried);
+	if (!carried)
 		fprintf(stderr, "scsp_trace: this core does not carry the MADRS mirror; the trace records the default"
 		                " (true), which the replay will therefore set as well\n");
 	fprintf(m_f, "# scsp-trace 3 chip=%u clock=%u ram=%u mirror=%u\n", chip, clock, ram_bytes,
 	        unsigned(mirror));
-	for (u32 i = 0; i < mots; i++)
+	for (u32 i = 0; i < words; i++)
 		if (ram[i]) fprintf(m_f, "d %x %x ffff\n", i, ram[i]);
 
 	// The PCM alongside: enough to prove the trace is complete (scsp_trace.h). Its absence does not stop
