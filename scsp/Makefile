@@ -1,10 +1,10 @@
-# Le SCSP du projet, seul. AUCUN fichier de MAME dans cette chaine.
+# The project's SCSP, on its own. NO MAME file anywhere in this chain.
 #
-#     make test     les sept tests de bloc, sur le coeur du projet
-#     make mesurer  le socle, par poste
+#     make test     the seven block tests, on the project's core
+#     make mesurer  the baseline, item by item
 #
-# Les chemins sont ceux de fv2-recomp -- src/sound, tools/son -- pour que pas une ligne des sources ne
-# change entre les deux depots.
+# The paths are fv2-recomp's -- src/sound, tools/son -- so that not one line of the sources changes
+# between the two repositories.
 CXX ?= g++
 CXXFLAGS ?= -std=c++20 -O2 -g -Wall -Wno-unused-function
 OBJ ?= build/obj

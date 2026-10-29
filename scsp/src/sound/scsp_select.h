@@ -1,24 +1,24 @@
-// scsp_select.h -- choisir une implementation du SCSP par son nom, et atteindre ce que scsp::core ne porte
-// pas. Point 2 de l'etape 2 de docs/scsp_migration_plan.md : "les deux coeurs dans le meme binaire".
+// scsp_select.h -- pick an SCSP implementation by name, and reach what scsp::core does not carry.
+// Point 2 of step 2 of docs/scsp_migration_plan.md: "both cores in the same binary".
 //
-// POURQUOI UN SELECTEUR, et la raison tient toujours apres que le second coeur existe : le rejeu en a
-// besoin, parce que comparer deux coeurs demande de les nommer, et le comparer A LUI-MEME est le premier
-// controle a passer -- celui qui prouve que la machinerie ne mesure pas son propre bruit. Et c'est ici, et
-// nulle part ailleurs, que la question "de quoi un coeur a-t-il besoin pour etre construit" recoit une
-// reponse unique : l'horloge, la RAM, le puits. Exactement ce qu'un coeur autonome devra fournir.
+// WHY A SELECTOR, and the reason still holds now that the second core exists: the replay needs it,
+// because comparing two cores means naming them, and comparing one TO ITSELF is the first check to pass
+// -- the one that proves the machinery is not measuring its own noise. And it is here, and nowhere else,
+// that the question "what does a core need in order to be built" gets a single answer: the clock, the
+// RAM, the sink. Exactly what a standalone core will have to be given.
 //
-// CE QUE CE FICHIER NE CONNAIT PLUS, et c'est le changement du 2026-10-28 : aucune classe concrete. Il
-// n'inclut ni scsp_mame.h ni scsp_maison.h, et ne nomme ni l'un ni l'autre. CHAQUE COEUR S'INSCRIT DANS SON
-// PROPRE .cpp, par le `inscrit` ci-dessous, et le selecteur ne fait que tenir la liste de ceux qui l'ont
-// fait. La consequence est celle qu'on cherchait : **ce qui est LIE decide ce qui existe.** Un binaire qui
-// ne lie que scsp_maison.cpp et dsp_maison.cpp a un selecteur a une seule entree, qui le dit, et ne traine
-// pas les 2 110 lignes du coeur de MAME -- ce qui est le dernier prealable d'un depot separe
-// (docs/scsp_migration_plan.md, et docs/son.md §7 pour le "pourquoi pas encore").
+// WHAT THIS FILE NO LONGER KNOWS, and that is the change of 2026-10-28: no concrete class. It includes
+// neither scsp_mame.h nor scsp_maison.h, and names neither. EACH CORE REGISTERS ITSELF IN ITS OWN .cpp,
+// through the `inscrit` below, and the selector only holds the list of those that did. The consequence is
+// the one we were after: **what is LINKED decides what exists.** A binary that links only scsp_maison.cpp
+// and dsp_maison.cpp has a one-entry selector, which says so, and does not drag in the 2 110 lines of
+// MAME's core -- which is the last prerequisite for a separate repository (docs/scsp_migration_plan.md,
+// and docs/son.md §7 for the "why not yet").
 //
-// Avant cela, le selecteur citait les deux classes, et tout ce qui le liait liait donc MAME : les huit tests
-// de bloc le faisaient par tools/son/banc_scsp.h, sans aucune raison de fond, leurs references etant des
-// nombres geles. La cible `make test-sans-mame` est la MESURE que c'est fini : les memes tests, le meme
-// code, lies sans une ligne de MAME.
+// Before that, the selector named both classes, so everything that linked it linked MAME: the eight block
+// tests did so through tools/son/banc_scsp.h, for no substantive reason, their references being frozen
+// numbers. The `make test-sans-mame` target is the MEASUREMENT that this is over: the same tests, the same
+// code, linked without a line of MAME.
 #pragma once
 
 #include "scsp_core.h"
@@ -27,58 +27,58 @@
 
 namespace scsp {
 
-// Les noms acceptes, pour un message d'erreur et pour l'aide d'un outil. C'est ce qui est inscrit, donc ce
-// qui est lie : la chaine n'est pas la meme dans tous les binaires du depot, et c'est voulu.
+// The accepted names, for an error message and for a tool's help text. It is what is registered, hence
+// what is linked: the string is not the same in every binary of the repository, and that is deliberate.
 const char *noms_connus();
 
-// Construit le coeur nomme, ou nullptr si le nom est inconnu (le message va sur stderr).
+// Builds the named core, or nullptr if the name is unknown (the message goes to stderr).
 //
-// `ram` et `puits` doivent vivre plus longtemps que le coeur rendu.
+// `ram` and `puits` must outlive the core returned.
 std::unique_ptr<core> make(const char *nom, u32 horloge, u16 *ram, u32 ram_octets, sink &puits);
 
 // -----------------------------------------------------------------------------------------------------
-// CE QUE scsp::core NE PORTE PAS, ET QU'IL FAUT POURTANT ATTEINDRE.
+// WHAT scsp::core DOES NOT CARRY, AND YET HAS TO BE REACHED.
 //
-// scsp_core.h a une section "AND WHAT IS DELIBERATELY ABSENT" : les ajouts du portage n'y sont pas, parce
-// qu'un coeur autonome ne doit pas avoir a les implementer pour etre utilisable. Deux d'entre eux doivent
-// quand meme s'atteindre de l'exterieur, et les voici -- en UN endroit, et plus en trois.
+// scsp_core.h has an "AND WHAT IS DELIBERATELY ABSENT" section: the port's additions are not in it,
+// because a standalone core must not have to implement them to be usable. Two of them still have to be
+// reachable from outside, and here they are -- in ONE place, no longer in three.
 //
-// LE MIROIR MADRS, et il a coute cher. C'est le seul des ajouts QUI CHANGE LE SON, et il change par jeu :
-// vrai pour Virtua Fighter 3, FAUX pour Fighting Vipers 2 (soundboard.h, docs/scsp_audit.md §2). Il se
-// posait par un `dynamic_cast` ecrit dans SoundBoard::reset, et deux autres copies du meme aiguillage
-// vivaient dans tools/son/banc_scsp.h et tools/son/test_scsp_regs.cpp. La copie de la carte etait posee
-// APRES la creation de l'enregistreur de trace, donc la trace ne pouvait pas la voir : un rejeu laissait le
-// miroir a son defaut `true` et divergeait de la carte a l'echantillon 772 067, sans qu'on puisse dire si
-// c'etait le coeur ou la trace. Mesure et referme le 2026-10-28 (docs/scsp_validation.md §3 c).
+// THE MADRS MIRROR, and it cost dearly. It is the only one of the additions THAT CHANGES THE SOUND, and
+// it changes per game: true for Virtua Fighter 3, FALSE for Fighting Vipers 2 (soundboard.h,
+// docs/scsp_audit.md §2). It used to be set by a `dynamic_cast` written into SoundBoard::reset, and two
+// further copies of the same switch lived in tools/son/banc_scsp.h and tools/son/test_scsp_regs.cpp. The
+// board's copy was set AFTER the trace recorder was created, so the trace could not see it: a replay left
+// the mirror at its `true` default and diverged from the board at sample 772 067, with no way to say
+// whether it was the core or the trace. Measured and closed on 2026-10-28 (docs/scsp_validation.md §3 c).
 //
-// LE GAIN EXPOSE, c'est-a-dire MVOL : la puce ne l'applique jamais elle-meme, elle l'expose seulement, et
-// c'est la carte qui multiplie (mesure le 2026-10-26, scsp_contract.h §13 point 7). Le bloc 7 le verifie.
+// THE EXPOSED GAIN, that is to say MVOL: the chip never applies it itself, it only exposes it, and it is
+// the board that multiplies (measured on 2026-10-26, scsp_contract.h §13 point 7). Block 7 checks it.
 //
-// Ces fonctions ne devinent rien en silence : elles rendent faux, ou -1, quand le coeur ne porte pas la
-// chose. Et LE JOUR OU ELLES DISPARAISSENT, la dette de l'etape 3 est payee.
+// These functions guess nothing silently: they return false, or -1, when the core does not carry the
+// thing. And THE DAY THEY DISAPPEAR, step 3's debt is paid.
 // -----------------------------------------------------------------------------------------------------
 
 bool regle_miroir_madrs(core &c, bool on);
 bool miroir_madrs(const core &c, bool *trouve = nullptr);
-float gain_expose(const core &c);   // -1 si le coeur ne l'expose pas
+float gain_expose(const core &c);   // -1 if the core does not expose it
 
 // -----------------------------------------------------------------------------------------------------
-// L'INSCRIPTION D'UN COEUR, a ecrire dans le .cpp du coeur et nulle part ailleurs.
+// REGISTERING A CORE, to be written in the core's .cpp and nowhere else.
 //
-// Les trois dernieres fonctions prennent un `core&` et rendent FAUX quand ce n'est pas le leur : le
-// `dynamic_cast` vit ainsi dans le seul fichier qui connait le type, et le selecteur n'a pas a le connaitre.
-// C'est toute l'astuce, et elle ne coute qu'un parcours d'une liste de deux entrees sur un appel rare.
+// The last three functions take a `core&` and return FALSE when it is not theirs: the `dynamic_cast`
+// thus lives in the only file that knows the type, and the selector does not have to know it. That is the
+// whole trick, and it costs no more than walking a two-entry list on a rare call.
 // -----------------------------------------------------------------------------------------------------
 struct inscription {
 	const char *nom;
 	std::unique_ptr<core> (*fabrique)(u32 horloge, u16 *ram, u32 ram_octets, sink &puits);
-	bool (*pose_miroir)(core &c, bool on);          // faux si `c` n'est pas ce coeur
-	bool (*lit_miroir)(const core &c, bool &out);   // idem
-	bool (*lit_gain)(const core &c, float &out);    // idem
+	bool (*pose_miroir)(core &c, bool on);          // false if `c` is not this core
+	bool (*lit_miroir)(const core &c, bool &out);   // likewise
+	bool (*lit_gain)(const core &c, float &out);    // likewise
 };
 
-// A construire en statique de fichier : `const scsp::inscrit s_inscrit{ ... };`. L'ordre d'initialisation
-// entre unites de traduction n'importe pas -- la liste est un statique de fonction, cree au premier usage.
+// To be built as a file static: `const scsp::inscrit s_inscrit{ ... };`. Initialisation order across
+// translation units does not matter -- the list is a function static, created on first use.
 struct inscrit {
 	explicit inscrit(const inscription &i);
 };

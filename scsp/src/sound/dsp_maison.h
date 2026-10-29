@@ -1,58 +1,56 @@
-// dsp_maison.h -- le DSP d'effets du projet : le bloc 5, ecrit contre sa specification.
+// dsp_maison.h -- the project's effects DSP: block 5, written against its specification.
 //
-// Bloc 5 de docs/scsp_architecture.md §3, et le dernier des sept. Les six autres ont ete ecrits depuis
-// src/sound/scsp_contract.h, qui dit ce que la puce DOIT faire. Celui-ci ne pouvait pas l'etre : son jeu
-// d'instructions n'existe nulle part ECRIT -- ni fiche technique, ni specification independante, seulement
-// les implementations de MAME et de Supermodel, issues du meme travail de reverse engineering d'ElSemi
-// (docs/scsp_references.md).
+// Block 5 of docs/scsp_architecture.md §3, and the last of the seven. The other six were written from
+// src/sound/scsp_contract.h, which says what the chip MUST do. This one could not be: its instruction set
+// exists nowhere WRITTEN DOWN -- no datasheet, no independent specification, only MAME's and Supermodel's
+// implementations, both out of ElSemi's same reverse-engineering work (docs/scsp_references.md).
 //
-// LA SPECIFICATION A DONC ETE ECRITE D'ABORD, le 2026-10-27, et c'est contre elle que ce fichier existe :
-// tools/son/test_scsp_dsp.cpp, huit cas qui posent chacun un programme minuscule et ENREGISTRENT ce que le
-// DSP en fait, observes par la fenetre de registres (TEMP, MEMS, MIXS, EFREG) et par la RAM son.
+// SO THE SPECIFICATION WAS WRITTEN FIRST, on 2026-10-27, and it is against that one that this file exists:
+// tools/son/test_scsp_dsp.cpp, eight cases that each lay down a tiny program and RECORD what the DSP makes
+// of it, observed through the register window (TEMP, MEMS, MIXS, EFREG) and through sound RAM.
 //
 // -----------------------------------------------------------------------------------------------------
-// CE QUI EST VALIDE, ET PAR QUOI. Il faut le lire avant de se fier a ce fichier.
+// WHAT IS VALIDATED, AND BY WHAT. Read this before trusting this file.
 //
-//   LES HUIT CAS DE LA SPECIFICATION couvrent la chaine d'entree memoire (MRD, IWT, IRA), le produit, les
-//   quatre decalages, MWT, l'accumulation d'EWT et l'aller-retour PACK/UNPACK.
+//   THE SPECIFICATION'S EIGHT CASES cover the memory input chain (MRD, IWT, IRA), the product, the four
+//   shifts, MWT, EWT's accumulation and the PACK/UNPACK round trip.
 //
-//   LE REJOUEUR couvre tout ce que le JEU exerce, et il le couvre a l'octet : 3 219 865 echantillons par
-//   puce sur la scene entiere de fv2-fight.txt. C'est la vraie epreuve, et elle vaut mieux que n'importe
-//   quel nombre de cas unitaires -- mais elle ne couvre que ce que les programmes de VF3 emploient.
+//   THE REPLAYER covers everything the GAME exercises, and it covers it byte for byte: 3 219 865 samples
+//   per chip over the whole scene of fv2-fight.txt. That is the real test, and it is worth more than any
+//   number of unit cases -- but it covers only what VF3's programs use.
 //
-//   QUATRE CHAMPS NE SONT EPROUVES PAR AUCUN JEU, et c'est une mesure qui le dit : AUCUN des jeux que ce
-//   portage sert ne pose FRCL, ADRL, YRL ni NEGB -- 152 ecritures de programme, cinq formes distinctes,
-//   trois jeux dont Sega Rally 2 qui a un tout autre programme (docs/scsp_audit.md §5, le 2026-10-28).
-//   Il n'y a donc pas de programme a aller chercher qui en ferait le rejoueur juge.
+//   FOUR FIELDS ARE EXERCISED BY NO GAME, and it is a measurement that says so: NONE of the games this
+//   port serves sets FRCL, ADRL, YRL or NEGB -- 152 program writes, five distinct shapes, three games
+//   including Sega Rally 2, which has an altogether different program (docs/scsp_audit.md §5, 2026-10-28).
+//   So there is no program to go and find that would let the replayer judge them.
 //
-//   ILS SONT DEPUIS EPROUVES CONTRE LA CIBLE, et il faut lire les deux phrases ensemble :
-//   tools/son/test_scsp_dsp.cpp cas 9 a 13, ecrits le 2026-10-28, les mesurent un par un -- NEGB par le
-//   signe de B, FRCL et YRL en relisant les registres par YSEL (leur seul chemin de lecture), ADRL par
-//   l'adresse que ADREB decale. Ce coeur rend les memes nombres que celui de MAME sur les cinq, du premier
-//   coup, et quatre fautes injectees dans ce fichier sont attrapees chacune par son cas.
+//   THEY ARE NOW TESTED AGAINST THE TARGET, and the two sentences have to be read together:
+//   tools/son/test_scsp_dsp.cpp cases 9 to 13, written on 2026-10-28, measure them one by one -- NEGB
+//   through B's sign, FRCL and YRL by reading the registers back through YSEL (their only read path), ADRL
+//   through the address that ADREB shifts. This core returns the same numbers as MAME's on all five, first
+//   time, and four faults injected into this file are each caught by their own case.
 //
-//   CE QUE CELA NE DIT PAS : que MAME ait raison. Personne n'a mesure ces quatre-la sur du materiel, et
-//   docs/scsp_references.md refuse le consensus entre emulateurs comme preuve. Le comportement VISE par ce
-//   portage est celui de MAME (voir scsp_maison.h) ; ces cas etablissent que ce DSP l'atteint, et rien de
-//   plus. Le cas 13 ajoute ce qu'aucun jeu ne donnait non plus : que le second corps, celui que les quatre
-//   declenchent, s'accorde avec le premier. Le compte vient de la sonde
-//   `dspprog`, et il porte son temoin dans la meme ligne -- `frcl 0 adrl 0 yrl 0 negb 0` a cote de
-//   `iwt 23 twt 39 mrd 23 mwt 10 ewt 5`, comptes par le meme code au meme moment
-//   (docs/fv2-son-programme.md §4). Ces quatre-la sont donc ECRITS mais jamais EPROUVES : un autre jeu, ou
-//   une arene qu'on n'a pas visitee, serait le premier a les essayer.
+//   WHAT THAT DOES NOT SAY: that MAME is right. Nobody has measured those four on hardware, and
+//   docs/scsp_references.md refuses consensus between emulators as proof. The behaviour this port AIMS at
+//   is MAME's (see scsp_maison.h); these cases establish that this DSP reaches it, and nothing more. Case
+//   13 adds what no game gave either: that the second body, the one the four trigger, agrees with the
+//   first. The count comes from the `dspprog` probe, and it carries its control in the same line --
+//   `frcl 0 adrl 0 yrl 0 negb 0` next to `iwt 23 twt 39 mrd 23 mwt 10 ewt 5`, counted by the same code at
+//   the same moment (docs/fv2-son-programme.md §4). So those four are WRITTEN but never EXERCISED: another
+//   game, or an arena nobody visited, would be the first to try them.
 // -----------------------------------------------------------------------------------------------------
 //
-// L'ENCODAGE D'UNE INSTRUCTION, quatre mots de seize bits par pas. C'est une disposition materielle, au
-// meme titre qu'une carte de registres :
+// AN INSTRUCTION'S ENCODING, four sixteen-bit words per step. This is a hardware layout, no less than a
+// register map:
 //
-//     mot 0 : TRA 14-8, TWT 7, TWA 6-0
-//     mot 1 : XSEL 15, YSEL 14-13, IRA 11-6, IWT 5, IWA 4-0
-//     mot 2 : TABLE 15, MWT 14, MRD 13, EWT 12, EWA 11-8, ADRL 7, FRCL 6, SHIFT 5-4,
-//             YRL 3, NEGB 2, ZERO 1, BSEL 0
-//     mot 3 : NOFL 15, COEF 14-9, MASA 6-2, ADREB 1, NXADR 0
+//     word 0 : TRA 14-8, TWT 7, TWA 6-0
+//     word 1 : XSEL 15, YSEL 14-13, IRA 11-6, IWT 5, IWA 4-0
+//     word 2 : TABLE 15, MWT 14, MRD 13, EWT 12, EWA 11-8, ADRL 7, FRCL 6, SHIFT 5-4,
+//              YRL 3, NEGB 2, ZERO 1, BSEL 0
+//     word 3 : NOFL 15, COEF 14-9, MASA 6-2, ADREB 1, NXADR 0
 //
-// LES NOMS DES MEMBRES PUBLICS SONT CEUX DE L'AUTRE DSP, a dessein : le coeur du projet (scsp_maison) les
-// atteint directement, et changer de DSP ne doit rien changer chez lui.
+// THE PUBLIC MEMBERS' NAMES ARE THE OTHER DSP'S, deliberately: the project's core (scsp_maison) reaches
+// them directly, and swapping DSPs must change nothing there.
 #pragma once
 
 #include <cstdint>
@@ -66,71 +64,70 @@ public:
 	using s32 = std::int32_t;
 	using s64 = std::int64_t;
 
-	// --- ce que la puce expose, et que la fenetre de registres lit ou ecrit
-	u16 *ram = nullptr;              // la RAM son, en mots de 16 bits
+	// --- what the chip exposes, and what the register window reads or writes
+	u16 *ram = nullptr;              // sound RAM, in 16-bit words
 	u32 ram_bytes = 0;
-	u32 RBP = 0;                     // l'origine de la ligne de retard, en pas de 4 kmots
-	u32 RBL = 8 * 1024;              // sa taille en mots
+	u32 RBP = 0;                     // the delay line's origin, in steps of 4 kwords
+	u32 RBL = 8 * 1024;              // its size in words
 
 	s16 COEF[64] = {};
 	u16 MADRS[32] = {};
 	u16 MPRO[128 * 4] = {};
-	s32 TEMP[128] = {};              // 24 bits signes
-	s32 MEMS[32] = {};               // 24 bits signes
-	s32 MIXS[16] = {};               // 20 bits signes
-	s16 EXTS[2] = {};                // rien n'y est branche sur cette carte
-	s16 EFREG[16] = {};              // la sortie d'effets
+	s32 TEMP[128] = {};              // signed 24-bit
+	s32 MEMS[32] = {};               // signed 24-bit
+	s32 MIXS[16] = {};               // signed 20-bit
+	s16 EXTS[2] = {};                // nothing is plugged into these on this board
+	s16 EFREG[16] = {};              // the effects output
 
 	void Init();
-	void Start();                    // (re)decode tout le programme et trouve son dernier pas
-	void Decode(int pas);            // un pas, decode a l'ecriture et non dans la boucle
+	void Start();                    // (re)decodes the whole program and finds its last step
+	void Decode(int pas);            // one step, decoded on write and not in the loop
 	void SetSample(s32 echantillon, s32 sel, s32 mxl);
-	void Step();                     // un echantillon
+	void Step();                     // one sample
 
 private:
-	// Un pas decode. LE DECODAGE A L'ECRITURE est une avance de ce depot sur MAME et sur Supermodel, qui
-	// extraient les champs a chaque echantillon : 112 pas fois 44 100 fois deux puces, pour un programme
-	// qui ne change qu'entre deux arenes (docs/scsp_references.md).
-	// UN MOT D'INDICATEURS, ET NON QUINZE BOOLEENS. Les champs d'un bit tiennent dans un entier lu une
-	// fois, et la boucle teste des masques au lieu de charger quinze octets par pas. Mesure : le passage de
-	// quinze booleens a ce mot a ramene le coeur de 22,93 s a ce qu'annonce le commentaire de Step.
+	// One decoded step. DECODING ON WRITE is this repository's advance over MAME and Supermodel, which
+	// extract the fields on every sample: 112 steps times 44 100 times two chips, for a program that only
+	// changes between two arenas (docs/scsp_references.md).
+	// ONE WORD OF FLAGS, AND NOT FIFTEEN BOOLEANS. The one-bit fields fit in an integer read once, and the
+	// loop tests masks instead of loading fifteen bytes per step. Measured: going from fifteen booleans to
+	// this word brought the core down from 22.93 s to what Step's comment states.
 	enum Indic : u32 {
 		I_TWT = 1u << 0, I_XSEL = 1u << 1, I_IWT = 1u << 2, I_TABLE = 1u << 3,
 		I_MWT = 1u << 4, I_MRD = 1u << 5, I_EWT = 1u << 6, I_ZERO = 1u << 7,
 		I_BSEL = 1u << 8, I_NOFL = 1u << 9, I_ADREB = 1u << 10, I_NXADR = 1u << 11,
-		// Les quatre que ce jeu n'exerce jamais, groupes pour qu'un seul test les ecarte toutes.
+		// The four this game never exercises, grouped so that a single test rules them all out.
 		I_FRCL = 1u << 12, I_ADRL = 1u << 13, I_YRL = 1u << 14, I_NEGB = 1u << 15,
 		I_RARES = I_FRCL | I_ADRL | I_YRL | I_NEGB,
-		I_SHPRE = 1u << 16,          // le decalage double l'accumulateur d'abord (SHIFT 1 et 2)
-		I_SHECR = 1u << 17,          // il ECRETE (SHIFT 0 et 1) au lieu d'etendre le signe (2 et 3)
+		I_SHPRE = 1u << 16,          // the shift doubles the accumulator first (SHIFT 1 and 2)
+		I_SHECR = 1u << 17,          // it CLAMPS (SHIFT 0 and 1) instead of sign-extending (2 and 3)
 	};
 	struct Pas {
-		u32 f = 0;                   // les champs d'un bit
+		u32 f = 0;                   // the one-bit fields
 		u8  tra = 0, twa = 0, ira = 0, iwa = 0, ewa = 0, coef = 0, masa = 0;
 		u8  shift = 0, ysel = 0;
 	};
 	Pas m_prog[128] = {};
-	int m_dernier = 0;               // le nombre de pas a executer
-	bool m_arrete = true;            // avant le premier Start, le DSP ne tourne pas
+	int m_dernier = 0;               // how many steps to execute
+	bool m_arrete = true;            // before the first Start, the DSP does not run
 
-	// LE CORPS SPECIALISE SUR CE QUE LE PROGRAMME EMPLOIE REELLEMENT, et c'est une mesure qui l'exige :
-	// sans lui le coeur du projet coutait 1 % d'un coeur de plus par puce que celui de MAME, soit un quart
-	// de plus sur le son entier -- alors que le gain processeur est la priorite absolue du cahier des
-	// charges. `m_rares` dit si UN SEUL pas du programme emploie FRCL, ADRL, YRL ou NEGB ; les programmes de
-	// ce jeu n'en emploient aucun, donc la version maigre tourne, et les quatre tests disparaissent des
-	// 112 pas que chaque echantillon execute.
+	// THE BODY SPECIALISED ON WHAT THE PROGRAM ACTUALLY USES, and it is a measurement that demands it:
+	// without it the project's core cost 1% of a core more per chip than MAME's, that is a quarter more
+	// over the whole sound -- when the CPU gain is the specification's highest priority. `m_rares` says
+	// whether A SINGLE step of the program uses FRCL, ADRL, YRL or NEGB; this game's programs use none of
+	// them, so the lean version runs, and the four tests disappear from the 112 steps each sample executes.
 	//
-	// Il ne se defait jamais en cours de route : un programme reecrit pour cesser d'employer l'un des
-	// quatre garde le corps complet jusqu'au Start suivant. Ca coute de la vitesse et rien d'autre.
+	// It never comes undone mid-run: a program rewritten to stop using one of the four keeps the full body
+	// until the next Start. That costs speed and nothing else.
 	bool m_rares = false;
 	template <bool RARES> void boucle();
 
-	// L'etat vivant. ACC et SHIFTED sont deux registres distincts, et c'est tout le sujet : le shifter est
-	// UN PAS EN RETARD sur l'accumulateur (voir Step).
+	// The live state. ACC and SHIFTED are two distinct registers, and that is the whole subject: the
+	// shifter is ONE STEP BEHIND the accumulator (see Step).
 	s32 m_acc = 0;
 	s32 m_memval = 0;
 	s32 m_frc_reg = 0, m_y_reg = 0, m_adrs_reg = 0;
-	u32 m_dec = 0;                   // descend d'un par echantillon ; indexe TEMP et la ligne de retard
+	u32 m_dec = 0;                   // counts down by one per sample; indexes TEMP and the delay line
 
 	u16 lire_mot(u32 octet) const { return octet < ram_bytes ? ram[octet >> 1] : 0; }
 	void ecrire_mot(u32 octet, u16 v) { if (octet < ram_bytes) ram[octet >> 1] = v; }

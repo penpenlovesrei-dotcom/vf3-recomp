@@ -1,5 +1,5 @@
-// La liste des coeurs inscrits, et rien d'autre. AUCUNE classe concrete n'est incluse ni nommee ici :
-// c'est ce qui coupe la dependance (scsp_select.h dit pourquoi).
+// The list of registered cores, and nothing else. NO concrete class is included or even named here:
+// that is what cuts the dependency (scsp_select.h says why).
 #include "scsp_select.h"
 
 #include <cstdio>
@@ -11,8 +11,8 @@ namespace scsp {
 
 namespace {
 
-// Statique de FONCTION, et non de fichier : les `inscrit` d'autres unites de traduction s'initialisent dans
-// un ordre que la norme ne fixe pas, et une liste creee au premier usage est la seule qui soit toujours la.
+// A FUNCTION static, not a file one: the `inscrit` objects in other translation units initialise in an
+// order the standard does not fix, and a list created on first use is the only one always there.
 std::vector<const inscription *> &liste()
 {
 	static std::vector<const inscription *> l;
@@ -28,22 +28,22 @@ inscrit::inscrit(const inscription &i)
 
 const char *noms_connus()
 {
-	// Construite une fois, dans l'ordre d'inscription. Vide si rien n'est lie, et la phrase le dit plutot
-	// que de rendre une chaine vide au milieu d'un message d'erreur.
+	// Built once, in registration order. Empty if nothing is linked, and the sentence says so rather
+	// than handing back an empty string in the middle of an error message.
 	static const std::string s = [] {
 		std::string t;
 		for (const inscription *i : liste()) { if (!t.empty()) t += ", "; t += i->nom; }
-		return t.empty() ? std::string("(aucun coeur n'est lie a ce binaire)") : t;
+		return t.empty() ? std::string("(no core is linked into this binary)") : t;
 	}();
 	return s.c_str();
 }
 
 std::unique_ptr<core> make(const char *nom, u32 horloge, u16 *ram, u32 ram_octets, sink &puits)
 {
-	// Sans nom, le premier inscrit : l'ordre de liaison decide, et les Makefile mettent MAME d'abord la ou
-	// les deux sont lies, pour que rien ne change sans qu'on le demande.
+	// With no name, the first registered one: link order decides, and the Makefiles put MAME first
+	// wherever both are linked, so that nothing changes unless it is asked for.
 	if (!nom || !*nom) {
-		if (liste().empty()) { fprintf(stderr, "scsp_select: aucun coeur n'est lie a ce binaire\n"); return nullptr; }
+		if (liste().empty()) { fprintf(stderr, "scsp_select: no core is linked into this binary\n"); return nullptr; }
 		const inscription *i = liste().front();
 		return i->fabrique(horloge, ram, ram_octets, puits);
 	}
@@ -51,7 +51,7 @@ std::unique_ptr<core> make(const char *nom, u32 horloge, u16 *ram, u32 ram_octet
 		if (!strcmp(nom, i->nom))
 			return i->fabrique(horloge, ram, ram_octets, puits);
 
-	fprintf(stderr, "scsp_select: coeur inconnu \"%s\" ; connus : %s\n", nom, noms_connus());
+	fprintf(stderr, "scsp_select: unknown core \"%s\"; known: %s\n", nom, noms_connus());
 	return nullptr;
 }
 
@@ -69,7 +69,7 @@ bool miroir_madrs(const core &c, bool *trouve)
 		if (i->lit_miroir && i->lit_miroir(c, v)) { if (trouve) *trouve = true; return v; }
 	}
 	if (trouve) *trouve = false;
-	return true;   // le defaut de la puce, et des deux coeurs
+	return true;   // the chip's default, and both cores'
 }
 
 float gain_expose(const core &c)

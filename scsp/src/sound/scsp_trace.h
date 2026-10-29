@@ -1,58 +1,58 @@
-// scsp_trace.h -- une trace d'acces au SCSP : l'enregistrer, la rejouer, comparer deux rejeux.
+// scsp_trace.h -- a trace of SCSP accesses: recording one, replaying one, comparing two replays.
 //
-// Point 2 de l'etape 2 de docs/scsp_migration_plan.md, le dernier prealable qui manquait : "les deux coeurs
-// dans le meme binaire, la meme sequence d'acces rejouee dans les deux [...] et la comparaison des PCM, des
-// etats observables, des interruptions et des timers -- pas seulement du WAV."
+// Point 2 of step 2 of docs/scsp_migration_plan.md, the last prerequisite that was missing: "both cores
+// in the same binary, the same sequence of accesses replayed through both [...] and the comparison of the
+// PCM, the observable state, the interrupts and the timers -- not just the WAV."
 //
-// POURQUOI LE HARNAIS EXISTANT NE SUFFIT PAS. tools/son/comparer-son.cmd compare le MELANGE FINAL, deux WAV.
-// Il a prouve sa valeur -- il a trouve une paire d'echantillons manquante sur 3 219 865 -- mais il ne voit
-// que ce qui ressort du haut-parleur. Un bloc reecrit peut etre faux d'une facon que le melange masque : une
-// interruption un echantillon trop tot, un timer arme a la mauvaise duree, une lecture de registre qui rend
-// autre chose. Le 68000 reagit alors differemment, et la divergence apparait trois arenes plus loin sous une
-// forme qui n'a plus rien a voir avec sa cause. Ici on compare ce que la PUCE a fait, pas ce qu'on entend.
+// WHY THE EXISTING HARNESS IS NOT ENOUGH. tools/son/comparer-son.cmd compares the FINAL MIX, two WAVs. It
+// has proved its worth -- it found one missing pair of samples out of 3 219 865 -- but it only sees what
+// comes out of the speaker. A rewritten block can be wrong in a way the mix hides: an interrupt one sample
+// too early, a timer armed for the wrong duration, a register read that returns something else. The 68000
+// then reacts differently, and the divergence surfaces three arenas later in a shape that has nothing left
+// to do with its cause. Here we compare what the CHIP did, not what we hear.
 //
-// ET VF3_SCSP_WLOG NE SUFFIT PAS NON PLUS, bien que le plan le donne pour un depart. Il note l'image, pas
-// l'echantillon -- donc l'instant d'une ecriture dans la trame est perdu, et c'est precisement ce qui decide
-// ou tombent les interruptions. Il ne note que la puce 0, ni les lectures, ni le MIDI entrant, ni les timers
-// qui se declenchent, ni les ecritures de la RAM son -- sans lesquelles un rejeu n'a aucun echantillon a
-// jouer. Le format ci-dessous est donc neuf, et l'ancien journal reste ce qu'il est : un journal a lire.
+// AND VF3_SCSP_WLOG IS NOT ENOUGH EITHER, although the plan offers it as a starting point. It records the
+// frame, not the sample -- so the instant of a write within the frame is lost, and that is precisely what
+// decides where the interrupts fall. It records only chip 0, and neither the reads, nor incoming MIDI, nor
+// the timers that fire, nor the writes to sound RAM -- without which a replay has no sample to play at
+// all. The format below is therefore new, and the old log stays what it is: a log to read.
 //
-// LE FORMAT, du texte, une ligne par evenement, pour qu'il se lise et se diffe comme les autres journaux du
-// projet. Les evenements sont dans l'ordre ou la carte les a faits, ce qui est tout l'interet :
+// THE FORMAT, text, one line per event, so that it reads and diffs like the project's other logs. The
+// events are in the order the board made them, which is the whole point:
 //
 //     # scsp-trace 2 puce=N horloge=H ram=B miroir=0|1
-//     d <mot> <data> <masque>   une ecriture dans la RAM son (mot = index de MOT dans la RAM)
-//     w <mot> <data> <masque>   write_reg
-//     r <mot>                   read_reg (une lecture a des effets de bord, et sa valeur se compare)
-//     m <octet>                 midi_in
-//     t <lequel>                timer_fired
-//     s <n>                     run(n) : n echantillons
+//     d <word> <data> <mask>    a write to sound RAM (word = index of the WORD in RAM)
+//     w <word> <data> <mask>    write_reg
+//     r <word>                  read_reg (a read has side effects, and its value compares)
+//     m <byte>                  midi_in
+//     t <which>                 timer_fired
+//     s <n>                     run(n): n samples
 //
-// ET L'ENREGISTREUR GARDE AUSSI LE PCM, dans un second fichier `<trace>.pcm` (des s32 entrelaces). Ce n'est
-// pas une commodite : c'est la seule facon de PROUVER qu'une trace porte tout ce dont la puce depend. Rejouer
-// la trace et retrouver le meme PCM a l'octet, c'est etablir qu'aucun etat n'entre par une porte que la trace
-// ne note pas. Sans ce controle, un rejeu qui diverge laisse deux explications -- le coeur est different, ou
-// la trace est incomplete -- et on ne peut pas choisir.
+// AND THE RECORDER ALSO KEEPS THE PCM, in a second file `<trace>.pcm` (interleaved s32). This is not a
+// convenience: it is the only way to PROVE that a trace carries everything the chip depends on. Replaying
+// the trace and getting the same PCM byte for byte establishes that no state comes in through a door the
+// trace does not record. Without that check, a replay that diverges leaves two explanations -- the core is
+// different, or the trace is incomplete -- and there is no way to pick.
 //
-// `miroir` EST ARRIVE APRES, ET IL FAUT DIRE POURQUOI, parce que c'est le genre de chose qu'on ne devine
-// pas deux fois. Le miroir MADRS n'est pas un ACCES : il se pose une fois, avant que la trace commence, il
-// ne passe pas par scsp::core (c'est l'affaire du jeu et non de la puce), et IL CHANGE LE SON -- vrai pour
-// Virtua Fighter 3, faux pour Fighting Vipers 2. Donc une trace qui ne le dit pas ne porte PAS tout ce dont
-// la puce depend, et le controle ci-dessous passait quand meme : sur 300 images, parce que la premiere
-// ecriture qui le distingue arrive plus tard. Mesure le 2026-10-28, sur la scene entiere : le rejeu
-// divergeait a l'echantillon 772 067, et la meme scene enregistree avec le miroir force se rejouait
-// identique a l'octet (docs/scsp_validation.md §3 c). L'enregistreur le RELIT de la puce, le rejeu le POSE,
-// par la porte unique de scsp_select.h -- et une trace de version 1 est REFUSEE au lieu d'etre devinee.
+// `miroir` ARRIVED LATER, AND WHY HAS TO BE SAID, because it is the kind of thing nobody works out twice.
+// The MADRS mirror is not an ACCESS: it is set once, before the trace starts, it does not go through
+// scsp::core (it is the game's business, not the chip's), and IT CHANGES THE SOUND -- true for Virtua
+// Fighter 3, false for Fighting Vipers 2. So a trace that does not state it does NOT carry everything the
+// chip depends on, and the check below passed all the same: over 300 frames, because the first write that
+// tells them apart comes later. Measured on 2026-10-28, over the whole scene: the replay diverged at
+// sample 772 067, and the same scene recorded with the mirror forced replayed byte-identical
+// (docs/scsp_validation.md §3 c). The recorder READS it back from the chip, the replay SETS it, through
+// the single door of scsp_select.h -- and a version 1 trace is REFUSED rather than guessed at.
 //
-// LA LECON, pour la prochaine fois : un etat qui n'arrive pas par un appel n'entre pas dans une trace
-// d'appels. Les trois autres extras du portage (gains par groupe, sonde d'energie, journal des key-on) ne
-// changent pas le son au reglage par defaut, et c'est la seule raison pour laquelle ils ne sont pas dans
-// l'en-tete ; si l'un d'eux se mettait a compter, il faudrait l'y mettre aussi.
+// THE LESSON, for next time: state that does not arrive through a call does not go into a trace of calls.
+// The port's three other extras (per-group gains, energy probe, key-on log) do not change the sound at the
+// default setting, and that is the only reason they are not in the header; if one of them started to
+// count, it would have to go in as well.
 //
-// UNE TRACE COMMENCE A LA REMISE A ZERO, et l'enregistreur le verifie plutot que de le supposer : au
-// demarrage il balaie la RAM et ecrit un `d` par mot non nul. Apres un reset il y en a huit -- les vecteurs
-// du 68000 que la carte y copie. Au milieu d'une partie il y en aurait des centaines de milliers, et
-// l'enregistreur refuse alors avec un message clair au lieu d'ecrire un fichier de 500 Mo.
+// A TRACE STARTS AT RESET, and the recorder checks that rather than assuming it: on startup it sweeps RAM
+// and writes one `d` per non-zero word. After a reset there are eight of them -- the 68000's vectors, which
+// the board copies there. In the middle of a game there would be hundreds of thousands, and the recorder
+// then refuses with a clear message instead of writing a 500 MB file.
 #pragma once
 
 #include "scsp_core.h"
@@ -64,7 +64,7 @@
 
 namespace scsp {
 
-// Ce qu'un coeur a RENDU pendant un rejeu : tout ce qui sort de la puce, horodate en echantillons.
+// What a core PRODUCED during a replay: everything that leaves the chip, timestamped in samples.
 struct sortie {
 	struct Irq  { std::uint64_t ech; int niveau; bool etat; };
 	struct Midi { std::uint64_t ech; u8 octet; };
@@ -74,11 +74,11 @@ struct sortie {
 	std::vector<Irq>  irqs;
 	std::vector<Midi> midis;
 	std::vector<Arme> armes;
-	std::vector<Lue>  lues;     // les valeurs rendues par read_reg
-	std::vector<s32>  pcm;      // entrelace gauche/droite, a l'echelle 18 bits
+	std::vector<Lue>  lues;     // the values returned by read_reg
+	std::vector<s32>  pcm;      // interleaved left/right, on the 18-bit scale
 };
 
-// Le puits qui note tout, pour un rejeu. Il demande l'instant au coeur, qu'il faut donc lui donner.
+// The sink that records everything, for a replay. It asks the core for the instant, so it must be given it.
 class puits_notant final : public sink {
 public:
 	explicit puits_notant(sortie &s) : m_s(s) {}
@@ -94,24 +94,24 @@ private:
 	const core *m_c = nullptr;
 };
 
-// L'ENREGISTREUR : un coeur qui passe tout a un autre et ecrit la trace au passage.
+// THE RECORDER: a core that passes everything on to another one and writes the trace on the way through.
 //
-// C'est un decorateur et non une modification de la carte, pour une raison de fond : si l'enregistrement
-// vivait dans soundboard.cpp il faudrait le poser a huit endroits, et le neuvieme appel ajoute un jour
-// echapperait a la trace sans que rien ne le dise. Ici il n'y a qu'une porte.
+// It is a decorator and not a change to the board, for a substantive reason: if the recording lived in
+// soundboard.cpp it would have to be placed at eight sites, and the ninth call added one day would escape
+// the trace with nothing to say so. Here there is only one door.
 class enregistreur final : public core {
 public:
-	// `dessous` doit vivre plus longtemps que l'enregistreur. `ram` sert au balayage initial. Le PCM va
-	// dans `<fichier>.pcm`.
+	// `dessous` must outlive the recorder. `ram` is used for the initial sweep. The PCM goes into
+	// `<file>.pcm`.
 	enregistreur(core &dessous, const char *fichier, unsigned puce, u32 horloge,
 	             const u16 *ram, u32 ram_octets);
 	~enregistreur() override;
 
-	// Vrai si le fichier est ouvert et le balayage initial accepte. Faux : la trace est abandonnee et un
-	// message est deja sorti sur stderr -- l'enregistreur se contente alors de passer les appels.
+	// True if the file is open and the initial sweep was accepted. False: the trace is abandoned and a
+	// message has already gone to stderr -- the recorder then merely passes the calls through.
 	bool bon() const { return m_f != nullptr; }
 
-	// Une ecriture dans la RAM son, que la carte fait sans passer par le coeur.
+	// A write to sound RAM, which the board makes without going through the core.
 	void ram_ecrite(u32 mot, u16 data, u16 masque);
 
 	void reset() override;
@@ -128,15 +128,15 @@ private:
 	FILE *m_pcm = nullptr;
 };
 
-// LE REJOUEUR : lit une trace, pilote `c`, remplit `s`.
+// THE REPLAYER: reads a trace, drives `c`, fills `s`.
 //
-// `ram` est la RAM que `c` a recue a sa construction : les lignes `d` y vont. `erreur` recoit la raison d'un
-// echec (fichier absent, en-tete inconnu, ligne illisible) ; rien n'est devine en silence.
+// `ram` is the RAM `c` was given at construction: the `d` lines go into it. `erreur` receives the reason
+// for a failure (file missing, unknown header, unreadable line); nothing is guessed silently.
 bool rejoue(const char *fichier, core &c, std::vector<u16> &ram, sortie &s, std::string *erreur);
 
-// LA COMPARAISON : rend une chaine vide si les deux sorties sont identiques, sinon LA PREMIERE divergence,
-// nommee et situee. Une seule, parce qu'apres la premiere les deux coeurs ne font plus la meme histoire et
-// que la suite n'apprend rien.
+// THE COMPARISON: returns an empty string if the two outputs are identical, otherwise THE FIRST
+// divergence, named and located. Only one, because after the first the two cores are no longer telling the
+// same story and the rest teaches nothing.
 std::string compare(const sortie &a, const sortie &b);
 
 } // namespace scsp
