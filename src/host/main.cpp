@@ -155,6 +155,7 @@
 #include "folder_name.h"
 #include "fv2_curtain.h"
 #include "fv2_ending.h"
+#include "fv2_roll.h"
 #include "fv2_text.h"
 #include "menu.h"
 #include "controls.h"
@@ -2204,6 +2205,8 @@ int main(int argc, char **argv)
 	// The Dreamcast's ending, its pictures standing in for the roll's replays (fv2_ending.h). Declared here
 	// with the renderer's own state because the picture is composed where the 3D and the 2D are.
 	fv2_ending ending;
+	// and the roll the port draws itself, which owns the screen for the whole of the ending (fv2_roll.h)
+	static fv2_roll roll;
 	uint32_t side_colour[2] = { 0xFF000000u, 0xFF000000u };   // widescreen's bars beside the 2D (left, right)
 	bool sky_wide = false;
 	float bg_shift_x = 0, bg_shift_y = 0;   // the layers below the 3D moved back towards the frame before (draw_below)
@@ -2918,7 +2921,17 @@ int main(int argc, char **argv)
 		// of that moment -- the replay's own banners -- goes with it (fv2_ending.h). Not an early return: the
 		// CRT filter below owns the render target and has to be let finish.
 		bool ending_on = false;
-		if (ending.want && cplay.ending_art >= 0 && ending.have()) {
+		// ---- THE PORT'S OWN STAFF ROLL, for the whole of the game's ending ----
+		//
+		// Frederic, the 2026-10-29, having watched the real one: "il faut completement le refaire [...] faire
+		// defiler les textes du bas vers le haut au lieu qu'ils soient fixes". So where the game would draw
+		// its pages over its inverted logo, the port draws its own ground and the credits climbing it
+		// (fv2_roll.h). It owns the screen for as long as the game is in mode 12 or 13, which is also what
+		// takes the inverted logo away -- nothing of the game's picture is drawn at all.
+		if (ending.want && cplay.in_ending && roll.ready()) {
+			roll.render(ren, all, double(cplay.ending_frames) / FRAME_HZ);
+			ending_on = true;
+		} else if (ending.want && cplay.ending_art >= 0 && ending.have()) {
 			ending.show(ren, cplay.ending_art, stderr);
 			if (ending.tex) { ending.render(ren, all); ending_on = true; }
 		} else if (ending.at >= 0) {
@@ -3169,6 +3182,7 @@ int main(int argc, char **argv)
 		train.load(ren, find_assets(), &console_font, stderr);
 		curtain.load(ren, find_assets(), stderr);
 		ending.find(find_assets(), stderr);
+		roll.load(ren, find_assets(), stderr);
 		ending.want = cfg.ending_dc;
 	}
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));

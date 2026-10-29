@@ -708,6 +708,11 @@ struct console_play
 	int ending_replay = 0;       // the replay byte as it last read
 	int ending_shown = 0;        // how many pictures have been put up: the next replay takes the next one
 	int ending_fall = 0;         // frames since the byte fell, 0 when it is up
+	// WHETHER THE GAME IS IN ITS ENDING AT ALL, and for how many of its own frames. The port's own staff
+	// roll is paced by these (fv2_roll.h): the game's frames, not the wall clock, so a slow machine shows
+	// the same roll more slowly instead of a shorter one.
+	bool in_ending = false;
+	uint64_t ending_frames = 0;
 	// AND IT SAYS WHAT IT SAW, because an ending is not a thing anyone can repeat on demand: reaching it
 	// means finishing the ladder. Frederic finished it the 2026-10-29 with the arcade's replays on screen
 	// although the line read DREAMCAST, and his log held nothing at all about the ending -- there was
@@ -718,6 +723,8 @@ struct console_play
 		const int mode = b.fv2_mode();
 		const bool dsp = mode == 13;      // ENDING_DSP; ENDING_INT is 12 and is followed without counting
 		if (mode != 12 && !dsp) {
+			in_ending = false;
+			ending_frames = 0;
 			if (ending_seg || ending_art >= 0 || ending_ptr >= 0)
 				fprintf(stderr, "the console's ending: over after %d segment%s, %d picture%s shown\n",
 						ending_seg, ending_seg == 1 ? "" : "s", ending_shown, ending_shown == 1 ? "" : "s");
@@ -725,6 +732,8 @@ struct console_play
 			ending_shown = 0; ending_fall = 0;
 			return;
 		}
+		in_ending = true;
+		ending_frames++;
 		const int ptr = b.fv2_ending_seq(), rep = b.fv2_ending_replay();
 		if (ending_ptr < 0)
 			fprintf(stderr, "the console's ending: it begins (mode %d, the sequence at %d, the replay byte %d)\n",
