@@ -3184,6 +3184,7 @@ int main(int argc, char **argv)
 		ending.find(find_assets(), stderr);
 		roll.load(ren, find_assets(), stderr);
 		ending.want = cfg.ending_dc;
+		cplay.ending_no_replays = cfg.ending_dc;   // (the roll without the fights: console_play.h)
 	}
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
@@ -3931,6 +3932,7 @@ int main(int argc, char **argv)
 			  ending.have() ? std::function<void(int)>([&](int) {
 				  cfg.ending_dc = !cfg.ending_dc;
 				  ending.want = cfg.ending_dc;
+				  cplay.ending_no_replays = cfg.ending_dc;
 				  cfg_dirty = true;
 			  }) : std::function<void(int)>(), {}, {}, 0, false, 0 },
 		};
@@ -5070,6 +5072,15 @@ int main(int argc, char **argv)
 				// the game reads only when the match is not a versus (ROUND_MASK_INT, docs/fv2-match-flow.md),
 				// so the step above it keeps the same scope: holding one side's life against a human is not
 				// a setting, it is a second player with nothing to do.
+				// THE ENDING IS HELD OPEN FOR AS LONG AS THE ROLL TAKES, and let go the moment it is done.
+				// Cutting the replays shortens the game's own ending to almost nothing -- its segments ARE
+				// the replay cycles, and the first measurement of the cut read "over after 1 segment". So
+				// the port holds the ending's own clock (0x0058FD54, the word ENDING_INT sets to 320 and
+				// ENDING_DSP ends the ending on) above zero while its credits climb, and stops holding when
+				// they are past the top. The game then leaves by its own road, through its own GAME OVER.
+				if (cfg.ending_dc && cplay.in_ending && roll.ready() && board.set == "fvipers2"
+					&& !roll.over(double(cplay.ending_frames) / FRAME_HZ))
+					board.fv2_set_ending_timer(120);
 				if (cfg.endless_1p && board.set == "fvipers2") {
 					const int m = board.fv2_mode(), su = board.fv2_submode();
 					if ((m == 6 || m == 7) && (su == 11 || su == 12) && board.fv2_players() != 3) {

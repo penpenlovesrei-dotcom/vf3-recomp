@@ -713,17 +713,18 @@ struct console_play
 	// the same roll more slowly instead of a shorter one.
 	bool in_ending = false;
 	uint64_t ending_frames = 0;
-	// THE REPLAYS CANNOT BE CUT THROUGH THIS DOOR, and that was measured rather than supposed. Frederic,
-	// the 2026-10-29: "est il possible de supprimer proprement les phases de combat du ending ?". Three of
-	// the ending's seven sub-states are the replay and nothing else -- ending_replay_init, _ctrl, _next,
-	// Sega's own names -- and the port knows how to ask a sub-state to move on (fv2_cut_submode, the door
-	// training uses for the round's announcement). But MODE_SUB is not where the ending keeps them: watched
-	// byte by byte through a whole roll (VF3_RAM_WATCH=0x0058FD90:16), 0x0058FD99 reads 11 from the first
-	// frame of mode 12 to the last of mode 13 and never moves. The ending's seven live in its own task's
-	// block, and finding that block is a piece of work of its own.
+	// THE REPLAYS, CUT BY THE ENDING'S OWN DOOR. Frederic, the 2026-10-29: "est il possible de supprimer
+	// proprement les phases de combat du ending ?". Three of its seven states are the replay and nothing
+	// else -- ending_replay_init, _ctrl, _next, Sega's own names. They are NOT in MODE_SUB: watched byte by
+	// byte through a whole roll, MODE_SUB reads 11 from the first frame of mode 12 to the last of mode 13
+	// and never moves. The ending dispatches its seven from a byte of its own, 0x0058FDB4, through a table
+	// of seven handlers at 0x0002444C -- read out of the routine at 0x0007249C (model3.cpp). So each replay
+	// state is asked to move on the frame it begins, by that door, and the roll goes from one page of
+	// credits to the next.
 	//
-	// Nothing of them is seen meanwhile: the port owns the screen for the whole ending (fv2_roll.h), so the
-	// replays run under a picture that is not drawn.
+	// Only when the Dreamcast's ending is chosen: the arcade's replays ARE its ending.
+	bool ending_no_replays = false;
+	int ending_cut = -1;        // the replay state last cut, so the line is said once each
 	// AND IT SAYS WHAT IT SAW, because an ending is not a thing anyone can repeat on demand: reaching it
 	// means finishing the ladder. Frederic finished it the 2026-10-29 with the arcade's replays on screen
 	// although the line read DREAMCAST, and his log held nothing at all about the ending -- there was
@@ -735,16 +736,28 @@ struct console_play
 		const bool dsp = mode == 13;      // ENDING_DSP; ENDING_INT is 12 and is followed without counting
 		if (mode != 12 && !dsp) {
 			in_ending = false;
-			ending_frames = 0;
 			if (ending_seg || ending_art >= 0 || ending_ptr >= 0)
-				fprintf(stderr, "the console's ending: over after %d segment%s, %d picture%s shown\n",
-						ending_seg, ending_seg == 1 ? "" : "s", ending_shown, ending_shown == 1 ? "" : "s");
+				fprintf(stderr, "the console's ending: over after %llu frames, %d segment%s, %d picture%s shown\n",
+						(unsigned long long)ending_frames, ending_seg, ending_seg == 1 ? "" : "s", ending_shown, ending_shown == 1 ? "" : "s");
 			ending_art = -1; ending_seg = 0; ending_ptr = -1; ending_replay = 0;
-			ending_shown = 0; ending_fall = 0;
+			ending_shown = 0; ending_fall = 0; ending_frames = 0;
 			return;
 		}
 		in_ending = true;
 		ending_frames++;
+		if (ending_no_replays) {
+			const int su = b.fv2_ending_sub();
+			// ONLY THE TWO THAT SHOW THE FIGHT. The third, ending_replay_next, is what walks the roll on to
+			// its next segment: cut it too and the ending runs out at once -- measured, "over after 1
+			// segment, 0 pictures shown". So 2 and 3 are asked to move on and 4 is left to do its work.
+			if (su == 2 || su == 3) {
+				b.fv2_cut_ending_sub();
+				if (ending_cut != su) {
+					ending_cut = su;
+					fprintf(stderr, "the console's ending: state %d is a replay -- asked to move on\n", su);
+				}
+			} else ending_cut = -1;
+		}
 		const int ptr = b.fv2_ending_seq(), rep = b.fv2_ending_replay();
 		if (ending_ptr < 0)
 			fprintf(stderr, "the console's ending: it begins (mode %d, the sequence at %d, the replay byte %d)\n",

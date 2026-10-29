@@ -1737,6 +1737,23 @@ constexpr uint32_t FV2_CB_DISP = 0x0011F04C;
 // its list a value a frame -- and ENDING_REPLAY_ON says which half is on screen.
 constexpr uint32_t FV2_ENDING_SEQ_PTR = 0x00580E8D;
 constexpr uint32_t FV2_ENDING_REPLAY_ON = 0x0070E603;
+// THE ENDING KEEPS ITS OWN SUB-STATE, and not in MODE_SUB. Watched through a whole roll, MODE_SUB never
+// leaves 11; the seven states Sega names ending_trans_init ... ending_final_mask2 are dispatched by the
+// ending's own routine at 0x0007249C, which reads ONE BYTE and jumps through a table of seven:
+//
+//     0007249C  lbz   r0,-588(r29)      r29 = 0x00590000, so the byte is 0x0058FDB4
+//     000724C0  addi  r9,r9,17484       the table, 0x0002444C
+//     000724C8  lwzx  r0,r9,r0          handler = table[state]
+//     000724D0  blrl                    and it is called
+//
+// Two of the seven are the transition (0, 1), three are the replay (2, 3, 4) and two are the final mask
+// (5, 6) -- the names read out of Sega's own table (docs/fv2-states.md).
+constexpr uint32_t FV2_ENDING_SUB = 0x0058FDB4;
+// AND ITS OWN CLOCK. ENDING_INT writes 320 into this word (0x0000E21C, li r0,320) and ENDING_DSP ends the
+// whole thing when it has run down: 0x0000E2D0 reads it, and if it is not greater than zero it writes 18 --
+// GAME OVER -- into MODE_REQUEST. Hold it above zero and the ending stays; let it go and the game leaves by
+// its own road, through its own GAME OVER, with nothing to put back.
+constexpr uint32_t FV2_ENDING_TIMER = 0x0058FD54;
 constexpr uint32_t FV2_TASK_ENTRY2 = 0x00700100;       // player 2's, and NOT 0x00707000, which August measured wrong first
 constexpr uint8_t FV2_MODE_GAME_INT = 6;
 // LEAVING A MATCH by the game's own road (fv2_end_match below). GAME_TIMER is the word fv2_game_FIGHT_DSP
@@ -2072,6 +2089,43 @@ int Model3::fv2_ending_seq() const
 {
 	if (set != "fvipers2" || ram.size() <= FV2_ENDING_SEQ_PTR) return -1;
 	return ram[FV2_ENDING_SEQ_PTR ^ 3];
+}
+
+// The ending's own clock, in frames, and holding it is how the port keeps the roll on screen for as long as
+// its own credits take (fv2_roll.h). -1 when this is not that game.
+int Model3::fv2_ending_timer() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ENDING_TIMER + 4) return -1;
+	return int(uint32_t(ram[FV2_ENDING_TIMER ^ 3]) << 24 | uint32_t(ram[(FV2_ENDING_TIMER + 1) ^ 3]) << 16
+			 | uint32_t(ram[(FV2_ENDING_TIMER + 2) ^ 3]) << 8 | uint32_t(ram[(FV2_ENDING_TIMER + 3) ^ 3]));
+}
+
+void Model3::fv2_set_ending_timer(int v)
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ENDING_TIMER + 4) return;
+	const uint32_t w = uint32_t(v);
+	ram[FV2_ENDING_TIMER ^ 3] = uint8_t(w >> 24);
+	ram[(FV2_ENDING_TIMER + 1) ^ 3] = uint8_t(w >> 16);
+	ram[(FV2_ENDING_TIMER + 2) ^ 3] = uint8_t(w >> 8);
+	ram[(FV2_ENDING_TIMER + 3) ^ 3] = uint8_t(w);
+}
+
+// Which of the ending's seven is running, -1 when this is not that game. See FV2_ENDING_SUB above.
+int Model3::fv2_ending_sub() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ENDING_SUB) return -1;
+	return ram[FV2_ENDING_SUB ^ 3];
+}
+
+// ASKED TO MOVE ON, which is what the training mode does to the round's announcement one layer up: the
+// state is stepped and the ending's own dispatcher runs the next handler on its next pass. Returns what it
+// wrote, or -1 if it wrote nothing.
+int Model3::fv2_cut_ending_sub()
+{
+	const int su = fv2_ending_sub();
+	if (su < 0 || su >= 6) return -1;
+	ram[FV2_ENDING_SUB ^ 3] = uint8_t(su + 1);
+	return su + 1;
 }
 
 int Model3::fv2_ending_replay() const

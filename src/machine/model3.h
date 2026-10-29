@@ -378,6 +378,10 @@ public:
 	// what they are. The console's Dreamcast ending hangs its illustrations off them.
 	int fv2_ending_seq() const;
 	int fv2_ending_replay() const;
+	int fv2_ending_sub() const;      // which of the ending's seven states runs (0x0058FDB4)
+	int fv2_cut_ending_sub();        // ask it to move on
+	int fv2_ending_timer() const;    // the ending's own clock (0x0058FD54): at zero the game leaves
+	void fv2_set_ending_timer(int v);
 	int fv2_game_timer() const;        // Sega's *GAME TIMER: what FIGHT_DSP counts down, and 0 ends the round
 	int fv2_screen_timer() const;      // signed: an expired screen is negative
 	void fv2_expire_screen();          // CONTINUE and GAME OVER are modes of their own: this is the only lever there
