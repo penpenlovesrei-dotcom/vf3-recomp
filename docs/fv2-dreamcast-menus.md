@@ -1,259 +1,258 @@
-# Relire nos menus au regard de ceux de la Dreamcast — le plan
+# Rereading our menus against the Dreamcast's — the plan
 
-Écrit le 2026-10-22, avant d'avoir lu quoi que ce soit sérieusement. Rien de ce document n'est une conclusion :
-ce sont les questions à trancher, dans quel ordre, et par quelle mesure chacune se vérifie.
+Written on 2026-10-22, before having read anything seriously. Nothing in this document is a conclusion:
+these are the questions to settle, in what order, and by which measurement each one is checked.
 
-La version Dreamcast de Fighting Vipers 2 (2001, Sega / CRI) **est** le menu console que ce portage essaie de
-refaire. Jusqu'ici on l'a utilisée comme une **source d'images**. Elle est surtout une source de **code** : ses
-écrans, leur enchaînement, ce que chaque ligne déclenche, et ce qu'elle fait du jeu arcade qu'elle embarque.
-
-
-## Pourquoi ce plan existe
-
-Deux raisons, et la seconde est récente.
-
-1. **La règle posée le 2026-10-22** : pour toute question en « pourquoi le jeu fait ça », on lit d'abord ce qui
-   est déjà décompilé, on mesure ensuite. Elle a été payée par une soirée entière passée à retrouver par
-   différence de RAM ce que `docs/fv2-flux-de-match.md` nommait déjà.
-2. **Un premier coup de sonde dans le binaire Dreamcast a donné une conclusion fausse**, le 2026-10-22 : j'y ai
-   lu « la ligne choisie est dessinée avec un autre motif », ce qui était un contresens sur deux points — le
-   créneau de délai du `jsr` (voir plus bas) et l'identité des rangs 34-44, qui sont la **police** et pas des
-   libellés. Un binaire qu'on sonde sans plan répond ce qu'on veut entendre.
+Fighting Vipers 2's Dreamcast version (2001, Sega / CRI) **is** the console menu this port is trying to
+remake. So far it has been used as a **source of images**. It is above all a source of **code**: its
+screens, their sequence, what each line triggers, and what it does with the arcade game it carries.
 
 
-## Ce qui est acquis, et qui ne sera pas remesuré
+## Why this plan exists
 
-Tout vient de `Documents\fv2-arcade-notes\README.md`, section « Les ressources 2D de la Dreamcast ».
+Two reasons, and the second is recent.
+
+1. **The rule laid down on 2026-10-22**: for any "why does the game do that" question, read what is already
+   decompiled first, measure afterwards. It was paid for with a whole evening spent recovering by RAM
+   differencing what `docs/fv2-flux-de-match.md` already named.
+2. **A first probe into the Dreamcast binary gave a false conclusion**, on 2026-10-22: I read there "the
+   selected line is drawn with a different pattern", which was a misreading on two counts — the `jsr`'s
+   delay slot (see below) and the identity of rows 34-44, which are the **font** and not labels. A binary
+   probed with no plan answers whatever one wants to hear.
+
+
+## What is settled, and will not be remeasured
+
+Everything comes from `Documents\fv2-arcade-notes\README.md`, section "Les ressources 2D de la Dreamcast".
 
 | | |
 |---|---|
-| le binaire | `Documents\fv2-arcade-notes\dreamcast\1ST_READ.BIN`, 1,3 Mo, SH-4, base `0x8C010000` |
-| poser la ressource | `charge_ressource(enregistrement)` — `0x8C02A23A` |
-| dessiner | `dessine(rang, x, y)` — `0x8C029598`, rang dans R4, x dans R5, y dans R6 |
-| la nuance qui commande tout | `dessine` ne reçoit pas la ressource : elle travaille sur celle que le dernier `charge_ressource` a posée. **Toute lecture suit l'ordre d'exécution, pas le graphe d'appels.** |
-| les motifs de la façade | entrée TEX 16, liste à `0x8C0E5808`, 96 enregistrements de 10 octets : `desc, x, y, larg, haut` |
-| les libellés du menu | **rangs 10 à 18**, descripteur 18 |
-| l'écran-titre | rangs 3 à 8, mosaïque 3×2 de 256×256, posée par `0x8C019CBC` |
-| les outils | `desas_sh4.py` (Ghidra ne désassemble que 32,4 % de ce binaire), `tables_sh4.py`, `retrouver.py`, et Flycast piloté par GDB (`FV2 - Flycast avec GDB.cmd`) |
+| the binary | `Documents\fv2-arcade-notes\dreamcast\1ST_READ.BIN`, 1.3 MB, SH-4, base `0x8C010000` |
+| setting the resource | `charge_ressource(record)` — `0x8C02A23A` |
+| drawing | `dessine(row, x, y)` — `0x8C029598`, row in R4, x in R5, y in R6 |
+| the nuance that governs everything | `dessine` does not receive the resource: it works on the one the last `charge_ressource` set. **Every reading follows the order of execution, not the call graph.** |
+| the façade's patterns | TEX entry 16, list at `0x8C0E5808`, 96 records of 10 bytes: `desc, x, y, width, height` |
+| the menu's labels | **rows 10 to 18**, descriptor 18 |
+| the title screen | rows 3 to 8, a 3×2 mosaic of 256×256, set by `0x8C019CBC` |
+| the tools | `desas_sh4.py` (Ghidra disassembles only 32.4% of this binary), `tables_sh4.py`, `retrouver.py`, and Flycast driven by GDB (`FV2 - Flycast avec GDB.cmd`) |
 
-**Le piège du SH-4, payé le jour même** : `jsr` a un **créneau de délai**. L'instruction qui suit le `jsr` dans
-le listing s'exécute **avant** le saut. Le `mov #N,r4` qui porte le rang est donc écrit *après* l'appel et
-appartient *à* cet appel. Lire le listing de haut en bas sans ça décale tous les arguments d'un appel.
+**The SH-4's trap, paid for that same day**: `jsr` has a **delay slot**. The instruction that follows the
+`jsr` in the listing executes **before** the jump. So the `mov #N,r4` carrying the row is written *after*
+the call and belongs *to* that call. Reading the listing top to bottom without that shifts every call's
+arguments by one.
 
-Et le relevé, lu correctement, de la première séquence sondée (`0x8C02C388`) :
-
-```
-rang 10  (ARCADE, 144x32)  en (99, 217)
-rang 11  (V.S.,    64x32)  en (355, 217)
-```
-
-Deux libellés **côte à côte sur une même ligne** : ce n'est pas le menu vertical, c'est autre chose — un écran
-de versus, ou une bannière. Ce qui est déjà un fait utile : **les mêmes libellés servent à plusieurs écrans.**
-
-
-## La divergence qu'il faut trancher en premier
-
-Les libellés de la Dreamcast, lus dans sa liste de motifs :
+And the reading, read correctly, of the first sequence probed (`0x8C02C388`):
 
 ```
-rang 10  ARCADE            144x32
-rang 11  V.S.               64x32
-rang 12  INTERNET          160x32
-rang 13  RANDOM NETWORK    176x32
-rang 14  SURVIVAL          176x32
-rang 15  TRAINING VS       152x32
-rang 16                    176x32
-rang 17                    104x48
-rang 18                    256x32
+row 10  (ARCADE, 144x32)  at (99, 217)
+row 11  (V.S.,    64x32)  at (355, 217)
 ```
 
-Notre `title_list.png` a **sept bandes** : ARCADE, V.S., RANDOM, SURVIVAL, NETWORK, TRAINING, OPTIONS. La
-Dreamcast a **neuf motifs**, et des lignes composées (`RANDOM NETWORK`, `TRAINING VS`) qui n'existent pas chez
-nous. Deux lectures possibles, et une seule est vraie :
-
-- notre image vient d'une **autre** version ou d'un autre écran que celui que ces rangs servent ;
-- ou les rangs 10-18 ne sont pas tous du même menu, et la liste verticale n'en utilise qu'une partie.
-
-**Une partie de la question est tombée le 2026-10-22**, et elle réduit la divergence : `NETWORK`, `TRAINING` et
-`OPTIONS` **n'existent pas sur la borne**. Les 24 modes nommés par Sega n'en contiennent aucun, et les notes
-arcade l'écrivent : « il n'y a pas de mode Training ». Ces lignes sont donc celles de la Dreamcast, et elles ne
-peuvent pas être « câblées » — il n'y a rien à câbler. Soit ce portage les **construit** lui-même (une zone
-d'entraînement à partir du décor `TEST` et des leviers du jeu, une page d'options par-dessus les
-`GAME ASSIGNMENTS`), soit elles sortent de la liste.
-
-Ce qui reste de la divergence est donc plus net : **notre image porte sept lignes dont trois que le jeu
-dessous ne sait pas faire**, et la Dreamcast en a neuf, composées autrement. La question n'est plus « quel
-levier pour ces lignes » mais « que doit contenir la liste d'un menu console posé sur une borne ».
+Two labels **side by side on the same line**: that is not the vertical menu, it is something else — a
+versus screen, or a banner. Which is already a useful fact: **the same labels serve several screens.**
 
 
-## Les questions, dans l'ordre
+## The divergence to settle first
 
-### 1. Quelle est la machine à états des menus Dreamcast ?
+The Dreamcast's labels, read in its pattern list:
 
-Côté arcade on a la machine nommée par Sega — `MODE_MAIN` / `MODE_SUB` et les 24 modes
-(`docs/fv2-etats.md`). La question est si le portage Dreamcast en a une à lui, par-dessus, ou s'il réutilise
-celle du jeu.
+```
+row 10  ARCADE            144x32
+row 11  V.S.               64x32
+row 12  INTERNET          160x32
+row 13  RANDOM NETWORK    176x32
+row 14  SURVIVAL          176x32
+row 15  TRAINING VS       152x32
+row 16                    176x32
+row 17                    104x48
+row 18                    256x32
+```
 
-**Mesure qui tranche** : poser un point d'arrêt GDB sur `dessine` dans Flycast, naviguer dans le menu à la
-main, et relever qui appelle, avec quel rang, et depuis quelle pile. Les appelants distincts sont les écrans.
+Our `title_list.png` has **seven bands**: ARCADE, V.S., RANDOM, SURVIVAL, NETWORK, TRAINING, OPTIONS. The
+Dreamcast has **nine patterns**, and composite lines (`RANDOM NETWORK`, `TRAINING VS`) that do not exist in
+ours. Two readings are possible, and only one is true:
 
-### 2. Comment ses écrans s'enchaînent
+- our image comes from **another** version or another screen than the one those rows serve;
+- or rows 10-18 are not all from the same menu, and the vertical list uses only part of them.
 
-Ce que Frédéric a demandé explicitement, et ce qui manque le plus à notre menu : **les transitions**. Titre →
-liste des modes → sélection → combat → retour ; et les chemins de retour (le bouton B), qui sont justement ce
-que notre portage a eu le plus de mal à poser.
+**Part of the question fell on 2026-10-22**, and it narrows the divergence: `NETWORK`, `TRAINING` and
+`OPTIONS` **do not exist on the cabinet**. The 24 modes Sega names contain none of them, and the arcade
+notes write it: "there is no Training mode". So those lines are the Dreamcast's, and they cannot be "wired
+up" — there is nothing to wire. Either this port **builds** them itself (a training area out of the `TEST`
+set and the game's levers, an options page over the `GAME ASSIGNMENTS`), or they come off the list.
 
-**Mesure** : la même session Flycast, en notant pour chaque transition l'ordre `charge_ressource` /
-`dessine`, et ce que le jeu arcade embarqué fait au même moment (son mode, son sous-état).
+So what remains of the divergence is sharper: **our image carries seven lines of which three the game
+underneath cannot do**, and the Dreamcast has nine, composed differently. The question is no longer "which
+lever for those lines" but "what should the list of a console menu laid over a cabinet contain".
 
-### 3. Qui dessine la liste verticale, et comment la ligne choisie est marquée
 
-Reprise de la question que j'ai mal lue. Le critère : une routine qui dessine **plusieurs rangs de la plage
-10-18 à des `y` croissants et un `x` constant**. C'est ça, une liste verticale — pas deux rangs côte à côte.
+## The questions, in order
 
-**Mesure** : le même balayage que le premier coup de sonde, mais en respectant le créneau de délai, et confirmé
-sous GDB.
+### 1. What is the Dreamcast menus' state machine?
 
-Et la question qui en dépend, celle qui nous occupe depuis deux jours : **comment la ligne choisie est-elle
-marquée ?** Un second motif, une couleur, un clignotement, un cadre ? Notre portage fait clignoter la ligne
-(alpha 1 → 0,5 sur 45 images), ce qui vient du menu Supermodel du propriétaire, pas de la Dreamcast.
+On the arcade side we have the machine Sega names — `MODE_MAIN` / `MODE_SUB` and the 24 modes
+(`docs/fv2-etats.md`). The question is whether the Dreamcast port has one of its own, on top, or whether it
+reuses the game's.
 
-### 3bis. L'écran OPTIONS de la Dreamcast : **relevé le 2026-10-22**
+**The measurement that settles it**: set a GDB breakpoint on `dessine` in Flycast, navigate the menu by
+hand, and record who calls, with which row, and from which stack. The distinct callers are the screens.
 
-Frédéric a fourni une capture Flycast de cet écran. Elle est mesurée ci-dessous, pas commentée à l'œil. Image
-du jeu extraite de la fenêtre : 1878 × 1405, rapport 1,3367 — du 4:3. Toutes les fractions sont rapportées à
-cette image.
+### 2. How its screens follow one another
 
-#### Le fond : **aucun voile**
+What Frédéric asked for explicitly, and what our menu lacks most: **the transitions**. Title → mode list →
+selection → fight → back; and the return paths (the B button), which are precisely what this port has had
+the most trouble laying down.
 
-C'était la question posée. Les médianes de quatre zones sans interface, comparées à `option_bg.png` mis à la
-même taille :
+**Measurement**: the same Flycast session, noting for each transition the order of `charge_ressource` /
+`dessine`, and what the embedded arcade game is doing at the same moment (its mode, its sub-state).
 
-| zone | capture Dreamcast | `option_bg.png` tel quel | rapport |
+### 3. Who draws the vertical list, and how the selected line is marked
+
+A return to the question I misread. The criterion: a routine that draws **several rows from the 10-18 range
+at increasing `y` and a constant `x`**. That is what a vertical list is — not two rows side by side.
+
+**Measurement**: the same sweep as the first probe, but respecting the delay slot, and confirmed under GDB.
+
+And the question that depends on it, the one that has occupied us for two days: **how is the selected line
+marked?** A second pattern, a colour, a blink, a frame? Our port makes the line blink (alpha 1 → 0.5 over
+45 frames), which comes from the owner's Supermodel menu, not from the Dreamcast.
+
+### 3bis. The Dreamcast's OPTIONS screen: **recorded on 2026-10-22**
+
+Frédéric supplied a Flycast capture of that screen. It is measured below, not commented on by eye. The
+game's image extracted from the window: 1878 × 1405, ratio 1.3367 — 4:3. Every fraction is relative to that
+image.
+
+#### The background: **no veil**
+
+That was the question asked. The medians of four areas with no interface, compared with `option_bg.png`
+brought to the same size:
+
+| area | Dreamcast capture | `option_bg.png` as it is | ratio |
 |---|---|---|---|
-| haut-gauche | (39, 38, 37) | (35, 33, 32) | 1,11 — 1,16 |
-| bord gauche | (41, 39, 38) | (36, 34, 33) | 1,15 |
-| bas gauche | (44, 41, 40) | (38, 36, 35) | 1,14 — 1,16 |
-| haut-droit | (49, 47, 46) | (39, 37, 36) | 1,26 — 1,28 |
+| top left | (39, 38, 37) | (35, 33, 32) | 1.11 — 1.16 |
+| left edge | (41, 39, 38) | (36, 34, 33) | 1.15 |
+| bottom left | (44, 41, 40) | (38, 36, 35) | 1.14 — 1.16 |
+| top right | (49, 47, 46) | (39, 37, 36) | 1.26 — 1.28 |
 
-Le fond du disque **est** `option_bg.png`, à la compression et au gamma de l'émulateur près. Il n'est pas
-assombri du tout. À ne pas confondre avec la liste des modes, où la moitié mesurée s'applique à l'image vivante
-du jeu : ici le fond est une image préparée, déjà sombre par construction.
+The disc's background **is** `option_bg.png`, up to the emulator's compression and gamma. It is not
+darkened at all. Not to be confused with the mode list, where the measured halving applies to the game's
+live image: here the background is a prepared image, already dark by construction.
 
-#### Les deux polices, et elles sont deux
+#### The two fonts, and there are two
 
-Mesurées en cisaillant chaque ligne et en gardant l'angle qui rend les jambages verticaux les plus nets :
+Measured by shearing each line and keeping the angle that makes the stems most upright:
 
-| | pente |
+| | slant |
 |---|---|
-| `OPTIONS`, le titre | **0,00°** |
-| `SOUNDS`, `CONTROLLER` | **0,00°** |
-| `MATCH COUNT`, `ROUND TIME`, `SURVIVAL TIME`, `ENERGY MAX -1P-`, `ENERGY MAX -2P-` | **−7,0° à −8,25°**, médiane ≈ 7,5° |
+| `OPTIONS`, the title | **0.00°** |
+| `SOUNDS`, `CONTROLLER` | **0.00°** |
+| `MATCH COUNT`, `ROUND TIME`, `SURVIVAL TIME`, `ENERGY MAX -1P-`, `ENERGY MAX -2P-` | **−7.0° to −8.25°**, median ≈ 7.5° |
 
-Donc : un gras étroit **droit** pour le titre et les trois sous-écrans, et une **oblique** de ~7,5° pour les
-sept lignes de réglages.
+So: a narrow bold **upright** for the title and the three sub-screens, and an **oblique** of ~7.5° for the
+seven setting lines.
 
-Et la graisse, mesurée comme la médiane des suites d'encre sur une rangée à mi-hauteur, rapportée à la
-hauteur de capitale :
+And the weight, measured as the median of ink runs along a row at mid-height, relative to the capital
+height:
 
-| | graisse |
+| | weight |
 |---|---|
-| `police.png` (le `I`, qui est un jambage pur : 6 px sur 31) | **0,194** |
-| les lignes de réglages du disque (8 px sur 41) | **0,195** |
-| le titre du disque (16 px sur 63) | **0,254** |
+| `police.png` (the `I`, which is a pure stem: 6 px out of 31) | **0.194** |
+| the disc's setting lines (8 px out of 41) | **0.195** |
+| the disc's title (16 px out of 63) | **0.254** |
 
-`police.png` et les lignes du disque tombent au millième. **C'est la même fonte**, sans la pente — ce que les
-formes laissaient déjà penser, et que la graisse confirme.
+`police.png` and the disc's lines agree to the thousandth. **It is the same font**, without the slant —
+which the shapes already suggested, and which the weight confirms.
 
-Le titre, lui, est un gras étroit : largeur du mot `OPTIONS` = **4,143** capitales, quand `police.png` en vaut
-**6,000**. On l'approche en condensant puis en épaississant **horizontalement** — pas avec une dilatation
-carrée, essayée d'abord et écartée parce qu'elle arrondit les angles et ferme les contrepoinçons, alors que le
-disque les a francs et ouverts ; un gras étroit porte de toute façon sa graisse sur les jambages verticaux.
-L'épaississement horizontal ne touche pas la hauteur, d'où un système à deux inconnues :
+The title, for its part, is a narrow bold: the width of the word `OPTIONS` = **4.143** capitals, when
+`police.png`'s is **6.000**. It is approached by condensing and then thickening **horizontally** — not with
+a square dilation, tried first and rejected because it rounds the corners and closes the counters, when the
+disc's are crisp and open; a narrow bold carries its weight on the vertical stems in any case. Horizontal
+thickening does not touch the height, hence a system with two unknowns:
 
 ```
-6,000*cap*c + s = 4,143*cap      (la largeur)
-0,194*cap*c + s = 0,254*cap      (la graisse)
+6.000*cap*c + s = 4.143*cap      (the width)
+0.194*cap*c + s = 0.254*cap      (the weight)
 ```
 
-soit `c = 0,6698` et `s = 0,1241*cap`. Rendu ainsi, le titre du portage mesure 4,129 capitales de large pour
-une graisse de 0,258, contre 4,143 et 0,254 au disque. `tools/fv2/maquette_options.py` le fait.
+that is `c = 0.6698` and `s = 0.1241*cap`. Rendered that way, the port's title measures 4.129 capitals wide
+for a weight of 0.258, against 4.143 and 0.254 on the disc. `tools/fv2/maquette_options.py` does it.
 
-#### La disposition
+#### The layout
 
 | | |
 |---|---|
-| titre `OPTIONS` | encre de `y = 0,0996` à `0,1438`, centré |
-| les sept réglages | hauteur de capitale **0,0292**, pas **0,0584**, première ligne à `y = 0,2128` |
-| libellés | **calés à gauche sur `x = 0,3136`** |
-| valeurs | **centrées sur `x ≈ 0,665`** — et non alignées à droite |
-| `SOUNDS` / `CONTROLLER` / `RESULT` | capitales plus hautes (0,0377), même pas de 0,0584, à partir de `y = 0,644` |
-| `INITIALIZE` | `y = 0,848..0,873`, l'image peinte |
-| le pied | deux lignes, `y = 0,902` et `y = 0,940` |
+| the `OPTIONS` title | ink from `y = 0.0996` to `0.1438`, centred |
+| the seven settings | capital height **0.0292**, pitch **0.0584**, first line at `y = 0.2128` |
+| labels | **left-aligned on `x = 0.3136`** |
+| values | **centred on `x ≈ 0.665`** — and not right-aligned |
+| `SOUNDS` / `CONTROLLER` / `RESULT` | taller capitals (0.0377), the same pitch of 0.0584, from `y = 0.644` |
+| `INITIALIZE` | `y = 0.848..0.873`, the painted image |
+| the footer | two lines, `y = 0.902` and `y = 0.940` |
 
-#### Comment la ligne choisie est marquée
+#### How the selected line is marked
 
-**Par la couleur, et par le filet.** L'encre de la ligne choisie est `(252, 252, 10)` — jaune franc — quand
-les six autres sont `(247, 246, 246)`, blanc. Et le filet rose `(254, 170, 255)` court sous elle, de
-`x = 0,2913` à `x = 0,7295` : il déborde à peine des libellés et des valeurs, **il ne traverse pas l'écran**.
-C'est exactement `option_cursor.png`, ergot compris.
+**By colour, and by the rule.** The selected line's ink is `(252, 252, 10)` — clear yellow — when the other
+six are `(247, 246, 246)`, white. And the pink rule `(254, 170, 255)` runs under it, from `x = 0.2913` to
+`x = 0.7295`: it barely overruns the labels and the values, **it does not cross the screen**. That is
+exactly `option_cursor.png`, tab included.
 
-Rien ne clignote. Le clignotement de `fv2_mode_list.h` vient du menu Supermodel du propriétaire, et cet écran-ci
-ne le fait pas.
+Nothing blinks. `fv2_mode_list.h`'s blink comes from the owner's Supermodel menu, and this screen does not
+do it.
 
-#### Et ce ne sont pas les treize réglages de la borne
+#### And these are not the cabinet's thirteen settings
 
-Le point qui compte pour `docs/fv2-console-options.md`. L'écran du disque montre **sept** réglages —
+The point that matters for `docs/fv2-console-options.md`. The disc's screen shows **seven** settings —
 `DIFFICULTY`, `MATCH COUNT`, `ROUND TIME`, `SURVIVAL TIME`, `ENERGY MAX -1P-`, `ENERGY MAX -2P-`,
-`SUPER K.O.` — puis trois sous-écrans (`SOUNDS`, `CONTROLLER`, `RESULT`), `INITIALIZE`, et un encart d'aide en
-bas à droite qui explique l'entrée courante. Ce n'est pas la liste des `GAME ASSIGNMENTS` : la borne sépare
-`MATCH COUNT 1P` et `VS`, le disque n'en montre qu'un ; la borne a `ADVERTISE SOUND`, `VS FINISH`, `BIKE LOGO`
-et `COUNTRY`, que le disque ne montre pas.
+`SUPER K.O.` — then three sub-screens (`SOUNDS`, `CONTROLLER`, `RESULT`), `INITIALIZE`, and a help panel at
+the bottom right explaining the current entry. It is not the `GAME ASSIGNMENTS` list: the cabinet separates
+`MATCH COUNT 1P` and `VS`, the disc shows only one; the cabinet has `ADVERTISE SOUND`, `VS FINISH`,
+`BIKE LOGO` and `COUNTRY`, which the disc does not show.
 
-Une **hypothèse**, pas un fait : `SURVIVAL TIME` vaut 180 sec. sur la capture, et l'un des octets non nommés du
-bloc de la borne, `0x12054A`, porte `0x00B4` = 180. À vérifier avant d'y toucher.
+A **hypothesis**, not a fact: `SURVIVAL TIME` is 180 sec. in the capture, and one of the unnamed bytes of
+the cabinet's block, `0x12054A`, carries `0x00B4` = 180. To be checked before touching it.
 
-Et un indice sur la plage de `DIFFICULTY` : la capture montre `VERY EASY`, ce qui va dans le sens de 0 à 4 =
-`VERY EASY` … `VERY HARD`, avec 2 = `NORMAL` comme l'usine.
+And a hint about `DIFFICULTY`'s range: the capture shows `VERY EASY`, which supports 0 to 4 = `VERY EASY` …
+`VERY HARD`, with 2 = `NORMAL` as the factory setting.
 
-### 4. Ce que chaque ligne déclenche
+### 4. What each line triggers
 
-Les cinq lignes de notre menu qui ne font rien : `RANDOM`, `V.S.`, `NETWORK`, `TRAINING`, `OPTIONS`. La
-Dreamcast, elle, les fait toutes. La question est ce qu'elle écrit dans le jeu arcade pour chacune — c'est
-exactement la nature des leviers que `MenuConsole.md` a trouvés à tâtons.
+The five lines of our menu that do nothing: `RANDOM`, `V.S.`, `NETWORK`, `TRAINING`, `OPTIONS`. The
+Dreamcast does all of them. The question is what it writes into the arcade game for each — which is exactly
+the nature of the levers `MenuConsole.md` found by trial and error.
 
-**Mesure** : point d'arrêt sur les écritures de la zone des réglages (`0x00120540`-`0x0012055F` côté arcade) et
-sur la machine à modes, pendant qu'on choisit chaque ligne.
+**Measurement**: a breakpoint on writes to the settings area (`0x00120540`-`0x0012055F` on the arcade side)
+and on the mode machine, while each line is chosen.
 
-### 5. Où la Dreamcast diffère de l'arcade, et ce que ça impose à notre portage
+### 5. Where the Dreamcast differs from the arcade, and what that imposes on our port
 
-La Dreamcast **émule ou porte** le jeu arcade ; nos leviers sont ceux de l'arcade. Là où elle fait autrement,
-il faut savoir si c'est parce que son jeu est différent, ou parce qu'elle a trouvé un meilleur levier.
+The Dreamcast **emulates or ports** the arcade game; our levers are the arcade's. Where it does otherwise,
+one has to know whether that is because its game is different, or because it found a better lever.
 
-Le cas déjà connu : la Dreamcast a `INTERNET` et `RANDOM NETWORK`, qui n'existent pas sur la borne.
+The case already known: the Dreamcast has `INTERNET` and `RANDOM NETWORK`, which do not exist on the
+cabinet.
 
 
-## L'ordre, et ce qui l'arrête
+## The order, and what stops it
 
-Un pas, une mesure montrée, rien d'écrit dans le code du portage avant la question 3.
+One step, one measurement shown, nothing written into the port's code before question 3.
 
-1. **Lire ce qui existe déjà** : `fv2-arcade-notes\README.md` en entier (1900 lignes), et les sections 2D en
-   particulier. Ne rien sonder avant.
-2. **Monter la session Flycast + GDB** et vérifier qu'un point d'arrêt sur `dessine` se déclenche. Sans ça,
-   rien de la suite ne se mesure.
-3. Questions 1 et 2, qui vont ensemble : les écrans et leurs transitions.
-4. Question 3 : la liste verticale et la marque de la ligne choisie.
-5. **Trancher la divergence des libellés** — et seulement là, décider si notre image et nos sept lignes
-   tiennent.
-6. Question 4, ligne par ligne, du plus simple au plus obscur.
-7. Alors seulement : ce qu'on change dans le portage, et dans quel ordre.
+1. **Read what already exists**: `fv2-arcade-notes\README.md` in full (1900 lines), and the 2D sections in
+   particular. Probe nothing before that.
+2. **Set up the Flycast + GDB session** and check that a breakpoint on `dessine` fires. Without that,
+   nothing of what follows can be measured.
+3. Questions 1 and 2, which go together: the screens and their transitions.
+4. Question 3: the vertical list and the selected line's mark.
+5. **Settle the labels' divergence** — and only then decide whether our image and our seven lines hold.
+6. Question 4, line by line, from the simplest to the most obscure.
+7. Only then: what we change in the port, and in what order.
 
-## Ce que ce plan ne fait pas
+## What this plan does not do
 
-- **Aucune ligne du code Dreamcast ne passe dans le dépôt.** Les adresses, les tables et les mesures sont des
-  faits sur le jeu ; le code, non. Même règle que pour Supermodel et MAME.
-- **Rien ne change dans le portage avant la question 3 close.** Notre menu marche ; on ne le défait pas pour
-  suivre une lecture en cours.
-- **On ne conclut pas d'un coup de sonde.** Celui du 2026-10-22 a produit une affirmation fausse en trois
-  minutes. Une conclusion sur ce binaire demande deux lectures indépendantes, ou une lecture plus une mesure
-  sous GDB.
+- **Not a line of Dreamcast code goes into the repository.** The addresses, the tables and the measurements
+  are facts about the game; the code is not. The same rule as for Supermodel and MAME.
+- **Nothing changes in the port before question 3 is closed.** Our menu works; we do not take it apart to
+  follow a reading in progress.
+- **We do not conclude from one probe.** The one of 2026-10-22 produced a false assertion in three minutes.
+  A conclusion about this binary takes two independent readings, or one reading plus a measurement under
+  GDB.

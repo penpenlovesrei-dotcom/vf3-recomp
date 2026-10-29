@@ -1,606 +1,617 @@
-# Le son de la liste des modes — le plan, avant d'écrire
+# The mode list's sound — the plan, before writing
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [scsp/docs/sound.md](son.md).
+> This document is one of the nine on the sound. The front door, which says where everything is:
+> [scsp/docs/sound.md](../scsp/docs/sound.md).
 
-Écrit le 2026-10-21, après avoir **défait** une première version des bruitages posée le jour même.
+Written on 2026-10-21, after **undoing** a first version of the sound effects laid down that same day.
 
-Ce document n'est pas une description de ce qui existe : rien de tout ça n'est écrit. C'est la liste des
-questions auxquelles il faut une réponse **mesurée** avant qu'une ligne soit tapée, et dans quel ordre.
-
-
-## Pourquoi la première version a été défaite
-
-Elle marchait sur l'essai qui l'avait accompagnée et pas à la manette. Trois rustines en une heure, chacune sur
-un retour de Frédéric — « pas de bruitage », « la musique ne s'arrête pas », « ça grésille » — et à la fin
-« beaucoup de bugs sonores et de comportement, je ne saurais les énumérer ».
-
-Quatre trous nommés en relisant, dont deux certains :
-
-1. **Échap par-dessus la liste tuait la musique pour de bon.** La liste se referme par quatre chemins ; trois
-   remettaient la musique, le quatrième (`main.cpp`, le menu ouvert par-dessus) ne la remettait pas et jetait
-   au passage le son qui attendait d'être joué.
-2. **Start en plein combat coupait tout le son, définitivement.** La demande d'écran titre portait un `FF`, et
-   en mode `GAME` le séquenceur d'attraction ne tourne pas : personne ne renvoie jamais de bloc de sons.
-3. **Start répété hors de l'écran titre envoyait un `FF` par appui**, et `FF` relance un son encore en cours
-   avant de le couper (mesuré sur la ROM en août) : deux appuis rapprochés font un hoquet.
-4. Et dessous : la liste **gèle le PowerPC** pendant que la carte son tourne seule, le reset part dans le dos
-   du jeu, la musique est remise à la main. Un état hybride pour lequel ce portage n'a pas été bâti.
-
-La leçon n'est pas « il fallait mieux coder » : c'est qu'**un son ne se vérifie pas en regardant une image**,
-et qu'une rustine par symptôme ne converge pas. D'où ce document.
+This document is not a description of what exists: none of it is written. It is the list of the questions
+that need a **measured** answer before a line is typed, and in what order.
 
 
-## Ce qui est acquis, et qui ne sera pas remesuré
+## Why the first version was undone
 
-Tout ça vient du travail sur la ROM (`SupermodelSrc\Docs\MenuConsole.md` §5, `Src\Menu\GameFV2.h`) et a été
-revérifié ici pendant la version défaite :
+It worked on the test that came with it and not on the pad. Three patches in an hour, each one on a report
+from Frédéric — "no sound effect", "the music does not stop", "it crackles" — and at the end "lots of sound
+and behaviour bugs, I could not list them".
+
+Four holes named on rereading, two of them certain:
+
+1. **Escape over the list killed the music for good.** The list closes by four paths; three put the music
+   back, the fourth (`main.cpp`, the menu opened over the top) did not and threw away the sound waiting to
+   be played along the way.
+2. **Start in mid fight cut all the sound, permanently.** The title-screen request carried an `FF`, and in
+   `GAME` mode the attract sequencer does not run: nobody ever sends a block of sounds back.
+3. **Start pressed repeatedly outside the title screen sent one `FF` per press**, and `FF` restarts a sound
+   still in progress before cutting it (measured on the ROM in August): two presses close together make a
+   hiccup.
+4. And underneath: the list **freezes the PowerPC** while the sound board runs on its own, the reset goes
+   behind the game's back, the music is put back by hand. A hybrid state this port was not built for.
+
+The lesson is not "it should have been coded better": it is that **a sound is not checked by looking at a
+picture**, and that one patch per symptom does not converge. Hence this document.
+
+
+## What is settled, and will not be remeasured
+
+All of this comes from the work on the ROM (`SupermodelSrc\Docs\MenuConsole.md` §5, `Src\Menu\GameFV2.h`)
+and was rechecked here during the undone version:
 
 | | |
 |---|---|
-| le protocole | `A0 <banque> <index>` dans un seul port ; pas de DSB sur `fvipers2` |
-| les banques | `0x10` musiques, `0x2B` et `0x30` voix, `0x2E` effets |
-| ouverture et choix | `A0 2E 23` — 388 `sd_sign_16` |
-| déplacement | `A0 2E 26` — 391 `sd_ketsu_00` |
-| annulation | `A0 2E 27` — 392 `sd_sonic00_11` |
-| arrêt | `FF`, le reset système MIDI, que le jeu envoie lui-même en tête de chaque bloc |
-| le piège du reset | `FF` **relance** un son encore en cours avant de le couper |
-| le délai d'arrêt | 80 images, pour que le reset survive au bip d'ouverture |
-| le retour de la musique | 20 images après la fermeture, et **seulement sur annulation** |
-| la dernière musique | se lit en retenant le dernier `A0 10 nn` que le jeu a demandé |
-| faire tourner la carte seule | possible : son 68000 et son SCSP sont déjà sur leur propre fil |
-| la cadence | 57,52 images par seconde, en accumulateur — pas « une par passe si c'est dû » |
+| the protocol | `A0 <bank> <index>` into a single port; no DSB on `fvipers2` |
+| the banks | `0x10` music, `0x2B` and `0x30` voices, `0x2E` effects |
+| opening and choosing | `A0 2E 23` — 388 `sd_sign_16` |
+| moving | `A0 2E 26` — 391 `sd_ketsu_00` |
+| cancelling | `A0 2E 27` — 392 `sd_sonic00_11` |
+| stopping | `FF`, the MIDI system reset, which the game sends itself at the head of every block |
+| the reset's trap | `FF` **restarts** a sound still in progress before cutting it |
+| the stop delay | 80 frames, so that the reset survives the opening beep |
+| the music's return | 20 frames after closing, and **only on cancellation** |
+| the last music | read by remembering the last `A0 10 nn` the game asked for |
+| running the board on its own | possible: its 68000 and its SCSP are already on their own thread |
+| the rate | 57.52 frames per second, on an accumulator — not "one per pass if it is due" |
 
-Mesuré ici et gardé : la carte son tourne bien sous un jeu gelé (57,5 à 57,8 par seconde, file de 4 à 9,5 ko),
-le `FF` arrête bien la musique (pic 6201 avant, 0 après), et la musique remise était bien `A0 10 07`.
+Measured here and kept: the sound board does run under a frozen game (57.5 to 57.8 per second, a queue of 4
+to 9.5 kB), the `FF` does stop the music (peak 6201 before, 0 after), and the music put back really was
+`A0 10 07`.
 
 
-## Les questions à trancher AVANT d'écrire
+## The questions to settle BEFORE writing
 
-### 1. Faut-il geler le jeu sous la liste ?
+### 1. Should the game be frozen under the list?
 
-C'est la question mère, et les trois autres en dépendent. Trois réponses possibles, et aucune n'est gratuite :
+That is the mother question, and the other three depend on it. Three possible answers, and none of them is
+free:
 
-- **geler le PowerPC, faire tourner la carte son** (ce qui a été défait) : l'image reste l'écran titre, mais le
-  jeu et son pilote de son sont dans deux temps différents ;
-- **tout geler** (ce qui est en place aujourd'hui) : aucun hybride, et la liste est muette ;
-- **ne rien geler** : le son redevient le chemin normal du portage, rien de spécial à écrire — mais l'écran
-  titre s'en va au bout de 192 images et la liste se retrouve par-dessus une démonstration.
+- **freeze the PowerPC, run the sound board** (what was undone): the picture stays the title screen, but
+  the game and its sound driver are in two different times;
+- **freeze everything** (what is in place today): no hybrid, and the list is mute;
+- **freeze nothing**: the sound becomes the port's normal path again, nothing special to write — but the
+  title screen leaves after 192 frames and the list finds itself over a demonstration.
 
-À mesurer pour trancher : *qu'est-ce que le jeu fait vraiment pendant que la carte son tourne seule ?* La
-question n'a jamais été posée. Un relevé des octets MIDI que le jeu envoie, image par image, avant et après un
-gel, la dirait.
+To be measured in order to settle it: *what is the game actually doing while the sound board runs on its
+own?* The question has never been asked. A record of the MIDI bytes the game sends, frame by frame, before
+and after a freeze, would say.
 
-### 2. Que doit-il se passer à chaque sortie de la liste ?
+### 2. What should happen on each exit from the list?
 
-Il y a quatre sorties et il faut une ligne pour chacune, écrite avant d'être codée :
+There are four exits and each needs a line, written before being coded:
 
-| sortie | la musique | le son d'accompagnement |
+| exit | the music | the accompanying sound |
 |---|---|---|
-| un mode choisi (ARCADE, SURVIVAL) | ? | ? |
-| une ligne sans levier | — (la liste reste) | ? |
-| annulation (B) | ? | ? |
-| Échap, le menu du portage par-dessus | ? | ? |
+| a mode chosen (ARCADE, SURVIVAL) | ? | ? |
+| a line with no lever | — (the list stays) | ? |
+| cancellation (B) | ? | ? |
+| Escape, the port's menu over the top | ? | ? |
 
-Le trou n° 1 ci-dessus est exactement une case vide de ce tableau.
+Hole no. 1 above is exactly one empty cell of that table.
 
-### 3. Que doit faire Start **hors** de l'écran titre ?
+### 3. What should Start do **outside** the title screen?
 
-Aujourd'hui : il demande l'écran titre, et rien d'autre. La version défaite y ajoutait un `FF`, ce qui a créé
-le trou n° 2. Les cas à distinguer, parce qu'ils ne se ressemblent pas :
+Today: it asks for the title screen, and nothing else. The undone version added an `FF` to it, which
+created hole no. 2. The cases to tell apart, because they do not resemble each other:
 
-- depuis l'attraction (logo, démonstration, classements) : le séquenceur tourne, il renverra un bloc de sons
-  au prochain changement d'écran ;
-- depuis l'écran de sélection : à mesurer ;
-- **depuis un combat** : le séquenceur ne tourne pas. Si on coupe, personne ne rallume. Et la partie court
-  toujours sous l'écran titre — le trou connu, documenté dans `docs/fv2-etats.md`.
+- from the attract (logo, demonstration, rankings): the sequencer is running, it will send a block of
+  sounds back at the next screen change;
+- from the selection screen: to be measured;
+- **from a fight**: the sequencer is not running. If we cut, nobody turns it back on. And the match is
+  still running under the title screen — the known hole, documented in `docs/fv2-etats.md`.
 
-### 4. Comment chaque pas se vérifie-t-il, sans oreilles ?
+### 4. How is each step checked, with no ears?
 
-La règle qui manquait. Pour chaque pas : **une mesure qui distingue le pas réussi du pas raté**, et pas
-seulement « le programme n'a pas planté ».
+The rule that was missing. For each step: **a measurement that tells the successful step from the failed
+one**, and not just "the program did not crash".
 
-Les instruments existent déjà dans l'hôte : `VF3_QUIT_AFTER_S` (finir à l'horloge), `VF3_KEYS_S` (envoyer une
-touche à telle seconde, le seul moyen de piloter quelque chose dessiné sur un jeu gelé). Il manque :
+The instruments already exist in the host: `VF3_QUIT_AFTER_S` (finish on the clock), `VF3_KEYS_S` (send a
+key at a given second, the only way to drive something drawn over a frozen game). What is missing:
 
-- un relevé des octets MIDI que le **jeu** envoie, image par image ;
-- un relevé du pic de chaque image **des deux côtés** du gel ;
-- et surtout un essai qui pose la question dans un état où la réponse est lisible. Le premier essai de la
-  version défaite ouvrait la liste sur le **premier** écran titre, celui qui suit le logo SEGA, où il n'y a que
-  la voix de l'annonceur — qui s'arrête toute seule. Le silence après le reset n'y prouvait rien : une musique
-  arrêtée et une musique finie s'y ressemblent. Il a fallu refaire l'essai sur un écran titre venant d'une
-  **démonstration** pour que la mesure veuille dire quelque chose.
+- a record of the MIDI bytes the **game** sends, frame by frame;
+- a record of each frame's peak **on both sides** of the freeze;
+- and above all a test that asks the question in a state where the answer is legible. The undone version's
+  first test opened the list on the **first** title screen, the one after the SEGA logo, where there is only
+  the announcer's voice — which stops by itself. The silence after the reset proved nothing there: a music
+  stopped and a music finished look the same. The test had to be redone on a title screen coming from a
+  **demonstration** for the measurement to mean anything.
 
 
-## Étape 1, faite le 2026-10-21 : ce que le jeu dit vraiment à sa carte son
+## Step 1, done on 2026-10-21: what the game really says to its sound board
 
-Relevé avec `VF3_MIDI_LOG=N` : tout bloc d'octets que **le jeu** envoie, avec le mode où il était et le pic de
-l'image précédente ; plus une ligne toutes les N images, pour que le silence soit au dossier lui aussi. Rien
-n'est modifié par ce relevé.
+Recorded with `VF3_MIDI_LOG=N`: every block of bytes **the game** sends, with the mode it was in and the
+previous frame's peak; plus one line every N frames, so that the silence is on file too. Nothing is modified
+by this recording.
 
-### Il parle très peu, sauf en combat
+### It speaks very little, except in a fight
 
-| état | blocs envoyés |
+| state | blocks sent |
 |---|---|
-| avertissement | 1 (image 82) |
-| attraction, logo, titre, démo | 4 en 1250 images |
-| `SEL_INT` / `SEL_DSP`, la sélection | 3 |
-| `GAME_DSP`, un combat | **55 en 1700 images** |
+| warning | 1 (frame 82) |
+| attract, logo, title, demo | 4 in 1250 frames |
+| `SEL_INT` / `SEL_DSP`, the selection | 3 |
+| `GAME_DSP`, a fight | **55 in 1700 frames** |
 
-La boucle d'attraction entière, 73 secondes, tient en **six blocs**, un par changement d'écran. Un combat, lui,
-parle sans arrêt.
+The whole attract loop, 73 seconds, fits in **six blocks**, one per screen change. A fight, on the other
+hand, speaks constantly.
 
-### Ce qu'il envoie dans la boucle
+### What it sends in the loop
 
 ```
-image   82  mode 0            FF                                    le seul FF de toute la partie
-image  997  ADV               A0 00 01
-image  999  ADV_SEGA_INT      A0 00 01  A0 30 00                     la voix « SEGA »
-image 1193  FV2_TITLE_DSP     A0 2B 00                               la voix « Fighting »
-image 1247  FV2_TITLE_DSP     A0 2B 05                               la voix « Vipers 2 »
-image 1385  ADV_DEMO_DSP      A0 10 07                               la musique de la démo
-image 1257  SEL_INT           A0 2E 24  A0 00 01  A0 10 00  A0 2B 02  effet, silence, musique, voix
+frame   82  mode 0            FF                                    the only FF of the whole run
+frame  997  ADV               A0 00 01
+frame  999  ADV_SEGA_INT      A0 00 01  A0 30 00                     the "SEGA" voice
+frame 1193  FV2_TITLE_DSP     A0 2B 00                               the "Fighting" voice
+frame 1247  FV2_TITLE_DSP     A0 2B 05                               the "Vipers 2" voice
+frame 1385  ADV_DEMO_DSP      A0 10 07                               the demo's music
+frame 1257  SEL_INT           A0 2E 24  A0 00 01  A0 10 00  A0 2B 02  effect, silence, music, voice
 ```
 
-Trois choses en découlent, et aucune n'était prévue :
+Three things follow from it, and none was expected:
 
-1. **Le jeu n'envoie jamais `FF`**, sauf une fois à l'amorçage. Sa commande de silence à lui est `A0 00 01`,
-   et il la met en tête de ses blocs exactement là où le relevé d'août voyait `FF`. La ligne de ce document
-   qui disait « le jeu l'envoie lui-même en tête de chaque bloc » était vraie du relevé d'août, pas d'ici.
-2. **L'écran titre n'a pas de musique à lui** — deux voix, rien d'autre. La musique qu'on y entend est celle de
-   la démonstration, laissée en route. C'est exactement ce que Frédéric a signalé.
-3. **L'écran de sélection pose lui-même sa musique** (`A0 00 01` puis `A0 10 00`, image 1257). Donc remettre la
-   musique après un mode choisi est non seulement inutile, c'est nuisible — et ça explique la mesure d'août où
-   l'écran de sélection héritait de la musique de la démo.
+1. **The game never sends `FF`**, except once at boot. Its own silence command is `A0 00 01`, and it puts
+   it at the head of its blocks exactly where the August record saw `FF`. This document's line saying "the
+   game sends it itself at the head of every block" was true of the August record, not of here.
+2. **The title screen has no music of its own** — two voices, nothing else. The music one hears there is
+   the demonstration's, left running. That is exactly what Frédéric reported.
+3. **The selection screen sets its own music** (`A0 00 01` then `A0 10 00`, frame 1257). So putting the
+   music back after a mode is chosen is not only useless, it is harmful — and it explains the August
+   measurement where the selection screen inherited the demo's music.
 
-### Les deux commandes d'arrêt, mesurées côte à côte
+### The two stop commands, measured side by side
 
-Fond : la musique de la démo à l'image 2000, pic moyen 6025 sur les 360 images suivantes.
+Background: the demo's music at frame 2000, mean peak 6025 over the following 360 frames.
 
-| envoyé à l'image 2000 | pic moyen ensuite |
+| sent at frame 2000 | mean peak afterwards |
 |---|---|
-| rien (témoin) | **6025** |
+| nothing (control) | **6025** |
 | `A0 00 01` | **0** |
 | `FF` | **0** |
 
-Et le piège du reset, repris avec le bon instrument — un bip `A0 2E 23` sur fond silencieux, puis la commande
-d'arrêt 40 images plus tard, relevé toutes les 4 images :
+And the reset's trap, taken up with the right instrument — an `A0 2E 23` beep over a silent background,
+then the stop command 40 frames later, recorded every 4 frames:
 
 ```
-image   bip seul   bip + A0 00 01   bip + FF
- 2040       3162             3162       3162
- 2044       3119                0          0
- 2072        865                0          0
- 2076        100                0          0
+frame   beep alone   beep + A0 00 01   beep + FF
+ 2040         3162              3162        3162
+ 2044         3119                 0           0
+ 2072          865                 0           0
+ 2076          100                 0           0
 ```
 
-**Ni l'une ni l'autre ne relance le bip** : les deux le coupent net. Le piège mesuré en août sur Supermodel ne
-se reproduit pas sur la carte son de ce portage. Donc **le délai de 80 images ne sert à rien ici**, et l'arrêt
-peut partir dès l'ouverture. (Mesuré sur ce portage, pas sur la vraie carte : c'est ce portage qu'on livre.)
+**Neither of them restarts the beep**: both cut it dead. The trap measured in August on Supermodel does not
+reproduce on this port's sound board. So **the 80-frame delay is of no use here**, and the stop can go out
+as soon as the list opens. (Measured on this port, not on the real board: it is this port that is shipped.)
 
 
-## Étape 2 : la réponse à la question mère
+## Step 2: the answer to the mother question
 
-**Geler le jeu et faire tourner la carte son est sans risque là où la liste s'ouvre.** Entre l'image 1247 et
-l'image 1385 — tout l'écran titre — le jeu ne dit **rien** à sa carte. Il n'y a donc rien à rater pendant le
-gel : ce n'est pas un dialogue interrompu, c'est un silence prolongé.
+**Freezing the game and running the sound board is risk-free where the list opens.** Between frame 1247 and
+frame 1385 — the whole title screen — the game says **nothing** to its board. So there is nothing to miss
+during the freeze: it is not an interrupted dialogue, it is a prolonged silence.
 
-Ce qui avait cassé dans la version défaite n'était donc pas le principe, et c'est important de le dire
-exactement : c'était **la cadence** (une image de son une passe sur deux, trente par seconde au lieu de 57,5)
-et **les cas non traités** (quatre sorties, trois seulement remplies). Pas l'idée de faire tourner la carte.
+So what broke in the undone version was not the principle, and it matters to say it exactly: it was **the
+rate** (one sound frame every other pass, thirty a second instead of 57.5) and **the untreated cases** (four
+exits, only three filled). Not the idea of running the board.
 
-**En revanche, geler pendant un combat serait une autre affaire** : 55 blocs en 1700 images. Un menu de pause
-qui gèle un combat couperait un dialogue en cours. C'est noté pour le jour où ce menu-là sera écrit ; la liste
-des modes, elle, ne s'ouvre que sur l'écran titre.
+**Freezing during a fight, on the other hand, would be another matter**: 55 blocks in 1700 frames. A pause
+menu that froze a fight would cut a dialogue in progress. That is noted for the day that menu is written;
+the mode list, for its part, only opens on the title screen.
 
 
-## Étape 3 : le tableau des quatre sorties, à valider avant d'écrire
+## Step 3: the table of the four exits, to be validated before writing
 
-Chaque case est justifiée par une mesure ci-dessus, et aucune n'est un avis.
+Every cell is justified by a measurement above, and none is an opinion.
 
-| sortie | la musique | le son |
+| exit | the music | the sound |
 |---|---|---|
-| un mode choisi (ARCADE, SURVIVAL) | **rien** : l'écran de sélection pose la sienne, image 1257 | le son de choix |
-| une ligne sans levier | — (la liste reste ouverte) | **rien** : il ne s'est rien passé |
-| annulation (B) | remettre ce qui jouait, si on l'a arrêté | le son d'annulation |
-| Échap, le menu du portage par-dessus | **remettre aussi** — c'était le trou n° 1 | rien |
+| a mode chosen (ARCADE, SURVIVAL) | **nothing**: the selection screen sets its own, frame 1257 | the choice sound |
+| a line with no lever | — (the list stays open) | **nothing**: nothing happened |
+| cancellation (B) | put back what was playing, if we stopped it | the cancellation sound |
+| Escape, the port's menu over the top | **put it back too** — that was hole no. 1 | nothing |
 
-Et l'arrêt lui-même : `A0 00 01`, la commande du jeu, **à l'ouverture et sans délai**, puisque le piège du
-reset ne se reproduit pas ici. Pas de `FF` : le jeu ne s'en sert pas.
+And the stop itself: `A0 00 01`, the game's own command, **on opening and with no delay**, since the reset's
+trap does not reproduce here. No `FF`: the game does not use it.
 
-Pour « remettre ce qui jouait » : le dernier `A0 10 nn` que le jeu a demandé, qui se lit au passage dans les
-octets qu'il envoie. Mesuré : c'était bien `A0 10 07`, la musique de la démo.
-
-
-## L'ordre
-
-Un pas, une mesure, une capture ou un relevé montré. Pas deux pas d'un coup — c'est ce qui a été payé deux fois
-sur ce chantier.
-
-1. **Relever ce que le jeu envoie**, image par image, dans les états qui comptent (attraction, titre, démo,
-   sélection, combat) et sous un gel. Rien n'est écrit tant que ce relevé n'existe pas.
-2. **Répondre à la question 1** avec ce relevé, et l'écrire ici.
-3. **Remplir le tableau de la question 2**, case par case, avant de coder.
-4. Alors seulement : les trois bruitages, **sans toucher à la musique**. Mesure : le pic monte sur le
-   déplacement là où il était à zéro.
-5. La musique, **si** l'étape 2 dit que c'est tenable. Mesure : la musique joue avant, ne joue plus après, et
-   revient là où le tableau dit qu'elle revient.
-6. `verifier-vf3.cmd` à chaque étape, et une partie jouée à la main par Frédéric avant de passer à la suivante.
+For "put back what was playing": the last `A0 10 nn` the game asked for, which is read in passing from the
+bytes it sends. Measured: it really was `A0 10 07`, the demo's music.
 
 
-## Étape 4, faite le 2026-10-22 : les trois bruitages, sans toucher à la musique
+## The order
 
-Frédéric a demandé de **sauter l'étape 3** — le tableau des quatre sorties — et de poser les bruitages. C'est
-exactement l'étape qui n'en dépend pas : elle ne touche pas à la musique, donc aucune case de ce tableau ne
-la commande.
+One step, one measurement, one capture or record shown. Not two steps at once — that is what has been paid
+for twice on this job.
 
-### Ce qu'il a fallu d'abord : faire tourner la carte sous l'écran gelé
+1. **Record what the game sends**, frame by frame, in the states that count (attract, title, demo,
+   selection, fight) and under a freeze. Nothing is written until that record exists.
+2. **Answer question 1** with that record, and write it here.
+3. **Fill in question 2's table**, cell by cell, before coding.
+4. Only then: the three sound effects, **without touching the music**. Measurement: the peak rises on a
+   cursor move where it was at zero.
+5. The music, **if** step 2 says it is tenable. Measurement: the music plays before, no longer plays after,
+   and comes back where the table says it comes back.
+6. `verifier-vf3.cmd` at every step, and a game played by hand by Frédéric before moving to the next.
 
-Une surface de la console gèle le PowerPC. Un PowerPC gelé ne lance aucune image de son, donc **rien ne sort**,
-pas même une note qu'on lui tend. Il a donc fallu que l'hôte tourne la carte lui-même : `Game::sound_only_frame`,
-qui est la moitié sonore de `finish_frame` sans rien toucher à l'état de la carte.
 
-**Par un accumulateur, et c'est tout l'enjeu.** La version défaite lançait une image de son par passe, condition
-sur 17,38 ms écoulées, ce qui donnait trente par seconde sur un écran à 60 Hz là où la carte en veut 57,5 : la
-file se vidait et ça grésillait. Ici le temps est mesuré et les images dues sont faites, quel que soit le
-nombre de passes — avec un plafond de quatre, pour qu'une fenêtre traînée ne déclenche pas un flot.
+## Step 4, done on 2026-10-22: the three sound effects, without touching the music
 
-Et **seulement sous les surfaces de la console** : jamais sous le menu de la touche Échap ni sous une pause, qui
-sont ceux du portage et ont toujours été muets.
+Frédéric asked to **skip step 3** — the table of the four exits — and lay down the sound effects. That is
+exactly the step that does not depend on it: it does not touch the music, so no cell of that table governs
+it.
 
-### Les trois sons
+### What it took first: running the board under the frozen screen
 
-Ceux du jeu, trouvés en août en envoyant des notes et en écoutant. Leurs numéros sont ceux de `GameFV2.h` :
+A console surface freezes the PowerPC. A frozen PowerPC starts no sound frame, so **nothing comes out**, not
+even a note handed to it. So the host had to run the board itself: `Game::sound_only_frame`, which is
+`finish_frame`'s sound half without touching the board's state.
 
-| ce qui arrive | la note | le son |
+**Through an accumulator, and that is the whole point.** The undone version started one sound frame per
+pass, conditional on 17.38 ms having elapsed, which gave thirty a second on a 60 Hz screen where the board
+wants 57.5: the queue emptied and it crackled. Here the time is measured and the frames due are made,
+whatever the number of passes — with a ceiling of four, so that a dragged window does not set off a flood.
+
+And **only under the console's surfaces**: never under the Escape key's menu nor under a pause, which are
+the port's and have always been silent.
+
+### The three sounds
+
+The game's own, found in August by sending notes and listening. Their numbers are `GameFV2.h`'s:
+
+| what happens | the note | the sound |
 |---|---|---|
-| déplacement | `A0 2E 26` | `sd_ketsu_00`, n° 391 |
-| choix, et ouverture | `A0 2E 23` | `sd_sign_16`, n° 388 |
-| annulation | `A0 2E 27` | `sd_sonic00_11`, n° 392 |
+| moving | `A0 2E 26` | `sd_ketsu_00`, no. 391 |
+| choosing, and opening | `A0 2E 23` | `sd_sign_16`, no. 388 |
+| cancelling | `A0 2E 27` | `sd_sonic00_11`, no. 392 |
 
-Chaque surface dit **ce qui est arrivé** (`want_sound`) ; l'hôte, qui possède la carte, dit **à quoi ça
-ressemble**. Aucune des deux n'a à connaître le métier de l'autre. Le drain se fait une fois par passe et non
-là où les événements sont distribués, parce que ces blocs-là font `continue` sur chaque touche : une note
-remise à l'intérieur ne serait partie qu'à l'événement suivant.
+Every surface says **what happened** (`want_sound`); the host, which owns the board, says **what it sounds
+like**. Neither has to know the other's trade. The drain happens once per pass and not where the events are
+distributed, because those blocks `continue` on every key: a note handed in inside would only have gone out
+at the next event.
 
-### La mesure, qui est la règle de ce chantier
+### The measurement, which is this job's rule
 
-`VF3_MENU_SOUND=1` relate ce que la carte produit sous la surface. Trois `Down` envoyés à l'horloge, liste
-ouverte :
+`VF3_MENU_SOUND=1` reports what the board produces under the surface. Three `Down`s sent on the clock, list
+open:
 
 ```
-menu sound: 11.45 s,  660 images (57.6/s), pic 0
-menu sound: 12.32 s,  710 images (57.6/s), pic 2880
-menu sound: 12.33 s,  711 images (57.6/s), pic 4417
-menu sound: 12.35 s,  712 images (57.6/s), pic 4289
-menu sound: 12.37 s,  713 images (57.6/s), pic 3110
-menu sound: 12.38 s,  714 images (57.6/s), pic 678
-menu sound: 12.40 s,  715 images (57.6/s), pic 279
-menu sound: 12.48 s,  720 images (57.6/s), pic 0
+menu sound: 11.45 s,  660 frames (57.6/s), peak 0
+menu sound: 12.32 s,  710 frames (57.6/s), peak 2880
+menu sound: 12.33 s,  711 frames (57.6/s), peak 4417
+menu sound: 12.35 s,  712 frames (57.6/s), peak 4289
+menu sound: 12.37 s,  713 frames (57.6/s), peak 3110
+menu sound: 12.38 s,  714 frames (57.6/s), peak 678
+menu sound: 12.40 s,  715 frames (57.6/s), peak 279
+menu sound: 12.48 s,  720 frames (57.6/s), peak 0
 ```
 
-Les deux autres pressions donnent **la même bouffée, au même chiffre près**. Donc :
+The other two presses give **the same burst, to the same figure**. So:
 
-- **la cadence est 57,6/s**, celle de la carte, et non les 30/s de la version défaite ;
-- **le pic monte sur le déplacement là où il était à zéro**, qui est mot pour mot la mesure que l'étape 4
-  exigeait ;
-- **le silence revient**, donc rien ne reste accroché.
+- **the rate is 57.6/s**, the board's, and not the undone version's 30/s;
+- **the peak rises on a cursor move where it was at zero**, which is word for word the measurement step 4
+  required;
+- **the silence comes back**, so nothing stays hooked.
 
-### Ce qui n'est toujours pas fait
+### What is still not done
 
-L'étape 3 et l'étape 5 : **la musique n'est pas touchée**. Elle ne s'arrête pas à l'ouverture, elle n'est pas
-remise à la sortie, et `A0 00 01` n'est envoyé nulle part. Le tableau des sorties reste à remplir, et il lui
-faut maintenant six cases de plus que lorsqu'il a été écrit : se déplacer dans `OPTIONS`, franchir une porte,
-remonter d'un écran, changer une valeur, `INITIALIZE`, et sortir d'un écran enfant.
+Steps 3 and 5: **the music is not touched**. It does not stop on opening, it is not put back on leaving, and
+`A0 00 01` is sent nowhere. The table of exits remains to be filled, and it now needs six more cells than
+when it was written: moving within `OPTIONS`, going through a door, going up one screen, changing a value,
+`INITIALIZE`, and leaving a child screen.
 
 
-## Ce que Start fait vraiment à la démonstration — mesuré le 2026-10-23
+## What Start really does to the demonstration — measured on 2026-10-23
 
-Frédéric a corrigé le cadrage de tout ce document : « *ce n'est pas que la musique qui doit être arrêtée
-quand on passe de la démo à l'écran titre en appuyant sur Start, c'est toute la démo qui est coupée, dont la
-musique. Au sortir de l'écran titre, la démo et sa musique doivent recommencer au début.* »
+Frédéric corrected this whole document's framing: "*it is not only the music that must be stopped when one
+goes from the demo to the title screen by pressing Start, it is the whole demo that is cut, including the
+music. On leaving the title screen, the demo and its music must start again from the beginning.*"
 
-Mesuré, témoin compris, avec `VF3_MIDI_LOG` et `VF3_RAMLOG=580DFC:1,58FD99:1`.
+Measured, control included, with `VF3_MIDI_LOG` and `VF3_RAMLOG=580DFC:1,58FD99:1`.
 
-### La première moitié est déjà vraie, et ce n'est pas nous qui la faisons
+### The first half is already true, and it is not us who do it
 
-| image | sous-état | ce que le jeu envoie |
+| frame | sub-state | what the game sends |
 |---|---|---|
-| 1385 | `0B` démo | `A0 10 07`, la musique de la démo |
-| **1450** | | **Start : le portage demande l'écran titre** |
-| 1453 | `02` | `A0 00 01  A0 30 00` — **son propre silence**, puis la voix « SEGA » |
-| 1455 | `05` titre | `A0 2B 00`, « Fighting » |
-| 1523 | `05` titre | `A0 2B 05`, « Vipers 2 » |
+| 1385 | `0B` demo | `A0 10 07`, the demo's music |
+| **1450** | | **Start: the port asks for the title screen** |
+| 1453 | `02` | `A0 00 01  A0 30 00` — **its own silence**, then the "SEGA" voice |
+| 1455 | `05` title | `A0 2B 00`, "Fighting" |
+| 1523 | `05` title | `A0 2B 05`, "Vipers 2" |
 
-Le pic avant l'image 1453 est 6816 — la musique de la démo — et zéro après. **La démo est bien coupée, musique
-comprise, trois images après Start, et c'est le jeu lui-même qui le fait** en redémarrant sa boucle. Il n'y a
-donc rien à écrire pour ça, et l'étape 5 de ce plan avait mal posé la question : elle parlait d'arrêter une
-musique là où le jeu coupe une démonstration.
+The peak before frame 1453 is 6816 — the demo's music — and zero after. **The demo really is cut, music
+included, three frames after Start, and it is the game itself that does it** by restarting its loop. So
+there is nothing to write for that, and this plan's step 5 had put the question badly: it spoke of stopping
+a music where the game cuts a demonstration.
 
-### La seconde moitié n'est pas un défaut — **corrigé le 2026-10-23**
+### The second half is not a defect — **corrected on 2026-10-23**
 
-J'avais consigné ici un « vrai défaut ». Il n'y en a pas : Frédéric a répondu que **l'alternance entre le
-replay et la démo à la sortie de l'écran titre est normale**. C'est ce que fait la borne, et ce que faisait
-déjà le jeu avant qu'on y touche.
+I had recorded a "real defect" here. There is none: Frédéric answered that **the alternation between the
+replay and the demo on leaving the title screen is normal**. It is what the cabinet does, and what the game
+already did before we touched it.
 
-Ce que la mesure avait vu est donc exact mais mal interprété :
+So what the measurement saw is accurate but was misinterpreted:
 
 ```
-témoin (sans Start)   01 02 03 04 05(titre) 0B(démo)
-avec Start à 1450     01 02 03 04 05(titre) 0B(démo) 00 01 02 03 04 05(titre) 08 09 0A(replay)
+control (no Start)    01 02 03 04 05(title) 0B(demo)
+with Start at 1450    01 02 03 04 05(title) 0B(demo) 00 01 02 03 04 05(title) 08 09 0A(replay)
 ```
 
-Le deuxième passage par l'écran titre donne le replay parce que c'est **au tour** du replay, pas parce que
-notre redémarrage aurait dérangé quelque chose. Et `0x00580DFC`, l'index de la liste, vaut bien 0 dans les
-deux cas : il n'avait rien à voir avec ce choix non plus.
+The second pass through the title screen gives the replay because it is **the replay's turn**, not because
+our restart disturbed anything. And `0x00580DFC`, the list's index, really is 0 in both cases: it had
+nothing to do with that choice either.
 
-### Ce qui décide, puisqu'on l'a trouvé en chemin
+### What decides, since we found it on the way
 
-La table de ce document disait déjà où regarder — « *`a FV2_TITLE_DSP = B ou = 8` : vers la démonstration, ou
-vers le replay* » — et la règle d'ouvrir les documents avant de mesurer a tenu : il a suffi de deux
-instructions à trouver, pas d'une soirée.
+This document's table already said where to look — "*`at FV2_TITLE_DSP = B or = 8`: towards the
+demonstration, or towards the replay*" — and the rule of opening the documents before measuring held: it
+took finding two instructions, not an evening.
 
-`vf3run --watch 58FD98` donne les deux sites : `0x0000B480` écrit `0B`, `0x0000B4C4` écrit `08`. Et le test qui
-choisit est juste avant :
+`vf3run --watch 58FD98` gives the two sites: `0x0000B480` writes `0B`, `0x0000B4C4` writes `08`. And the
+test that chooses is just before:
 
 ```
 0000B450  lis   r3,0x0029
-0000B454  lbz   r3,10517(r3)      ; l'octet 0x00292915
+0000B454  lbz   r3,10517(r3)      ; the byte 0x00292915
 0000B458  cmpwi r3,1
-0000B45C  bne   0x0000B4B8        ; different de 1 -> REPLAY, qui ecrit 08
-                                  ; egal a 1      -> DEMO,   qui ecrit 0B
+0000B45C  bne   0x0000B4B8        ; different from 1 -> REPLAY, which writes 08
+                                  ; equal to 1      -> DEMO,   which writes 0B
 ```
 
-**Un seul octet, `0x00292915`, commande l'alternance.** À 1 c'est la démonstration, sinon c'est le replay.
+**A single byte, `0x00292915`, governs the alternation.** At 1 it is the demonstration, otherwise the
+replay.
 
-Et il **bascule tout seul, à l'entrée de l'écran titre** (sous-état 4), ce qui est l'alternance même.
-`VF3_RAMLOG=292915:1,58FD99:1`, les deux passages d'un même run :
-
-```
-image 1193  octet = 01  sous-etat 04   premier titre   -> 1386  sous-etat 0B  la demo
-image 1647  octet = 00  sous-etat 04   second titre    -> 1850  sous-etat 08  le replay
-```
-
-Le jeu le retourne lui-même à chaque fois qu'il arrive sur son titre. Notre redémarrage n'y touche pas et n'a
-pas à y toucher.
-
-Et un voisin, pour le dossier : juste au-dessus, `0x0000B444` lit l'octet 55 du bloc des réglages — soit
-`0x00120557`, **`COUNTRY`** — et s'il vaut 1 (`U.S.A.`) part sur le sous-état 6, `ADV_RATING_INT`, l'écran de
-classification. La région commande donc un écran d'attraction de plus, ce qui n'était écrit nulle part.
-
-### Ce que ça laisse à faire
-
-**Rien sur ce chemin.** Start coupe la démo, le jeu fait son ménage, et ce qui repart ensuite est ce qui devait
-repartir. L'étape 5 garde son seul vrai sujet : **la musique qui continue de jouer sous la liste ouverte**.
-
-
-## Deux défauts entendus, et pourquoi la question était mal posée — 2026-10-23
-
-Frédéric a joué et rapporté deux choses : « *si on interrompt la démo ou le replay en appuyant sur start,
-l'écran titre apparaît mais avec le son du logo SEGA* », et « *les bruitages du menu ne se jouent pas en
-direct mais en décalé* ». Les deux sont réels, et aucun n'était dans mes mesures — parce que mes mesures
-lisent ce que la carte **produit**, pas ce qui sort des haut-parleurs.
-
-### 1. La voix du logo arrivait sur l'écran titre
-
-Elle était dans mon propre relevé depuis la veille, sans que je l'entende : à l'image 1453, trois images après
-Start, le jeu envoie `A0 00 01  A0 30 00` — son silence, **puis la voix « SEGA »**. Le portage saute l'image du
-logo et demande le titre ; il ne sautait pas sa voix. **Sauter une image et garder son son, c'est sauter à
-moitié.**
-
-Corrigé en retirant les notes de la banque `0x30` **sur la seule route où le logo est sauté** — `skip_logo > 0`
-dans `console_play`, c'est-à-dire exactement là et nulle part ailleurs. Les voix du titre (`A0 2B 00`
-« Fighting », `A0 2B 05` « Vipers 2 ») ne sont pas touchées : cet écran-là est bien montré.
-
-Mesuré, liste ouverte juste après : le pic passe de **8190, 10588, 10396, 8128… soutenu** à **2585 qui retombe
-à 200 en 0,13 s** — ce qui reste étant la fin de « Fighting », qui doit rester.
-
-### 2. Les bruitages étaient en retard, et ce n'était pas la carte
-
-La carte les faisait à l'heure : mesuré à 57,6 images par seconde, le pic monte sur l'image de la touche. Ce
-qui était en retard, c'est **la file audio de SDL**, dans laquelle le jeu avait pris de l'avance avant de
-geler. Un bip placé derrière une seconde de retard sort une seconde plus tard, et rien ne vide ce retard
-pendant le gel, puisque la pompe ne fabrique que ce que le temps réel demande.
-
-Corrigé en **vidant la file à l'entrée de la surface** : le menu part d'un silence, et ses sons sont immédiats.
-
-### 3. Et la musique : la question était bien mal posée
-
-Mesuré sur la route que Frédéric décrit — Start coupe la démo, la liste s'ouvre sur l'écran titre qui suit :
+And it **flips by itself, on entering the title screen** (sub-state 4), which is the alternation itself.
+`VF3_RAMLOG=292915:1,58FD99:1`, the two passes of one run:
 
 ```
-aucune ligne « the console's music » : rien ne jouait, donc rien n'a ete arrete
+frame 1193  byte = 01  sub-state 04   first title    -> 1386  sub-state 0B  the demo
+frame 1647  byte = 00  sub-state 04   second title   -> 1850  sub-state 08  the replay
 ```
 
-**Il n'y a pas de musique à arrêter sous la liste.** Le jeu l'a déjà coupée en redémarrant sa boucle, trois
-images après Start. Tout l'échafaudage « arrêter, puis remettre à la sortie » répond à une question qui ne se
-pose pas sur ce chemin.
+The game flips it itself every time it arrives at its title. Our restart does not touch it and does not have
+to.
 
-Il est écrit et mesuré, et il **se tait** : il suit la musique dans les octets du jeu (`A0 10 nn` la pose,
-`A0 00 01` l'efface), et si rien ne joue il ne fait rien et le dit dans le journal. Il resterait utile le jour
-où la liste s'ouvrirait sur un écran où une musique tourne. Sur la boucle d'attraction telle qu'elle est, il
-ne se déclenche jamais.
+And a neighbour, for the file: just above, `0x0000B444` reads byte 55 of the settings block — that is
+`0x00120557`, **`COUNTRY`** — and if it is 1 (`U.S.A.`) goes to sub-state 6, `ADV_RATING_INT`, the
+classification screen. So the region governs one more attract screen, which was written nowhere.
+
+### What that leaves to do
+
+**Nothing on that path.** Start cuts the demo, the game does its housekeeping, and what starts again
+afterwards is what was supposed to start again. Step 5 keeps its only real subject: **the music that goes on
+playing under the open list**.
 
 
-## L'écran de victoire : un son qui naît et qui enfle — RÉSOLU le 2026-10-24
+## Two defects heard, and why the question was badly put — 2026-10-23
 
-Frédéric : « ce son qui débute à l'écran WIN et qui augmente pour être très fort, **n'est pas normal** ».
-Il a raison, et ce n'est ni un jingle fort ni un volume mal réglé. Voici tout ce qui est mesuré, tout ce qui
-est éliminé, et où ça s'arrête.
+Frédéric played and reported two things: "*if one interrupts the demo or the replay by pressing start, the
+title screen appears but with the SEGA logo's sound*", and "*the menu's sound effects do not play live but
+delayed*". Both are real, and neither was in my measurements — because my measurements read what the board
+**produces**, not what comes out of the speakers.
 
-### Le phénomène, chiffré
+### 1. The logo's voice was arriving on the title screen
 
-Mesuré avec `VF3_MIDI_LOG=1`, qui donne par image le mode, le sous-état et le pic du son fabriqué, sur de
-vraies parties de Frédéric menées jusqu'au bout. Le sous-état est **18, `VIC_DSP`** (`docs/fv2-etats.md`) —
-la victoire de *match*, pas la fin de round.
+It had been in my own record since the day before, without my hearing it: at frame 1453, three frames after
+Start, the game sends `A0 00 01  A0 30 00` — its silence, **then the "SEGA" voice**. The port skips the
+logo's screen and asks for the title; it was not skipping its sound. **Skipping a screen and keeping its
+sound is skipping by half.**
 
-À `--volume 25`, donc gain exactement 1 et **limiteur hors circuit**, le niveau brut du banc de son :
+Corrected by dropping bank `0x30`'s notes **on the one route where the logo is skipped** — `skip_logo > 0`
+in `console_play`, that is to say exactly there and nowhere else. The title's voices (`A0 2B 00`
+"Fighting", `A0 2B 05` "Vipers 2") are not touched: that screen really is shown.
 
-| état | images | pic brut | % du plein régime |
+Measured, list opened just afterwards: the peak goes from **8190, 10588, 10396, 8128… sustained** to **2585
+falling back to 200 in 0.13 s** — what remains being the end of "Fighting", which must remain.
+
+### 2. The sound effects were late, and it was not the board
+
+The board was making them on time: measured at 57.6 frames per second, the peak rises on the key's frame.
+What was late is **SDL's audio queue**, in which the game had got ahead before freezing. A beep placed
+behind a second of lateness comes out a second later, and nothing drains that lateness during the freeze,
+since the pump only makes what real time asks for.
+
+Corrected by **draining the queue on entering the surface**: the menu starts from silence, and its sounds
+are immediate.
+
+### 3. And the music: the question really was badly put
+
+Measured on the route Frédéric describes — Start cuts the demo, the list opens on the title screen that
+follows:
+
+```
+no "the console's music" line: nothing was playing, so nothing was stopped
+```
+
+**There is no music to stop under the list.** The game has already cut it by restarting its loop, three
+frames after Start. The whole scaffolding of "stop, then put back on leaving" answers a question that does
+not arise on that path.
+
+It is written and measured, and it **keeps quiet**: it follows the music in the game's bytes (`A0 10 nn`
+sets it, `A0 00 01` clears it), and if nothing is playing it does nothing and says so in the log. It would
+still be useful the day the list opened on a screen where music is running. On the attract loop as it
+stands, it never fires.
+
+
+## The victory screen: a sound that is born and swells — RESOLVED on 2026-10-24
+
+Frédéric: "this sound that starts at the WIN screen and grows to be very loud, **is not normal**". He is
+right, and it is neither a loud jingle nor a badly set volume. Here is everything that is measured,
+everything that is eliminated, and where it stops.
+
+### The phenomenon, quantified
+
+Measured with `VF3_MIDI_LOG=1`, which gives per frame the mode, the sub-state and the peak of the sound
+made, over real games of Frédéric's played through to the end. The sub-state is **18, `VIC_DSP`**
+(`docs/fv2-etats.md`) — the *match* victory, not the end of a round.
+
+At `--volume 25`, hence gain exactly 1 and **the limiter out of circuit**, the sound board's raw level:
+
+| state | frames | raw peak | % of full scale |
 |---|---|---|---|
-| **`VIC_DSP` (18)** | 256 | **13805** | **42,1 %** |
-| `JUDGE_DSP` (14) | 384 | 4107 | 12,5 % |
-| `FIGHT_DSP` (12) | 2003 | 3942 | 12,0 % |
-| `REPLAY_DSP` (16) | 510 | 3441 | 10,5 % |
-| attraction | 1478 | 4117 | 12,6 % |
+| **`VIC_DSP` (18)** | 256 | **13805** | **42.1%** |
+| `JUDGE_DSP` (14) | 384 | 4107 | 12.5% |
+| `FIGHT_DSP` (12) | 2003 | 3942 | 12.0% |
+| `REPLAY_DSP` (16) | 510 | 3441 | 10.5% |
+| attract | 1478 | 4117 | 12.6% |
 
-Tout le jeu vit entre 10 et 13 % ; la victoire est à 42 %. Et elle **n'y arrive pas d'un coup** : le son naît
-à 2,3 % à l'entrée de l'état et monte à 36 % en moins de deux secondes — **24 dB** — puis plafonne autour de
-33–41 % jusqu'à ce que le jeu envoie son propre silence (`A0 00 01`). Une commande `A0 11 0D` arrive au milieu
-de la montée ; rejouée seule hors de cet état (`VF3_MIDI_SEND=A0110D@1500`), elle ne produit rien.
+The whole game lives between 10 and 13%; the victory is at 42%. And it **does not get there at once**: the
+sound is born at 2.3% on entering the state and rises to 36% in under two seconds — **24 dB** — then levels
+off around 33–41% until the game sends its own silence (`A0 00 01`). An `A0 11 0D` command arrives in the
+middle of the rise; replayed on its own outside that state (`VF3_MIDI_SEND=A0110D@1500`), it produces
+nothing.
 
-### Pourquoi ça s'entend si mal
+### Why it sounds so bad
 
-`LEVEL = 4.0` dans `src/host/main.cpp` relève la sortie du banc de **12 dB**, au motif écrit dans son
-commentaire qu'elle « culmine bien en dessous du plein régime » — vrai de Virtua Fighter 3, pour qui il a été
-choisi. À 42 % de brut, la victoire demande 168 % du plein régime, et le limiteur
-(`CEILING = 0.891`, soit −1 dBFS = **29196**, attaque instantanée, retour en 0,1 s) retire 4,7 dB en continu.
-Mesuré : **120 images collées exactement sur 29196**. Un limiteur qui travaille à fond pendant deux secondes,
-c'est ce qu'on entend.
+`LEVEL = 4.0` in `src/host/main.cpp` raises the board's output by **12 dB**, on the grounds written in its
+comment that it "peaks well below full scale" — true of Virtua Fighter 3, for which it was chosen. At 42% of
+raw, the victory asks for 168% of full scale, and the limiter (`CEILING = 0.891`, that is −1 dBFS =
+**29196**, instant attack, 0.1 s release) takes 4.7 dB off continuously. Measured: **120 frames stuck
+exactly on 29196**. A limiter working flat out for two seconds is what one hears.
 
-Le limiteur n'est donc pas le défaut, c'est le révélateur. Baisser `LEVEL` pour FV2 **masquerait** la montée
-au lieu de l'enlever : c'est explicitement ce que Frédéric a refusé, et il avait raison.
+So the limiter is not the defect, it is what reveals it. Lowering `LEVEL` for FV2 would **mask** the rise
+instead of removing it: that is explicitly what Frédéric refused, and he was right.
 
-### LE COUPABLE EST NOMMÉ : deux voix, c0/s18 et c0/s19
+### THE CULPRIT IS NAMED: two voices, c0/s18 and c0/s19
 
-Les deux chips portaient déjà la mesure (`scsp.h` : `m_probe_direct`, l'énergie que chaque emplacement a
-envoyée) et **rien ne l'allumait**. Elle est maintenant câblée : `SoundBoard::energy_on` / `energy_take`, et
-`VF3_ENERGY_LOG=N` dans l'hôte imprime toutes les N images les voix qui sonnent, leur énergie totale, et les
-six plus fortes avec leur part. Sur une partie de Frédéric :
+Both chips already carried the measurement (`scsp.h`: `m_probe_direct`, the energy each slot has sent) and
+**nothing was turning it on**. It is now wired: `SoundBoard::energy_on` / `energy_take`, and
+`VF3_ENERGY_LOG=N` in the host prints every N frames the voices that are sounding, their total energy, and
+the six loudest with their share. On a game of Frédéric's:
 
 ```
- image | voix | total     | les plus fortes
-  4724 |   13 |  2.98e+09 | c0/s13 31% c0/s17 16% c1/s24 14%
-  4748 |    5 |  2.12e+10 | c1/s12 39% c0/s18 32% c0/s19 20%
-  4796 |    4 |  5.34e+10 | c0/s19 56% c0/s18 40%
-  4892 |    4 |  7.28e+10 | c0/s19 61% c0/s18 37%
-  4940 |    4 |  1.49e+11 | c0/s19 57% c0/s18 42%
+ frame | voices | total     | the loudest
+  4724 |     13 |  2.98e+09 | c0/s13 31% c0/s17 16% c1/s24 14%
+  4748 |      5 |  2.12e+10 | c1/s12 39% c0/s18 32% c0/s19 20%
+  4796 |      4 |  5.34e+10 | c0/s19 56% c0/s18 40%
+  4892 |      4 |  7.28e+10 | c0/s19 61% c0/s18 37%
+  4940 |      4 |  1.49e+11 | c0/s19 57% c0/s18 42%
 ```
 
-**Les emplacements 18 et 19 du premier chip portent 95 à 99 % de l'énergie, et leur total est multiplié par
-cinquante — 17 dB — en une seconde et demie.** Ce n'est pas un empilement de voix : c'est une **paire** qui
-s'emballe pendant qu'elle joue. Deux voix dont la sortie croît sans qu'on leur redonne d'ordre, c'est la
-signature d'une modulation croisée : la modulation lit `m_RINGBUF`, qui contient les sorties récentes, donc
-une voix peut se moduler avec le son de l'autre — une boucle de réinjection, dont la profondeur est le gain.
+**Slots 18 and 19 of the first chip carry 95 to 99% of the energy, and their total is multiplied by fifty —
+17 dB — in a second and a half.** It is not voices stacking up: it is a **pair** running away while it
+plays. Two voices whose output grows without being given another order is the signature of cross
+modulation: the modulation reads `m_RINGBUF`, which holds the recent outputs, so one voice can modulate
+itself with the other's sound — a feedback loop, whose gain is the depth.
 
-### Quatre hypothèses mesurées et tombées
+### Four hypotheses measured and fallen
 
-1. **Les trois changements du SCSP de l'amont** (profondeur FM doublée, bit bas de `PLFOS` retiré, minuteries
-   recalées). Deux parties comparées, banc d'avant et banc d'après : pic 29196 des deux côtés, 182 contre 181
-   images au-dessus de 20000. **Cette comparaison ne vaut rien** et c'est une erreur à ne pas refaire : les
-   deux parties étaient à volume plein, donc **toutes deux contre le plafond du limiteur**, où un écart de
-   10 dB dans le signal brut donne le même chiffre. L'amont n'est ni accusé ni innocenté ; il faut refaire la
-   comparaison à `--volume 25`. Le binaire est prêt : `vf3-son-avant.exe` dans le dossier de travail.
-2. **L'accumulation dans les registres d'effet du DSP.** `EFREG[EWA] += SHIFTED >> 8` dans
-   `src/sound/scspdsp.cpp`, et `EFREG` n'est remis à zéro qu'à l'initialisation du chip, jamais entre deux
-   échantillons. Les vider à chaque échantillon (interrupteur d'essai) **ne change rien du tout** : pic
-   13805 et moyenne 8234, contre 13805 et 8238 sans. Donc non seulement ce n'est pas la cause, mais **le DSP
-   ne contribue pratiquement rien** à ce son. L'interrupteur a été retiré. (Le code vient de MAME et la copie
-   de référence `fv2-stable` a la même ligne.)
-3. **Des voix qui s'empilent sans se libérer.** `VF3_KEYON_LOG` : 81 voix démarrées pendant les 256 images de
-   `VIC_DSP`, réparties sur des emplacements différents, échantillons variés. Ordinaire.
-4. **Les enveloppes.** Le journal des voix imprime maintenant leur forme (`tl`, `ar`, `d1r`, `d2r`, `rr`,
-   `dl`, `eghold`, `lpctl`, `lsa`, `lea`) :
+1. **The three changes to the SCSP from upstream** (FM depth doubled, `PLFOS`'s low bit removed, timers
+   realigned). Two games compared, the board from before and the board from after: peak 29196 on both sides,
+   182 against 181 frames above 20000. **That comparison is worth nothing** and it is a mistake not to
+   repeat: both games were at full volume, hence **both against the limiter's ceiling**, where a 10 dB
+   difference in the raw signal gives the same figure. Upstream is neither accused nor cleared; the
+   comparison has to be redone at `--volume 25`. The binary is ready: `vf3-son-avant.exe` in the working
+   folder.
+2. **The accumulation in the DSP's effect registers.** `EFREG[EWA] += SHIFTED >> 8` in
+   `src/sound/scspdsp.cpp`, and `EFREG` is only cleared at the chip's initialisation, never between two
+   samples. Clearing them on every sample (a test switch) **changes nothing at all**: peak 13805 and mean
+   8234, against 13805 and 8238 without. So not only is that not the cause, but **the DSP contributes
+   practically nothing** to this sound. The switch was removed. (The code comes from MAME and the reference
+   copy `fv2-stable` has the same line.)
+3. **Voices stacking up without being freed.** `VF3_KEYON_LOG`: 81 voices started during `VIC_DSP`'s 256
+   frames, spread over different slots, varied samples. Ordinary.
+4. **The envelopes.** The voice log now prints their shape (`tl`, `ar`, `d1r`, `d2r`, `rr`, `dl`, `eghold`,
+   `lpctl`, `lsa`, `lea`):
 
-   | | voix | `rr`=0 | `d2r`=0 | boucle | `tl` moyen |
+   | | voices | `rr`=0 | `d2r`=0 | looping | mean `tl` |
    |---|---|---|---|---|---|
    | `VIC_DSP` | 81 | 8 | 81 | 81 | 49 |
    | `FIGHT_DSP` | 1153 | 36 | 1153 | 1153 | 58 |
-   | attraction | 693 | 0 | 648 | 693 | 51 |
+   | attract | 693 | 0 | 648 | 693 | 51 |
 
-   Tout le jeu joue en boucle sans décroissance de maintien : c'est sa manière. Les voix de la victoire sont
-   un peu plus fortes (`tl` 49 contre 58, quelques dB) et un peu plus nombreuses à ne jamais relâcher. Rien
-   qui approche 24 dB.
+   The whole game plays looping with no sustain decay: that is its way. The victory's voices are slightly
+   louder (`tl` 49 against 58, a few dB) and slightly more numerous in never releasing. Nothing that comes
+   near 24 dB.
 
-### Ce qui a été essayé comme correction, et retiré
+### What was tried as a fix, and removed
 
-Rendre à Fighting Vipers 2 les profondeurs de MAME, en ne laissant celles de Supermodel qu'à Virtua Fighter 3
-— elles sont, de l'aveu du commentaire, « as Supermodel's, **set by ear for VF3** », et doubler la profondeur
-d'une boucle de réinjection est exactement ce qui fait passer une résonance bornée à une montée jusqu'à
-saturation. Construit, joué : **le défaut est toujours là**. Le changement a donc été **retiré** plutôt que
-gardé — un changement de son non mesuré ne reste pas dans l'arbre. Le raisonnement, lui, reste valable et
-mérite d'être reprisé avec la bonne mesure (point 1 ci-dessus).
+Giving Fighting Vipers 2 back MAME's depths, leaving Supermodel's only to Virtua Fighter 3 — they are, by
+the comment's own admission, "as Supermodel's, **set by ear for VF3**", and doubling the depth of a feedback
+loop is exactly what takes a bounded resonance to a rise all the way to saturation. Built, played: **the
+defect is still there**. So the change was **removed** rather than kept — an unmeasured change to the sound
+does not stay in the tree. The reasoning itself remains valid and deserves to be taken up again with the
+right measurement (point 1 above).
 
-### Où reprendre
+### Where to resume
 
-La question est maintenant étroite : **deux emplacements, 18 et 19 du premier chip, pendant `VIC_DSP`.**
+The question is now narrow: **two slots, 18 and 19 of the first chip, during `VIC_DSP`.**
 
-1. Lire leurs registres — `SoundBoard::reg_word(0, 0x000 + slot * 0x20 ...)` donne les mots d'un emplacement —
-   et regarder `MDL`, `MDXSL`, `MDYSL` : est-ce que 18 et 19 se modulent l'une l'autre, ou elles-mêmes ?
-2. Refaire la comparaison avant/après fusion **à `--volume 25`**, la seule qui ait un sens.
-3. Si c'est bien une paire en réinjection, le gain de la boucle est dans `smp >>= 0x18 - (MDL & 0xE)` et dans
-   l'indexation de `m_RINGBUF` (`SCSP_FM_DELAY`) : c'est là qu'il faut mesurer, pas à l'oreille.
+1. Read their registers — `SoundBoard::reg_word(0, 0x000 + slot * 0x20 ...)` gives a slot's words — and
+   look at `MDL`, `MDXSL`, `MDYSL`: do 18 and 19 modulate each other, or themselves?
+2. Redo the before/after merge comparison **at `--volume 25`**, the only one that makes sense.
+3. If it really is a pair in feedback, the loop's gain is in `smp >>= 0x18 - (MDL & 0xE)` and in
+   `m_RINGBUF`'s indexing (`SCSP_FM_DELAY`): that is where to measure, not by ear.
 
-### Les outils laissés en place
+### The tools left in place
 
-- `VF3_ENERGY_LOG=N` — quelle voix fait le son, par image (`energy_on` / `energy_take`, `soundboard.h`).
-- `VF3_KEYON_LOG=fichier` — chaque voix démarrée, **avec sa forme** d'enveloppe et de boucle.
-- `VF3_MIDI_LOG=N` — ce que le jeu envoie au banc, avec son état et le pic de l'image précédente.
-- `tools/scripts/fv2-vic-banc.txt` — une route qui **n'aboutit pas** : elle entre bien en combat dans
-  `vf3run` (crédits payés, V.S. choisi) et le chrono du round forcé à zéro (`VF3_POKE` sur `0x00581404`) fait
-  bien finir le round, mais le jeu reste ensuite dans `JUDGE_DSP` et `VIC_DSP` n'est jamais atteint. Et
-  `vf3run` tourne à 14 images par seconde sur ce jeu : six minutes par essai. **Un banc hors-jeu pour cet
-  état reste à trouver** ; en attendant, la seule route qui y mène est une partie jouée à la main.
+- `VF3_ENERGY_LOG=N` — which voice makes the sound, per frame (`energy_on` / `energy_take`,
+  `soundboard.h`).
+- `VF3_KEYON_LOG=file` — every voice started, **with its envelope and loop shape**.
+- `VF3_MIDI_LOG=N` — what the game sends the board, with its state and the previous frame's peak.
+- `tools/scripts/fv2-vic-banc.txt` — a route that **does not get there**: it does enter a fight in `vf3run`
+  (credits paid, V.S. chosen) and the round clock forced to zero (`VF3_POKE` on `0x00581404`) does end the
+  round, but the game then stays in `JUDGE_DSP` and `VIC_DSP` is never reached. And `vf3run` runs at 14
+  frames per second on this game: six minutes per attempt. **An out-of-game bench for that state remains to
+  be found**; until then, the only route to it is a game played by hand.
 
-### Ce que MAME et Supermodel font de ce défaut (relevé le 2026-10-24)
+### What MAME and Supermodel make of this defect (recorded on 2026-10-24)
 
-Frédéric a demandé si le défaut existait déjà dans les émulateurs et comment ils l'avaient résolu. **Oui, et
-sur ce jeu précisément.**
+Frédéric asked whether the defect already existed in the emulators and how they had solved it. **Yes, and on
+this game precisely.**
 
-- **Supermodel a porté le même problème, et l'a nommé.** Son option `LegacySoundDSP` est documentée comme
-  « legacy SCSP **DSP** implementation for games that do not play well with the newer one (**e.g. Fighting
-  Vipers 2**) », et elle se règle **par jeu** — Fighting Vipers 2 et Sega Rally 2 sont les exemples cités. Le
-  « nouveau » moteur est celui de MAME, porté chez eux en r814 ; l'ancien est celui d'ElSemi. Donc quand le
-  DSP de MAME est entré, ce jeu a eu besoin qu'on revienne à l'ancien.
-- **Puis ils l'ont corrigé pour de bon.** Le `Src/Sound/SCSP.cpp` actuel a supprimé le chemin d'ElSemi, et son
-  en-tête dit pourquoi : Fighting Vipers 2 « used to need ElSemi's older DSP register handling, which has been
-  removed now that **DSP memory access follows the manual** ».
-- **Trois écarts avec notre modulation**, chez eux tirés du manuel (table 4.17) et non de l'oreille :
+- **Supermodel carried the same problem, and named it.** Its `LegacySoundDSP` option is documented as
+  "legacy SCSP **DSP** implementation for games that do not play well with the newer one (**e.g. Fighting
+  Vipers 2**)", and it is set **per game** — Fighting Vipers 2 and Sega Rally 2 are the examples cited. The
+  "newer" engine is MAME's, ported there in r814; the old one is ElSemi's. So when MAME's DSP came in, this
+  game needed a return to the old one.
+- **Then they fixed it for good.** The current `Src/Sound/SCSP.cpp` has removed ElSemi's path, and its
+  header says why: Fighting Vipers 2 "used to need ElSemi's older DSP register handling, which has been
+  removed now that **DSP memory access follows the manual**".
+- **Three differences from our modulation**, theirs taken from the manual (table 4.17) and not from the
+  ear:
 
-  | | Supermodel (manuel) | nous (MAME + amont) |
+  | | Supermodel (the manual) | us (MAME + upstream) |
   |---|---|---|
-  | quand la modulation s'applique | `MDL` **5 à F** seulement ; 0 à 4 = aucune | dès que `MDL`, `MDXSL` **ou** `MDYSL` est non nul |
-  | le décalage | `>> (0x19 - MDL)` | `>> (0x18 - (MDL & 0xE))` |
-  | le décalage d'adresse obtenu | **borné à 11 bits signés** | **non borné** |
+  | when the modulation applies | `MDL` **5 to F** only; 0 to 4 = none | as soon as `MDL`, `MDXSL` **or** `MDYSL` is non-zero |
+  | the shift | `>> (0x19 - MDL)` | `>> (0x18 - (MDL & 0xE))` |
+  | the address offset obtained | **clamped to signed 11 bits** | **unclamped** |
 
-  Le troisième est le plus suspect pour ce qu'on mesure : un décalage non borné lit hors de l'échantillon
-  prévu, et c'est le genre de chose qui fait grossir une voix en bruit.
-- **Et MAME a corrigé un défaut d'adressage du DSP que nous gardons actif.**
-  [mamedev/mame#16527](https://github.com/mamedev/mame/pull/16527), « Don't mirror MADRS at 0x7c0-0x7ff,
-  fixes corrupted and then silent sound in doa ». Or `src/sound/scsp.h` garde ce miroir **par défaut** :
+  The third is the most suspect for what we measure: an unclamped offset reads outside the intended sample,
+  and that is the kind of thing that makes a voice grow into noise.
+- **And MAME fixed a DSP addressing defect that we keep active.**
+  [mamedev/mame#16527](https://github.com/mamedev/mame/pull/16527), "Don't mirror MADRS at 0x7c0-0x7ff,
+  fixes corrupted and then silent sound in doa". But `src/sound/scsp.h` keeps that mirror **by default**:
 
   ```cpp
   const bool m_madrs_mirror = [] { const char *e = getenv("VF3_SCSP_MADRS_SEPARATE"); return !(e && *e == '1'); }();
   ```
 
-  Le comportement corrigé de MAME n'est donc accessible que par une variable d'environnement, et ce portage
-  fait tourner par défaut ce que MAME a réparé — dans la zone même que Supermodel dit avoir dû mettre en
-  conformité avec le manuel.
+  So MAME's corrected behaviour is only reachable through an environment variable, and this port runs by
+  default what MAME repaired — in the very area Supermodel says it had to bring into line with the manual.
 
-**La première chose à essayer est donc `VF3_SCSP_MADRS_SEPARATE=1`** : une variable sur le binaire existant,
-et c'est la correction de MAME. Tout ceci est aussi dans l'issue ouverte à cette occasion,
-[penpenlovesrei-dotcom/vf3-recomp#1](https://github.com/penpenlovesrei-dotcom/vf3-recomp/issues/1) — les
-issues du fork étaient désactivées et ont été activées pour elle.
+**So the first thing to try is `VF3_SCSP_MADRS_SEPARATE=1`**: one variable on the existing binary, and it is
+MAME's fix. All of this is also in the issue opened on that occasion,
+[penpenlovesrei-dotcom/vf3-recomp#1](https://github.com/penpenlovesrei-dotcom/vf3-recomp/issues/1) — the
+fork's issues were disabled and were enabled for it.
 
-Sources : le `LegacySoundDSP` des configurations publiées de Supermodel, la documentation du cœur
-Libretro-Supermodel (moteurs « MAME-derived » et « ElSemi »), l'en-tête de `Src/Sound/SCSP.cpp` de
-`trzy/Supermodel`, et la demande d'intégration MAME ci-dessus.
+Sources: the `LegacySoundDSP` of Supermodel's published configurations, the Libretro-Supermodel core's
+documentation ("MAME-derived" and "ElSemi" engines), the header of `trzy/Supermodel`'s
+`Src/Sound/SCSP.cpp`, and MAME's pull request above.
 
-### RÉSOLU : le miroir de `MADRS` écrasait les lignes à retard du DSP sur une seule adresse
+### RESOLVED: the mirroring of `MADRS` was crushing the DSP's delay lines onto one address
 
-La cause est le miroir de la table `MADRS` du DSP sur `0x7C0-0x7FF`, et **le commentaire qui l'accompagnait
-dans `scsp.h` la contenait déjà sans que personne l'ait rapprochée de ce défaut** :
+The cause is the mirroring of the DSP's `MADRS` table at `0x7C0-0x7FF`, and **the comment that accompanied
+it in `scsp.h` already contained it without anyone having connected it to this defect**:
 
-> « VF3's sound program sets its reverb's addresses, then clears that range, which **with the mirror leaves
-> them all at one place: the reverb short** […] kept apart, VF2's way, they **rang on for several** »
+> "VF3's sound program sets its reverb's addresses, then clears that range, which **with the mirror leaves
+> them all at one place: the reverb short** […] kept apart, VF2's way, they **rang on for several**"
 
-Avec le miroir, **toutes les entrées de `MADRS` tombent au même endroit**, donc chacune des lignes à retard du
-DSP lit et écrit le même tampon. Sur l'écran de victoire, cette boucle se nourrit d'elle-même : le son naît,
-grossit de 24 dB et sature. Les deux voix nommées par la sonde d'énergie, `c0/s18` et `c0/s19`, sont les deux
-prises qui se retrouvaient à la même adresse.
+With the mirror, **every entry of `MADRS` falls in the same place**, so each of the DSP's delay lines reads
+and writes the same buffer. On the victory screen, that loop feeds on itself: the sound is born, grows by
+24 dB and saturates. The two voices the energy probe named, `c0/s18` and `c0/s19`, are the two taps that
+ended up at the same address.
 
-**La mesure, à contexte égal** — même code, même volume, deux parties de Frédéric, avec le miroir et sans :
+**The measurement, at equal context** — the same code, the same volume, two games of Frédéric's, with the
+mirror and without:
 
-| état | pic AVEC | pic SANS | moyenne AVEC | moyenne SANS |
+| state | peak WITH | peak WITHOUT | mean WITH | mean WITHOUT |
 |---|---|---|---|---|
 | **`VIC_DSP`** | **29196** | **16506** | **22831** | **6532** |
 | `FIGHT_DSP` | 16980 | 16290 | 6714 | **6979** |
@@ -608,110 +619,105 @@ prises qui se retrouvaient à la même adresse.
 | `REPLAY_DSP` | 14023 | 14749 | 6575 | **6923** |
 | `SELECT` | 11101 | 10708 | 5800 | 5858 |
 
-L'écran de victoire passe de 22831 de moyenne à 6532 et quitte le plafond du limiteur ; **tous les autres
-états restent où ils étaient**, la moyenne du combat montant même légèrement. Frédéric, qui a joué les deux :
-« le bug a été corrigé, même si je trouve que les sound effects sont plus bas ». Ce n'est pas une perte de
-niveau — la mesure dit le contraire — mais la réverbération, qui n'est plus écrasée en un point et retrouve
-ses vraies lignes à retard : les frappes ont une queue au lieu d'un claquement concentré.
+The victory screen goes from a mean of 22831 to 6532 and leaves the limiter's ceiling; **all the other
+states stay where they were**, the fight's mean even rising slightly. Frédéric, who played both: "the bug
+has been fixed, even if I find the sound effects are lower". That is not a loss of level — the measurement
+says the opposite — but the reverb, which is no longer crushed into one point and gets its real delay lines
+back: the hits have a tail instead of a concentrated crack.
 
-### La correction est PAR JEU, parce que les deux mesures sont bonnes
+### The fix is PER GAME, because both measurements are good
 
-L'amont a mesuré que le miroir est **juste pour Virtua Fighter 3** : les échos du crédit et de Start y meurent
-en une seconde, comme la référence, alors que sans lui ils sonnent plusieurs secondes. Nous venons de mesurer
-qu'il est **faux pour Fighting Vipers 2**. Aucune des deux mesures n'annule l'autre, donc le réglage suit le
-jeu, comme `driver_known` le fait déjà :
+Upstream measured that the mirror is **right for Virtua Fighter 3**: the credit's and Start's echoes die
+there in a second, like the reference, whereas without it they ring on for several. We have just measured
+that it is **wrong for Fighting Vipers 2**. Neither measurement cancels the other, so the setting follows
+the game, as `driver_known` already does:
 
-- `SoundBoard::madrs_mirror`, posé depuis le set par l'hôte et par `vf3run` (`board.set == "vf3"`), appliqué
-  au chip à sa création via `scsp_device::set_madrs_mirror`.
-- `VF3_SCSP_MADRS_SEPARATE=1` et `VF3_SCSP_MADRS_MIRROR=1` forcent l'un ou l'autre, pour comparer.
-- `verifier-vf3.cmd 2000` : quatre `IDENTIQUE` et 2231 images identiques — Virtua Fighter 3 ne bouge pas.
+- `SoundBoard::madrs_mirror`, set from the set by the host and by `vf3run` (`board.set == "vf3"`), applied
+  to the chip at its creation through `scsp_device::set_madrs_mirror`.
+- `VF3_SCSP_MADRS_SEPARATE=1` and `VF3_SCSP_MADRS_MIRROR=1` force one or the other, for comparison.
+- `verifier-vf3.cmd 2000`: four `IDENTIQUE` and 2231 identical frames — Virtua Fighter 3 does not move.
 
-**Un piège de mesure rencontré en route, à ne pas refaire** : la première construction a échoué
-(`m_madrs_mirror` était privé) et le vérificateur a tourné ensuite sur les **anciens** binaires, rendant
-quatre `IDENTIQUE` qui ne portaient sur rien. Même défaut que la bissection du matin : un harnais qui mesure
-un binaire périmé répond toujours « tout va bien ». Depuis, le script s'arrête sur une erreur de compilation
-avant de vérifier quoi que ce soit.
+**A measurement trap met on the way, not to be repeated**: the first build failed (`m_madrs_mirror` was
+private) and the checker then ran on the **old** binaries, returning four `IDENTIQUE` that bore on nothing.
+The same defect as the morning's bisection: a harness that measures a stale binary always answers "all is
+well". Since then, the script stops on a compilation error before checking anything at all.
 
-### Ce qui reste ouvert
+### What remains open
 
-- **Personne n'a jamais mesuré la bonne longueur de réverbération de Fighting Vipers 2** contre une
-  référence. L'amont a comparé VF3 à Supermodel ; nous avons comparé FV2 à lui-même. Supermodel dit avoir mis
-  les accès mémoire de son DSP en conformité avec le manuel, et c'est cette référence qu'il faudrait écouter.
-- Les trois écarts de modulation avec Supermodel (table 4.17) restent, et le **bornage du décalage d'adresse
-  à 11 bits** reste une correction tirée du manuel que ce portage n'a pas.
-- `LEVEL = 4.0`, les 12 dB choisis pour Virtua Fighter 3, s'appliquent toujours aussi à ce jeu. Ils ne
-  saturent plus, mais ils n'ont jamais été mesurés pour lui.
+- **Nobody has ever measured Fighting Vipers 2's right reverb length** against a reference. Upstream
+  compared VF3 with Supermodel; we compared FV2 with itself. Supermodel says it brought its DSP's memory
+  accesses into line with the manual, and that is the reference one would want to listen to.
+- The three modulation differences from Supermodel (table 4.17) remain, and the **clamping of the address
+  offset to 11 bits** remains a fix taken from the manual that this port does not have.
+- `LEVEL = 4.0`, the 12 dB chosen for Virtua Fighter 3, still applies to this game too. They no longer
+  saturate, but they have never been measured for it.
 
-## Le menu qui grésille : 56 ms de musique jetés à chaque ouverture (2026-10-28)
+## The menu that crackles: 56 ms of music thrown away on every opening (2026-10-28)
 
-Frédéric : « parfois le son du menu principal grésille, ou plutôt a un écho ».
+Frédéric: "sometimes the main menu's sound crackles, or rather has an echo".
 
-### Ce que les mesures ont écarté d'abord
+### What the measurements ruled out first
 
-Trois routes jouées cachées, avec `VF3_MENU_SOUND=1`, qui imprime la profondeur de la file du
-périphérique image par image :
+Three hidden runs played, with `VF3_MENU_SOUND=1`, which prints the device queue's depth frame by frame:
 
-| route | file (images) | cadence |
+| route | queue (frames) | rate |
 |---|---|---|
-| la liste sur l'écran titre, 65 s | min 2,7 — médiane 3,0 — max 3,4 | 57,6/s |
-| la même, **tous les cœurs chargés** | min 3,0 — médiane 3,3 — max 3,6 | 58,1/s |
-| le retour au menu depuis un match | médiane 3,0 | — |
+| the list on the title screen, 65 s | min 2.7 — median 3.0 — max 3.4 | 57.6/s |
+| the same, **every core loaded** | min 3.0 — median 3.3 — max 3.6 | 58.1/s |
+| the return to the menu from a match | median 3.0 | — |
 
-**La pompe ne décroche pas**, même sous charge, et l'enregistrement du son (`VF3_SOUND_WAV`, nouveau)
-ne montre ni rupture d'échantillon ni bloc répété. Ce n'était donc ni une famine de la file ni un
-doublement de l'audio.
+**The pump does not drop out**, even under load, and the sound recording (`VF3_SOUND_WAV`, new) shows
+neither a sample break nor a repeated block. So it was neither a queue starvation nor a doubling of the
+audio.
 
-### Ce qu'elles ont trouvé
+### What they found
 
-L'ouverture d'une surface **vidait la file du périphérique**, et c'est du son que le joueur n'a pas encore
-entendu. La ligne était là depuis le jour où les bips arrivaient « en décalé », et le chiffre n'avait
-jamais été regardé. Mesuré sur la route arcade :
+Opening a surface **drained the device's queue**, and that is sound the player has not heard yet. The line
+had been there since the day the beeps were arriving "delayed", and the figure had never been looked at.
+Measured on the arcade route:
 
 ```
 the console: MENU_IN -> MENU (the game is home)
 the console's sound: 3.2 frames (56 ms) were queued and are thrown away
 ```
 
-**3,2 images, 56 ms** — ce n'est pas un retard accumulé, ce sont les trois images d'avance que le
-régulateur du jeu tient exprès. Autrement dit, **56 ms de musique étaient coupés au milieu d'eux-mêmes à
-chaque fois qu'un menu s'ouvrait** : un saut dans une note tenue, ce qui s'entend exactement comme un
-grésillement ou un écho.
+**3.2 frames, 56 ms** — that is not accumulated lateness, it is the three frames of lead the game's governor
+holds on purpose. In other words, **56 ms of music was being cut in the middle of itself every time a menu
+opened**: a jump inside a held note, which sounds exactly like a crackle or an echo.
 
-### La correction
+### The fix
 
-L'excédent seulement est vidé — au-delà du double de ce que le périphérique veut — et les trois images
-habituelles sont laissées tranquilles. La pompe ne fabrique plus que ce qui manque réellement
-(`max(0, QUEUED - file)`) au lieu d'amorcer trois images par-dessus une file déjà pleine. Le cas que la
-première version soignait vraiment, une file dans laquelle le jeu a couru loin devant, reste soigné :
-c'est celui de l'avance rapide, huit images par passe.
+Only the excess is drained — beyond twice what the device wants — and the usual three frames are left alone.
+The pump now makes only what is really missing (`max(0, QUEUED - queue)`) instead of priming three frames on
+top of an already full queue. The case the first version really did treat, a queue in which the game has run
+far ahead, stays treated: that is fast-forward's, eight frames per pass.
 
-Un bip arrive donc 56 ms après la touche, soit trois rafraîchissements — personne n'entend ça.
+So a beep arrives 56 ms after the key, that is three refreshes — nobody hears that.
 
-**Après** : plus une seule ligne « thrown away », et la file ne descend plus jamais à zéro à l'ouverture
-(min 2,5 images sur 106 relevés, contre 0,0 à chaque ouverture avant). Les trois routes de
-`verifier-console.cmd` passent toujours.
+**After**: not one "thrown away" line left, and the queue never goes down to zero on opening again (min 2.5
+frames over 106 readings, against 0.0 at every opening before). `verifier-console.cmd`'s three routes still
+pass.
 
 ## The menu's beep comes out with an echo (2026-10-29)
 
-Frederic: "parfois le son du menu principal gresille, ou plutot a un echo", and then, after a session
+Frédéric: "parfois le son du menu principal gresille, ou plutot a un echo", and then, after a session
 recorded with `VF3_SOUND_WAV`: "oui et c'est plutot un echo avec gresillement". He heard it in the
 recording itself, so it is in what this port hands the card, not in his device.
 
 ### The measurement that finally isolated it
 
-Six hidden runs had come out clean, and the reason is itself worth writing down: **in a fresh hidden
-run the menu's beep does not sound at all**. The peak over a whole menu stay is 4421, which is the
-tail of the SEGA voice; after that, nothing. Bank 0x2E is not loaded until a mode has been played, so
-every measurement so far had been measuring the cleanliness of a sound that never played.
+Six hidden runs had come out clean, and the reason is itself worth writing down: **in a fresh hidden run
+the menu's beep does not sound at all**. The peak over a whole menu stay is 4421, which is the tail of the
+SEGA voice; after that, nothing. Bank 0x2E is not loaded until a mode has been played, so every measurement
+so far had been measuring the cleanliness of a sound that never played.
 
-What worked was a timed gesture in his own session: open a menu, five seconds untouched, ONE move of
-the cursor, five seconds untouched. That gives one transient with a known place and a control either
-side of it.
+What worked was a timed gesture in his own session: open a menu, five seconds untouched, ONE move of the
+cursor, five seconds untouched. That gives one transient with a known place and a control either side of it.
 
 ### What the isolated beep says
 
-The floor around it is **a constant -492 on every sample, standard deviation zero**, identical on both
-channels -- so anything that moves is the beep. Its envelope, in 2 ms steps from the attack:
+The floor around it is **a constant −492 on every sample, standard deviation zero**, identical on both
+channels — so anything that moves is the beep. Its envelope, in 2 ms steps from the attack:
 
 ```
    78 - 128 ms   the beep        peak 3672
@@ -719,28 +725,28 @@ channels -- so anything that moves is the beep. Its envelope, in 2 ms steps from
   450 - 484 ms   a third         peak  391
 ```
 
-About **180 ms apart, each a quarter of the one before**. That is a delay line with feedback, which is
-the SCSP's own DSP -- the part another session is measuring variant by variant. An effect on bank 0x2E
-comes out of this port with a 180 ms echo at about a quarter, and that is the handle.
+About **180 ms apart, each a quarter of the one before**. That is a delay line with feedback, which is the
+SCSP's own DSP — the part another session is measuring variant by variant. An effect on bank 0x2E comes out
+of this port with a 180 ms echo at about a quarter, and that is the handle.
 
 ### Two things read in passing
 
-**The output carries a constant DC.** It creeps in -- 0, then -209, -349, -424, -480 -- and sticks at
--492, where it stays for minutes with a standard deviation of zero. A direct component is not heard in
-itself, but it turns every interruption of the stream into a click of 492, about -36 dB: a queue that
-runs dry stops being a gap and becomes a tick.
+**The output carries a constant DC.** It creeps in — 0, then −209, −349, −424, −480 — and sticks at −492,
+where it stays for minutes with a standard deviation of zero. A direct component is not heard in itself, but
+it turns every interruption of the stream into a click of 492, about −36 dB: a queue that runs dry stops
+being a gap and becomes a tick.
 
-**Every sample is a multiple of four.** That is `LEVEL = 4.0`, the 12 dB chosen for Virtua Fighter 3:
-the board's output is multiplied by four, so two bits of resolution go. Inaudible on its own, noted
-because it shows in every figure above.
+**Every sample is a multiple of four.** That is `LEVEL = 4.0`, the 12 dB chosen for Virtua Fighter 3: the
+board's output is multiplied by four, so two bits of resolution go. Inaudible on its own, noted because it
+shows in every figure above.
 
 ### And it is OURS: the same sound has no tail through the game's own loop
 
-Frederic, plainly: "le son doit se jouer une seule fois. Pas de reverb, echo ou autre."
+Frédéric, plainly: "le son doit se jouer une seule fois. Pas de reverb, echo ou autre."
 
-The A/B that settles it. `A0 2E 26` -- the menu's own move sound -- sent by hand into the game's own
-frame loop with VF3_MIDI_SEND, the music silenced first with the game's own `A0 00 01`, the board
-loaded by a match already played, against the same sound as the pump plays it:
+The A/B that settles it. `A0 2E 26` — the menu's own move sound — sent by hand into the game's own frame loop
+with `VF3_MIDI_SEND`, the music silenced first with the game's own `A0 00 01`, the board loaded by a match
+already played, against the same sound as the pump plays it:
 
 ```
                          at the attack   +165 ms   +330 ms   +495 ms
@@ -748,16 +754,15 @@ loaded by a match already played, against the same sound as the pump plays it:
   the menu's pump               1564         259       119        56
 ```
 
-Nothing at all through the game's loop. Three decaying repeats through the pump, 165.01 ms apart --
-7277 samples, 9.49 sound frames, which is no round number of anything this port counts -- and the
-repeats are the SAME WAVEFORM, not an echo of the attack: cross-correlated, repeat two against repeat
-three gives 0.952 at zero lag, and the pattern is found again at 265, 430, 595, 640 and 805 ms.
+Nothing at all through the game's loop. Three decaying repeats through the pump, 165.01 ms apart — 7277
+samples, 9.49 sound frames, which is no round number of anything this port counts — and the repeats are the
+SAME WAVEFORM, not an echo of the attack: cross-correlated, repeat two against repeat three gives 0.952 at
+zero lag, and the pattern is found again at 265, 430, 595, 640 and 805 ms.
 
-So the board itself produces this when the PUMP turns it and not when the game does. The two call
-paths differ in one thing only -- `sound_only_frame` does not run the PowerPC -- so what the game
-stops sending while it is frozen is the next place to look. The 68000 and its DSP go on running
-without their host.
+So the board itself produces this when the PUMP turns it and not when the game does. The two call paths
+differ in one thing only — `sound_only_frame` does not run the PowerPC — so what the game stops sending
+while it is frozen is the next place to look. The 68000 and its DSP go on running without their host.
 
-Measured along the way, and worth keeping for whoever picks this up: of the seventeen indices of bank
-0x2E, 0x26 is among the cleanest through the game's loop (no tail at all), so the fault is not in the
-choice of sound.
+Measured along the way, and worth keeping for whoever picks this up: of the seventeen indices of bank 0x2E,
+0x26 is among the cleanest through the game's loop (no tail at all), so the fault is not in the choice of
+sound.
