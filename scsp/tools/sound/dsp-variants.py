@@ -62,7 +62,7 @@ VARIANTS = [
 		}
 	}""")]),
 
- # 2. `entree` is computed on every step, and in the baseline it serves NO purpose: XSEL is zero, IWT zero,
+ # 2. `input` is computed on every step, and in the baseline it serves NO purpose: XSEL is zero, IWT zero,
  #    and the two rare readers are outside the lean body. Three comparisons, a load and a sign extension
  #    for a discarded value. The give-up, for its part, depends only on the program: Start finds it once.
  ("lazy_input",
@@ -71,12 +71,12 @@ VARIANTS = [
     """		// --- the input, COMPUTED ONLY IF THIS STEP READS IT. In the baseline it serves no purpose:
 		// XSEL is zero, IWT zero, and the two rare readers are outside the lean body. The give-up (IRA
 		// beyond 0x31) depends only on the program, so Start finds it once: see m_abandon.
-		s32 entree = 0;
+		s32 input = 0;
 		if ((f & (I_XSEL | I_IWT)) || (RARES && (f & (I_YRL | I_ADRL)))) {
-			if (I.ira <= 0x1F)      entree = MEMS[I.ira];
-			else if (I.ira <= 0x2F) entree = MIXS[I.ira - 0x20] << 4;    // MIXS is 20 bits
-			else                    entree = EXTS[I.ira - 0x30] << 8;    // EXTS is 16 of them
-			entree = sext(entree, 24);
+			if (I.ira <= 0x1F)      input = MEMS[I.ira];
+			else if (I.ira <= 0x2F) input = MIXS[I.ira - 0x20] << 4;    // MIXS is 20 bits
+			else                    input = EXTS[I.ira - 0x30] << 8;    // EXTS is 16 of them
+			input = sext(input, 24);
 		}
 """)]),
 
@@ -146,7 +146,7 @@ VARIANTS.append(("all_four", "the four that won ON THE BASELINE, together",
 #   shift_two_bits      -3.03%           -1.10%       <- wins on both sides
 #   grouped_output       -6.02%           +0.91%
 #   all_four                              +3.27%
-#   lazy_input   -15.00%           +4.75%       <- the baseline's big winner, the game's worst
+#   lazy_input         -15.00%           +4.75%       <- the baseline's big winner, the game's worst
 #
 # `lazy_input` adds one test per step to avoid computing an input that, in the real program, 37
 # steps out of 112 need through XSEL and 23 through IWT (docs/scsp_audit.md §5). So it pays the test AND
@@ -154,6 +154,11 @@ VARIANTS.append(("all_four", "the four that won ON THE BASELINE, together",
 # away 112 times per sample, and that is the only place where its laziness pays.
 #
 # The baseline locates a cost; it does not say what a change is worth. It took both programs.
+#
+# AND `lazy_input` WOULD NOT BUILD AS IT STANDS, which is fine for a record and would not be for a
+# proposal: its text leans on an `m_abandon` member -- the give-up resolved once at Start -- that the
+# source has never carried. It was measured in a tree that had it, and that tree was not kept, because the
+# measurement rejected the variant. Anybody reviving it adds `m_abandon` first.
 WINNING_NAMES = ('ysel_coef_first', 'shift_two_bits')
 VARIANTS.append(("winners", "the two that win on the game's program",
                   [p for n, _, patches in VARIANTS for p in patches if n in WINNING_NAMES]))

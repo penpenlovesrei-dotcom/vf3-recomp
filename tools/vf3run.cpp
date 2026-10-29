@@ -412,7 +412,7 @@ int main(int argc, char **argv)
 						const uint8_t f4 = uint8_t(w2 >> 8), f5 = uint8_t(w2 & 0xFF);
 						const uint8_t f6 = uint8_t(w3 >> 8), fb = uint8_t(w5 & 0xFF);
 						if (f4)
-							fprintf(fq, "%d chip%d fente %2d +4 %02x +5 %02x +6 %02x +B %02x cat %c\n",
+							fprintf(fq, "%d chip%d slot %2d +4 %02x +5 %02x +6 %02x +B %02x cat %c\n",
 							        int(f), n, sl, f4, f5, f6, fb,
 							        (f4 & 0x08) ? 'A' : ((fb & 0x80) ? '?' : 'B'));
 					}

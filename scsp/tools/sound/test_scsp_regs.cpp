@@ -103,16 +103,16 @@ int main(int argc, char **argv)
 
 	// ---- 2. the three set aside are indeed the ones named, and no others
 	{
-		unsigned slots = 0, autres = 0;
+		unsigned slots = 0, others = 0;
 		for (std::uint32_t byte = 0; byte < 0x430; byte += 2) {
 			const char *p = nullptr;
 			if (!untouchable(byte, p)) continue;
-			if (byte < 0x400) ++slots; else ++autres;
+			if (byte < 0x400) ++slots; else ++others;
 		}
-		const bool correct = slots == 32 && autres == 2 && skipped == slots + autres;
+		const bool correct = slots == 32 && others == 2 && skipped == slots + others;
 		correct ? ok("the ones set aside are named", std::to_string(slots) + " slot word 0s + 0x400 + 0x416")
 		      : rate("the ones set aside are named",
-		             std::to_string(slots) + " slots and " + std::to_string(autres) + " others, for "
+		             std::to_string(slots) + " slots and " + std::to_string(others) + " others, for "
 		             + std::to_string(skipped) + " skipped");
 	}
 
@@ -183,7 +183,7 @@ int main(int argc, char **argv)
 			if (c.word == 0) continue;   // word 0 is not written (KYONEX)
 			const bool in_place = (c.mask & (c.mask + 1)) != 0;
 			const std::uint16_t expected = std::uint16_t(in_place ? c.mask : (c.mask << c.shift_by));
-			// slot 0: word c.mot is at byte 2 * c.mot
+			// slot 0: word c.word is at byte 2 * c.word
 			const std::uint16_t m = raises[c.word];
 			if ((m & expected) != expected) lost += std::string(lost.empty() ? "" : ", ") + c.name;
 		}

@@ -76,15 +76,15 @@ struct SoundBoard::Bus : m68000_bus
 			const bool slotsa = off < 0x400 && (off & 0x1E) <= 0x02;   // words 0x0 and 0x2 of a slot
 			const char *zone = off >= 0x700
 			                 ? (off < 0x780 ? "COEF" : off < 0x7c0 ? "MADRS"
-			                    : off < 0x800 ? "7C0-7FF" : off < 0xc00 ? "MPRO" : "autre")
+			                    : off < 0x800 ? "7C0-7FF" : off < 0xc00 ? "MPRO" : "other")
 			                 : (off >= 0x600 && off < 0x700) ? "RINGBUF"
 			                 : slot6 ? "SLOT6" : slotsa ? "SLOTSA" : nullptr;
 			if (zone) {
 				if (slotsa)
-					fprintf(dl, "%d chip%d %03x %-7s %04x mask %04x fente %u mot %u\n", b.frames,
+					fprintf(dl, "%d chip%d %03x %-7s %04x mask %04x slot %u word %u\n", b.frames,
 					        int((a >> 20) == 3), off, zone, data, mem_mask, off / 0x20, (off & 0x1F) / 2);
 				else if (slot6)
-					fprintf(dl, "%d chip%d %03x %-7s %04x mask %04x fente %u stwinh %d\n", b.frames,
+					fprintf(dl, "%d chip%d %03x %-7s %04x mask %04x slot %u stwinh %d\n", b.frames,
 					        int((a >> 20) == 3), off, zone, data, mem_mask, off / 0x20, (data >> 9) & 1);
 				else
 					fprintf(dl, "%d chip%d %03x %-7s %04x mask %04x\n", b.frames, int((a >> 20) == 3), off, zone, data, mem_mask);

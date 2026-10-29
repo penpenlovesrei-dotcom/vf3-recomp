@@ -31,7 +31,7 @@
 
 namespace scsp_contract {
 
-// A field as the implementation reads it: value = (word[mot] >> decalage) & masque. The triple is kept in
+// A field as the implementation reads it: value = (block[word] >> shift_by) & mask. The triple is kept in
 // exactly that form, and not as a bit range, so the test can compare it to the macro character for
 // character. The comments give the human-readable range.
 //
@@ -40,18 +40,18 @@ namespace scsp_contract {
 // `(word >> 0) & 0x1000`: THE BIT IN PLACE, a mask with no shift. KYONEX, KYONB, PCM8B, EGHOLD, LPSLNK,
 // LFORE, STWINH and SDIR are of that kind.
 //
-// So a reader that blindly does `(value & masque) << decalage` writes ZERO for those. That is exactly what
+// So a reader that blindly does `(value & mask) << shift_by` writes ZERO for those. That is exactly what
 // happened the first time tools/sound/test_scsp_core.cpp ran: the voice stayed silent and the failure message
 // blamed the contract, while the fault was in the caller. The two are told apart by the SHAPE of the mask --
 // a contiguous low-bit mask (1, 3, 7, 0x1F, 0x3F...) is a value, anything else is a bit in place:
 //
-//     const bool bit_en_place = (masque & (masque + 1)) != 0;
+//     const bool bit_in_place = (mask & (mask + 1)) != 0;
 //
 // The convention is kept rather than normalised, because the contract's job is to say what the
 // implementation does, and its test compares the two literally.
 struct Field {
 	const char *name;
-	unsigned    word;          // word index inside the block (byte offset = 2 * mot)
+	unsigned    word;          // word index inside the block (byte offset = 2 * word)
 	unsigned    shift_by;
 	unsigned    mask;
 };
@@ -213,7 +213,7 @@ inline constexpr std::uint16_t INIT_418_42A[10] = {
 };
 
 // The level of a source is its bit read across the three SCILV, low word first:
-//   niveau = (SCILV2[bit] << 2) | (SCILV1[bit] << 1) | SCILV0[bit]
+//   level = (SCILV2[bit] << 2) | (SCILV1[bit] << 1) | SCILV0[bit]
 // With 0x88 / 0x48 / 0x00 that gives MIDI in 3, timer A 2, timer B 1 -- the three SOURCES above.
 inline constexpr unsigned level_of(unsigned bit)
 {
@@ -337,7 +337,7 @@ constexpr const Field *slot_field(const char *name)
 	return find_field(SLOT, sizeof SLOT / sizeof *SLOT, name);
 }
 
-// Places `valeur` in the 16 words of a slot, where this table says the field lives.
+// Places `value` in the 16 words of a slot, where this table says the field lives.
 //
 // Returns false if the name is unknown, so a caller cannot silently write nothing. The two conventions are
 // told apart by the shape of the mask AND BY THE SHIFT: a field is a bit already in place only when its
@@ -368,10 +368,10 @@ constexpr bool put(std::uint16_t word[16], const char *name, unsigned value)
 // AND ONE ENTRY OF THIS TABLE IS A READ MASK AND NOT A WRITE MASK, which is worth saying plainly because
 // nothing in the struct distinguishes the two. PLFOS's mask is 0x0006 because that is what the
 // implementation READS out of a THREE-bit register field (bits 7-5 of word 9); the field itself is 7 wide.
-// So `pose(mot, "PLFOS", 1)` cannot put a 1 in the register -- `1 & 6` is zero -- and a test that wants to
+// So `put(block, "PLFOS", 1)` cannot put a 1 in the register -- `1 & 6` is zero -- and a test that wants to
 // show the deviation must write the register's bits itself. Every other field's mask is also its width.
 inline constexpr unsigned PLFOS_FIELD_SHIFT = 5;
-inline constexpr unsigned PLFOS_FIELD_WIDTH  = 0x7;   // le champ du registre, avant que la lecture en jette le bit bas
+inline constexpr unsigned PLFOS_FIELD_WIDTH  = 0x7;   // the register's field, before the read throws its low bit away
 
 // ---------------------------------------------------------------------------------------------------
 // 11. PITCH, LFO AND RING MODULATION, measured 2026-10-26 by tools/sound/test_scsp_lfo.cpp.

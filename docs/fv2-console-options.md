@@ -106,7 +106,7 @@ The "live" and "factory" columns are read from a RAM dump; the "backup" column i
 agree, and the factory values are exactly those measured in August in the test menu — two independent
 sources.
 
-| réglage | vivant | k | sauvegarde | usine |
+| setting | live | k | backup | factory |
 |---|---|---|---|---|
 | `ENERGY MAX 1P` | `0x120540` (16 bits) | 32 | `0x42`, `0x43` | `00D2` = 210 |
 | `ENERGY MAX VS` | `0x120542` (16 bits) | 34 | `0x46`, `0x47` | `00D2` = 210 |

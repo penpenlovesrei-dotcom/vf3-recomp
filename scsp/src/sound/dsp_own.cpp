@@ -172,9 +172,9 @@ void dsp_own::loop()
 	for (auto &v : EFREG) v = 0;
 
 	const u32 dec = m_dec, rbl = RBL, rbp = RBP;
-	const int dernier = m_last;
+	const int last = m_last;
 
-	for (int step = 0; step < dernier; ++step) {
+	for (int step = 0; step < last; ++step) {
 		const DecodedStep &I = m_prog[step];
 		const u32 f = I.f;
 
@@ -262,7 +262,7 @@ void dsp_own::loop()
 	}
 
 	m_dec = dec - 1;
-	if (sndprof::on) sndprof::dsp_steps += unsigned(dernier);
+	if (sndprof::on) sndprof::dsp_steps += unsigned(last);
 	// MIXS is cleared at the END: the slots fill it for the next sample.
 	for (auto &v : MIXS) v = 0;
 }

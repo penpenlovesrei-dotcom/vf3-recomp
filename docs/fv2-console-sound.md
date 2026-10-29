@@ -742,7 +742,7 @@ shows in every figure above.
 
 ### And it is OURS: the same sound has no tail through the game's own loop
 
-Frédéric, plainly: "le son doit se jouer une seule fois. Pas de reverb, echo ou autre."
+Frédéric, plainly: "the sound must play once only. No reverb, echo or anything else."
 
 The A/B that settles it. `A0 2E 26` — the menu's own move sound — sent by hand into the game's own frame loop
 with `VF3_MIDI_SEND`, the music silenced first with the game's own `A0 00 01`, the board loaded by a match
