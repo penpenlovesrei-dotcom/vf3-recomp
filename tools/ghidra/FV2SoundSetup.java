@@ -10,7 +10,7 @@
 // and the three interrupt handlers the board actually drives come out named. Everything else
 // auto-analysis finds by following the calls.
 //
-// Run by tools/sound/importer-son.cmd through analyzeHeadless, as a -preScript, so that Ghidra's
+// Run by tools/sound/import-sound.cmd through analyzeHeadless, as a -preScript, so that Ghidra's
 // own analysis starts from these and not from nothing.
 //
 //@category FV2

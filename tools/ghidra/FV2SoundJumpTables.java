@@ -54,8 +54,8 @@ import java.util.LinkedHashSet;
 
 public class FV2SoundJumpTables extends GhidraScript {
 
-	private static final long CODE_FIN = 0x603B20L;
-	private static final double CODE_OCTETS = 15136.0;
+	private static final long CODE_END = 0x603B20L;
+	private static final double CODE_BYTES = 15136.0;
 
 	// the bra.w table: the jmp, the base, the slot count
 	private static final long T1_JMP = 0x60088CL, T1_BASE = 0x60088EL;
@@ -68,7 +68,7 @@ public class FV2SoundJumpTables extends GhidraScript {
 		{ 0x602EDCL, 0x602EE0L, -1 },
 	};
 
-	private long couvert()
+	private long covered()
 	{
 		long n = 0;
 		final FunctionIterator it = currentProgram.getFunctionManager().getFunctions(true);
@@ -76,18 +76,18 @@ public class FV2SoundJumpTables extends GhidraScript {
 		return n;
 	}
 
-	private void etat(String quand)
+	private void report(String when)
 	{
-		println(String.format("%-8s %d fonctions, %d octets couverts (%.0f %% des %.0f de code)",
-		                      quand, currentProgram.getFunctionManager().getFunctionCount(),
-		                      couvert(), 100.0 * couvert() / CODE_OCTETS, CODE_OCTETS));
+		println(String.format("%-8s %d functions, %d bytes covered (%.0f %% of the %.0f of code)",
+		                      when, currentProgram.getFunctionManager().getFunctionCount(),
+		                      covered(), 100.0 * covered() / CODE_BYTES, CODE_BYTES));
 	}
 
 	@Override
 	public void run() throws Exception
 	{
-		etat("avant :");
-		final LinkedHashSet<Long> cibles = new LinkedHashSet<>();
+		report("before:");
+		final LinkedHashSet<Long> targets = new LinkedHashSet<>();
 
 		// --- table 1: the slots themselves are the destinations; disassembling them lets Ghidra see
 		// each bra.w and follow it.
@@ -96,63 +96,63 @@ public class FV2SoundJumpTables extends GhidraScript {
 			disassemble(slot);
 			currentProgram.getReferenceManager().addMemoryReference(
 				toAddr(T1_JMP), slot, RefType.COMPUTED_JUMP, SourceType.USER_DEFINED, 0);
-			cibles.add(slot.getOffset());
+			targets.add(slot.getOffset());
 		}
-		println(String.format("table 1 %08X : %d creneaux de bra.w, references depuis le jmp de %08X",
+		println(String.format("table 1 %08X : %d bra.w slots, referenced from the jmp at %08X",
 		                      T1_BASE, T1_SLOTS, T1_JMP));
 
 		// --- the word-offset tables, each sized by its own lowest target
 		for (long[] t : WORD_TABLES) {
 			final long jmp = t[0], base = t[1];
-			final long attendu = t[2];
-			long plusBasse = Long.MAX_VALUE;
+			final long expected = t[2];
+			long lowest = Long.MAX_VALUE;
 			int n = 0;
 			while (n <= 256) {
 				final long pos = base + 2L * n;
-				if (pos >= plusBasse)
+				if (pos >= lowest)
 					break;
 				final long dest = base + (getShort(toAddr(pos)) & 0xFFFFL);
-				if (dest < 0x600000L || dest >= CODE_FIN)
+				if (dest < 0x600000L || dest >= CODE_END)
 					break;
-				plusBasse = Math.min(plusBasse, dest);
+				lowest = Math.min(lowest, dest);
 				n++;
 			}
-			if (attendu > 0 && n != attendu) {
-				println(String.format("*** table %08X : la regle donne %d entrees, %d comptees a la main."
-				                      + " Le script s'arrete plutot que de dimensionner les autres a l'aveugle.",
-				                      base, n, attendu));
+			if (expected > 0 && n != expected) {
+				println(String.format("*** table %08X : the rule gives %d entries, %d were counted by hand."
+				                      + " The script stops rather than size the others blind.",
+				                      base, n, expected));
 				return;
 			}
-			final LinkedHashSet<Long> miennes = new LinkedHashSet<>();
+			final LinkedHashSet<Long> mine = new LinkedHashSet<>();
 			for (int k = 0; k < n; k++) {
 				final long dest = base + (getShort(toAddr(base + 2L * k)) & 0xFFFFL);
-				miennes.add(dest);
+				mine.add(dest);
 			}
-			for (long dest : miennes) {
+			for (long dest : mine) {
 				final Address at = toAddr(dest);
 				disassemble(at);
 				currentProgram.getReferenceManager().addMemoryReference(
 					toAddr(jmp), at, RefType.COMPUTED_JUMP, SourceType.USER_DEFINED, 0);
 			}
-			cibles.addAll(miennes);
-			println(String.format("table   %08X : %3d entrees%s, %d cibles distinctes, depuis le jmp de %08X",
-			                      base, n, attendu > 0 ? " (regle confirmee sur un compte fait a la main)" : "",
-			                      miennes.size(), jmp));
+			targets.addAll(mine);
+			println(String.format("table   %08X : %3d entries%s, %d distinct targets, from the jmp at %08X",
+			                      base, n, expected > 0 ? " (rule confirmed against a count made by hand)" : "",
+			                      mine.size(), jmp));
 		}
 
-		int faites = 0, deja = 0;
-		for (long t : cibles) {
+		int made = 0, already = 0;
+		for (long t : targets) {
 			final Address at = toAddr(t);
-			if (getFunctionAt(at) != null) { deja++; continue; }
-			if (createFunction(at, null) != null) faites++;
+			if (getFunctionAt(at) != null) { already++; continue; }
+			if (createFunction(at, null) != null) made++;
 		}
-		println(cibles.size() + " cibles distinctes en tout : " + faites + " fonctions creees, " + deja + " deja la");
+		println(targets.size() + " distinct targets in all: " + made + " functions created, " + already + " already there");
 
-		println("analyse relancee...");
+		println("analysis run again...");
 		analyzeAll(currentProgram);
-		etat("apres :");
-		println("Restent cinq jmp (An) sans resolution statique : 0x600308, 0x602042, 0x6024E8,");
-		println("0x603494, 0x60376A. Les deux autres -- 0x601F3A et 0x6023E0 -- sont des entrees de");
-		println("bloc deroule qu'un lea nomme, et FV2SoundData.java les traite.");
+		report("after:");
+		println("Five jmp (An) are left with no static resolution: 0x600308, 0x602042, 0x6024E8,");
+		println("0x603494, 0x60376A. The other two -- 0x601F3A and 0x6023E0 -- are unrolled-block");
+		println("entries that a lea names, and FV2SoundData.java handles them.");
 	}
 }

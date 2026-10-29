@@ -53,24 +53,24 @@ import ghidra.program.model.symbol.SourceType;
 
 public class FV2SoundIndirectJumps extends GhidraScript {
 
-	// le jmp, la base, le nombre de creneaux, le pas, et ce que le masque de l'index vaut
-	private static final Object[][] TABLES_DE_BRANCHEMENT = {
-		{ 0x600308L, 0x60030AL, 8, 2, "D1 & 0x0E, donc huit creneaux de deux octets" },
-		{ 0x603494L, 0x603496L, 8, 4, "(D1 >> 2) & 0x1C, donc huit creneaux de quatre octets" },
-		{ 0x60376AL, 0x60376CL, 8, 4, "(D0 & 7) << 2, donc huit creneaux de quatre octets" },
+	// the jmp, the base, the slot count, the stride, and what the index mask comes to
+	private static final Object[][] BRANCH_TABLES = {
+		{ 0x600308L, 0x60030AL, 8, 2, "D1 & 0x0E, so eight slots of two bytes" },
+		{ 0x603494L, 0x603496L, 8, 4, "(D1 >> 2) & 0x1C, so eight slots of four bytes" },
+		{ 0x60376AL, 0x60376CL, 8, 4, "(D0 & 7) << 2, so eight slots of four bytes" },
 	};
 
-	// le jmp, l'entree du bloc, le nombre d'instructions attendu, le motif de deux octets
-	private static final Object[][] BLOCS_DEROULES = {
+	// the jmp, the block's entry, the instruction count expected, the two-byte pattern
+	private static final Object[][] UNROLLED_BLOCKS = {
 		{ 0x602042L, 0x602044L, 128, 0x429A, "clr.l (A2)+" },
 		{ 0x6024E8L, 0x6024EAL, 128, 0x429A, "clr.l (A2)+" },
 	};
 
-	private boolean estBranchement(long a) throws Exception
+	private boolean isBranch(long a) throws Exception
 	{
-		final int mot = getShort(toAddr(a)) & 0xFFFF;
-		if ((mot & 0xFF00) != 0x6000) return false;         // pas un bra
-		return true;                                        // bra.b ou bra.w, les deux conviennent
+		final int word = getShort(toAddr(a)) & 0xFFFF;
+		if ((word & 0xFF00) != 0x6000) return false;        // not a bra
+		return true;                                        // bra.b or bra.w, either will do
 	}
 
 	@Override
@@ -78,60 +78,60 @@ public class FV2SoundIndirectJumps extends GhidraScript {
 	{
 		int refs = 0;
 
-		for (Object[] t : TABLES_DE_BRANCHEMENT) {
+		for (Object[] t : BRANCH_TABLES) {
 			final long jmp = (Long) t[0], base = (Long) t[1];
-			final int n = (Integer) t[2], pas = (Integer) t[3];
-			int branchements = 0;
-			final StringBuilder enLigne = new StringBuilder();
+			final int n = (Integer) t[2], stride = (Integer) t[3];
+			int branches = 0;
+			final StringBuilder inLine = new StringBuilder();
 			for (int k = 0; k < n; k++) {
-				final long a = base + (long) pas * k;
+				final long a = base + (long) stride * k;
 				final Address at = toAddr(a);
 				disassemble(at);
 				currentProgram.getReferenceManager().addMemoryReference(
 					toAddr(jmp), at, RefType.COMPUTED_JUMP, SourceType.USER_DEFINED, 0);
 				refs++;
-				if (estBranchement(a)) branchements++;
-				else enLigne.append(String.format(" %08X", a));
+				if (isBranch(a)) branches++;
+				else inLine.append(String.format(" %08X", a));
 			}
-			println(String.format("%08X -> %08X : %d creneaux de %d octets, %d bra%s",
-			                      jmp, base, n, pas, branchements,
-			                      enLigne.length() == 0 ? ""
-			                      : ", et en ligne (pas un bra) :" + enLigne));
+			println(String.format("%08X -> %08X : %d slots of %d bytes, %d bra%s",
+			                      jmp, base, n, stride, branches,
+			                      inLine.length() == 0 ? ""
+			                      : ", and in line (not a bra):" + inLine));
 			setPlateComment(toAddr(base), String.format(
-				"Table de branchement du jmp (An) de %08X, %d creneaux de %d octets.%n%n"
-				+ "L'index est %s -- le masque donne le compte, il est ecrit dans le code.%n%n"
-				+ "Ce jmp etait compte parmi les sept \"que rien de statique ne resout\" : faux. Le lea%n"
-				+ "quatre octets au-dessus nomme cette base. Les sept l'avaient.",
-				jmp, n, pas, (String) t[4]));
+				"Branch table of the jmp (An) at %08X, %d slots of %d bytes.%n%n"
+				+ "The index is %s -- the mask gives the count, and it is written in the code.%n%n"
+				+ "This jmp was counted among the seven \"that nothing static resolves\": false. The lea%n"
+				+ "four bytes above names this base. All seven had one.",
+				jmp, n, stride, (String) t[4]));
 		}
 
-		for (Object[] d : BLOCS_DEROULES) {
-			final long jmp = (Long) d[0], entree = (Long) d[1];
-			final int attendu = (Integer) d[2], motif = (Integer) d[3];
+		for (Object[] d : UNROLLED_BLOCKS) {
+			final long jmp = (Long) d[0], entry = (Long) d[1];
+			final int expected = (Integer) d[2], pattern = (Integer) d[3];
 			int n = 0;
-			while ((getShort(toAddr(entree + 2L * n)) & 0xFFFF) == motif) n++;
-			disassemble(toAddr(entree));
+			while ((getShort(toAddr(entry + 2L * n)) & 0xFFFF) == pattern) n++;
+			disassemble(toAddr(entry));
 			currentProgram.getReferenceManager().addMemoryReference(
-				toAddr(jmp), toAddr(entree), RefType.COMPUTED_JUMP, SourceType.USER_DEFINED, 0);
+				toAddr(jmp), toAddr(entry), RefType.COMPUTED_JUMP, SourceType.USER_DEFINED, 0);
 			refs++;
-			println(String.format("%08X -> %08X : %d x %s%s", jmp, entree, n, (String) d[4],
-			                      n == attendu ? "" : "   *** " + attendu + " attendus"));
-			setPlateComment(toAddr(entree), String.format(
-				"Bloc deroule de %d x %s, entre a un decalage calcule : lea %08X(pc,D5.w),A0 puis%n"
-				+ "jmp (A0), avec D5 deja divise par deux. %d instructions, 0x%X octets de bloc,%n"
-				+ "512 octets traites au plus.%n%n"
-				+ "Il EFFACE, il ne copie pas -- et il va par paire avec une copie deroulee. Pour la%n"
-				+ "copie, D0 = (0x200 - D5) >> 1 : D5/4 instructions tournent, donc D5 OCTETS copies.%n"
-				+ "Pour cet effacement, l'index est D5>>1 : 128 - D5/4 tournent, donc 512 - D5 OCTETS%n"
-				+ "effaces. Une destination de 512 octets : D5 octets depuis (A1), des zeros pour le%n"
-				+ "reste. Le 0x200 de move.w #$200,D0 est ce tampon, et il apparait deux fois.%n%n"
-				+ "Ce que les 512 octets SONT n'est pas etabli ici.",
-				n, (String) d[4], entree, n, 2 * n));
+			println(String.format("%08X -> %08X : %d x %s%s", jmp, entry, n, (String) d[4],
+			                      n == expected ? "" : "   *** " + expected + " expected"));
+			setPlateComment(toAddr(entry), String.format(
+				"Unrolled block of %d x %s, entered at a computed offset: lea %08X(pc,D5.w),A0 then%n"
+				+ "jmp (A0), with D5 already halved. %d instructions, 0x%X bytes of block,%n"
+				+ "512 bytes processed at most.%n%n"
+				+ "It CLEARS, it does not copy -- and it goes in a pair with an unrolled copy. For the%n"
+				+ "copy, D0 = (0x200 - D5) >> 1: D5/4 instructions run, so D5 BYTES are copied.%n"
+				+ "For this clear, the index is D5>>1: 128 - D5/4 run, so 512 - D5 BYTES are cleared.%n"
+				+ "One 512-byte destination: D5 bytes from (A1), zeros for the rest. The 0x200 of%n"
+				+ "move.w #$200,D0 is that buffer, and it appears twice.%n%n"
+				+ "What those 512 bytes ARE is not established here.",
+				n, (String) d[4], entry, n, 2 * n));
 		}
 
 		println("");
-		println(refs + " references de saut calcule ajoutees. Aucune fonction creee : la couverture");
-		println("est deja de 100 % et ces cibles sont dans des corps existants.");
-		println("Il ne reste AUCUN jmp (An) non resolu dans ce programme.");
+		println(refs + " computed-jump references added. No function created: coverage is already");
+		println("100 % and these targets sit inside existing bodies.");
+		println("NOT ONE unresolved jmp (An) is left in this program.");
 	}
 }

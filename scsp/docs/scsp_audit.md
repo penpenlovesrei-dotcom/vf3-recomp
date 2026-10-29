@@ -328,7 +328,8 @@ has got busier, which makes it the second item and not the third.
 §4 quater ended on a named reservation: the probe measures the blocking wait and not the concurrency, and
 to isolate it **the same scene with the sound off** would be needed. Measured on 2026-10-28 on the same
 laptop — **AMD A9-9425, two cores, two logical processors**, no SMT — by
-`tools/sound/mesurer-concurrence.cmd`, which gained a second dimension that day: **the core**.
+the measurement folder's `mesurer-concurrence.cmd` (it lives there, not in this repository), which
+gained a second dimension that day: **the core**.
 
 Five passes of 4 000 frames, the same scene, with a window. Medians over 70 to 76 readings per case:
 

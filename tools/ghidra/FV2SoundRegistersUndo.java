@@ -50,25 +50,25 @@ public class FV2SoundRegistersUndo extends GhidraScript {
 		// And the plate comment at the reset `lea` said the same false thing. Replace it with what
 		// was measured, so the project does not keep carrying the claim.
 		final String correction =
-			"lea (0x00100000).l, A5 -- ET C'EST TOUT CE QUE CETTE INSTRUCTION DIT.\n\n"
-			+ "Un commentaire pose ici le 2026-10-24 affirmait que A5 tient la base des registres du premier\n"
-			+ "SCSP pour TOUT le programme, et que le dire a Ghidra remonterait son compte de fonctions. Les\n"
-			+ "deux moities etaient fausses, mesurees le 2026-10-25 :\n\n"
-			+ "  A5 est ecrit 33 fois et A6 8 fois (balayage d'opcodes corrige : le premier avait un masque\n"
-			+ "  qui effacait les bits du registre et rendait zero ecriture, ce qui ressemblait a une preuve).\n"
-			+ "  A5 prend 0x00100000 par lea en sept endroits, mais aussi [0xC10] -- le decalage du chip, 0 ou\n"
-			+ "  0x200000 -- en trois, zero en deux, et un pointeur indirect dans une vingtaine d'autres. En\n"
-			+ "  0x600B9C il prend l'adresse des registres D'UNE FENTE. Ce sont des registres d'adresse\n"
-			+ "  ordinaires, pas des bases globales.\n\n"
-			+ "  Et poser les deux valeurs sur toute la plage puis relancer l'analyse a donne : 41 fonctions\n"
-			+ "  avant, 41 apres. +0. Les valeurs ont ete retirees (FV2SoundRegistersUndo.java).\n\n"
-			+ "Pourquoi l'erreur a tenu : elle vient de CETTE instruction seule, generalisee, alors que les\n"
-			+ "notes de la meme session citaient deja movea.l $c10.w, a5 en 0x602B32 -- le contre-exemple etait\n"
-			+ "en main et n'a pas ete lu.\n\n"
-			+ "Ce qui reste donc ouvert, et sans explication : Ghidra trouve 41 fonctions la ou un marcheur\n"
-			+ "seme a la main en atteint 95, dans un code que 139 rts decoupent. Les tables de saut\n"
-			+ "(jmp (A1) en 0x60088C, jmp $602730(pc,d2.w) en 0x60272C) sont une cause plausible et NON\n"
-			+ "VERIFIEE. Voir docs/fv2-sound-program.md.";
+			"lea (0x00100000).l, A5 -- AND THAT IS ALL THIS INSTRUCTION SAYS.\n\n"
+			+ "A comment laid here on 2026-10-24 claimed that A5 holds the first SCSP's register base for\n"
+			+ "the WHOLE program, and that telling Ghidra so would raise its function count. Both halves\n"
+			+ "were false, measured on 2026-10-25:\n\n"
+			+ "  A5 is written 33 times and A6 8 times (corrected opcode scan: the first had a mask that\n"
+			+ "  erased the register's bits and returned zero writes, which looked like a proof).\n"
+			+ "  A5 takes 0x00100000 from lea in seven places, but also [0xC10] -- the chip offset, 0 or\n"
+			+ "  0x200000 -- in three, zero in two, and a register-indirect pointer in some twenty more. At\n"
+			+ "  0x600B9C it takes the register address OF ONE SLOT. These are ordinary address registers,\n"
+			+ "  not global bases.\n\n"
+			+ "  And laying both values over the whole range and running the analysis again gave: 41\n"
+			+ "  functions before, 41 after. +0. The values were removed (FV2SoundRegistersUndo.java).\n\n"
+			+ "Why the error held: it comes from THIS instruction alone, generalised, while the same\n"
+			+ "session's notes already quoted movea.l $c10.w, a5 at 0x602B32 -- the counter-example was in\n"
+			+ "hand and was not read.\n\n"
+			+ "What stays open, then, with no explanation: Ghidra finds 41 functions where a walker seeded\n"
+			+ "by hand reaches 95, in code that 139 rts cut up. The jump tables (jmp (A1) at 0x60088C,\n"
+			+ "jmp $602730(pc,d2.w) at 0x60272C) are a plausible and UNVERIFIED cause. See\n"
+			+ "docs/fv2-sound-program.md.";
 		setPlateComment(toAddr(0x600142), correction);
 		println("plate comment at 0x600142 replaced with the correction");
 	}
