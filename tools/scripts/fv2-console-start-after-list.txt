@@ -1,11 +1,11 @@
-# Fighting Vipers 2, mode console : la sequence que Frederic decrit, pour savoir si Start repond encore
-# apres etre passe par la liste.
+# Fighting Vipers 2, console mode: the sequence Frederic describes, to find out whether Start still answers
+# after going through the list.
 #
-#   1450  Start pendant une demonstration  -> l ecran titre doit revenir (la route du jeu, puis la demande)
-#   1700  Start sur cet ecran titre        -> la liste s ouvre ; le run l annule par VF3_KEYS_S
-#   2100  Start, et les suivants           -> est-ce que ca repond encore ?
+#   1450  Start during a demonstration  -> the title screen must come back (the game's road, then the request)
+#   1700  Start on that title screen    -> the list opens; the run cancels it with VF3_KEYS_S
+#   2100  Start, and the ones after     -> does it still answer?
 #
-# Le jeu est gele tant que la liste est la, et le script compte les images du JEU, donc rien ne se decale.
+# The game is frozen while the list is up, and the script counts the GAME's frames, so nothing shifts.
 1450 press p1.start
 1700 press p1.start
 2100 press p1.start

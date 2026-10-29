@@ -1,4 +1,4 @@
-# L ecran de selection, curseur arrete sur la case 14, sans confirmer.
+# The select screen, the cursor stopped on cell 14, without confirming.
 1900 press p1.coin
 1930 press p1.coin
 1960 press p1.start

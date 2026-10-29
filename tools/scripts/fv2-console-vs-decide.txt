@@ -1,12 +1,11 @@
-# Fighting Vipers 2, mode console : un versus DECIDE, pour que WIN, LOSE et KO bougent a leur tour.
+# Fighting Vipers 2, console mode: a SETTLED versus match, so that WIN, LOSE and KO move in their turn.
 #
-# Le premier versus a fait quatre combats et quatre nuls : les deux joueurs immobiles, les rounds
-# expirent a egalite. Ici le joueur 1 frappe sans arret et le 2 ne bouge pas, donc le 1 gagne par KO.
-# ROUND TIME VS est deja au minimum dans la sauvegarde de ce dossier, donc pas de detour par OPTIONS :
-# la liste suffit.
-#   1200  Start sur l ecran titre -> la liste ; VF3_KEYS_S descend d un cran et prend V.S.
-#   1500  Poing du joueur 1 -> son combattant        1520  Poing du joueur 2 -> le sien
-#   1700+ le joueur 1 frappe, une image sur dix, jusqu au bout du match
+# The first versus match made four fights and four draws: with both players still, the rounds expire level.
+# Here player 1 hits without stopping and 2 does not move, so 1 wins by KO. ROUND TIME VS is already at its
+# minimum in this folder's backup, so there is no detour through OPTIONS: the list is enough.
+#   1200  Start on the title screen -> the list; VF3_KEYS_S goes down one notch and takes V.S.
+#   1500  Player 1's punch -> his fighter          1520  Player 2's punch -> his
+#   1700+ player 1 hits, one frame in ten, to the end of the match
 1200 press p1.start
 1500 press p1.punch
 1520 press p2.punch

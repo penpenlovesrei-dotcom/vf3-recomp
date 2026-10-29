@@ -1,6 +1,6 @@
-# Fighting Vipers 2 : armer la VRAIE fin depuis la page, puis jouer un match.
-# 1200 Start -> la liste ; VF3_KEYS_S arme ENDING sur AFTER A MATCH et ressort
-# 1260 Start -> la liste ; VF3_KEYS_S choisit ARCADE ; 1500 le poing prend le combattant
+# Fighting Vipers 2: arming the REAL ending from the page, then playing a match.
+# 1200 Start -> the list; VF3_KEYS_S arms ENDING on AFTER A MATCH and leaves
+# 1260 Start -> the list; VF3_KEYS_S chooses ARCADE; 1500 punch takes the fighter
 1200 press p1.start
 1260 press p1.start
 1500 press p1.punch

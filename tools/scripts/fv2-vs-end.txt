@@ -1,14 +1,14 @@
-# Fighting Vipers 2 : un VERSUS MENE JUSQU AU BOUT, pour lire la fin d un match a deux.
+# Fighting Vipers 2: a VERSUS MATCH CARRIED THROUGH, to read the end of a two-player match.
 #
-# Le joueur 1 frappe sans arret, le 2 ne bouge pas : chaque round se termine par un K.O. et le match
-# est decide en deux rounds. Rien n est touche apres : la route sert a REGARDER ce que le jeu fait a la
-# fin d un versus, image par image, avec VF3_VS_TRACE=1.
+# Player 1 hits without stopping, 2 does not move: every round ends in a K.O. and the match is settled in
+# two rounds. Nothing is touched afterwards: the route is there to WATCH what the game does at the end of
+# a versus match, frame by frame, with VF3_VS_TRACE=1.
 #
-#   1300  Start sur l ecran titre -> la liste, puis VF3_CONSOLE_MODE prend V.S.
+#   1300  Start on the title screen -> the list, then VF3_CONSOLE_MODE takes V.S.
 #   VF3_HIDDEN=1 VF3_CONSOLE_MODE=versus VF3_CONSOLE_STAGE=5 VF3_VS_TRACE=1 VF3_QUIT_AFTER=12000
 #
-# L ecran de selection ne choisit pour personne, comme sur la borne : il expire et le jeu prend ses deux
-# combattants par defaut, ce que fait deja fv2-console-route.txt.
+# The select screen chooses for nobody, as on the cabinet: it expires and the game takes its two default
+# fighters, which is what fv2-console-route.txt already does.
 1300 press p1.start 8
 2600 press p1.punch
 2610 press p1.punch

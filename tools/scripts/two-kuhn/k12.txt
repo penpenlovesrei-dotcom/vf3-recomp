@@ -1,6 +1,6 @@
-# Kuhn curseur 12. QUATORZE pressions de direction des deux cotes, aux
-# memes images, pour que l etat du jeu a l entree du combat ne doive
-# rien au chemin du curseur. Aucune lecture aleatoire.
+# Kuhn, cursor 12. FOURTEEN direction presses on both sides, at the same
+# frames, so that the game state at the fight entry owes nothing to the
+# cursor path. No random play.
 1900 press p1.coin
 1930 press p1.coin
 1960 press p1.start

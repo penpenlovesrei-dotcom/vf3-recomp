@@ -1,14 +1,14 @@
-# Fighting Vipers 2 : MAIN MENU demande pendant qu on GAGNE, en ARCADE.
+# Fighting Vipers 2: MAIN MENU asked for while WINNING, in ARCADE.
 #
-# Frederic, le 2026-10-29 : depuis l arcade, le menu principal n a plus aucune ligne qui marche, la
-# musique ne s arrete pas, et le retour ramene dans le jeu dans UN AUTRE DECOR. Cet autre decor est
-# l indice : l echelle a continue au lieu que la partie se termine.
+# Frederic, on 2026-10-29: from arcade, the main menu has not one line that works any more, the music does
+# not stop, and going back puts you into the game IN ANOTHER STAGE. That other stage is the clue: the
+# ladder went on instead of the session ending.
 #
-# La sortie de match pose le chrono a 1, donc le round se termine par le temps -- et c est le joueur
-# EN TETE qui gagne. S il gagne, NEXT_PROG_SEL lui donne l adversaire suivant au lieu d aller a
-# CONTINUE, et le portage attend un retour a la boucle d attente qui ne vient jamais.
+# Leaving a match sets the clock to 1, so the round ends on time -- and it is the player IN THE LEAD who
+# wins. If he wins, NEXT_PROG_SEL gives him the next opponent instead of going to CONTINUE, and the port
+# waits for a return to the attract loop that never comes.
 #
-# Ici le joueur 1 frappe sans arret pour etre en tete, puis Start ouvre le menu pause.
+# Here player 1 hits without stopping so as to be in the lead, then Start opens the pause menu.
 #   VF3_CONSOLE_MODE=arcade VF3_CONSOLE_PAUSE=4 VF3_LEAVE_TRACE=1
 1300 press p1.start 8
 3000 press p1.punch

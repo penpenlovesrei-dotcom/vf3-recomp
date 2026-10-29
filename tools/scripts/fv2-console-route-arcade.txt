@@ -1,17 +1,17 @@
-# Fighting Vipers 2, la route console en ARCADE : la meme chose sans le carrousel.
+# Fighting Vipers 2, the console route in ARCADE: the same thing without the carousel.
 #
-# ARCADE ne passe pas par la page des decors -- le carrousel appartient a la ligne V.S. -- donc la suite
-# des etats est plus courte d'un aller-retour, et c'est le point : les deux routes ne sont pas la meme
-# mesure. Les deux presses :
+# ARCADE does not go through the stage page -- the carousel belongs to the V.S. line -- so the sequence of
+# states is one round trip shorter, and that is the point: the two routes are not the same measurement.
+# The two presses:
 #
-#   1300  Start sur l'ecran titre     -> la liste des modes       (PLAY -> MENU)
-#         VF3_CONSOLE_MODE=arcade      -> ARCADE choisi            (MENU -> PLAY)
-#   5700  Start dans le combat        -> le menu pause            (PLAY -> PAUSE)
+#   1300  Start on the title screen   -> the list of modes        (PLAY -> MENU)
+#         VF3_CONSOLE_MODE=arcade      -> ARCADE chosen            (MENU -> PLAY)
+#   5700  Start in the fight          -> the pause menu           (PLAY -> PAUSE)
 #         VF3_CONSOLE_PAUSE=4          -> MAIN MENU               (PAUSE -> MENU_IN -> MENU)
 #
-# 5700 n'est pas rond par hasard : en arcade le combat commence vers l'image 5300 (l'ecran de selection
-# laisse la machine choisir, ce qui prend son temps), et la presse doit tomber dedans.
+# 5700 is not a round number by chance: in arcade the fight begins around frame 5300 (the select screen lets
+# the machine choose, which takes its time), and the press has to fall inside it.
 #
-# La suite attendue : PLAY MENU PLAY PAUSE MENU_IN MENU
+# The sequence expected: PLAY MENU PLAY PAUSE MENU_IN MENU
 1300 press p1.start 8
 5700 press p1.start 8

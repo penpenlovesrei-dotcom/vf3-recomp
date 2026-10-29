@@ -1,8 +1,8 @@
-# Fighting Vipers 2, mode console : V.S., puis Start EN PLEIN COMBAT -- le defaut que Frederic signale.
+# Fighting Vipers 2, console mode: V.S., then Start MID-FIGHT -- the flaw Frederic reports.
 #
-#   1200  Start sur l ecran titre  -> la liste ; VF3_KEYS_S descend d un cran et prend V.S.
-#   1500  Poing du joueur 1, 1520 celui du 2 -> les deux combattants
-#   3000  Start du joueur 1, en plein combat -> ce qu on vient voir
+#   1200  Start on the title screen -> the list; VF3_KEYS_S goes down one notch and takes V.S.
+#   1500  Player 1's punch, 1520 player 2's -> both fighters
+#   3000  Player 1's Start, mid-fight -> what we have come to see
 1200 press p1.start
 1500 press p1.punch
 1520 press p2.punch

@@ -1,16 +1,16 @@
-# Fighting Vipers 2 : Start sur l ecran CONTINUE doit CONTINUER la partie, pas ramener le titre.
+# Fighting Vipers 2: Start on the CONTINUE screen must CONTINUE the session, not bring the title back.
 #
-# Le defaut, photographie par Frederic le 2026-10-28 : la couche console prenait ce bouton sur
-# CONTINUE -- la tache du match y est deja arretee, donc fv2_in_attract disait "aucune partie" --
-# et relancait le sequenceur d attente au milieu de l ecran, d ou un ecran titre en lambeaux.
+# The flaw, photographed by Frederic on 2026-10-28: the console layer was taking that button on CONTINUE
+# -- the match's task is already stopped there, so fv2_in_attract said "no session" -- and restarting the
+# attract sequencer in the middle of the screen, hence a title screen in tatters.
 #
-# La route : la liste, ARCADE, personne ne joue donc le combat est perdu, puis Start pendant que
-# le jeu est sur CONTINUE (modes 8 et 9).
+# The route: the list, ARCADE, nobody plays so the fight is lost, then Start while the game is on CONTINUE
+# (modes 8 and 9).
 #
 #   VF3_CONSOLE_MODE=arcade VF3_VS_TRACE=1 VF3_MIDI_LOG=600
 #
-# Ce qui doit se lire apres : le mode repart sur 6/7, un combat de plus, et PAS UNE LIGNE disant
-# que l ecran titre a ete demande.
+# What must read afterwards: the mode goes back to 6/7, one more fight, and NOT ONE LINE saying the title
+# screen was asked for.
 1255 press p1.start 8
 8800 press p1.start 8
 8900 press p1.start 8

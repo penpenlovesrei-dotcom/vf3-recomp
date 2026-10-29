@@ -1,14 +1,14 @@
-# Fighting Vipers 2 : faire bouger le curseur du joueur 2 en TRAINING, pour voir quel octet le suit.
+# Fighting Vipers 2: moving player 2's cursor in TRAINING, to see which byte follows it.
 #
-# En training une seule paire de mains choisit les deux combattants : le poing du joueur 1 valide
-# le sien, et a partir de la ses directions sont routees sur le curseur du joueur 2
-# (console_play::route_training). Donc un poing puis des droites font bouger le curseur 2P.
+# In training one pair of hands chooses both fighters: player 1's punch confirms his, and from there his
+# directions are routed to player 2's cursor (console_play::route_training). So a punch and then some
+# rights move the 2P cursor.
 #
-#   1300  Start sur l ecran titre -> la liste, ou VF3_CONSOLE_MODE prend TRAINING
+#   1300  Start on the title screen -> the list, where VF3_CONSOLE_MODE takes TRAINING
 #   VF3_CONSOLE_MODE=training VF3_RAM_WATCH=00279660:16 VF3_KEYS="F12@1650,F12@1760,F12@1860"
 #
-# 0x00279668 est le curseur du joueur 1, lu en 0x00060458 (docs/fv2-select-names.md) ; 0x00279669
-# est lu juste a cote partout, et c'est l'hypothese que cette route eprouve.
+# 0x00279668 is player 1's cursor, read at 0x00060458 (docs/fv2-select-names.md); 0x00279669 is read
+# right beside it everywhere, and that is the hypothesis this route tries.
 1300 press p1.start 8
 1600 press p1.punch 8
 1700 press p1.right 6

@@ -1,6 +1,6 @@
-# Fighting Vipers 2, mode console : chercher un SUPER K.O., les deux seules cases du tableau qu on ne
-# sache pas justifier. Le joueur 1 alterne poing et pied, de quoi casser l armure puis finir.
-# ROUND TIME VS est deja au minimum dans la sauvegarde de ce dossier : la liste suffit.
+# Fighting Vipers 2, console mode: looking for a SUPER K.O., the table's only two cells that cannot be
+# justified. Player 1 alternates punch and kick, enough to break the armour and then finish.
+# ROUND TIME VS is already at its minimum in this folder's backup: the list is enough.
 1200 press p1.start
 1500 press p1.punch
 1520 press p2.punch
