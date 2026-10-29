@@ -127,7 +127,7 @@ Un bloc par chose qui se teste seule. L'ordre est celui de la dépendance, pas c
    du miroir MADRS plutôt que dans celui qui est par défaut.
 2. **Fentes, oscillateur, PCM, adressage, bouclage** — 8 et 16 bits signés, `SA`/`LSA`/`LEA`, les quatre modes
    `LPCTL`, l'interpolation linéaire, les limites de la RAM. Se teste en comptant des échantillons.
-   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_fentes.cpp`, onze cas, et il a démenti la
+   **Le test existe** depuis le 2026-10-26 : `tools/sound/test_scsp_slots.cpp`, onze cas, et il a démenti la
    lecture sur les quatre bouclages à la fois. La boucle de bouclage tourne sur `cur_addr` **et** `nxt_addr`,
    mais `nxt_addr` est réaffecté à chaque échantillon : sa réécriture d'adresse est perdue, ses effets de bord
    (`Backwards`, `StopSlot`) ne le sont pas. Tout se déclenche donc **un échantillon tôt**, et aucun échantillon

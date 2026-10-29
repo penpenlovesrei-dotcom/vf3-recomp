@@ -423,7 +423,7 @@ void scsp_own::after_slot_write(u32 slot, u32 word)
 // -----------------------------------------------------------------------------------------------------
 // BLOCK 2 -- the oscillator, PCM addressing and the four loop modes.
 //
-// What the block has to produce is recorded in tools/sound/test_scsp_fentes.cpp, which reads the exact
+// What the block has to produce is recorded in tools/sound/test_scsp_slots.cpp, which reads the exact
 // sequence of sample INDICES the read head walks through. The three facts that are not obvious, and that
 // the contract holds from measurement and not from a reading (scsp_contract.h §9):
 //

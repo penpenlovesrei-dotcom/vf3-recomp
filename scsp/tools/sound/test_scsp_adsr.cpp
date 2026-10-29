@@ -1,26 +1,26 @@
-// test_scsp_adsr : l'enveloppe, ses quatre etats et ses deux arithmetiques, a l'echantillon exact.
+// test_scsp_adsr: the envelope, its four states and its two arithmetics, to the exact sample.
 //
-// Bloc 3 de docs/scsp_architecture.md §3 -- "Enveloppes ADSR : les quatre etats, AR/D1R/D2R/RR, DL, EGHOLD,
-// KRS, LPSLNK, et les tables de temps." Avec l'avertissement du document, qui est le vrai sujet de ce
-// fichier : "les tables ARTimes/DRTimes de MAME sont des constantes mesurees, pas une formule ; les
-// reprendre est un choix de fidelite a assumer explicitement."
+// Block 3 of docs/scsp_architecture.md §3 -- "ADSR envelopes: the four states, AR/D1R/D2R/RR, DL, EGHOLD,
+// KRS, LPSLNK, and the time tables." With the document's warning, which is this file's real subject:
+// "MAME's ARTimes/DRTimes tables are measured constants, not a formula; taking them over is a fidelity
+// choice to be made explicitly."
 //
-// COMMENT ON MESURE L'ENVELOPPE SEULE. C'est le miroir exact du bloc 2. Le test des fentes mettait
-// l'enveloppe de cote avec SDIR pour lire l'oscillateur ; celui-ci met l'oscillateur de cote avec une onde
-// CONTINUE pour lire l'enveloppe. Une source constante C donne en sortie `C * multiplicateur >> 12`, puis
-// le melange direct (TL=0, DISDL=7, DIPAN=0) laisse passer tel quel, puis l'adaptateur multiplie par 4.
-// Avec C = 8192, soit deux puissances de deux, la sortie vaut EXACTEMENT 8 fois le multiplicateur -- qui se
-// relit donc sans arrondi, echantillon par echantillon.
+// HOW THE ENVELOPE IS MEASURED ON ITS OWN. It is block 2's exact mirror. The slot test set the envelope
+// aside with SDIR in order to read the oscillator; this one sets the oscillator aside with a STEADY wave
+// in order to read the envelope. A constant source C gives `C * multiplier >> 12` at the output, then the
+// direct mix (TL=0, DISDL=7, DIPAN=0) lets it through unchanged, then the adapter multiplies by 4. With
+// C = 8192, two powers of two, the output is EXACTLY 8 times the multiplier -- which therefore reads back
+// with no rounding, sample by sample.
 //
-// ET IL Y A DEUX ARITHMETIQUES, ce qui est le fait central du bloc. Dans UpdateSlot :
+// AND THERE ARE TWO ARITHMETICS, which is the block's central fact. In UpdateSlot:
 //     if (state == ATTACK) sample = (sample * EG_Update(slot)) >> SHIFT;
 //     else                 sample = (sample * m_EG_TABLE[EG_Update(slot) >> (SHIFT-10)]) >> SHIFT;
-// L'attaque multiplie par le VOLUME BRUT -- elle est lineaire. Tout le reste passe par m_EG_TABLE, une
-// courbe en decibels (3/32 dB par pas, 95,9 dB en tout). Les deux se rejoignent presque, mais pas tout a
-// fait : a saturation l'attaque rend 4092 et la table 4096. Le premier echantillon de toute voix sort donc
-// 4 millemes plus bas que le suivant, et ce n'est pas du bruit de mesure.
+// The attack multiplies by the RAW VOLUME -- it is linear. Everything else goes through m_EG_TABLE, a
+// decibel curve (3/32 dB per step, 95.9 dB in all). The two almost meet, but not quite: at saturation the
+// attack gives 4092 and the table 4096. So the first sample of any voice comes out 4 thousandths lower
+// than the next, and that is not measurement noise.
 //
-// Le montage -- un coeur neuf par cas, la RAM, le keyage -- est dans tools/sound/scsp_bench.h.
+// The rig -- a fresh core per case, the RAM, the keying -- is in tools/sound/scsp_bench.h.
 #include "scsp_bench.h"
 
 #include <cstdio>
@@ -34,15 +34,15 @@ using bench::put;
 
 int failures = 0;
 
-void ok(const char *what, const std::string &d) { printf("  ok    %-40s %s\n", what, d.c_str()); }
-void rate(const char *what, const std::string &d) { printf("  ECHEC %-40s %s\n", what, d.c_str()); ++failures; }
+void ok(const char *what, const std::string &d) { printf("  ok     %-40s %s\n", what, d.c_str()); }
+void failed(const char *what, const std::string &d) { printf("  FAILED %-40s %s\n", what, d.c_str()); ++failures; }
 
 constexpr std::uint32_t WAVE = 0x1000;
-constexpr int STEADY = 8192;        // deux puissances de deux : la sortie vaut 8 x le multiplicateur
-constexpr int PAR_MULT = 8;
+constexpr int STEADY = 8192;        // two powers of two: the output is 8 x the multiplier
+constexpr int PER_MULT = 8;
 
-// Les reglages communs : l'enveloppe a nu, pleine sortie directe au centre, un echantillon de source par
-// echantillon de sortie, et une boucle assez longue pour que l'oscillateur ne s'arrete jamais.
+// The settings common to every case: the envelope bare, full direct output centred, one source sample per
+// output sample, and a loop long enough that the oscillator never stops.
 void blank(std::uint16_t word[16])
 {
 	put(word, "SA_HI",  WAVE >> 16);
@@ -58,16 +58,16 @@ void blank(std::uint16_t word[16])
 	put(word, "KYONB",  1);
 }
 
-// Le multiplicateur de l'enveloppe, releve echantillon par echantillon.
-std::vector<int> enveloppe(Bench &b, unsigned n)
+// The envelope's multiplier, read off sample by sample.
+std::vector<int> envelope(Bench &b, unsigned n)
 {
 	const std::vector<std::int32_t> g = b.left(n);
 	std::vector<int> m(n);
-	for (unsigned i = 0; i < n; i++) m[i] = int(g[i] / PAR_MULT);
+	for (unsigned i = 0; i < n; i++) m[i] = int(g[i] / PER_MULT);
 	return m;
 }
 
-std::string registry(const std::vector<int> &v, unsigned howmany)
+std::string joined(const std::vector<int> &v, unsigned howmany)
 {
 	std::string s;
 	for (unsigned i = 0; i < howmany && i < v.size(); i++) {
@@ -77,19 +77,19 @@ std::string registry(const std::vector<int> &v, unsigned howmany)
 	return s;
 }
 
-// Combien d'echantillons jusqu'a la saturation de l'attaque : c'est ce qui encode une entree de
-// m_ARTABLE sans avoir a la lire.
+// How many samples until the attack saturates: that is what encodes one entry of m_ARTABLE without having
+// to read it.
 //
-// LE CRITERE EST LE PLAFOND, 4092, et non "le multiplicateur cesse de monter". La premiere version de cette
-// fonction s'arretait au premier echantillon qui ne montait pas, et rendait 1 pour l'attaque la plus lente
-// du test : quand le volume gagne moins d'un quart de pas par echantillon, `(volume >> 16) << 2` REPETE sa
-// valeur sans que l'attaque soit finie. Un critere qui se trompe d'autant plus que la mesure est longue est
-// pire qu'une constante fausse, parce qu'il a l'air de marcher sur les cas courts.
-unsigned duree_attaque(Bench &b, unsigned plafond)
+// THE CRITERION IS THE CEILING, 4092, and not "the multiplier stops rising". The first version of this
+// function stopped at the first sample that did not rise, and returned 1 for the slowest attack in the
+// test: when the volume gains less than a quarter of a step per sample, `(volume >> 16) << 2` REPEATS its
+// value without the attack being over. A criterion that goes more wrong the longer the measurement is, is
+// worse than a wrong constant, because it looks as if it works on the short cases.
+unsigned attack_duration(Bench &b, unsigned ceiling)
 {
-	for (unsigned i = 0; i < plafond; i++)
-		if (int(b.left(1)[0] / PAR_MULT) >= 4092) return i + 1;
-	return plafond;
+	for (unsigned i = 0; i < ceiling; i++)
+		if (int(b.left(1)[0] / PER_MULT) >= 4092) return i + 1;
+	return ceiling;
 }
 
 } // namespace
@@ -97,12 +97,13 @@ unsigned duree_attaque(Bench &b, unsigned plafond)
 int main(int argc, char **argv)
 {
 	if (argc > 1) bench::core_name() = argv[1];
-	printf("test_scsp_adsr : l'enveloppe, par scsp::core\n\n");
+	printf("test_scsp_adsr: the envelope, through scsp::core\n\n");
 
-	// ---- 1. LE DEPART N'EST PAS ZERO, et la premiere marche n'est pas la meme que les suivantes
-	// StartSlot pose `EG.volume = 0x17F << EG_SHIFT`, soit 383 sur 1023 : une voix ne monte pas du silence,
-	// elle part a 37 % du chemin. Avec AR=0x1F l'attaque saute d'un coup, et on voit les deux arithmetiques
-	// l'une apres l'autre : 4092 (le volume brut, dans l'etat ATTACK) puis 4096 (la table, des DECAY1).
+	// ---- 1. THE START IS NOT ZERO, and the first step is not the same as the following ones
+	// StartSlot sets `EG.volume = 0x17F << EG_SHIFT`, that is 383 out of 1023: a voice does not rise from
+	// silence, it starts 37% of the way up. With AR=0x1F the attack jumps in one go, and the two
+	// arithmetics are seen one after the other: 4092 (the raw volume, in the ATTACK state) then 4096 (the
+	// table, from DECAY1 on).
 	{
 		Bench b;
 		b.steady(WAVE, 256, STEADY);
@@ -113,18 +114,18 @@ int main(int argc, char **argv)
 		put(word, "D2R", 0);
 		put(word, "DL", 0);
 		b.key(0, word);
-		const std::vector<int> m = enveloppe(b, 6);
+		const std::vector<int> m = envelope(b, 6);
 		const bool correct = m[0] == 4092 && m[1] == 4096 && m[2] == 4096 && m[3] == 4096;
-		correct ? ok("ATTACK multiplie le volume, DECAY la table",
-		           "4092 puis 4096 : " + registry(m, 6) + " (l'ecart est de 4 sur 4096, pas du bruit)")
-		      : rate("ATTACK multiplie le volume, DECAY la table",
-		             "attendu 4092,4096,4096,4096 ; obtenu " + registry(m, 6));
+		correct ? ok("ATTACK multiplies the volume, DECAY the table",
+		             "4092 then 4096: " + joined(m, 6) + " (the gap is 4 in 4096, not noise)")
+		        : failed("ATTACK multiplies the volume, DECAY the table",
+		                 "expected 4092,4096,4096,4096; got " + joined(m, 6));
 	}
 
-	// ---- 2. LE VOLUME DE DEPART, lu directement
-	// Avec AR=0 l'attaque est infinie (m_ARTABLE[0] = 0, "Infinite time"), donc le volume reste a sa valeur
-	// initiale et le multiplicateur la montre : 383 << 2 = 1532. C'est 0x17F, ecrit en deux endroits de
-	// scsp.cpp, et une reecriture qui partirait de zero rendrait toute attaque plus longue et plus douce.
+	// ---- 2. THE STARTING VOLUME, read directly
+	// With AR=0 the attack is infinite (m_ARTABLE[0] = 0, "Infinite time"), so the volume stays at its
+	// initial value and the multiplier shows it: 383 << 2 = 1532. That is 0x17F, written in two places in
+	// scsp.cpp, and a rewrite starting from zero would make every attack longer and softer.
 	{
 		Bench b;
 		b.steady(WAVE, 256, STEADY);
@@ -132,26 +133,25 @@ int main(int argc, char **argv)
 		blank(word);
 		put(word, "AR", 0);
 		b.key(0, word);
-		const std::vector<int> m = enveloppe(b, 4);
-		bool plat = true;
-		for (int v : m) if (v != m[0]) { plat = false; break; }
-		(plat && m[0] == 0x17F * 4)
-			? ok("AR=0 : attaque infinie, volume a 0x17F",
-			     "multiplicateur " + std::to_string(m[0]) + " = 383 << 2, immobile sur 4 echantillons")
-			: rate("AR=0 : attaque infinie, volume a 0x17F",
-			       "attendu 1532 immobile ; obtenu " + registry(m, 4));
+		const std::vector<int> m = envelope(b, 4);
+		bool flat = true;
+		for (int v : m) if (v != m[0]) { flat = false; break; }
+		(flat && m[0] == 0x17F * 4)
+			? ok("AR=0: infinite attack, volume at 0x17F",
+			     "multiplier " + std::to_string(m[0]) + " = 383 << 2, still over 4 samples")
+			: failed("AR=0: infinite attack, volume at 0x17F",
+			         "expected 1532 unmoving; got " + joined(m, 4));
 	}
 
-	// ---- 3. LA DUREE DE L'ATTAQUE, par AR : ce que les tables valent, en echantillons
-	// C'EST LE CAS QUI COMPTE POUR L'AVERTISSEMENT DU DOCUMENT. ARTimes est une table de 64 constantes
-	// mesurees sur du materiel, pas une courbe : les ecarts d'une entree a l'autre ne suivent aucune loi
-	// simple. Les durees ci-dessous en sont la consequence observable. Une reecriture qui remplacerait la
-	// table par une formule exponentielle passerait les cas 1 et 2 et echouerait ici -- ce qui est
-	// exactement le but, parce que c'est un CHOIX a faire les yeux ouverts et non une approximation a
-	// laisser filer.
+	// ---- 3. THE ATTACK'S DURATION, by AR: what the tables are worth, in samples
+	// THIS IS THE CASE THAT MATTERS FOR THE DOCUMENT'S WARNING. ARTimes is a table of 64 constants measured
+	// on hardware, not a curve: the gaps from one entry to the next follow no simple law. The durations
+	// below are its observable consequence. A rewrite replacing the table with an exponential formula would
+	// pass cases 1 and 2 and fail here -- which is exactly the point, because it is a CHOICE to be made with
+	// open eyes and not an approximation to let slide.
 	//
-	// Le compte part de `volume = 0x17F << 16` et s'arrete quand le multiplicateur cesse de monter, le pas
-	// etant `m_ARTABLE[2 * AR]` (KRS=0, OCT=0, FNS=0 donnent un rate de base nul).
+	// The count starts at `volume = 0x17F << 16` and stops when the multiplier stops rising, the step being
+	// `m_ARTABLE[2 * AR]` (KRS=0, OCT=0, FNS=0 give a base rate of zero).
 	{
 		struct Case { unsigned ar; unsigned expected; };
 		const Case cases[] = { { 0x10, 1297 }, { 0x14, 332 }, { 0x18, 83 }, { 0x1C, 24 }, { 0x1F, 1 } };
@@ -167,54 +167,54 @@ int main(int argc, char **argv)
 			put(word, "D2R", 0);
 			put(word, "DL", 0);
 			b.key(0, word);
-			const unsigned n = duree_attaque(b, 4000);
+			const unsigned n = attack_duration(b, 4000);
 			char t[64];
 			snprintf(t, sizeof t, "%sAR=%02x->%u", lines.empty() ? "" : " ", c.ar, n);
 			lines += t;
-			if (n != c.expected) { correct = false; lines += "(attendu " + std::to_string(c.expected) + ")"; }
+			if (n != c.expected) { correct = false; lines += "(expected " + std::to_string(c.expected) + ")"; }
 		}
-		correct ? ok("la duree de l'attaque, en echantillons", lines)
-		      : rate("la duree de l'attaque, en echantillons", lines);
+		correct ? ok("the attack's duration, in samples", lines)
+		        : failed("the attack's duration, in samples", lines);
 	}
 
-	// ---- 4. EGHOLD : l'attaque est PLEINE des le premier echantillon
-	// Dans l'etat ATTACK, `if (EG.EGHOLD) return 0x3ff << (SHIFT-10)` passe AVANT le calcul normal : le
-	// volume monte toujours en interne, mais la sortie est a fond tout du long. Une attaque lente devient
-	// donc inaudible comme attaque -- elle ne sert plus qu'a retarder le passage en DECAY1.
+	// ---- 4. EGHOLD: the attack is at FULL from the very first sample
+	// In the ATTACK state, `if (EG.EGHOLD) return 0x3ff << (SHIFT-10)` comes BEFORE the normal computation:
+	// the volume still rises internally, but the output is at full throughout. So a slow attack becomes
+	// inaudible as an attack -- it serves only to delay the move into DECAY1.
 	{
 		Bench b;
 		b.steady(WAVE, 256, STEADY);
 		std::uint16_t word[16] = {};
 		blank(word);
-		put(word, "AR", 0x18);      // lente : 83 echantillons sans EGHOLD (cas 3)
+		put(word, "AR", 0x18);      // slow: 83 samples without EGHOLD (case 3)
 		put(word, "EGHOLD", 1);
 		put(word, "D1R", 0);
 		put(word, "D2R", 0);
 		put(word, "DL", 0);
 		b.key(0, word);
-		const std::vector<int> m = enveloppe(b, 8);
-		bool pleine = true;
-		for (int v : m) if (v != 4092) { pleine = false; break; }
-		pleine ? ok("EGHOLD : pleine sortie pendant l'attaque",
-		            "4092 des le premier echantillon, et sur les 8 : " + registry(m, 4) + ",...")
-		       : rate("EGHOLD : pleine sortie pendant l'attaque",
-		              "attendu 4092 partout ; obtenu " + registry(m, 8));
+		const std::vector<int> m = envelope(b, 8);
+		bool full = true;
+		for (int v : m) if (v != 4092) { full = false; break; }
+		full ? ok("EGHOLD: full output during the attack",
+		          "4092 from the first sample, and over all 8: " + joined(m, 4) + ",...")
+		     : failed("EGHOLD: full output during the attack",
+		              "expected 4092 throughout; got " + joined(m, 8));
 	}
 
-	// ---- 5. DL EST INVERSE, et DL=0 saute DECAY1 entierement
-	// `EG.DL = 0x1f - DL(slot)`, et DECAY1 s'arrete quand `volume >> 21 <= EG.DL`. Donc DL=0 donne
-	// EG.DL=31, une condition vraie des le premier tic : DECAY1 ne dure pas un echantillon. A l'autre bout,
-	// DL=0x1F donne EG.DL=0 et DECAY1 descend jusqu'en bas. Entre les deux, le palier ou D2R prend la main
-	// se lit dans la sortie -- avec D2R=0 il s'y fige, DECAY2 rendant la main sans rien decrementer.
+	// ---- 5. DL IS INVERTED, and DL=0 skips DECAY1 entirely
+	// `EG.DL = 0x1f - DL(slot)`, and DECAY1 stops when `volume >> 21 <= EG.DL`. So DL=0 gives EG.DL=31, a
+	// condition true from the first tick: DECAY1 does not last a sample. At the other end, DL=0x1F gives
+	// EG.DL=0 and DECAY1 falls all the way down. In between, the plateau where D2R takes over reads in the
+	// output -- with D2R=0 it freezes there, DECAY2 handing back without decrementing anything.
 	{
-		struct Case { unsigned dl; int palier; };
-		// Le palier est m_EG_TABLE a l'index ou DECAY1 a cede, soit (0x1F - DL) * 32 + 31 : 4052 pour un
-		// index de 1022, 258 pour 767, 16 pour 511, 1 pour 255.
+		struct Case { unsigned dl; int plateau; };
+		// The plateau is m_EG_TABLE at the index where DECAY1 gave way, that is (0x1F - DL) * 32 + 31: 4052
+		// for an index of 1022, 258 for 767, 16 for 511, 1 for 255.
 		//
-		// ET DL=0 NE REND PAS 4096 MAIS 4052, ce qui est le detail exact de ce cas : la condition de sortie
-		// est vraie des le premier tic de DECAY1, mais elle est testee APRES `volume -= EG.D1R`. DECAY1
-		// decremente donc TOUJOURS une fois, meme quand il ne dure pas. Un index perdu, 0,09 dB -- et une
-		// reecriture qui testerait avant de decrementer rendrait 4096 ici et passerait tout le reste.
+		// AND DL=0 DOES NOT GIVE 4096 BUT 4052, which is this case's exact detail: the exit condition is
+		// true from DECAY1's first tick, but it is tested AFTER `volume -= EG.D1R`. So DECAY1 ALWAYS
+		// decrements once, even when it does not last. One index lost, 0.09 dB -- and a rewrite testing
+		// before decrementing would give 4096 here and pass all the rest.
 		const Case cases[] = { { 0x00, 4052 }, { 0x08, 258 }, { 0x10, 16 }, { 0x18, 1 } };
 		std::string lines;
 		bool correct = true;
@@ -223,39 +223,39 @@ int main(int argc, char **argv)
 			b.steady(WAVE, 256, STEADY);
 			std::uint16_t word[16] = {};
 			blank(word);
-			put(word, "AR", 0x1F);      // a fond tout de suite
-			put(word, "D1R", 0x14);     // une descente franche mais pas instantanee
-			put(word, "D2R", 0);        // DECAY2 fige le palier
+			put(word, "AR", 0x1F);      // at full straight away
+			put(word, "D1R", 0x14);     // a clear fall but not an instant one
+			put(word, "D2R", 0);        // DECAY2 freezes the plateau
 			put(word, "DL", c.dl);
 			b.key(0, word);
-			// 20000 echantillons, et ce chiffre est une mesure et non une marge : avec D1R=0x14 le volume
-			// perd 8943 par echantillon, soit 0,136 index de table, donc descendre les 1023 index demande
-			// 7500 echantillons. La premiere version en lancait 3000 et lisait DECAY1 EN COURS -- DL=0x10 et
-			// DL=0x18 rendaient alors le meme palier de 49, qui n'etait le palier de personne.
-			const std::vector<int> m = enveloppe(b, 20000);
-			const int fin = m.back();
+			// 20000 samples, and that figure is a measurement and not a margin: with D1R=0x14 the volume
+			// loses 8943 per sample, that is 0.136 of a table index, so falling through the 1023 indices
+			// takes 7500 samples. The first version ran 3000 and read DECAY1 STILL IN PROGRESS -- DL=0x10
+			// and DL=0x18 then gave the same plateau of 49, which was nobody's plateau.
+			const std::vector<int> m = envelope(b, 20000);
+			const int last = m.back();
 			char t[64];
-			snprintf(t, sizeof t, "%sDL=%02x->%d", lines.empty() ? "" : " ", c.dl, fin);
+			snprintf(t, sizeof t, "%sDL=%02x->%d", lines.empty() ? "" : " ", c.dl, last);
 			lines += t;
-			if (fin != c.palier) { correct = false; lines += "(attendu " + std::to_string(c.palier) + ")"; }
+			if (last != c.plateau) { correct = false; lines += "(expected " + std::to_string(c.plateau) + ")"; }
 		}
-		correct ? ok("DL inverse : le palier ou D2R prend la main", lines)
-		      : rate("DL inverse : le palier ou D2R prend la main", lines);
+		correct ? ok("DL inverted: the plateau where D2R takes over", lines)
+		        : failed("DL inverted: the plateau where D2R takes over", lines);
 	}
 
-	// ---- 6. D2R=0 NE DECREMENTE PAS, et c'est le REGISTRE qui est teste
-	// `case SCSP_DECAY2: if (D2R(slot) == 0) return ...` consulte D2R(slot), le champ du registre, et non
-	// EG.D2R, la valeur passee par la table. Les deux ne disent pas la meme chose : un D2R non nul peut
-	// donner un EG.D2R nul (m_DRTABLE d'un rate bas), et la sortie ne se figerait alors PAS, elle
-	// descendrait de zero par echantillon -- ce qui s'entend pareil mais ne s'ecrit pas pareil. On mesure
-	// donc les deux bords : D2R=0 fige, D2R=1 bouge.
+	// ---- 6. D2R=0 DOES NOT DECREMENT, and it is the REGISTER that is tested
+	// `case SCSP_DECAY2: if (D2R(slot) == 0) return ...` consults D2R(slot), the register's field, and not
+	// EG.D2R, the value the table gave. The two do not say the same thing: a non-zero D2R can give a zero
+	// EG.D2R (m_DRTABLE at a low rate), and the output would then NOT freeze, it would fall by zero per
+	// sample -- which sounds the same but is not written the same. So both edges are measured: D2R=0
+	// freezes, D2R=1 moves.
 	{
 		std::string lines;
 		bool correct = true;
-		// D2R=0x10 et non 1 : avec D2R=1 le volume perd 12 par echantillon, soit un index de table tous les
-		// 5461 echantillons -- la descente existe mais ne se voit pas dans une mesure de taille raisonnable,
-		// et la premiere version de ce cas concluait "devait bouger" sur sa propre impatience.
-		for (auto [d2r, bouge] : { std::pair<unsigned, bool>{ 0, false }, std::pair<unsigned, bool>{ 0x10, true } }) {
+		// D2R=0x10 and not 1: with D2R=1 the volume loses 12 per sample, that is one table index every
+		// 5461 samples -- the fall exists but does not show in a measurement of reasonable size, and the
+		// first version of this case concluded "should have moved" out of its own impatience.
+		for (auto [d2r, moves] : { std::pair<unsigned, bool>{ 0, false }, std::pair<unsigned, bool>{ 0x10, true } }) {
 			Bench b;
 			b.steady(WAVE, 256, STEADY);
 			std::uint16_t word[16] = {};
@@ -263,26 +263,26 @@ int main(int argc, char **argv)
 			put(word, "AR", 0x1F);
 			put(word, "D1R", 0);
 			put(word, "D2R", d2r);
-			put(word, "DL", 0);         // DECAY1 cede tout de suite
+			put(word, "DL", 0);         // DECAY1 gives way straight away
 			b.key(0, word);
-			const std::vector<int> m = enveloppe(b, 4000);
-			const bool a_bouge = m.back() != m[1];
+			const std::vector<int> m = envelope(b, 4000);
+			const bool moved = m.back() != m[1];
 			char t[80];
-			snprintf(t, sizeof t, "%sD2R=%02x : %d -> %d", lines.empty() ? "" : " | ", d2r, m[1], m.back());
+			snprintf(t, sizeof t, "%sD2R=%02x: %d -> %d", lines.empty() ? "" : " | ", d2r, m[1], m.back());
 			lines += t;
-			if (a_bouge != bouge) { correct = false; lines += a_bouge ? " (devait figer)" : " (devait bouger)"; }
+			if (moved != moves) { correct = false; lines += moved ? " (should have frozen)" : " (should have moved)"; }
 		}
-		correct ? ok("D2R=0 fige le palier, D2R=1 le fait descendre", lines)
-		      : rate("D2R=0 fige le palier, D2R=1 le fait descendre", lines);
+		correct ? ok("D2R=0 freezes the plateau, D2R=1 makes it fall", lines)
+		        : failed("D2R=0 freezes the plateau, D2R=1 makes it fall", lines);
 	}
 
-	// ---- 7. LPSLNK : l'attaque finit au passage de LSA, pas a la saturation
-	// Le seul endroit du bloc 3 qui depende du bloc 2. Dans ATTACK, le passage en DECAY1 est enferme dans
-	// `if (!LPSLNK(slot))` : avec LPSLNK l'etat NE CHANGE PAS quand le volume sature, il reste ATTACK. Il
-	// n'en sort que par l'oscillateur, dans la boucle de bouclage : `if (addr1 >= LSA && !Backwards) { if
-	// (LPSLNK && state == ATTACK) state = DECAY1; }`. On le voit donc par l'arithmetique : tant qu'on est
-	// en ATTACK la sortie vaut 4092 (le volume brut), et elle passe a 4096 (la table) a l'echantillon ou la
-	// tete de lecture atteint LSA. Avec LSA=20, cela fait vingt echantillons a 4092.
+	// ---- 7. LPSLNK: the attack ends when LSA is passed, not at saturation
+	// The only place in block 3 that depends on block 2. In ATTACK, the move into DECAY1 is enclosed in
+	// `if (!LPSLNK(slot))`: with LPSLNK the state DOES NOT CHANGE when the volume saturates, it stays
+	// ATTACK. It only leaves through the oscillator, in the looping loop: `if (addr1 >= LSA && !Backwards)
+	// { if (LPSLNK && state == ATTACK) state = DECAY1; }`. So it is seen through the arithmetic: as long as
+	// we are in ATTACK the output is 4092 (the raw volume), and it goes to 4096 (the table) at the sample
+	// where the read head reaches LSA. With LSA=20, that makes twenty samples at 4092.
 	{
 		Bench b;
 		b.steady(WAVE, 256, STEADY);
@@ -296,32 +296,32 @@ int main(int argc, char **argv)
 		put(word, "D2R", 0);
 		put(word, "DL", 0);
 		b.key(0, word);
-		const std::vector<int> m = enveloppe(b, 32);
+		const std::vector<int> m = envelope(b, 32);
 		unsigned n = 0;
 		while (n < m.size() && m[n] == 4092) n++;
-		// DIX-NEUF ET NON VINGT, et le compte dit pourquoi : dans UpdateSlot le test LPSLNK a lieu AVANT
-		// que l'enveloppe soit appliquee. A l'echantillon ou la tete atteint LSA=20, l'etat est deja DECAY1
-		// quand le gain est calcule, et cet echantillon sort donc par la table. Il reste dix-neuf
-		// echantillons en ATTACK.
-		(n == 19) ? ok("LPSLNK : ATTACK tient jusqu'a LSA",
-		               std::to_string(n) + " echantillons a 4092 (LSA=20, le vingtieme est deja DECAY1 : "
+		// NINETEEN AND NOT TWENTY, and the count says why: in UpdateSlot the LPSLNK test happens BEFORE the
+		// envelope is applied. At the sample where the head reaches LSA=20, the state is already DECAY1
+		// when the gain is computed, and that sample therefore comes out through the table. Nineteen
+		// samples are left in ATTACK.
+		(n == 19) ? ok("LPSLNK: ATTACK holds until LSA",
+		               std::to_string(n) + " samples at 4092 (LSA=20, the twentieth is already DECAY1: "
 		               + std::to_string(m[n]) + ")")
-		          : rate("LPSLNK : ATTACK tient jusqu'a LSA",
-		                 "attendu 19 echantillons a 4092 ; obtenu " + std::to_string(n)
-		                 + ", suite " + registry(m, 24));
+		          : failed("LPSLNK: ATTACK holds until LSA",
+		                   "expected 19 samples at 4092; got " + std::to_string(n)
+		                   + ", sequence " + joined(m, 24));
 	}
 
-	// ---- 8. KRS : l'echelonnage par la note, et le 0xF qui l'annule
-	// `rate = octave + 2 * KRS + ((FNS >> 9) & 1)`, sauf KRS=0xF qui donne rate = 0 tout court -- pas
-	// l'octave, pas le bit de FNS : ZERO. Pour le voir il faut une octave non nulle, sinon KRS=0 et KRS=0xF
-	// se confondent ; on prend donc OCT=2. Le rate s'ajoute a 2*AR avant de lire la table, donc une meme
-	// AR donne des attaques de durees differentes selon la note -- ce qui est tout l'objet de KRS.
+	// ---- 8. KRS: the scaling by the note, and the 0xF that cancels it
+	// `rate = octave + 2 * KRS + ((FNS >> 9) & 1)`, except KRS=0xF which gives rate = 0 outright -- not the
+	// octave, not FNS's bit: ZERO. To see it a non-zero octave is needed, otherwise KRS=0 and KRS=0xF are
+	// indistinguishable; so OCT=2 is used. The rate is added to 2*AR before reading the table, so the same
+	// AR gives attacks of different durations depending on the note -- which is the whole purpose of KRS.
 	{
 		std::string lines;
 		bool correct = true;
 		struct Case { unsigned krs; unsigned fns; unsigned expected; };
-		// KRS=0xF rend 83, exactement la duree du cas 3 a OCT=0 : la preuve que le 0xF annule l'octave et
-		// ne se contente pas de l'ignorer a moitie.
+		// KRS=0xF gives 83, exactly case 3's duration at OCT=0: the proof that the 0xF cancels the octave
+		// and does not merely half-ignore it.
 		const Case cases[] = { { 0x0, 0x000, 56 }, { 0x1, 0x000, 45 }, { 0x0, 0x200, 50 }, { 0xF, 0x000, 83 } };
 		for (const Case &c : cases) {
 			Bench b;
@@ -330,28 +330,28 @@ int main(int argc, char **argv)
 			blank(word);
 			put(word, "OCT", 2);        // (OCT ^ 8) - 8 = 2
 			put(word, "FNS", c.fns);
-			put(word, "LEA", 1000);     // l'octave 2 avance quatre fois plus vite
+			put(word, "LEA", 1000);     // octave 2 advances four times faster
 			put(word, "AR", 0x18);
 			put(word, "KRS", c.krs);
 			put(word, "D1R", 0);
 			put(word, "D2R", 0);
 			put(word, "DL", 0);
 			b.key(0, word);
-			const unsigned n = duree_attaque(b, 4000);
+			const unsigned n = attack_duration(b, 4000);
 			char t[80];
 			snprintf(t, sizeof t, "%sKRS=%x FNS=%03x -> %u", lines.empty() ? "" : " ", c.krs, c.fns, n);
 			lines += t;
-			if (n != c.expected) { correct = false; lines += "(attendu " + std::to_string(c.expected) + ")"; }
+			if (n != c.expected) { correct = false; lines += "(expected " + std::to_string(c.expected) + ")"; }
 		}
-		correct ? ok("KRS echelonne, KRS=0xF annule tout", lines)
-		      : rate("KRS echelonne, KRS=0xF annule tout", lines);
+		correct ? ok("KRS scales, KRS=0xF cancels everything", lines)
+		        : failed("KRS scales, KRS=0xF cancels everything", lines);
 	}
 
-	// ---- 9. RELEASE : la descente, puis la fente s'eteint POUR DE BON
-	// Le key-off ne coupe pas le son, il passe l'enveloppe en RELEASE (StopSlot avec keyoff=1). La fente ne
-	// devient inactive que quand le volume atteint zero, et c'est alors StopSlot(slot, 0) qui met
-	// `active = 0`. Deux choses a verifier donc : la descente a lieu, et elle finit par un vrai silence et
-	// non par un plancher.
+	// ---- 9. RELEASE: the fall, then the slot goes out FOR GOOD
+	// Key-off does not cut the sound, it moves the envelope into RELEASE (StopSlot with keyoff=1). The slot
+	// only becomes inactive when the volume reaches zero, and it is then StopSlot(slot, 0) that sets
+	// `active = 0`. Two things to check, then: the fall happens, and it ends in a real silence and not on a
+	// floor.
 	{
 		Bench b;
 		b.steady(WAVE, 256, STEADY);
@@ -363,33 +363,33 @@ int main(int argc, char **argv)
 		put(word, "DL", 0);
 		put(word, "RR", 0x18);
 		b.key(0, word);
-		const int avant = enveloppe(b, 4)[3];
-		// key-off : KYONB a zero et KYONEX, qui balaie les 32 fentes
+		const int before = envelope(b, 4)[3];
+		// key-off: KYONB at zero and KYONEX, which sweeps the 32 slots
 		std::uint16_t off[16] = {};
 		put(off, "KYONEX", 1);
 		b.the_core.write_reg(0, off[0], 0xFFFF);
 		unsigned n = 0;
-		int dernier = -1;
+		int last_v = -1;
 		for (; n < 4000; n++) {
-			dernier = int(b.left(1)[0] / PAR_MULT);
-			if (dernier == 0) break;
+			last_v = int(b.left(1)[0] / PER_MULT);
+			if (last_v == 0) break;
 		}
-		const std::vector<int> apres = enveloppe(b, 8);
-		bool muette = true;
-		for (int v : apres) if (v != 0) { muette = false; break; }
+		const std::vector<int> after = envelope(b, 8);
+		bool silent = true;
+		for (int v : after) if (v != 0) { silent = false; break; }
 		char t[128];
-		snprintf(t, sizeof t, "4096 avant, zero apres %u echantillons, et muette ensuite", n);
-		(avant == 4096 && n == 251 && muette)
-			? ok("RELEASE descend, puis la fente s'eteint", t)
-			: rate("RELEASE descend, puis la fente s'eteint",
-			       "avant " + std::to_string(avant) + ", zero apres " + std::to_string(n)
-			       + " (attendu 251), muette ensuite : " + (muette ? "oui" : "non"));
+		snprintf(t, sizeof t, "4096 before, zero after %u samples, and silent from then on", n);
+		(before == 4096 && n == 251 && silent)
+			? ok("RELEASE falls, then the slot goes out", t)
+			: failed("RELEASE falls, then the slot goes out",
+			         "before " + std::to_string(before) + ", zero after " + std::to_string(n)
+			         + " (expected 251), silent afterwards: " + (silent ? "yes" : "no"));
 	}
 
-	// ---- 10. UN SECOND KYONEX NE REDECLENCHE PAS une voix qui joue
-	// `if (KEYONB(s2) && s2->EG.state == SCSP_RELEASE) StartSlot(s2)` : seule une fente EN RELEASE est
-	// (re)demarree. Une fente qui joue ignore donc la gachette, et son volume ne revient pas a 0x17F. Une
-	// reecriture qui redemarrerait sur chaque KYONEX ferait claquer toutes les notes repetees du jeu.
+	// ---- 10. A SECOND KYONEX DOES NOT RETRIGGER a voice that is playing
+	// `if (KEYONB(s2) && s2->EG.state == SCSP_RELEASE) StartSlot(s2)`: only a slot IN RELEASE is
+	// (re)started. So a slot that is playing ignores the trigger, and its volume does not go back to 0x17F.
+	// A rewrite restarting on every KYONEX would make all the game's repeated notes snap.
 	{
 		Bench b;
 		b.steady(WAVE, 256, STEADY);
@@ -400,19 +400,19 @@ int main(int argc, char **argv)
 		put(word, "D2R", 0);
 		put(word, "DL", 0);
 		b.key(0, word);
-		const int etabli = enveloppe(b, 4)[3];
-		b.key(0, word);                      // la meme gachette, une seconde fois
-		const std::vector<int> apres = enveloppe(b, 4);
-		const bool unchanged = etabli == 4096 && apres[0] == 4096 && apres[1] == 4096;
-		unchanged ? ok("un second KYONEX ne redeclenche rien",
-		              "4096 avant et apres : " + registry(apres, 4) + " (pas de retour a 1532)")
-		         : rate("un second KYONEX ne redeclenche rien",
-		                "avant " + std::to_string(etabli) + ", apres " + registry(apres, 4)
-		                + " ; un retour a 1532 serait un redemarrage");
+		const int settled = envelope(b, 4)[3];
+		b.key(0, word);                      // the same trigger, a second time
+		const std::vector<int> after = envelope(b, 4);
+		const bool unchanged = settled == 4096 && after[0] == 4096 && after[1] == 4096;
+		unchanged ? ok("a second KYONEX retriggers nothing",
+		               "4096 before and after: " + joined(after, 4) + " (no return to 1532)")
+		          : failed("a second KYONEX retriggers nothing",
+		                   "before " + std::to_string(settled) + ", after " + joined(after, 4)
+		                   + "; a return to 1532 would be a restart");
 	}
 
 	printf("\n");
-	if (failures) { printf("%d echec(s).\n", failures); return 1; }
+	if (failures) { printf("%d failure(s).\n", failures); return 1; }
 	printf("all cases pass\n");
 	return 0;
 }

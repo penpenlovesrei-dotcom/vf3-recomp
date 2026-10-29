@@ -104,9 +104,9 @@ $(BIN)/test_scsp_regs: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# L'oscillateur, l'adressage PCM et les quatre bouclages (scsp/tools/sound/test_scsp_fentes.cpp) : bloc 2 de
+# L'oscillateur, l'adressage PCM et les quatre bouclages (scsp/tools/sound/test_scsp_slots.cpp) : bloc 2 de
 # l'architecture. Mesure la suite exacte des indices d'echantillon, SDIR mettant l'enveloppe de cote.
-$(BIN)/test_scsp_fentes: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_own.cpp scsp/src/sound/dsp_own.cpp src/core/mame_shim.cpp scsp/tools/sound/test_scsp_fentes.cpp)
+$(BIN)/test_scsp_slots: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_own.cpp scsp/src/sound/dsp_own.cpp src/core/mame_shim.cpp scsp/tools/sound/test_scsp_slots.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
@@ -166,7 +166,7 @@ $(BIN)/measure-core: $(call objs,src/sound/scsp.cpp src/sound/scspdsp.cpp src/so
 # l'interface neuve, test_scspdsp mesure les deux corps du DSP de MAME, test_scsp_contract lit les macros de
 # scsp.cpp. Leur sujet EST le coeur de MAME.
 OWN_ONLY = scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_own.cpp scsp/src/sound/dsp_own.cpp
-WITHOUT_MAME = test_scsp_regs test_scsp_fentes test_scsp_adsr test_scsp_lfo test_scsp_irq test_scsp_mix test_scsp_dsp
+WITHOUT_MAME = test_scsp_regs test_scsp_slots test_scsp_adsr test_scsp_lfo test_scsp_irq test_scsp_mix test_scsp_dsp
 
 # THE PREFIX IS scsp/, AND A WRONG ONE IS SILENT. A pattern rule whose prerequisite cannot be made is
 # REJECTED, not reported: make then finds the exe already there, has no other rule for it, and declares it
@@ -181,7 +181,7 @@ test-without-mame: $(addprefix $(BIN)/without-mame/,$(WITHOUT_MAME))
 	@echo "---- the same tests, linked WITHOUT a line of MAME's core ----"
 	@for t in $(WITHOUT_MAME); do $(BIN)/without-mame/$$t own || exit 1; done
 
-test: $(BIN)/test_scsp_dsp $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_fentes $(BIN)/test_scsp_adsr $(BIN)/test_scsp_lfo $(BIN)/test_scsp_irq $(BIN)/test_scsp_mix
+test: $(BIN)/test_scsp_dsp $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/test_scsp_core $(BIN)/test_scsp_regs $(BIN)/test_scsp_slots $(BIN)/test_scsp_adsr $(BIN)/test_scsp_lfo $(BIN)/test_scsp_irq $(BIN)/test_scsp_mix
 	$(BIN)/test_scspdsp
 	$(BIN)/test_scsp_dsp mame
 	$(BIN)/test_scsp_dsp own
@@ -189,8 +189,8 @@ test: $(BIN)/test_scsp_dsp $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/
 	$(BIN)/test_scsp_core
 	$(BIN)/test_scsp_regs mame
 	$(BIN)/test_scsp_regs own
-	$(BIN)/test_scsp_fentes mame
-	$(BIN)/test_scsp_fentes own
+	$(BIN)/test_scsp_slots mame
+	$(BIN)/test_scsp_slots own
 	$(BIN)/test_scsp_adsr mame
 	$(BIN)/test_scsp_adsr own
 	$(BIN)/test_scsp_lfo mame

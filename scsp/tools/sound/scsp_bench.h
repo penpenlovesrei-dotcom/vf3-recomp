@@ -2,7 +2,7 @@
 //
 // The blocks of docs/scsp_architecture.md §3 are all tested the same way -- a fresh core, a RAM, a slot
 // laid down through the contract's table, and n samples read -- and there are seven of them. This file
-// exists so that the second version of that rig is the last: test_scsp_fentes.cpp (block 2) had it of its
+// exists so that the second version of that rig is the last: test_scsp_slots.cpp (block 2) had it of its
 // own, test_scsp_adsr.cpp (block 3) needed it identically.
 //
 // IT CONTAINS NO EXPECTATION. What is expected of a block belongs to that block's test; here there is only

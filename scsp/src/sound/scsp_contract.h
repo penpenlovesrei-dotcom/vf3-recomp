@@ -429,7 +429,7 @@ inline constexpr unsigned PLFOS_CHAMP_LARGEUR  = 0x7;   // le champ du registre,
 // ---------------------------------------------------------------------------------------------------
 // 9. THE OSCILLATOR'S LOOPING, which is not what reading the code suggests.
 //
-// Measured 2026-10-26 by tools/sound/test_scsp_fentes.cpp, which keeps the exact index sequences. Three
+// Measured 2026-10-26 by tools/sound/test_scsp_slots.cpp, which keeps the exact index sequences. Three
 // facts, and a reimplementation that misses the third plays one sample too many in every loop:
 //
 //   (1) LSA AND LEA COUNT SAMPLES, while the 16-bit fetch counts BYTES. The fetch takes

@@ -13,7 +13,7 @@ BIN ?= build/bin
 CORE = src/sound/scsp_select.cpp src/sound/scsp_own.cpp src/sound/dsp_own.cpp
 objs = $(patsubst %.cpp,$(OBJ)/%.o,$(1))
 
-BLOCKS = test_scsp_regs test_scsp_fentes test_scsp_adsr test_scsp_lfo test_scsp_irq test_scsp_mix test_scsp_dsp
+BLOCKS = test_scsp_regs test_scsp_slots test_scsp_adsr test_scsp_lfo test_scsp_irq test_scsp_mix test_scsp_dsp
 
 all: test
 
