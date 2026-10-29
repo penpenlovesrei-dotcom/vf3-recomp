@@ -27,12 +27,12 @@ namespace sndprof {
 
 enum Part { RUN, M68K, SCSP, DSP, MIX, FLUSH, N_PARTS };
 
-// La sonde ne s'allume que sur `1` exactement, et elle le DIT quand la variable est posee autrement :
-// une sonde qui ne sort rien sans dire pourquoi coute une demi-journee a qui la cherche.
+// The probe only turns on for `1` exactly, and it SAYS SO when the variable is set to anything else: a
+// probe that produces nothing without saying why costs half a day to whoever goes looking for it.
 inline const bool on = [] {
 	const char *e = getenv("VF3_SND_PROF");
 	if (e && *e && !(e[0] == '1' && !e[1]))
-		fprintf(stderr, "sndprof: VF3_SND_PROF=\"%s\" n'allume rien -- la sonde ne connait que \"1\"\n", e);
+		fprintf(stderr, "sndprof: VF3_SND_PROF=\"%s\" turns nothing on -- the probe only knows \"1\"\n", e);
 	return e && e[0] == '1' && !e[1];
 }();
 inline uint64_t acc[N_PARTS] = {};
@@ -60,19 +60,19 @@ struct Scope
 	Scope &operator=(const Scope &) = delete;
 };
 
-// `out` dit sur quelle sortie le rapport tombe, parce que ce n'est pas la meme des deux cotes : l'hote
-// envoie tout sur stderr (log.txt, et tools/son/mesurer-hote.cmd y cherche la ligne), tandis que vf3run
-// imprime sa ligne `prof` sur stdout -- et une redirection qui garde l'une en perdant l'autre a deja fait
-// croire que la sonde ne sortait rien.
+// `out` says which stream the report lands on, because it is not the same on both sides: the host sends
+// everything to stderr (log.txt, and tools/son/mesurer-hote.cmd looks for the line there), while vf3run
+// prints its `prof` line on stdout -- and a redirection that keeps one while losing the other has already
+// made it look as though the probe produced nothing.
 inline void report(const char *what, int frames, FILE *out = stderr)
 {
 	if (!on || frames <= 0) return;
-	// Rien compte du tout : la carte son n'a pas tourne une seule fois sur ces images. Le dire, parce
-	// qu'une ligne de zeros se lit comme une mesure et n'en est pas une -- et que c'est le cas normal
-	// de vf3run sans --wav, qui n'appelle alors jamais SoundBoard::run().
+	// Nothing counted at all: the sound board did not run once over these frames. Say so, because a line
+	// of zeros reads like a measurement and is not one -- and because it is the normal case for vf3run
+	// without --wav, which then never calls SoundBoard::run().
 	if (!hits[RUN]) {
-		fprintf(out, "sndprof %s: rien mesure -- la carte son n'a pas tourne sur ces %d images"
-		             " (vf3run ne la fait tourner qu'avec --wav)\n", what, frames);
+		fprintf(out, "sndprof %s: nothing measured -- the sound board did not run over these %d frames"
+		             " (vf3run only runs it with --wav)\n", what, frames);
 		for (int i = 0; i < N_PARTS; i++) acc[i] = hits[i] = 0;
 		dsp_steps = 0;
 		return;

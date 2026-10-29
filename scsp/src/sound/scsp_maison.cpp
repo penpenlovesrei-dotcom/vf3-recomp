@@ -13,27 +13,27 @@
 namespace {
 
 // -----------------------------------------------------------------------------------------------------
-// LIRE UN CHAMP DE FENTE, et c'est ici que la justesse et la vitesse ont failli s'exclure.
+// READING A SLOT FIELD, and this is where correctness and speed almost ruled each other out.
 //
-// La premiere version appelait scsp_contract::champ_fente(nom) DANS LA BOUCLE : une recherche par
-// comparaison de chaines sur trente-quatre entrees, pour chacun des trente-huit champs lus, pour chacune
-// des trente-deux fentes, quarante-quatre mille fois par seconde. C'etait juste -- le contrat restait la
-// source unique des positions -- et le rejeu l'a confirme a l'octet. Mais la mesure a dit le prix : 47,80 s
-// contre 21,05 s pour le coeur de MAME sur la meme trace, soit 2,27 fois plus lent, alors que le gain
-// processeur est la priorite absolue du cahier des charges.
+// The first version called scsp_contract::champ_fente(nom) INSIDE THE LOOP: a lookup by string comparison
+// over thirty-four entries, for each of the thirty-eight fields read, for each of the thirty-two slots,
+// forty-four thousand times a second. It was correct -- the contract stayed the single source of the
+// positions -- and the replay confirmed it byte for byte. But the measurement gave the price: 47.80 s
+// against 21.05 s for MAME's core on the same trace, that is 2.27 times slower, when the CPU gain is the
+// specification's highest priority.
 //
-// La forme ci-dessous garde la source unique SANS la payer : les positions sont lues dans la table du
-// contrat UNE FOIS, a la premiere utilisation, et rangees dans des entiers. Un champ faux dans le contrat
-// casse donc toujours les tests, et la boucle chaude ne fait plus qu'un decalage et un masque.
+// The form below keeps the single source WITHOUT paying for it: the positions are read out of the
+// contract's table ONCE, on first use, and stored in integers. A wrong field in the contract therefore
+// still breaks the tests, and the hot loop now does no more than a shift and a mask.
 // -----------------------------------------------------------------------------------------------------
 struct Position {
 	unsigned mot = 0, decalage = 0, masque = 0;
 	bool bit_en_place = false;
 };
 
-// Une position, resolue A LA COMPILATION depuis la table du contrat. `champ_fente` etant constexpr, un nom
-// litteral donne ici un decalage et un masque connus du compilateur : la boucle chaude ne fait plus qu'un
-// chargement, un decalage et un masque, et le test `bit_en_place` se replie.
+// A position, resolved AT COMPILE TIME from the contract's table. `champ_fente` being constexpr, a literal
+// name here yields a shift and a mask known to the compiler: the hot loop now does no more than a load, a
+// shift and a mask, and the `bit_en_place` test folds away.
 constexpr Position position(const char *nom)
 {
 	Position p;
@@ -93,17 +93,17 @@ inline unsigned champ(const scsp::u16 mot[16], const Position &p)
 
 
 // -----------------------------------------------------------------------------------------------------
-// BLOC 1 -- registres et semantique d'acces.
+// BLOCK 1 -- registers and access semantics.
 //
-// Ce que le bloc doit rendre est enregistre dans tools/son/test_scsp_regs.cpp : pour chaque mot de 0x000 a
-// 0x42F, ce qu'une ecriture LEVE et ce qui RESTE leve. La carte entiere se relit telle qu'elle s'ecrit sauf
-// cinq mots, et ces cinq-la sont le bloc :
+// What the block has to return is recorded in tools/son/test_scsp_regs.cpp: for every word from 0x000 to
+// 0x42F, what a write RAISES and what STAYS raised. The whole map reads back as it was written except for
+// five words, and those five are the block:
 //
-//     0x404  l'octet bas est la file du MIDI entrant : masque utile 0xFF00
-//     0x408  MSLC/CA/SGC/EG, recalcule a chaque lecture : masque utile 0x0000
-//     0x420  SCIPD : l'ecriture est un OU du seul bit 5, qui COLLE
-//     0x42C  MCIPD : affectation, mais la lecture recopie l'etat interne -- le bit 5 revient
-//     0x42E  MCIRE : recoit l'exception destinee a MCIPD, donc son bit 5 ne s'eteint jamais
+//     0x404  the low byte is the incoming MIDI queue: useful mask 0xFF00
+//     0x408  MSLC/CA/SGC/EG, recomputed on every read: useful mask 0x0000
+//     0x420  SCIPD: the write is an OR of bit 5 alone, which STICKS
+//     0x42C  MCIPD: assignment, but the read copies the internal state back -- bit 5 returns
+//     0x42E  MCIRE: receives the exception meant for MCIPD, so its bit 5 never goes out
 // -----------------------------------------------------------------------------------------------------
 
 scsp_maison::scsp_maison(u32 horloge, u16 *ram, u32 ram_octets, scsp::sink &puits)
@@ -121,7 +121,7 @@ void scsp_maison::reset()
 	for (auto &w : m_commun) w = 0;
 	for (auto &w : m_anneau) w = 0;
 	for (auto &w : m_madrs_haut) w = 0;
-	// COEF, MADRS et MPRO sont dans le DSP, que Init() remet a zero plus bas.
+	// COEF, MADRS and MPRO are in the DSP, which Init() clears further down.
 	m_mcieb = m_mcipd = 0;
 	m_midi_e = m_midi_l = 0;
 	m_niv_tima = m_niv_timbc = m_niv_midi = m_niv_cpu = m_niv_dma = 0;
@@ -138,22 +138,21 @@ void scsp_maison::reset()
 }
 
 // -----------------------------------------------------------------------------------------------------
-// LES ACCES
+// THE ACCESSES
 // -----------------------------------------------------------------------------------------------------
 
 scsp_maison::u16 scsp_maison::etat_fente_surveillee() const
 {
-	// L'ETAT VIVANT DE LA FENTE SURVEILLEE, recalcule a chaque lecture : les quatre bits hauts de l'adresse
-	// de lecture, l'etat de l'enveloppe, et le volume renverse.
+	// THE MONITORED SLOT'S LIVE STATE, recomputed on every read: the four high bits of the read address,
+	// the envelope's state, and the volume inverted.
 	//
-	// CE FUT UN BOUCHON, ET LE REJOUEUR L'A TROUVE. Pendant que seul le bloc 1 existait, cette fonction
-	// rendait une constante -- une fente au repos -- et c'etait defendable : le test du bloc 1 ne verifie
-	// ici que le MASQUE, qu'aucun bit ecrit ne se relise, ce qui est vrai quelle que soit la valeur. Mais
-	// une fois les blocs 2 et 3 ecrits il y avait un vrai etat a rendre, et le bouchon est devenu faux sans
-	// qu'aucun test unitaire ne bouge. C'est le rejeu d'une scene reelle qui l'a dit : "lecture 5292 du mot
-	// 204 : 0040 contre 007f". Le pilote lit ce registre pour trouver une fente libre, donc un bouchon ici
-	// change l'allocation des voix -- et le son, deux secondes plus tard, d'une facon qui ne ressemble plus
-	// a sa cause.
+	// THIS WAS A STUB, AND THE REPLAYER FOUND IT. While only block 1 existed, this function returned a
+	// constant -- an idle slot -- and that was defensible: block 1's test only checks the MASK here, that
+	// no written bit reads back, which is true whatever the value. But once blocks 2 and 3 were written
+	// there was a real state to return, and the stub became wrong without a single unit test moving. It
+	// was the replay of a real scene that said so: "read 5292 of word 204: 0040 against 007f". The driver
+	// reads this register to find a free slot, so a stub here changes voice allocation -- and the sound,
+	// two seconds later, in a way that no longer resembles its cause.
 	const Vive &v = m_vive[m_mslc & (FENTES - 1)];
 	const u32 ca = (v.cur >> (PAS + 12)) & 0xF;
 	const u32 sgc = u32(v.etat) & 3;
@@ -172,13 +171,13 @@ scsp_maison::u16 scsp_maison::lire_octet_adresse(u32 octet)
 		const u32 bas = octet & 0x3F;
 		switch (bas) {
 		case 0x04: case 0x05: {
-			// L'octet bas EST la file du MIDI entrant, et la lecture la DEPILE -- c'est elle qui fait
-			// retomber l'interruption quand la file se vide (scsp_contract.h §12 point 9). Une
-			// implementation qui rendrait le mot stocke laisserait l'interruption levee pour toujours.
+			// The low byte IS the incoming MIDI queue, and the read POPS it -- the read is what drops
+			// the interrupt when the queue empties (scsp_contract.h §12 point 9). An implementation
+			// returning the stored word would leave the interrupt raised for ever.
 			u16 v = u16(m_commun[0x04 / 2] & 0xFF00);
 			v = u16(v | m_midi[m_midi_l]);
 			if (m_midi_l != m_midi_e) m_midi_l = (m_midi_l + 1) & (MIDI_PROFONDEUR - 1);
-			if (m_midi_l == m_midi_e) {              // la file est vide : l'interruption retombe
+			if (m_midi_l == m_midi_e) {              // the queue is empty: the interrupt drops
 				m_puits.irq(m_niv_midi, false);
 				m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] & ~0x8);
 			}
@@ -199,7 +198,7 @@ scsp_maison::u16 scsp_maison::lire_octet_adresse(u32 octet)
 		}
 	}
 
-	if (octet < 0x600) return 0;                     // 0x430-0x5FF : rien n'y repond
+	if (octet < 0x600) return 0;                     // 0x430-0x5FF: nothing answers there
 	if (octet < 0x700) return u16(m_anneau[(octet - 0x600) / 2]);
 	if (octet < 0x780) return u16(m_dsp.COEF[(octet - 0x700) / 2]);
 	if (octet < 0x7C0) return m_dsp.MADRS[(octet - 0x780) / 2];
@@ -209,22 +208,22 @@ scsp_maison::u16 scsp_maison::lire_octet_adresse(u32 octet)
 	}
 	if (octet < 0xC00) return m_dsp.MPRO[(octet - 0x800) / 2];
 
-	// L'ETAT DU DSP SE RELIT, et c'est par la qu'on peut le specifier. TEMP, MEMS, MIXS et EFREG sont tous
-	// exposes dans la fenetre de registres -- en lecture seule, l'ecriture au-dela de 0xC00 n'allant nulle
-	// part. Les trois premiers portent plus de seize bits, donc chacun occupe DEUX mots : le bit 1 de
-	// l'adresse choisit la moitie, le haut d'abord.
+	// THE DSP'S STATE READS BACK, and that is how it can be specified. TEMP, MEMS, MIXS and EFREG are all
+	// exposed in the register window -- read-only, a write beyond 0xC00 going nowhere. The first three
+	// carry more than sixteen bits, so each takes TWO words: bit 1 of the address picks the half, the high
+	// one first.
 	//
-	// Ce bout de carte manquait au bloc 1, et son test ne pouvait pas le dire : son balayage s'arrete a
-	// 0x42F. C'est en cherchant par ou observer le DSP qu'il a fallu le completer.
-	if (octet < 0xE00) {   // TEMP, 128 mots de 24 bits
+	// This piece of the map was missing from block 1, and its test could not say so: its sweep stops at
+	// 0x42F. It was while looking for somewhere to observe the DSP that it had to be filled in.
+	if (octet < 0xE00) {   // TEMP, 128 words of 24 bits
 		const s32 v = m_dsp.TEMP[(octet >> 2) & 0x7F];
 		return u16((octet & 2) ? (u32(v) & 0xFFFF) : (u32(v) >> 16));
 	}
-	if (octet < 0xE80) {   // MEMS, 32 mots de 24 bits
+	if (octet < 0xE80) {   // MEMS, 32 words of 24 bits
 		const s32 v = m_dsp.MEMS[(octet >> 2) & 0x1F];
 		return u16((octet & 2) ? (u32(v) & 0xFFFF) : (u32(v) >> 16));
 	}
-	if (octet < 0xEC0) {   // MIXS, 16 mots de 20 bits
+	if (octet < 0xEC0) {   // MIXS, 16 words of 20 bits
 		const s32 v = m_dsp.MIXS[(octet >> 2) & 0xF];
 		return u16((octet & 2) ? (u32(v) & 0xFFFF) : (u32(v) >> 16));
 	}
@@ -246,9 +245,9 @@ void scsp_maison::ecrire_octet_adresse(u32 octet, u16 data, u16 masque)
 
 	if (octet < 0x430) {
 		const u32 bas = octet & 0x3F;
-		// LES DEUX MOTS QUI S'ECRIVENT PAR UN OU, et non par une affectation : SCIPD et -- malgre ce que le
-		// commentaire de MAME annonce -- MCIRE et non MCIPD (scsp_contract.h §2). Seul le bit 5 passe, et
-		// comme c'est un OU, ecrire zero ne l'eteint pas.
+		// THE TWO WORDS WRITTEN BY AN OR, and not by an assignment: SCIPD and -- despite what MAME's
+		// comment announces -- MCIRE and not MCIPD (scsp_contract.h §2). Only bit 5 gets through, and
+		// since it is an OR, writing zero does not clear it.
 		if (bas == 0x20 || bas == 0x2E) m_commun[bas / 2] = u16(m_commun[bas / 2] | (data & 0x20));
 		else m_commun[bas / 2] = u16((m_commun[bas / 2] & ~masque) | (data & masque));
 		apres_ecriture_commun(bas);
@@ -269,8 +268,8 @@ void scsp_maison::ecrire_octet_adresse(u32 octet, u16 data, u16 masque)
 	}
 	if (octet < 0x7C0) { pose(m_dsp.MADRS[(octet - 0x780) / 2]); return; }
 	if (octet < 0x800) {
-		// LA PLAGE CONTESTEE. Elle a son propre stockage, et le miroir -- un reglage du jeu et non de la
-		// puce -- la recopie dans MADRS. Mesure dans les deux reglages par le test du bloc 1.
+		// THE DISPUTED RANGE. It has its own storage, and the mirror -- a game setting and not a chip
+		// one -- copies it into MADRS. Measured in both settings by block 1's test.
 		const u32 i = (octet - 0x7C0) / 2;
 		pose(m_madrs_haut[i]);
 		if (m_miroir) m_dsp.MADRS[i] = m_madrs_haut[i];
@@ -278,8 +277,8 @@ void scsp_maison::ecrire_octet_adresse(u32 octet, u16 data, u16 masque)
 	}
 	if (octet < 0xC00) {
 		pose(m_dsp.MPRO[(octet - 0x800) / 2]);
-		// Le programme est DECODE une fois a l'ecriture et non a chaque echantillon : c'est une avance de ce
-		// depot sur MAME et sur Supermodel, qui le decodent dans la boucle (docs/scsp_references.md).
+		// The program is DECODED once on write and not on every sample: this is this repository's advance
+		// over MAME and Supermodel, which decode it in the loop (docs/scsp_references.md).
 		m_dsp.Decode((octet - 0x800) / 8);
 		if (octet == 0xBF0) m_dsp.Start();
 		return;
@@ -293,10 +292,10 @@ scsp_maison::u16 scsp_maison::read_reg(u32 mot)
 
 void scsp_maison::write_reg(u32 mot, u16 data, u16 masque)
 {
-	// LIRE, MODIFIER, ECRIRE, et ce n'est pas un detail d'implementation : c'est ce que fait la puce telle
-	// que ce portage la connait, et la LECTURE a des effets de bord. Une ecriture d'octet sur 0x404 depile
-	// donc un octet de la file MIDI avant d'ecrire. Une implementation qui ferait une ecriture partielle
-	// directe ne depilerait rien -- meme resultat dans le registre, etat different dans la puce.
+	// READ, MODIFY, WRITE, and this is not an implementation detail: it is what the chip does as this port
+	// knows it, and the READ has side effects. So a byte write to 0x404 pops a byte off the MIDI queue
+	// before writing. An implementation doing a direct partial write would pop nothing -- same result in
+	// the register, different state in the chip.
 	const u32 octet = mot * 2;
 	u16 fusion = lire_octet_adresse(octet);
 	fusion = u16((fusion & ~masque) | (data & masque));
@@ -304,14 +303,14 @@ void scsp_maison::write_reg(u32 mot, u16 data, u16 masque)
 }
 
 // -----------------------------------------------------------------------------------------------------
-// CE QUI SUIT UNE ECRITURE
+// WHAT FOLLOWS A WRITE
 // -----------------------------------------------------------------------------------------------------
 
 void scsp_maison::niveaux_depuis_scilv()
 {
-	// LE NIVEAU EST ASSEMBLE BIT PAR BIT, un bit par registre SCILV : bit 0 du niveau depuis SCILV0, bit 1
-	// depuis SCILV1, bit 2 depuis SCILV2, chacun pris au rang de la SOURCE (scsp_contract.h §12 point 3).
-	// Et il n'est recalcule qu'ici -- armer SCIEB avant d'avoir ecrit SCILV laisse tous les niveaux a zero.
+	// THE LEVEL IS ASSEMBLED BIT BY BIT, one bit per SCILV register: bit 0 of the level from SCILV0, bit 1
+	// from SCILV1, bit 2 from SCILV2, each taken at the SOURCE's position (scsp_contract.h §12 point 3).
+	// And it is recomputed only here -- arming SCIEB before SCILV has been written leaves every level zero.
 	const u16 l0 = m_commun[0x24 / 2], l1 = m_commun[0x26 / 2], l2 = m_commun[0x28 / 2];
 	auto niveau = [&](unsigned bit) {
 		return int(((l0 >> bit) & 1) | (((l1 >> bit) & 1) << 1) | (((l2 >> bit) & 1) << 2));
@@ -327,14 +326,14 @@ void scsp_maison::apres_ecriture_commun(u32 bas)
 {
 	switch (bas) {
 	case 0x08: case 0x09:
-		// MSLC, la fente surveillee : bits 15-11. Ce portage la prend AU MOMENT DE L'ECRITURE et non une
-		// fois par echantillon comme MAME, parce que le pilote du Model 3 ecrit MSLC et relit aussitot pour
-		// trouver une fente libre -- verrouillee par echantillon, il relit la fente d'avant et la musique
-		// finit sur la moitie des fentes (le commentaire de scsp.cpp le dit, et c'est une divergence voulue).
+		// MSLC, the monitored slot: bits 15-11. This port takes it AT THE MOMENT OF THE WRITE and not once
+		// per sample as MAME does, because the Model 3's driver writes MSLC and reads straight back to
+		// find a free slot -- latched per sample, it reads the previous slot back and the music ends up on
+		// half the slots (scsp.cpp's comment says so, and this is a deliberate divergence).
 		m_mslc = u8((m_commun[0x08 / 2] >> 11) & 0x1F);
 		break;
 	case 0x02: case 0x03:
-		// La ligne de retard du DSP : sa taille et son origine dans la RAM son.
+		// The DSP's delay line: its size and its origin in sound RAM.
 		m_dsp.RBL = (8 * 1024) << ((m_commun[0x02 / 2] >> 7) & 3);
 		m_dsp.RBP = m_commun[0x02 / 2] & 0x3F;
 		break;
@@ -342,13 +341,13 @@ void scsp_maison::apres_ecriture_commun(u32 bas)
 		m_mcieb = m_commun[0x2A / 2];
 		break;
 	case 0x2C: case 0x2D:
-		// MCIPD s'ecrit par affectation -- mais le bit 5 ecrit demande une interruption du cote maitre, et
-		// comme la lecture recopie m_mcipd, le bit revient. C'est le troisieme chemin des trois que le bloc
-		// 1 a mesures, et il n'est pas le meme que celui de SCIPD ni celui de MCIRE.
+		// MCIPD is written by assignment -- but bit 5 written asks for an interrupt on the master side,
+		// and since the read copies m_mcipd back, the bit returns. This is the third of the three paths
+		// block 1 measured, and it is not the same as SCIPD's nor as MCIRE's.
 		if (m_commun[0x2C / 2] & 0x20) m_mcipd = u16(m_mcipd | 0x20);
 		break;
 	case 0x2E: case 0x2F:
-		// MCIRE acquitte : les bits ecrits s'effacent de m_mcipd.
+		// MCIRE acknowledges: the bits written are cleared from m_mcipd.
 		m_mcipd = u16(m_mcipd & ~m_commun[0x2E / 2]);
 		break;
 	case 0x24: case 0x25: case 0x26: case 0x27: case 0x28: case 0x29:
@@ -364,8 +363,8 @@ void scsp_maison::apres_ecriture_commun(u32 bas)
 		verifier_attente();
 		break;
 	case 0x20: case 0x21:
-		// SCIPD : seule une demande du CPU deja armee relance l'examen. L'ecriture elle-meme est un OU du
-		// bit 5, faite plus haut.
+		// SCIPD: only an already-armed CPU request restarts the examination. The write itself is an OR of
+		// bit 5, done further up.
 		if (m_commun[0x1E / 2] & m_commun[0x20 / 2] & 0x20) verifier_attente();
 		break;
 	case 0x22: case 0x23:
@@ -379,23 +378,22 @@ void scsp_maison::apres_ecriture_commun(u32 bas)
 
 void scsp_maison::apres_ecriture_fente(u32 fente, u32 mot)
 {
-	// TROIS MOTS SE RECALCULENT A L'ECRITURE, et pas seulement au demarrage. En oublier un laisse une voix
-	// deja en cours sur des valeurs perimees -- ce qui ne s'entend pas tout de suite, et se voit un million
-	// d'echantillons plus tard.
-	if (mot == 8) { calculer_pas(fente); return; }     // OCT et FNS : le pas de lecture
-	if (mot == 9) { calculer_lfo(fente); return; }     // LFOF, les formes, les profondeurs
+	// THREE WORDS ARE RECOMPUTED ON WRITE, and not only at key-on. Forgetting one leaves a voice already
+	// running on stale values -- which is not heard straight away, and shows up a million samples later.
+	if (mot == 8) { calculer_pas(fente); return; }     // OCT and FNS: the read step
+	if (mot == 9) { calculer_lfo(fente); return; }     // LFOF, the waveforms, the depths
 	if (mot == 5) {
-		// LPSLNK/KRS/DL/RR. Et le relachement est recalcule AVEC UN RATE DE BASE NUL, ce qui n'est pas ce
-		// que fait le calcul du demarrage : celui-ci part de `octave + 2*KRS + bit de FNS`. L'incoherence
-		// est dans l'original et elle est OBSERVABLE -- c'est elle que le rejeu a trouvee.
+		// LPSLNK/KRS/DL/RR. And the release is recomputed WITH A BASE RATE OF ZERO, which is not what the
+		// key-on computation does: that one starts from `octave + 2*KRS + bit of FNS`. The inconsistency
+		// is in the original and it is OBSERVABLE -- it is the one the replay found.
 		//
-		// La trace de la decouverte, parce qu'elle dit comment on trouve ces choses : le rejeu d'une scene
-		// de 1500 images sortait UN echantillon faux sur 1 149 952, a -967 contre -968. Les tables etaient
-		// toutes identiques (65536 entrees de panoramique, 1024 de courbe, 124 de temps : zero ecart). En
-		// rejouant les deux coeurs cote a cote, un echantillon a la fois, l'ecart s'est date : echantillon
-		// 894 568, fente 0, le VOLUME en relachement, l'adresse etant juste. Mon pas valait 353 548 et le
-		// sien 422 293, soit l'index 61 au lieu de 62 -- un cran de rate. Avec RR=0x1F et une octave de -1,
-		// `clamp(-1 + 62)` contre `clamp(0 + 62)` : ce crochet-ci manquait.
+		// The trail of the discovery, because it says how these things are found: the replay of a
+		// 1500-frame scene produced ONE wrong sample out of 1 149 952, at -967 against -968. The tables
+		// were all identical (65536 pan entries, 1024 of curve, 124 of times: zero difference). Replaying
+		// the two cores side by side, one sample at a time, dated the gap: sample 894 568, slot 0, the
+		// VOLUME in release, the address being right. My step was 353 548 and its 422 293, that is index
+		// 61 instead of 62 -- one rate notch. With RR=0x1F and an octave of -1, `clamp(-1 + 62)` against
+		// `clamp(0 + 62)`: this very bracket was missing.
 		const u16 *r = m_fente[fente];
 		Vive &v = m_vive[fente];
 		v.rr = m_pas_dr[std::clamp(2 * int(champ(r, C_RR)), 0, 63)];
@@ -404,13 +402,13 @@ void scsp_maison::apres_ecriture_fente(u32 fente, u32 mot)
 	}
 	if (mot != 0) return;
 
-	// KYONEX, LA GACHETTE, ET ELLE EST GLOBALE : elle declenche un balayage des TRENTE-DEUX fentes et non
-	// de celle qu'on vient d'ecrire. Chaque fente qui porte KYONB et se trouve en RELACHE demarre ; chaque
-	// fente qui ne le porte pas s'arrete. Puis le bit se rebaisse tout seul.
+	// KYONEX, THE TRIGGER, AND IT IS GLOBAL: it sets off a sweep of ALL THIRTY-TWO slots and not of the one
+	// just written. Every slot carrying KYONB and sitting in RELACHE starts; every slot not carrying it
+	// stops. Then the bit lowers itself.
 	//
-	// ET UNE FENTE QUI JOUE N'EST PAS REDEMARREE, parce que la condition exige l'etat RELACHE : un second
-	// KYONEX sur une voix en cours ne fait rien. Une reecriture qui redemarrerait a chaque gachette ferait
-	// claquer toutes les notes repetees du jeu (scsp_contract.h §10 point 10).
+	// AND A SLOT THAT IS PLAYING IS NOT RESTARTED, because the condition requires the RELACHE state: a
+	// second KYONEX on a running voice does nothing. A rewrite that restarted on every trigger would make
+	// all the game's repeated notes snap (scsp_contract.h §10 point 10).
 	const scsp_contract::Champ *kyonex = scsp_contract::champ_fente("KYONEX");
 	if (!kyonex || !(m_fente[fente][0] & kyonex->masque)) return;
 
@@ -423,29 +421,29 @@ void scsp_maison::apres_ecriture_fente(u32 fente, u32 mot)
 }
 
 // -----------------------------------------------------------------------------------------------------
-// BLOC 2 -- l'oscillateur, l'adressage PCM et les quatre bouclages.
+// BLOCK 2 -- the oscillator, PCM addressing and the four loop modes.
 //
-// Ce que le bloc doit rendre est enregistre dans tools/son/test_scsp_fentes.cpp, qui lit la suite exacte
-// des INDICES d'echantillon que la tete de lecture parcourt. Les trois faits qui ne vont pas de soi, et que
-// le contrat tient de la mesure et non d'une lecture (scsp_contract.h §9) :
+// What the block has to produce is recorded in tools/son/test_scsp_fentes.cpp, which reads the exact
+// sequence of sample INDICES the read head walks through. The three facts that are not obvious, and that
+// the contract holds from measurement and not from a reading (scsp_contract.h §9):
 //
-//   LSA et LEA comptent des ECHANTILLONS, quand la lecture 16 bits compte des OCTETS.
-//   La RAM se replie a 1 Mo, et une adresse de lecture perd son bit 0.
-//   LE BOUCLAGE SE DECLENCHE UN ECHANTILLON TOT, parce qu'il examine DEUX adresses dont l'une est un
-//   fantome : `nxt` est reaffecte a chaque echantillon, donc ce que la passe `nxt` ECRIT est perdu -- mais
-//   ses effets de bord, le demi-tour et l'arret, survivent. Aucun echantillon au-dela de LEA n'est jamais
-//   lu, et une reecriture qui n'appliquerait le bouclage qu'a `cur` decalerait les quatre modes.
+//   LSA and LEA count SAMPLES, while the 16-bit read counts BYTES.
+//   RAM folds at 1 MB, and a read address loses its bit 0.
+//   LOOPING TRIGGERS ONE SAMPLE EARLY, because it examines TWO addresses one of which is a ghost: `nxt`
+//   is reassigned on every sample, so what the `nxt` pass WRITES is lost -- but its side effects, the
+//   turnaround and the stop, survive. No sample beyond LEA is ever read, and a rewrite applying the loop
+//   only to `cur` would shift all four modes.
 // -----------------------------------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------------------------------
-// BLOC 3 -- l'enveloppe.
+// BLOCK 3 -- the envelope.
 // -----------------------------------------------------------------------------------------------------
 
 void scsp_maison::construire_enveloppe()
 {
-	// LES DEUX TABLES DE TEMPS, en millisecondes, relevees sur materiel. Les deux premieres entrees sont
-	// un temps infini (la note ne monte ni ne descend jamais), et la table d'attaque finit par deux zeros
-	// qui veulent dire "immediat" -- un cas particulier, pas une limite de la courbe.
+	// THE TWO TIME TABLES, in milliseconds, read off hardware. The first two entries are an infinite time
+	// (the note never rises nor falls), and the attack table ends in two zeros that mean "immediate" -- a
+	// special case, not a limit of the curve.
 	static const double MS_AR[64] = {
 		100000, 100000, 8100, 6900, 6000, 4800, 4000, 3400, 3000, 2400, 2000, 1700, 1500,
 		1200, 1000, 860, 760, 600, 500, 430, 380, 300, 250, 220, 190, 150, 130, 110, 95,
@@ -457,7 +455,7 @@ void scsp_maison::construire_enveloppe()
 		920, 790, 690, 550, 460, 390, 340, 270, 230, 200, 170, 140, 110, 98, 85, 68, 57, 49, 43, 34,
 		28, 25, 22, 18, 14, 12, 11, 8.5, 7.1, 6.1, 5.4, 4.3, 3.6, 3.1 };
 
-	m_pas_ar[0] = m_pas_dr[0] = m_pas_ar[1] = m_pas_dr[1] = 0;   // temps infini
+	m_pas_ar[0] = m_pas_dr[0] = m_pas_ar[1] = m_pas_dr[1] = 0;   // infinite time
 	for (unsigned i = 2; i < 64; i++) {
 		const double echelle = double(1 << EG_PAS);
 		m_pas_ar[i] = MS_AR[i] != 0.0 ? s32((1023 * 1000.0) / (44100.0 * MS_AR[i]) * echelle)
@@ -465,8 +463,8 @@ void scsp_maison::construire_enveloppe()
 		m_pas_dr[i] = s32((1023 * 1000.0) / (44100.0 * MS_DR[i]) * echelle);
 	}
 
-	// LA COURBE D'ATTENUATION : 3/32 dB par pas, 95,9 dB de bout en bout. C'est elle que tous les etats
-	// sauf l'attaque traversent.
+	// THE ATTENUATION CURVE: 3/32 dB per step, 95.9 dB end to end. It is the one every state except the
+	// attack goes through.
 	for (unsigned i = 0; i < 0x400; i++) {
 		const float db = float(3 * (int(i) - 0x3FF)) / 32.0f;
 		m_courbe_eg[i] = s32(powf(10.0f, db / 20.0f) * float(1 << PAS));
@@ -474,15 +472,14 @@ void scsp_maison::construire_enveloppe()
 }
 
 // -----------------------------------------------------------------------------------------------------
-// BLOC 4 -- les deux LFO.
+// BLOCK 4 -- the two LFOs.
 // -----------------------------------------------------------------------------------------------------
 
 void scsp_maison::construire_lfo()
 {
-	// LES QUATRE FORMES, et ce ne sont pas quatre variantes d'une meme chose : la dent de scie est
-	// monotone, le carre n'a que deux valeurs, le triangle monte et descend, le bruit est tire d'un
-	// generateur congruentiel A L'INITIALISATION -- donc fixe pour la vie du peripherique, et non retire a
-	// chaque tour.
+	// THE FOUR WAVEFORMS, and they are not four variants of one thing: the sawtooth is monotonic, the
+	// square has only two values, the triangle rises and falls, the noise is drawn from a congruential
+	// generator AT INITIALISATION -- so fixed for the device's lifetime, and not redrawn each time round.
 	for (int i = 0; i < 256; i++) {
 		m_lfo_scie_a[i] = 255 - i;
 		m_lfo_scie_p[i] = i < 128 ? i : i - 256;
@@ -498,7 +495,7 @@ void scsp_maison::construire_lfo()
 		m_lfo_bruit_p[i] = 128 - bruit;
 	}
 
-	// LES DEUX ECHELLES DE PROFONDEUR, relevees elles aussi : le vibrato en CENTS, le tremolo en DECIBELS.
+	// THE TWO DEPTH SCALES, read off hardware as well: the vibrato in CENTS, the tremolo in DECIBELS.
 	static const float CENTS[8] = { 0.0f, 7.0f, 13.5f, 27.0f, 55.0f, 112.0f, 230.0f, 494.0f };
 	static const float DECIBELS[8] = { 0.0f, 0.4f, 0.8f, 1.5f, 3.0f, 6.0f, 12.0f, 24.0f };
 	for (int s = 0; s < 8; s++) {
@@ -514,11 +511,11 @@ void scsp_maison::calculer_lfo(unsigned i)
 	const u16 *r = m_fente[i];
 	Vive &v = m_vive[i];
 
-	// LES TRENTE-DEUX CADENCES, en hertz -- et HUIT D'ENTRE ELLES NE FONT RIEN. Le pas de phase est
-	// `(u32)(256 * f * 256 / 44100)`, et la conversion TRONQUE : il faut f >= 44100/65536 = 0,673 Hz pour
-	// que le pas vaille au moins un. Les huit premieres entrees sont en dessous, donc leur phase ne bouge
-	// jamais. Une reecriture qui garderait une phase en flottant, ou qui arrondirait, ferait vibrer huit
-	// cadences que ce portage laisse immobiles (scsp_contract.h §11 point 2).
+	// THE THIRTY-TWO RATES, in hertz -- and EIGHT OF THEM DO NOTHING. The phase step is
+	// `(u32)(256 * f * 256 / 44100)`, and the conversion TRUNCATES: f >= 44100/65536 = 0.673 Hz is needed
+	// for the step to be at least one. The first eight entries are below that, so their phase never moves.
+	// A rewrite keeping the phase in float, or rounding, would make eight rates vibrate that this port
+	// leaves still (scsp_contract.h §11 point 2).
 	static const float HZ[32] = {
 		0.17f, 0.19f, 0.23f, 0.27f, 0.34f, 0.39f, 0.45f, 0.55f, 0.68f, 0.78f, 0.92f, 1.10f,
 		1.39f, 1.60f, 1.87f, 2.27f, 2.87f, 3.31f, 3.92f, 4.79f, 6.15f, 7.18f, 8.60f, 10.8f,
@@ -543,7 +540,7 @@ void scsp_maison::calculer_lfo(unsigned i)
 
 scsp_maison::s32 scsp_maison::pas_lfo(Lfo &l)
 {
-	l.phase = u16(l.phase + l.pas);          // u16 : le type replie la phase
+	l.phase = u16(l.phase + l.pas);          // u16: the type wraps the phase
 	const int p = l.table[l.phase >> 8];
 	return s32(l.echelle[p + 128]) << (PAS - 8);
 }
@@ -560,9 +557,9 @@ void scsp_maison::calculer_enveloppe(unsigned i)
 	const u16 *r = m_fente[i];
 	Vive &v = m_vive[i];
 
-	// KRS=0xF VEUT DIRE ZERO, et non "ignorer KRS" : ni l'octave, ni le bit de FNS ne passent. Mesure a
-	// OCT=2 : KRS=0 sature en 56 echantillons, KRS=0xF en 83 -- exactement le chiffre d'OCT=0, donc
-	// l'octave est bien jetee et non reduite (scsp_contract.h §10 point 9).
+	// KRS=0xF MEANS ZERO, and not "ignore KRS": neither the octave nor FNS's bit gets through. Measured at
+	// OCT=2: KRS=0 saturates in 56 samples, KRS=0xF in 83 -- exactly OCT=0's figure, so the octave is
+	// indeed thrown away and not reduced (scsp_contract.h §10 point 9).
 	const unsigned krs = champ(r, C_KRS);
 	const int octave = (int(champ(r, C_OCT)) ^ 8) - 8;
 	const int rate = krs != 0xF ? octave + 2 * int(krs) + int((champ(r, C_FNS) >> 9) & 1) : 0;
@@ -573,15 +570,15 @@ void scsp_maison::calculer_enveloppe(unsigned i)
 		return m_pas_dr[std::clamp(rate + 2 * int(champ_valeur), 0, 63)];
 	};
 
-	// UNE VOIX NE PART PAS DU SILENCE : 0x17F sur 1023, soit 37 % du chemin. Avec AR=0 l'attaque est
-	// infinie et le multiplicateur reste a 383 << 2 = 1532, ce qui est la facon dont le test relit cette
-	// constante (scsp_contract.h §10 point 2).
+	// A VOICE DOES NOT START FROM SILENCE: 0x17F out of 1023, that is 37% of the way. With AR=0 the attack
+	// is infinite and the multiplier stays at 383 << 2 = 1532, which is how the test reads this constant
+	// back (scsp_contract.h §10 point 2).
 	v.volume = 0x17F << EG_PAS;
 	v.ar  = pas_ar(champ(r, C_AR));
 	v.d1r = pas_dr(champ(r, C_D1R));
 	v.d2r = pas_dr(champ(r, C_D2R));
 	v.rr  = pas_dr(champ(r, C_RR));
-	v.dl  = s32(0x1F - champ(r, C_DL));   // INVERSE
+	v.dl  = s32(0x1F - champ(r, C_DL));   // INVERTED
 	v.eghold = champ(r, C_EGHOLD) != 0;
 }
 
@@ -594,31 +591,31 @@ scsp_maison::s32 scsp_maison::avancer_enveloppe(unsigned i)
 	case ATTAQUE:
 		v.volume += v.ar;
 		if (v.volume >= (0x3FF << EG_PAS)) {
-			// LPSLNK ENFERME CETTE TRANSITION : avec lui l'etat ne change pas a la saturation, il reste
-			// ATTAQUE et n'en sort que par l'oscillateur, au passage de LSA (bloc 2).
+			// LPSLNK LOCKS THIS TRANSITION IN: with it the state does not change on saturation, it stays
+			// ATTAQUE and only leaves through the oscillator, when LSA is passed (block 2).
 			if (!champ(r, C_LPSLNK)) {
 				v.etat = CHUTE1;
-				// Un D1R assez grand saute CHUTE1 entierement.
+				// A large enough D1R skips CHUTE1 entirely.
 				if (v.d1r >= (1024 << EG_PAS)) v.etat = CHUTE2;
 			}
 			v.volume = 0x3FF << EG_PAS;
 		}
-		// EGHOLD TIENT LA SORTIE, PAS LE VOLUME : le volume monte toujours en interne, mais la sortie est a
-		// fond des le premier echantillon. Une attaque lente ne sert alors qu'a retarder CHUTE1.
+		// EGHOLD HOLDS THE OUTPUT, NOT THE VOLUME: the volume still rises internally, but the output is at
+		// full level from the first sample. A slow attack then only serves to delay CHUTE1.
 		if (v.eghold) return 0x3FF << (PAS - 10);
 		break;
 	case CHUTE1:
-		// LE TEST DE SORTIE PASSE APRES LA DECREMENTATION, donc CHUTE1 decremente TOUJOURS une fois, meme
-		// quand DL=0 le fait ceder au premier tic : le palier vaut alors 4052 et non 4096. Une reecriture
-		// qui testerait avant de decrementer passerait tous les autres cas (scsp_contract.h §10 point 4).
+		// THE EXIT TEST COMES AFTER THE DECREMENT, so CHUTE1 ALWAYS decrements once, even when DL=0 makes
+		// it give way on the first tick: the plateau is then 4052 and not 4096. A rewrite testing before
+		// decrementing would pass every other case (scsp_contract.h §10 point 4).
 		v.volume -= v.d1r;
 		if (v.volume <= 0) v.volume = 0;
 		if ((v.volume >> (EG_PAS + 5)) <= v.dl) v.etat = CHUTE2;
 		break;
 	case CHUTE2:
-		// C'EST LE REGISTRE QUI EST CONSULTE, pas le pas calcule : un D2R non nul peut donner un pas nul a
-		// bas rate, et la sortie ne se figerait alors PAS, elle descendrait de zero par echantillon. Meme
-		// resultat a l'oreille, pas le meme etat (scsp_contract.h §10 point 6).
+		// IT IS THE REGISTER THAT IS CONSULTED, not the computed step: a non-zero D2R can give a zero step
+		// at a low rate, and the output would then NOT freeze, it would fall by zero per sample. Same
+		// result to the ear, not the same state (scsp_contract.h §10 point 6).
 		if (champ(r, C_D2R) == 0) return (v.volume >> EG_PAS) << (PAS - 10);
 		v.volume -= v.d2r;
 		if (v.volume <= 0) v.volume = 0;
@@ -627,7 +624,7 @@ scsp_maison::s32 scsp_maison::avancer_enveloppe(unsigned i)
 		v.volume -= v.rr;
 		if (v.volume <= 0) {
 			v.volume = 0;
-			arreter(i, false);   // sans keyoff : la fente devient inactive pour de bon
+			arreter(i, false);   // without keyoff: the slot becomes inactive for good
 		}
 		break;
 	default:
@@ -651,18 +648,18 @@ void scsp_maison::demarrer(unsigned i)
 
 void scsp_maison::arreter(unsigned i, bool keyoff)
 {
-	// Le key-off ne coupe pas le son : il passe l'enveloppe en RELACHE. La fente ne devient inactive que
-	// quand le volume atteint zero, et c'est alors un arret SANS keyoff qui l'eteint (bloc 3).
+	// Key-off does not cut the sound: it moves the envelope into RELACHE. The slot only becomes inactive
+	// when the volume reaches zero, and it is then a stop WITHOUT keyoff that puts it out (block 3).
 	if (keyoff) m_vive[i].etat = RELACHE;
 	else m_vive[i].active = false;
-	m_fente[i][0] = u16(m_fente[i][0] & ~0x800);   // KYONB retombe dans les deux cas
+	m_fente[i][0] = u16(m_fente[i][0] & ~0x800);   // KYONB drops in both cases
 }
 
 void scsp_maison::calculer_pas(unsigned i)
 {
-	// OCT EST UN ENTIER SIGNE SUR QUATRE BITS, en representation biaisee par OU EXCLUSIF : `(OCT ^ 8) - 8`,
-	// donc le champ 0xF vaut -1 et le champ 0x8 vaut -8. Une implementation qui le lirait comme un non signe
-	// jouerait huit octaves trop haut sur la moitie des notes (scsp_contract.h §11 point 1).
+	// OCT IS A SIGNED FOUR-BIT INTEGER, in a representation biased by EXCLUSIVE OR: `(OCT ^ 8) - 8`, so
+	// field 0xF is -1 and field 0x8 is -8. An implementation reading it as unsigned would play eight
+	// octaves too high on half the notes (scsp_contract.h §11 point 1).
 	const u16 *r = m_fente[i];
 	const int octave = (int(champ(r, C_OCT)) ^ 8) - 8 + PAS - 10;
 	u32 fn = champ(r, C_FNS) + (1u << 10);
@@ -671,8 +668,8 @@ void scsp_maison::calculer_pas(unsigned i)
 
 scsp_maison::u8 scsp_maison::lire_octet_ram(u32 octet) const
 {
-	// Le repli a 1 Mo, et l'ordre gros-boutien : l'octet 0 est l'octet HAUT du mot 0, comme le 68000 qui
-	// remplit cette RAM.
+	// The fold at 1 MB, and big-endian order: byte 0 is the HIGH byte of word 0, like the 68000 that fills
+	// this RAM.
 	octet &= 0xFFFFF;
 	if (octet >= m_ram_octets) return 0;
 	return u8(m_ram[octet >> 1] >> ((octet & 1) ? 0 : 8));
@@ -680,7 +677,7 @@ scsp_maison::u8 scsp_maison::lire_octet_ram(u32 octet) const
 
 scsp_maison::u16 scsp_maison::lire_mot_ram(u32 octet) const
 {
-	// `& 0xFFFFE` : le repli a 1 Mo ET la perte du bit 0. Les deux sont observables (bloc 2, cas 7).
+	// `& 0xFFFFE`: the fold at 1 MB AND the loss of bit 0. Both are observable (block 2, case 7).
 	octet &= 0xFFFFE;
 	if (octet >= m_ram_octets) return 0;
 	return m_ram[octet >> 1];
@@ -692,15 +689,15 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 	const u16 *r = m_fente[i];
 
 	const unsigned ssctl = champ(r, C_SSCTL);
-	// SSCTL=3 SORT AVANT TOUT, et n'avance donc meme pas la tete de lecture -- contrairement a SSCTL=2, qui
-	// rend aussi du silence mais parcourt la source. La difference ne se voit qu'apres (bloc 2, cas 8).
+	// SSCTL=3 RETURNS BEFORE ANYTHING ELSE, so it does not even advance the read head -- unlike SSCTL=2,
+	// which also returns silence but walks the source. The difference only shows later (block 2, case 8).
 	if (ssctl == 3) return 0;
 
 	u32 pas = v.pas;
-	// LE PLFO MODULE LE PAS, et son champ PLFOS perd son bit bas -- divergence deliberee reprise de
-	// Supermodel et reglee a l'oreille pour VF3 : les champs vont par paires, 0 avec 1, 2 avec 3, 4 avec 5,
-	// 6 avec 7 (docs/scsp_audit.md §2 et scsp_contract.h §11 point 5). Le garde est `!= 0` sur le champ
-	// DEJA masque, donc PLFOS=1 ne module pas du tout.
+	// THE PLFO MODULATES THE STEP, and its PLFOS field loses its low bit -- a deliberate divergence taken
+	// over from Supermodel and tuned by ear for VF3: the fields go in pairs, 0 with 1, 2 with 3, 4 with 5,
+	// 6 with 7 (docs/scsp_audit.md §2 and scsp_contract.h §11 point 5). The guard is `!= 0` on the
+	// ALREADY masked field, so PLFOS=1 does not modulate at all.
 	if (champ(r, C_PLFOS) != 0) {
 		pas = u32((std::uint64_t(pas) * u32(pas_lfo(v.plfo))) >> PAS);
 	}
@@ -710,14 +707,14 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 	if (pcm8) { a1 = v.cur >> PAS; a2 = v.nxt >> PAS; }
 	else      { a1 = (v.cur >> (PAS - 1)) & ~1u; a2 = (v.nxt >> (PAS - 1)) & ~1u; }
 
-	// La modulation par anneau est le bloc 4 ; son GARDE porte sur trois champs et non sur MDL seul, donc il
-	// est deja ecrit ici pour que le bloc 2 ne le contredise pas.
+	// Ring modulation is block 4; its GUARD covers three fields and not MDL alone, so it is already
+	// written here so that block 2 does not contradict it.
 	const unsigned mdl = champ(r, C_MDL), mdxsl = champ(r, C_MDXSL), mdysl = champ(r, C_MDYSL);
 	if (mdl != 0 || mdxsl != 0 || mdysl != 0) {
 		s32 smp = (m_anneau[(m_ptr_anneau + mdxsl) & 63] + m_anneau[(m_ptr_anneau + mdysl) & 63]) / 2;
 		smp <<= 0xA;
-		// Profondeur 24 et bit bas de MDL jete : divergence deliberee, reprise de Supermodel et reglee a
-		// l'oreille pour VF3 (docs/scsp_audit.md §2, point 2).
+		// Depth 24 and MDL's low bit thrown away: a deliberate divergence, taken over from Supermodel and
+		// tuned by ear for VF3 (docs/scsp_audit.md §2, point 2).
 		smp >>= 0x18 - int(mdl & 0xE);
 		if (!pcm8) smp <<= 1;
 		a1 += u32(smp); a2 += u32(smp);
@@ -728,7 +725,7 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 		const u32 sa = (champ(r, C_SA_HI) << 16) | champ(r, C_SA_LO);
 		const s32 frac = s32(v.cur & ((1u << PAS) - 1)), plein = 1 << PAS;
 		if (pcm8) {
-			// Un octet par echantillon, place dans les huit bits HAUTS : il n'est pas etire sur seize.
+			// One byte per sample, placed in the HIGH eight bits: it is not stretched over sixteen.
 			const s32 p1 = s32(std::int8_t(lire_octet_ram(sa + a1)));
 			const s32 p2 = s32(std::int8_t(lire_octet_ram(sa + a2)));
 			ech = ((p1 << 8) * (plein - frac) + (p2 << 8) * frac) >> PAS;
@@ -741,14 +738,14 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 		ech = s32(s16(tirage() & 0xFFFF));
 	}
 
-	// SBCTL : DEUX INVERSIONS QUI NE SE RESSEMBLENT PAS. Le bit 0 est un OU exclusif sur l'entier, SANS
-	// troncature ; le bit 1 tronque a seize bits. Les deux ensemble donnent l'oppose a un pres : 1000 sort
-	// a -1001, ce que le bloc 2 mesure.
+	// SBCTL: TWO INVERSIONS THAT DO NOT RESEMBLE EACH OTHER. Bit 0 is an exclusive OR on the integer,
+	// WITHOUT truncation; bit 1 truncates to sixteen bits. The two together give the opposite to within
+	// one: 1000 comes out at -1001, which block 2 measures.
 	const unsigned sbctl = champ(r, C_SBCTL);
 	if (sbctl & 1) ech ^= 0x7FFF;
 	if (sbctl & 2) ech = s32(s16(u16(ech) ^ 0x8000));
 
-	// --- le pas, APRES la lecture
+	// --- the step, AFTER the read
 	if (v.arriere) v.cur -= pas; else v.cur += pas;
 	v.nxt = v.cur + (1u << PAS);
 
@@ -758,26 +755,26 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 	const u32 lsa = champ(r, C_LSA), lea = champ(r, C_LEA);
 	const unsigned lpctl = champ(r, C_LPCTL);
 
-	// LPSLNK : l'attaque ne finit pas a la saturation du volume mais au passage de LSA (bloc 3).
+	// LPSLNK: the attack does not end at volume saturation but when LSA is passed (block 3).
 	if (a1 >= lsa && !v.arriere && champ(r, C_LPSLNK) && v.etat == ATTAQUE) v.etat = CHUTE1;
 
-	// LE BOUCLAGE, SUR LES DEUX ADRESSES. Voir l'en-tete du bloc : la passe `nxt` ecrit dans le vide, mais
-	// ses effets de bord sont ceux qui decalent les quatre modes d'un echantillon.
+	// THE LOOPING, ON BOTH ADDRESSES. See the block's header: the `nxt` pass writes into the void, but its
+	// side effects are the ones that shift all four modes by one sample.
 	for (int k = 0; k < 2; k++) {
 		u32 &adresse = k ? v.nxt : v.cur;
 		const u32 a = k ? a2 : a1;
 		s32 reste;
 		switch (lpctl) {
-		case 0:   // sans boucle
+		case 0:   // no loop
 			if (a >= lsa && a >= lea) { v.active = false; m_fente[i][0] = u16(m_fente[i][0] & ~0x800); }
 			break;
-		case 1:   // boucle normale
+		case 1:   // normal loop
 			if (a >= lea) {
 				reste = s32(adresse - (lea << PAS));
 				adresse = (lsa << PAS) + u32(reste);
 			}
 			break;
-		case 2:   // boucle inverse
+		case 2:   // reverse loop
 			if (a >= lsa && !v.arriere) {
 				reste = s32(adresse - (lsa << PAS));
 				adresse = (lea << PAS) - u32(reste);
@@ -787,7 +784,7 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 				adresse = (lea << PAS) - u32(reste);
 			}
 			break;
-		case 3:   // va-et-vient
+		case 3:   // ping-pong
 			if (a >= lea) {
 				reste = s32(adresse - (lea << PAS));
 				adresse = (lea << PAS) - u32(reste);
@@ -801,32 +798,31 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 		}
 	}
 
-	if (m_dit) fprintf(stderr, "  diag.osc fente %2u : brut %7d  etat %d  volume %9d  alfos %u plfos %u cur %u\n",
+	if (m_dit) fprintf(stderr, "  diag.osc slot %2u : raw %7d  state %d  volume %9d  alfos %u plfos %u cur %u\n",
 	                   i, ech, v.etat, v.volume, champ(r, C_ALFOS), champ(r, C_PLFOS), v.cur);
-	// SDIR SAUTE L'ENVELOPPE ET L'ALFO. C'est la porte par laquelle le bloc 2 se mesure sans le bloc 3, et
-	// c'est aussi ce qui fait que TL est mis a zero plus bas : une fente en SDIR passe a cote de toute
-	// l'attenuation (docs/scsp_audit.md §2, point 6).
+	// SDIR SKIPS THE ENVELOPE AND THE ALFO. It is the door through which block 2 measures itself without
+	// block 3, and it is also why TL is set to zero further down: a slot in SDIR goes past all the
+	// attenuation (docs/scsp_audit.md §2, point 6).
 	if (!champ(r, C_SDIR)) {
-		// L'ALFO ATTENUE AVANT L'ENVELOPPE, et son garde empeche aussi la phase d'avancer : avec ALFOS=0 la
-		// fonction n'est pas appelee du tout.
+		// THE ALFO ATTENUATES BEFORE THE ENVELOPE, and its guard also stops the phase advancing: with
+		// ALFOS=0 the function is not called at all.
 		if (champ(r, C_ALFOS) != 0) ech = (ech * gain_lfo(v.alfo)) >> PAS;
 		//
-		// DEUX ARITHMETIQUES, ET C'EST LE FAIT CENTRAL DU BLOC 3. L'etat ATTAQUE multiplie par le VOLUME
-		// BRUT -- lineairement -- quand tout le reste passe par la courbe en decibels. Les deux se
-		// rejoignent presque : a saturation l'une rend 4092 et l'autre 4096, si bien que le premier
-		// echantillon de toute voix sort quatre millemes plus bas que le suivant. Mesure, pas du bruit
-		// d'arrondi (scsp_contract.h §10 point 1).
+		// TWO ARITHMETICS, AND IT IS BLOCK 3'S CENTRAL FACT. The ATTAQUE state multiplies by the RAW
+		// VOLUME -- linearly -- when everything else goes through the decibel curve. The two almost meet:
+		// at saturation one gives 4092 and the other 4096, so that the first sample of any voice comes out
+		// four thousandths lower than the next. Measured, not rounding noise (scsp_contract.h §10 point 1).
 		if (v.etat == ATTAQUE) ech = (ech * avancer_enveloppe(i)) >> PAS;
 		else {
 			const s32 brut = avancer_enveloppe(i);
-			if (m_dit) fprintf(stderr, "  diag.eg  fente %2u : eg %6d -> index %4d -> courbe %6d\n",
+			if (m_dit) fprintf(stderr, "  diag.eg  slot %2u : eg %6d -> index %4d -> curve %6d\n",
 			                   i, brut, brut >> (PAS - 10), m_courbe_eg[brut >> (PAS - 10)]);
 			ech = (ech * m_courbe_eg[brut >> (PAS - 10)]) >> PAS;
 		}
 	}
 
-	// L'anneau de modulation, que la fente alimente sauf si STWINH l'interdit. Le gain applique ici est
-	// celui de TL a plein niveau de sortie, ou zero quand SDIR met TL de cote.
+	// The modulation ring, which the slot feeds unless STWINH forbids it. The gain applied here is TL's at
+	// full output level, or zero when SDIR sets TL aside.
 	if (!champ(r, C_STWINH)) {
 		s32 g, d;
 		gains(champ(r, C_SDIR) ? 0 : champ(r, C_TL), 0, 7, g, d);
@@ -837,18 +833,18 @@ scsp_maison::s32 scsp_maison::une_fente(unsigned i)
 }
 
 // -----------------------------------------------------------------------------------------------------
-// LE MELANGE, ce qu'il en faut pour qu'un echantillon sorte (le bloc 7 le completera)
+// THE MIX, what it takes for a sample to come out (block 7 will complete it)
 // -----------------------------------------------------------------------------------------------------
 
 void scsp_maison::construire_facteurs()
 {
-	// TROIS TABLES DE DECIBELS A LA SEGA, et aucune n'est une formule : chacune est une somme de termes
-	// choisis bit par bit. Les trois premiers termes de TL cassent la regle du doublement -- 0,4 puis 0,8
-	// puis 1,5 et non 1,6 -- ce qu'une reecriture "propre" arrondit sans le voir. Valeurs du contrat, et
-	// consequences figees en entiers par tools/son/test_scsp_mix.cpp.
+	// THREE DECIBEL TABLES THE SEGA WAY, and none of them is a formula: each is a sum of terms chosen bit
+	// by bit. TL's first three terms break the doubling rule -- 0.4 then 0.8 then 1.5 and not 1.6 -- which
+	// a "clean" rewrite rounds off without noticing. Values from the contract, and consequences frozen in
+	// integers by tools/son/test_scsp_mix.cpp.
 	static const float DB_TL[8] = { 0.4f, 0.8f, 1.5f, 3.0f, 6.0f, 12.0f, 24.0f, 48.0f };
 	static const float DB_PAN[4] = { 3.0f, 6.0f, 12.0f, 24.0f };
-	// L'entree 0 de SDLT est le SILENCE et non un niveau tres faible.
+	// SDLT's entry 0 is SILENCE and not a very low level.
 	static const float DB_SDL[8] = { 0.0f, -36.0f, -30.0f, -24.0f, -18.0f, -12.0f, -6.0f, 0.0f };
 
 	float f_tl[256], f_pan[32], f_sdl[8];
@@ -860,18 +856,19 @@ void scsp_maison::construire_facteurs()
 	for (unsigned i = 0; i < 32; i++) {
 		float db = 0.0f;
 		for (unsigned b = 0; b < 4; b++) if (i & (1u << b)) db -= DB_PAN[b];
-		// 0x0F n'est PAS la somme des quatre bits : c'est une coupure en dur. Un cas particulier au milieu
-		// d'une table par ailleurs additive, et une reecriture qui sommerait laisserait filtrer -45 dB.
+		// 0x0F is NOT the sum of the four bits: it is a hard cut. A special case in the middle of an
+		// otherwise additive table, and a rewrite that summed would let -45 dB leak through.
 		f_pan[i] = (i & 0xF) == 0xF ? 0.0f : powf(10.0f, db / 20.0f);
 	}
 	for (unsigned i = 0; i < 8; i++) f_sdl[i] = i ? powf(10.0f, DB_SDL[i] / 20.0f) : 0.0f;
 
-	// LE FACTEUR QUATRE EST DANS LA TABLE, et c'est de la qu'il vient : le melange rend quatre fois
-	// l'echantillon a plein niveau au centre. Ni l'adaptateur ni l'etage de sortie n'y sont pour rien.
+	// THE FACTOR OF FOUR IS IN THE TABLE, and that is where it comes from: the mix returns four times the
+	// sample at full level in the centre. Neither the adapter nor the output stage has anything to do
+	// with it.
 	//
-	// UNE SEULE TRONCATURE, du produit entier, et l'echelle EN DERNIER : c'est ce qui rend les memes
-	// entiers que l'original (23196 a -3 dB, 2066 a -24 dB). Trois tables d'entiers multipliees
-	// tronqueraient trois fois, et un ordre different ne tomberait pas toujours sur le meme entier.
+	// ONE TRUNCATION ONLY, of the whole product, and the scale LAST: that is what returns the same
+	// integers as the original (23196 at -3 dB, 2066 at -24 dB). Three integer tables multiplied together
+	// would truncate three times, and a different order would not always land on the same integer.
 	for (unsigned i = 0; i < 0x10000; i++) {
 		const unsigned tl = i & 0xFF, pan = (i >> 8) & 0x1F, sdl = (i >> 13) & 7;
 		const float p = (pan & 0x10) == 0 ? f_pan[pan] : 1.0f;
@@ -881,17 +878,17 @@ void scsp_maison::construire_facteurs()
 
 void scsp_maison::run(u32 n, s32 *out)
 {
-	// LES DEUX PORTEES DE sound_prof.h, aux memes endroits qu'au coeur de MAME : celle-ci repond a
-	// DoMasterSamples (scsp.cpp), celle du DSP plus bas a m_DSP.Step(). Sans elles le rapport de
-	// VF3_SND_PROF ne portait ces parts que pour le coeur de MAME, et sur celui-ci il donnait 97 % au
-	// 68000, zero aux voix et zero au DSP -- non pas un trou, mais un chiffre FAUX, puisque la part
-	// imbriquee que la formule retire du 68000 valait alors zero. Mesure le 2026-10-28.
+	// sound_prof.h's TWO SCOPES, at the same places as in MAME's core: this one answers to
+	// DoMasterSamples (scsp.cpp), the DSP's further down to m_DSP.Step(). Without them VF3_SND_PROF's
+	// report only carried these shares for MAME's core, and on this one it gave 97% to the 68000, zero to
+	// the voices and zero to the DSP -- not a hole, but a WRONG figure, since the nested share the formula
+	// subtracts from the 68000 was then zero. Measured on 2026-10-28.
 	sndprof::Scope prof_scsp(sndprof::SCSP);
 
-	// VF3_MAISON_DIAG=<indice> : un echantillon detaille terme par terme -- chaque fente, son echantillon
-	// brut, son gain, son apport, puis les retours d'effets et le total. Ce n'est pas un reste de chantier :
-	// c'est la sonde qui a trouve le decalage du relachement, et elle resservira. Les deux tests `m_dit` de
-	// une_fente sont toujours faux en marche normale, donc predits, et la mesure ne les voit pas.
+	// VF3_MAISON_DIAG=<index>: one sample broken down term by term -- each slot, its raw sample, its gain,
+	// its contribution, then the effects returns and the total. This is not building-site leftovers: it is
+	// the probe that found the release's off-by-one, and it will serve again. une_fente's two `m_dit`
+	// tests are always false in normal running, hence predicted, and the measurement does not see them.
 	static const char *diag_s = getenv("VF3_MAISON_DIAG");
 	static const std::uint64_t diag = diag_s ? strtoull(diag_s, nullptr, 10) : ~0ull;
 
@@ -903,17 +900,17 @@ void scsp_maison::run(u32 n, s32 *out)
 			if (!m_vive[i].active) { m_ptr_anneau = (m_ptr_anneau + 1) & 63; continue; }
 			const s32 ech = une_fente(i);
 			const u16 *r = m_fente[i];
-			// SDIR met TL a zero dans le melange aussi, et pas seulement l'enveloppe de cote : une fente
-			// programmee avec SDIR et un grand TL serait autrement muette a tort (docs/scsp_audit.md §2,
+			// SDIR sets TL to zero in the mix as well, and not only the envelope aside: a slot programmed
+			// with SDIR and a large TL would otherwise be wrongly silent (docs/scsp_audit.md §2,
 			// point 6).
 			s32 g, d;
 			gains(champ(r, C_SDIR) ? 0 : champ(r, C_TL), champ(r, C_DIPAN), champ(r, C_DISDL), g, d);
-			if (dit) fprintf(stderr, "diag fente %2u : ech %7d  g %6d  apport %7d  (tl %3u pan %2u sdl %u)\n",
+			if (dit) fprintf(stderr, "diag slot %2u : smp %7d  g %6d  share %7d  (tl %3u pan %2u sdl %u)\n",
 			                 i, ech, g, (ech * g) >> PAS, champ(r, C_SDIR) ? 0 : champ(r, C_TL),
 			                 champ(r, C_DIPAN), champ(r, C_DISDL));
 			gauche += (ech * g) >> PAS;
 			droite += (ech * d) >> PAS;
-			// L'envoi au DSP : meme attenuation, mais par IMXL, et deux bits de plus.
+			// The send to the DSP: same attenuation, but through IMXL, and two bits more.
 			s32 ig, id;
 			gains(champ(r, C_SDIR) ? 0 : champ(r, C_TL), 0, champ(r, C_IMXL), ig, id);
 			m_dsp.SetSample((ech * ig) >> (PAS - 2), s32(champ(r, C_ISEL)), s32(champ(r, C_IMXL)));
@@ -924,43 +921,43 @@ void scsp_maison::run(u32 n, s32 *out)
 			m_dsp.Step();
 		}
 
-		// La sortie d'effets : les SEIZE PREMIERES fentes seulement, chacune portant le niveau et le
-		// panoramique de son propre registre (EFSDL/EFPAN).
+		// The effects output: the FIRST SIXTEEN slots only, each carrying the level and the pan from its
+		// own register (EFSDL/EFPAN).
 		for (unsigned i = 0; i < 16; i++) {
 			const unsigned efsdl = champ(m_fente[i], C_EFSDL);
 			if (!efsdl) continue;
 			s32 g, d;
 			gains(0, champ(m_fente[i], C_EFPAN), efsdl, g, d);
-			if (dit) fprintf(stderr, "diag efreg %2u : %6d  g %6d  apport %7d\n",
+			if (dit) fprintf(stderr, "diag efreg %2u : %6d  g %6d  share %7d\n",
 			                 i, m_dsp.EFREG[i], g, (s32(m_dsp.EFREG[i]) * g) >> PAS);
 			gauche += (s32(m_dsp.EFREG[i]) * g) >> PAS;
 			droite += (s32(m_dsp.EFREG[i]) * d) >> PAS;
 		}
 
-		// L'etage de sortie. DAC18B ne change pas le GAIN mais la RESOLUTION : sans lui les deux bits bas
-		// de la somme sont jetes, le facteur quatre entre les deux denominateurs annulant le decalage.
-		// L'ecretage est asymetrique, +131071 et non +131072, comme tout entier signe.
+		// The output stage. DAC18B does not change the GAIN but the RESOLUTION: without it the sum's two
+		// low bits are thrown away, the factor of four between the two denominators cancelling the shift.
+		// The clipping is asymmetric, +131071 and not +131072, like any signed integer.
 		const bool dac18b = (m_commun[0] & 0x0100) != 0;
 		if (!dac18b) { gauche >>= 2; droite >>= 2; }
 		const s32 borne = dac18b ? 131072 : 32768;
 		gauche = std::clamp(gauche, -borne, borne - 1);
 		droite = std::clamp(droite, -borne, borne - 1);
 		if (!dac18b) { gauche *= 4; droite *= 4; }
-		if (dit) fprintf(stderr, "diag total gauche %d\n", gauche);
+		if (dit) fprintf(stderr, "diag total left %d\n", gauche);
 		if (out) { out[e * 2] = gauche; out[e * 2 + 1] = droite; }
 	}
 	m_now += n;
 }
 
 // -----------------------------------------------------------------------------------------------------
-// BLOC 6 -- les timers, les cinq lignes d'interruption et le DMA.
+// BLOCK 6 -- the timers, the five interrupt lines and the DMA.
 // -----------------------------------------------------------------------------------------------------
 
 scsp_maison::u32 scsp_maison::duree_timer(u16 reg)
 {
-	// LE "+1" EST UNE DIVERGENCE DELIBEREE, et la troisieme du portage apres PLFOS et MDL : MAME ecrit la
-	// meme chose SANS lui. C'est ce +1 qui a remis le tic de VF3 (timer A a 0xCE) a 882 Hz au lieu de 900,
-	// corrigeant une musique 0,8 % trop vite contre Supermodel (scsp_contract.h §12 point 1).
+	// THE "+1" IS A DELIBERATE DIVERGENCE, and the port's third after PLFOS and MDL: MAME writes the same
+	// thing WITHOUT it. It is this +1 that put VF3's tick (timer A at 0xCE) back to 882 Hz instead of 900,
+	// correcting music that ran 0.8% fast against Supermodel (scsp_contract.h §12 point 1).
 	return (u32(255 - (reg & 0xFF)) << ((reg >> 8) & 7)) + 1;
 }
 
@@ -970,8 +967,8 @@ void scsp_maison::arme_timer(int lequel)
 	const u16 reg = m_commun[OCTET[lequel] / 2];
 	m_predivise[lequel] = 1u << ((reg >> 8) & 7);
 	m_compte[lequel] = u16((reg & 0xFF) << 8);
-	// UN COMPTE DE 255 N'ARME PAS. Ce n'est pas une duree nulle, c'est une absence d'armement : le puits ne
-	// recoit rien du tout, et pas un timer(..., 1, 0).
+	// A COUNT OF 255 DOES NOT ARM. This is not a zero duration, it is an absence of arming: the sink
+	// receives nothing at all, and not a timer(..., 1, 0).
 	if ((reg & 0xFF) != 255) m_puits.timer(lequel, duree_timer(reg), 0);
 }
 
@@ -979,26 +976,26 @@ void scsp_maison::verifier_attente()
 {
 	u16 attente = m_commun[0x20 / 2];
 	const u16 armes = m_commun[0x1E / 2];
-	if (m_midi_l != m_midi_e) {               // un octet attend dans la file : le bit 3 se pose
+	if (m_midi_l != m_midi_e) {               // a byte waits in the queue: bit 3 goes up
 		m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | 8);
 		attente = u16(attente | 8);
 	}
-	// SORTIE PREMATUREE : avec rien en attente, AUCUNE ligne n'est touchee. C'est ce qui distingue "rien ne
-	// pend" de "quelque chose pend que rien n'arme" -- seul le second fait retomber la ligne 0, et la
-	// premiere version du test du bloc 6 affirmait le contraire (scsp_contract.h §12 point 5).
+	// EARLY RETURN: with nothing pending, NO line is touched. That is what distinguishes "nothing pends"
+	// from "something pends that nothing arms" -- only the second drops line 0, and the first version of
+	// block 6's test asserted the opposite (scsp_contract.h §12 point 5).
 	if (!attente) return;
 
-	// UNE SEULE LIGNE A LA FOIS, dans un ordre fixe, et on SORT a la premiere qui pend et qui est armee.
-	// Si A et B pendent tous deux, c'est le niveau de A qui monte et celui de B qu'on ne voit jamais.
+	// ONE LINE AT A TIME, in a fixed order, and we RETURN at the first one that pends and is armed. If A
+	// and B both pend, it is A's level that goes up and B's that is never seen.
 	if (attente & armes & 0x20) { m_puits.irq(m_niv_cpu, true); return; }
 	if ((attente & 0x40) && (armes & 0x40)) { m_puits.irq(m_niv_tima, true); return; }
 	if ((attente & 0x80) && (armes & 0x80)) { m_puits.irq(m_niv_timbc, true); return; }
 	if ((attente & 0x100) && (armes & 0x100)) { m_puits.irq(m_niv_timbc, true); return; }
 	if ((attente & 0x8) && (armes & 0x8)) { m_puits.irq(m_niv_midi, true); return; }
 
-	// LA CINQUIEME LIGNE. Ce n'est aucune des quatre sources, et c'est elle qui a fait redessiner
-	// l'interface : scsp_core.h porte un niveau ET un etat parce que la puce lache quatre lignes
-	// independamment, plus celle-ci.
+	// THE FIFTH LINE. It is none of the four sources, and it is the one that made the interface get
+	// redrawn: scsp_core.h carries a level AND a state because the chip drops four lines independently,
+	// plus this one.
 	m_puits.irq(0, false);
 }
 
@@ -1014,9 +1011,9 @@ void scsp_maison::acquitter_interruptions()
 	if (remise & 0x8) m_puits.irq(m_niv_midi, false);
 	verifier_attente();
 
-	// UN TIMER DEJA ECHU SE REMET AUSSITOT EN ATTENTE, son compteur etant reste a 0xFFFF. Le commentaire de
-	// l'original l'attribue au materiel reel et note dans la meme phrase qu'un autre jeu n'est pas d'accord
-	// -- c'est donc un CHOIX, enregistre comme tel (scsp_contract.h §12 point 6).
+	// AN ALREADY EXPIRED TIMER GOES STRAIGHT BACK TO PENDING, its counter having stayed at 0xFFFF. The
+	// original's comment attributes this to real hardware and notes in the same sentence that another game
+	// disagrees -- so it is a CHOICE, recorded as such (scsp_contract.h §12 point 6).
 	if (m_compte[0] == 0xFFFF) m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | 0x40);
 	if (m_compte[1] == 0xFFFF) m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | 0x80);
 	if (m_compte[2] == 0xFFFF) m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | 0x100);
@@ -1024,16 +1021,16 @@ void scsp_maison::acquitter_interruptions()
 
 void scsp_maison::executer_dma()
 {
-	// DMEA : vingt bits, les seize bas depuis 0x412 et les quatre hauts depuis les bits 15-12 de 0x414.
-	// DRGA : douze bits dans la fenetre de registres. DTLG : la longueur en OCTETS.
+	// DMEA: twenty bits, the low sixteen from 0x412 and the high four from bits 15-12 of 0x414.
+	// DRGA: twelve bits in the register window. DTLG: the length in BYTES.
 	u32 dmea = u32(m_commun[0x12 / 2] & 0xFFFE) | (u32(m_commun[0x14 / 2] & 0xF000) << 4);
 	u32 drga = u32(m_commun[0x14 / 2] & 0x0FFE);
 	const u32 dtlg = u32(m_commun[0x16 / 2] & 0x0FFE);
 	const bool vers_la_ram = (m_commun[0x16 / 2] & 0x2000) != 0;   // DDIR
 	const bool zeros = (m_commun[0x16 / 2] & 0x4000) != 0;         // DGATE
 
-	// UN DMA NE PEUT PAS ECRASER SES PROPRES PARAMETRES, et seulement dans un sens : on les sauve quand la
-	// destination est la fenetre de registres, puisqu'elle pourrait contenir ces registres-la.
+	// A DMA CANNOT OVERWRITE ITS OWN PARAMETERS, and only in one direction: they are saved when the
+	// destination is the register window, since it could contain those very registers.
 	const bool proteger = !vers_la_ram;
 	const u16 sauve[3] = { m_commun[0x12 / 2], m_commun[0x14 / 2], m_commun[0x16 / 2] };
 
@@ -1057,7 +1054,7 @@ void scsp_maison::executer_dma()
 		m_commun[0x14 / 2] = sauve[1];
 		m_commun[0x16 / 2] = sauve[2];
 	}
-	m_commun[0x16 / 2] = u16(m_commun[0x16 / 2] & ~0x1000);   // DEXE se rebaisse tout seul
+	m_commun[0x16 / 2] = u16(m_commun[0x16 / 2] & ~0x1000);   // DEXE lowers itself
 	if (m_commun[0x1E / 2] & 0x10) m_puits.irq(m_niv_dma, true);
 }
 
@@ -1069,19 +1066,19 @@ void scsp_maison::timer_fired(int lequel)
 
 	m_compte[lequel] = 0xFFFF;
 	m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | BIT[lequel]);
-	// Le compteur recharge se relit : l'octet bas du registre du timer passe a 0xFF.
+	// The reloaded counter reads back: the low byte of the timer's register goes to 0xFF.
 	m_commun[OCTET[lequel] / 2] = u16((m_commun[OCTET[lequel] / 2] & 0xFF00) | (m_compte[lequel] >> 8));
 
 	verifier_attente();
-	// LE TIMER A PEND AUSSI DU COTE MAITRE, B ET C NON. Rien dans VF3 ne lit MCIPD, mais uniformiser
-	// changerait un etat observable pour rien (scsp_contract.h §12 point 7).
+	// TIMER A ALSO PENDS ON THE MASTER SIDE, B AND C DO NOT. Nothing in VF3 reads MCIPD, but making them
+	// uniform would change an observable state for nothing (scsp_contract.h §12 point 7).
 	if (lequel == TIMER_A) maitre_attente(0x40);
 }
 
 void scsp_maison::midi_in(u8 octet)
 {
-	// La file se remplit des maintenant : c'est le pendant de la lecture de 0x404, et les deux ensemble
-	// font un comportement complet. Ce qui manque est l'interruption, qui demande les niveaux du bloc 6.
+	// The queue fills from now on: this is the counterpart of the read of 0x404, and the two together make
+	// a complete behaviour. What is missing is the interrupt, which needs block 6's levels.
 	m_midi[m_midi_e] = octet;
 	m_midi_e = (m_midi_e + 1) & (MIDI_PROFONDEUR - 1);
 	m_commun[0x20 / 2] = u16(m_commun[0x20 / 2] | 0x8);
@@ -1089,10 +1086,10 @@ void scsp_maison::midi_in(u8 octet)
 }
 
 // -----------------------------------------------------------------------------------------------------
-// L'INSCRIPTION AU SELECTEUR, ici et non dans scsp_select.cpp : c'est ce qui fait que le selecteur ne
-// connait aucune classe concrete, donc qu'un binaire lie sans MAME n'a pas MAME (scsp_select.h). Les trois
-// derniers rendent faux quand le coeur passe n'est pas celui-ci -- le dynamic_cast vit dans le seul fichier
-// qui connait le type.
+// REGISTRATION WITH THE SELECTOR, here and not in scsp_select.cpp: this is what makes the selector know
+// no concrete class, hence that a binary linked without MAME does not have MAME (scsp_select.h). The last
+// three return false when the core passed is not this one -- the dynamic_cast lives in the only file that
+// knows the type.
 // -----------------------------------------------------------------------------------------------------
 namespace {
 
