@@ -1,25 +1,26 @@
-// test_scsp_regs: ce qu'une ecriture dans un registre du SCSP se relit.
+// test_scsp_regs: what a write to an SCSP register reads back as.
 //
-// Bloc 1 de docs/scsp_architecture.md §3 -- "Registres et semantique d'acces [...] Se teste sans aucun son :
-// ecrire, relire" -- et le plan de migration veut ces tests ECRITS AVANT les blocs qu'ils testent. Il n'y a
-// donc pas encore de banc de registres autonome : ce fichier decrit ce que le coeur de MAME rend
-// aujourd'hui, par l'interface neuve, pour qu'une implementation future ait une cible et non une intention.
+// Block 1 of docs/scsp_architecture.md §3 -- "Registers and access semantics [...] Tested with no sound at
+// all: write, read back" -- and the migration plan wants these tests WRITTEN BEFORE the blocks they test.
+// So there is no standalone register bench yet: this file describes what MAME's core returns today,
+// through the new interface, so that a future implementation has a target and not an intention.
 //
-// CE QU'IL MESURE : pour chaque mot de 0x000 a 0x42F, DEUX masques -- ce qu'une ecriture LEVE, et ce qui
-// RESTE leve quand on reecrit zero. On ecrit 0x0000 et on relit, puis 0xFFFF et on relit, puis 0x0000 et on
-// relit. Un bit qui se relit toujours a 1 ou toujours a 0 n'est pas rendu par le registre, il est cable ;
-// un bit qui monte et ne retombe pas est un bit que l'ecriture POSE, et il y en a (SCIPD, MCIPD).
+// WHAT IT MEASURES: for every word from 0x000 to 0x42F, TWO masks -- what a write RAISES, and what STAYS
+// raised when zero is written back. We write 0x0000 and read back, then 0xFFFF and read back, then 0x0000
+// and read back. A bit that always reads back as 1 or always as 0 is not returned by the register, it is
+// wired; a bit that goes up and does not come down is a bit the write SETS, and there are some (SCIPD,
+// MCIPD).
 //
-// CE QU'IL NE TOUCHE PAS, et pourquoi -- ecrire a l'aveugle dans un chip a des effets de bord :
-//   0x416  DEXE, qui LANCE un transfert DMA et ecrirait dans la RAM son ;
-//   0x400  MVOL et compagnie, qui changent le rendu de tout le reste ;
-//   les mots 0x0 des fentes, dont le bit 12 (KYONEX) declenche les 32 voix.
-// Ces trois-la sont nommes plutot que silencieusement sautes, et le compte final le verifie.
+// WHAT IT DOES NOT TOUCH, and why -- writing blind into a chip has side effects:
+//   0x416  DEXE, which STARTS a DMA transfer and would write into sound RAM;
+//   0x400  MVOL and company, which change the output of everything else;
+//   the slots' word 0x0, whose bit 12 (KYONEX) triggers all 32 voices.
+// Those three are named rather than silently skipped, and the final count checks it.
 //
-// ET C'EST UN TEST A REFERENCE ENREGISTREE. Les masques ci-dessous ont ete MESURES sur le coeur de MAME le
-// 2026-10-26, puis figes ici. Le test ne prouve donc pas qu'ils sont justes au regard du materiel -- il
-// prouve qu'ils n'ont pas change. C'est exactement ce qu'on veut d'un filet avant de reecrire un bloc, et
-// ce n'est pas plus que ca.
+// AND IT IS A TEST WITH A RECORDED REFERENCE. The masks below were MEASURED on MAME's core on 2026-10-26,
+// then frozen here. So the test does not prove they are right with respect to the hardware -- it proves
+// they have not changed. That is exactly what one wants of a safety net before rewriting a block, and it
+// is no more than that.
 #include "../../src/sound/scsp_contract.h"
 #include "../../src/sound/scsp_select.h"
 
@@ -33,8 +34,8 @@ namespace {
 
 int echecs = 0;
 
-void ok(const char *quoi, const std::string &d) { printf("  ok    %-40s %s\n", quoi, d.c_str()); }
-void rate(const char *quoi, const std::string &d) { printf("  ECHEC %-40s %s\n", quoi, d.c_str()); ++echecs; }
+void ok(const char *quoi, const std::string &d) { printf("  ok     %-40s %s\n", quoi, d.c_str()); }
+void rate(const char *quoi, const std::string &d) { printf("  FAILED %-40s %s\n", quoi, d.c_str()); ++echecs; }
 
 struct Muet final : scsp::sink {
 	void irq(int, bool) override {}
@@ -44,18 +45,19 @@ struct Muet final : scsp::sink {
 
 constexpr std::uint32_t RAM_OCTETS = 0x100000;
 
-// Les mots qu'on n'ecrit pas, avec la raison.
+// The words we do not write, with the reason.
 bool intouchable(std::uint32_t octet, const char *&pourquoi)
 {
-	if (octet < 0x400 && (octet & 0x1F) == 0x00) { pourquoi = "mot 0 d'une fente : KYONEX declenche les voix"; return true; }
-	if (octet == 0x400) { pourquoi = "MVOL, MEM4MB, DAC18B : changent le rendu de tout le reste"; return true; }
-	if (octet == 0x416) { pourquoi = "DEXE : lance un DMA et ecrirait dans la RAM son"; return true; }
+	if (octet < 0x400 && (octet & 0x1F) == 0x00) { pourquoi = "a slot's word 0: KYONEX triggers the voices"; return true; }
+	if (octet == 0x400) { pourquoi = "MVOL, MEM4MB, DAC18B: change the output of everything else"; return true; }
+	if (octet == 0x416) { pourquoi = "DEXE: starts a DMA and would write into sound RAM"; return true; }
 	return false;
 }
 
-// Le reglage du miroir MADRS n'est PAS dans scsp::core, et scsp_core.h dit pourquoi : il appartient au
-// portage et non a la puce. Il passe donc par scsp_select.h, qui le fait repondre par le coeur INSCRIT --
-// c'etait la troisieme copie du meme dynamic_cast dans ce depot, et elle liait MAME a ce test pour rien.
+// The MADRS mirror setting is NOT in scsp::core, and scsp_core.h says why: it belongs to the port and not
+// to the chip. So it goes through scsp_select.h, which makes it answer through the REGISTERED core -- this
+// was the third copy of the same dynamic_cast in this repository, and it linked MAME into this test for
+// nothing.
 bool pose_miroir(scsp::core &c, bool on) { return scsp::regle_miroir_madrs(c, on); }
 
 } // namespace
@@ -63,7 +65,7 @@ bool pose_miroir(scsp::core &c, bool on) { return scsp::regle_miroir_madrs(c, on
 int main(int argc, char **argv)
 {
 	const char *nom = argc > 1 ? argv[1] : "mame";
-	printf("test_scsp_regs : ce qu'une ecriture se relit, par scsp::core -- coeur \"%s\"\n\n", nom);
+	printf("test_scsp_regs: what a write reads back as, through scsp::core -- core \"%s\"\n\n", nom);
 
 	std::vector<std::uint16_t> ram(RAM_OCTETS / 2, 0);
 	Muet muet;
@@ -72,14 +74,14 @@ int main(int argc, char **argv)
 	scsp::core &coeur = *p;
 	coeur.reset();
 
-	// ---- 1. le masque utile de chaque mot, mesure
+	// ---- 1. each word's useful mask, measured
 	//
-	// DEUX MASQUES ET NON UN, parce qu'un registre ne suit pas forcement l'ecriture dans les deux sens. La
-	// premiere version de cette boucle faisait `hauts & ~bas` apres avoir ecrit 0xFFFF puis 0x0000, et elle
-	// rendait 0x0000 pour SCIPD et MCIPD -- ce qui ressemble a "aucun bit ne se relit" alors que ces deux-la
-	// sont COLLANTS : l'implementation les OR ("SCIPD and MCIPD are r/o except for bit 5"), donc ecrire 0 ne
-	// les eteint pas, et la soustraction effaçait justement le bit qu'on cherchait. On mesure donc ce qui
-	// MONTE a l'ecriture, et separement ce qui RESTE leve quand on reecrit zero.
+	// TWO MASKS AND NOT ONE, because a register does not necessarily follow the write in both directions.
+	// The first version of this loop did `hauts & ~bas` after writing 0xFFFF then 0x0000, and it returned
+	// 0x0000 for SCIPD and MCIPD -- which looks like "no bit reads back" when in fact those two are
+	// STICKY: the implementation ORs them ("SCIPD and MCIPD are r/o except for bit 5"), so writing 0 does
+	// not clear them, and the subtraction was erasing precisely the bit being looked for. So we measure
+	// what GOES UP on a write, and separately what STAYS raised when zero is written back.
 	const std::size_t N_MOTS = 0x430 / 2;
 	std::vector<std::uint16_t> monte(N_MOTS, 0), colle(N_MOTS, 0);
 	unsigned sautes = 0;
@@ -93,13 +95,13 @@ int main(int argc, char **argv)
 		const std::uint16_t a1 = coeur.read_reg(mot);
 		coeur.write_reg(mot, 0x0000, 0xFFFF);
 		const std::uint16_t a2 = coeur.read_reg(mot);
-		monte[mot] = std::uint16_t(a1 & ~a0);        // ce qu'une ecriture leve
-		colle[mot] = std::uint16_t(a1 & a2 & ~a0);   // ... et qui ne retombe pas
+		monte[mot] = std::uint16_t(a1 & ~a0);        // what a write raises
+		colle[mot] = std::uint16_t(a1 & a2 & ~a0);   // ... and that does not come down
 	}
-	ok("balayage de 0x000 a 0x42F", std::to_string(0x430 / 2 - sautes) + " mots ecrits et relus, "
-	   + std::to_string(sautes) + " laisses de cote");
+	ok("sweep from 0x000 to 0x42F", std::to_string(0x430 / 2 - sautes) + " words written and read back, "
+	   + std::to_string(sautes) + " left aside");
 
-	// ---- 2. les trois ecartes sont bien ceux qu'on a dits, et pas d'autres
+	// ---- 2. the three set aside are indeed the ones named, and no others
 	{
 		unsigned fentes = 0, autres = 0;
 		for (std::uint32_t octet = 0; octet < 0x430; octet += 2) {
@@ -108,125 +110,125 @@ int main(int argc, char **argv)
 			if (octet < 0x400) ++fentes; else ++autres;
 		}
 		const bool juste = fentes == 32 && autres == 2 && sautes == fentes + autres;
-		juste ? ok("les ecartes sont nommes", std::to_string(fentes) + " mots 0 de fente + 0x400 + 0x416")
-		      : rate("les ecartes sont nommes",
-		             std::to_string(fentes) + " fentes et " + std::to_string(autres) + " autres, pour "
-		             + std::to_string(sautes) + " sautes");
+		juste ? ok("the ones set aside are named", std::to_string(fentes) + " slot word 0s + 0x400 + 0x416")
+		      : rate("the ones set aside are named",
+		             std::to_string(fentes) + " slots and " + std::to_string(autres) + " others, for "
+		             + std::to_string(sautes) + " skipped");
 	}
 
-	// ---- 3. les registres d'interruption en attente : en lecture seule SAUF le bit 5
+	// ---- 3. the interrupt-pending registers: read-only EXCEPT bit 5
 	//
-	// C'est ecrit en toutes lettres dans l'implementation -- "SCIPD and MCIPD are r/o except for bit 5 CPU
-	// irqs" -- et c'est le genre de chose qu'une reecriture oublie.
+	// It is written out in full in the implementation -- "SCIPD and MCIPD are r/o except for bit 5 CPU
+	// irqs" -- and it is the kind of thing a rewrite forgets.
 	//
-	// MAIS LE COMMENTAIRE ET LE CODE NE DISENT PAS LA MEME CHOSE, et c'est cette mesure qui l'a montre.
-	// L'exception est appliquee a 0x420 et 0x42E ; or 0x42E n'est pas MCIPD, c'est MCIRE -- MCIPD est a
-	// 0x42C (UpdateRegR case 0x2c y recopie m_mcipd, UpdateReg case 0x2e fait `m_mcipd &= ~data[0x2e/2]`).
-	// Les trois mots portent donc bien un bit 5 collant, mais par trois chemins differents :
-	//   0x420 SCIPD : l'ecriture est un OR, le bit reste. L'exception voulue.
-	//   0x42C MCIPD : affectation simple, puis UpdateReg voit le bit 5 et appelle MainCheckPendingIRQ(0x20),
-	//                 qui leve m_mcipd ; la relecture rend m_mcipd, donc le bit revient.
-	//   0x42E MCIRE : recoit l'exception DESTINEE A MCIPD, donc son bit 5 ne peut plus jamais etre eteint,
-	//                 alors que son jumeau SCIRE (0x422) est un registre ordinaire (masque 0xFFFF).
-	// Ce que ca coute a VF3 : rien, et c'est mesure -- le pilote ne touche ni l'un ni l'autre. Le detail et
-	// la recherche qui l'etablit sont dans scsp_contract.h, section 2.
-	// On enregistre les trois tels quels : la premiere version de ce test appelait 0x42E "MCIPD" et passait
-	// pour la mauvaise raison. Une reecriture decidera de reproduire l'asymetrie ou de la corriger, mais
-	// elle le decidera en la voyant.
+	// BUT THE COMMENT AND THE CODE DO NOT SAY THE SAME THING, and it is this measurement that showed it.
+	// The exception is applied to 0x420 and 0x42E; but 0x42E is not MCIPD, it is MCIRE -- MCIPD is at
+	// 0x42C (UpdateRegR case 0x2c copies m_mcipd there, UpdateReg case 0x2e does
+	// `m_mcipd &= ~data[0x2e/2]`). So all three words do carry a sticky bit 5, by three different paths:
+	//   0x420 SCIPD: the write is an OR, the bit stays. The intended exception.
+	//   0x42C MCIPD: plain assignment, then UpdateReg sees bit 5 and calls MainCheckPendingIRQ(0x20),
+	//                which raises m_mcipd; the read back returns m_mcipd, so the bit comes back.
+	//   0x42E MCIRE: receives the exception MEANT FOR MCIPD, so its bit 5 can never be cleared again,
+	//                while its twin SCIRE (0x422) is an ordinary register (mask 0xFFFF).
+	// What this costs VF3: nothing, and that is measured -- the driver touches neither. The detail and
+	// the search that establishes it are in scsp_contract.h, section 2.
+	// We record all three as they are: the first version of this test called 0x42E "MCIPD" and passed for
+	// the wrong reason. A rewrite will decide to reproduce the asymmetry or to correct it, but it will
+	// decide while looking at it.
 	for (auto [octet, nom] : { std::pair<std::uint32_t, const char *>{ 0x420, "SCIPD (0x420)" },
 	                           std::pair<std::uint32_t, const char *>{ 0x42C, "MCIPD (0x42C)" },
 	                           std::pair<std::uint32_t, const char *>{ 0x42E, "MCIRE (0x42E)" } }) {
 		const std::uint16_t mo = monte[octet / 2], co = colle[octet / 2];
 		char d[64];
-		snprintf(d, sizeof d, "monte 0x%04x, colle 0x%04x", mo, co);
-		// Et le bit 5 COLLE : c'est une ecriture qui le POSE, pas une qui le recopie. Une reecriture qui
-		// ferait une affectation passerait la premiere moitie de ce test et echouerait la seconde.
+		snprintf(d, sizeof d, "raises 0x%04x, sticks 0x%04x", mo, co);
+		// And bit 5 STICKS: it is a write that SETS it, not one that copies it. A rewrite doing an
+		// assignment would pass the first half of this test and fail the second.
 		(mo == 0x0020 && co == 0x0020)
-			? ok(nom, std::string(d) + " : le bit 5 seul, et il reste leve")
-			: rate(nom, std::string(d) + ", attendu monte et colle 0x0020");
+			? ok(nom, std::string(d) + ": bit 5 alone, and it stays raised")
+			: rate(nom, std::string(d) + ", expected raises and sticks 0x0020");
 	}
 
-	// ---- 3 bis. SCIRE, le jumeau qui N'A PAS l'exception
-	// L'asymetrie du cas precedent se verifie par son autre bout : du cote esclave c'est SCIPD qui est OR,
-	// du cote maitre c'est MCIRE. Donc SCIRE doit etre un registre entier.
+	// ---- 3 bis. SCIRE, the twin that does NOT have the exception
+	// The previous case's asymmetry is checked from its other end: on the slave side it is SCIPD that is
+	// ORed, on the master side it is MCIRE. So SCIRE must be a whole register.
 	{
 		const std::uint16_t mo = monte[0x422 / 2];
 		char d[64];
-		snprintf(d, sizeof d, "monte 0x%04x", mo);
-		(mo == 0xFFFF) ? ok("SCIRE (0x422)", std::string(d) + " : registre entier, pas d'exception de ce cote")
-		               : rate("SCIRE (0x422)", std::string(d) + ", attendu 0xFFFF");
+		snprintf(d, sizeof d, "raises 0x%04x", mo);
+		(mo == 0xFFFF) ? ok("SCIRE (0x422)", std::string(d) + ": a whole register, no exception on this side")
+		               : rate("SCIRE (0x422)", std::string(d) + ", expected 0xFFFF");
 	}
 
-	// ---- 3 ter. les deux mots que la LECTURE fabrique
-	// Ceux-la ne rendent pas ce qu'on y ecrit parce qu'une lecture les recalcule (UpdateRegR). C'est une
-	// divergence connue d'avec le materiel et non un detail d'implementation : pour 0x408, le pilote du
-	// Model 3 ecrit MSLC et relit aussitot pour trouver une fente libre, et ce coeur lui rend l'etat de la
-	// fente choisie -- comportement delibere, voir le commentaire de UpdateRegR case 8 dans scsp.cpp.
+	// ---- 3 ter. the two words the READ manufactures
+	// Those do not return what is written to them because a read recomputes them (UpdateRegR). This is a
+	// known divergence from the hardware and not an implementation detail: for 0x408, the Model 3's driver
+	// writes MSLC and reads straight back to find a free slot, and this core returns it the state of the
+	// chosen slot -- deliberate behaviour, see UpdateRegR case 8's comment in scsp.cpp.
 	{
 		const std::uint16_t m404 = monte[0x404 / 2], m408 = monte[0x408 / 2];
 		char d[160];
-		snprintf(d, sizeof d, "0x404 monte 0x%04x (l'octet bas est la file MIDI en entree), "
-		                      "0x408 monte 0x%04x (MSLC/CA/SGC/EG, recalcules a chaque lecture)", m404, m408);
+		snprintf(d, sizeof d, "0x404 raises 0x%04x (the low byte is the incoming MIDI queue), "
+		                      "0x408 raises 0x%04x (MSLC/CA/SGC/EG, recomputed on every read)", m404, m408);
 		(m404 == 0xFF00 && m408 == 0x0000)
-			? ok("0x404 et 0x408 : la lecture les fabrique", d)
-			: rate("0x404 et 0x408 : la lecture les fabrique", std::string(d) + ", attendus 0xFF00 et 0x0000");
+			? ok("0x404 and 0x408: the read manufactures them", d)
+			: rate("0x404 and 0x408: the read manufactures them", std::string(d) + ", expected 0xFF00 and 0x0000");
 	}
 
-	// ---- 4. les champs dont le pilote depend se relisent, tous
-	// Le contrat dit ou vit chaque champ (scsp_contract.h) ; ici on verifie que le registre le GARDE. Un
-	// champ qui ne se relit pas est un champ qu'une reecriture peut perdre sans que rien ne crie.
+	// ---- 4. the fields the driver depends on all read back
+	// The contract says where each field lives (scsp_contract.h); here we check that the register KEEPS
+	// it. A field that does not read back is a field a rewrite can lose with nothing to shout about it.
 	{
 		std::string perdus;
 		for (const scsp_contract::Champ &c : scsp_contract::FENTE) {
-			if (c.mot == 0) continue;   // le mot 0 n'est pas ecrit (KYONEX)
+			if (c.mot == 0) continue;   // word 0 is not written (KYONEX)
 			const bool en_place = (c.masque & (c.masque + 1)) != 0;
 			const std::uint16_t attendu = std::uint16_t(en_place ? c.masque : (c.masque << c.decalage));
-			// fente 0 : le mot c.mot est a l'octet 2 * c.mot
+			// slot 0: word c.mot is at byte 2 * c.mot
 			const std::uint16_t m = monte[c.mot];
 			if ((m & attendu) != attendu) perdus += std::string(perdus.empty() ? "" : ", ") + c.nom;
 		}
-		perdus.empty() ? ok("les 34 champs d'une fente se relisent", "aucun bit perdu par le registre")
-		               : rate("les 34 champs d'une fente se relisent", "perdus : " + perdus);
+		perdus.empty() ? ok("a slot's 34 fields all read back", "no bit lost by the register")
+		               : rate("a slot's 34 fields all read back", "lost: " + perdus);
 	}
 
-	// ---- 5. la plage contestee 0x7C0-0x7FF, decrite et non jugee
-	// Ce portage et MAME n'en font pas la meme chose (docs/scsp_references.md), et aucune lecture du
-	// programme ne peut trancher ce que fait la PUCE (docs/fv2-son-programme.md §5). On enregistre donc ce
-	// que le coeur d'aujourd'hui rend, sans en faire une verite.
+	// ---- 5. the disputed range 0x7C0-0x7FF, described and not judged
+	// This port and MAME do not do the same thing with it (docs/scsp_references.md), and no reading of the
+	// program can settle what the CHIP does (docs/fv2-son-programme.md §5). So we record what today's core
+	// returns, without making it a truth.
 	//
-	// ET ON MESURE LES DEUX REGLAGES, pas seulement celui qui est par defaut. m_madrs_mirror sort a `true`,
-	// si bien qu'un test qui ecrit 0x7C0 et relit 0x780 trouve la valeur et semble decrire la puce alors
-	// qu'il ne decrit qu'un defaut de construction. Le reglage appartient au jeu et non au chip (scsp.h),
-	// donc il se pose par l'objet et non par l'interface -- seul endroit de ce fichier qui descende sous
-	// scsp::core, et c'est assume : ce test caracterise CE coeur-la.
+	// AND WE MEASURE BOTH SETTINGS, not only the default one. m_madrs_mirror comes up `true`, so that a
+	// test writing 0x7C0 and reading 0x780 finds the value and seems to describe the chip when all it
+	// describes is a construction default. The setting belongs to the game and not to the chip (scsp.h),
+	// so it is set through the object and not through the interface -- the only place in this file that
+	// goes below scsp::core, and that is owned: this test characterises THAT core.
 	{
 		std::string lignes;
 		bool juste = true;
 		for (bool miroir : { false, true }) {
 			pose_miroir(coeur, miroir);
 			coeur.write_reg(0x7C0 / 2, 0x1234, 0xFFFF);
-			coeur.write_reg(0x780 / 2, 0x5678, 0xFFFF);   // MADRS[0] par la voie basse, apres
+			coeur.write_reg(0x780 / 2, 0x5678, 0xFFFF);   // MADRS[0] by the low route, afterwards
 			const std::uint16_t haut = coeur.read_reg(0x7C0 / 2);
 			const std::uint16_t bas = coeur.read_reg(0x780 / 2);
 			char t[128];
-			snprintf(t, sizeof t, "%smiroir %s : 0x7C0 relu 0x%04x, 0x780 relu 0x%04x",
+			snprintf(t, sizeof t, "%smirror %s: 0x7C0 reads 0x%04x, 0x780 reads 0x%04x",
 			         lignes.empty() ? "" : " | ", miroir ? "on " : "off", haut, bas);
 			lignes += t;
-			// Miroir eteint : 0x7C0 a son propre stockage, donc il garde 0x1234 et 0x780 garde 0x5678.
-			// Miroir allume : les deux sont le meme mot, donc la seconde ecriture gagne les deux fois.
+			// Mirror off: 0x7C0 has its own storage, so it keeps 0x1234 and 0x780 keeps 0x5678.
+			// Mirror on: both are the same word, so the second write wins both times.
 			juste = juste && (miroir ? (haut == 0x5678 && bas == 0x5678) : (haut == 0x1234 && bas == 0x5678));
 		}
-		pose_miroir(coeur, true);   // on rend le coeur dans l'etat ou on l'a pris
-		juste ? ok("0x7C0-0x7FF : ce que ce coeur en fait", lignes)
-		      : rate("0x7C0-0x7FF : ce que ce coeur en fait", lignes + " -- pas ce qui etait enregistre");
+		pose_miroir(coeur, true);   // we hand the core back in the state we took it in
+		juste ? ok("0x7C0-0x7FF: what this core does with it", lignes)
+		      : rate("0x7C0-0x7FF: what this core does with it", lignes + " -- not what was recorded");
 	}
 
-	// ---- 6. la carte des masques, pour qu'une reecriture ait une cible et pas une intention
+	// ---- 6. the map of the masks, so that a rewrite has a target and not an intention
 	//
-	// BORNEE, et ca n'allait pas de soi : la premiere version de cette boucle montait jusqu'a 0x43E alors que
-	// le tableau s'arrete a 0x42E, et imprimait la memoire d'apres -- 374b, c473, 44d0, qui n'etaient les
-	// registres de rien. Un debordement rend des chiffres, et des chiffres ressemblent a une mesure.
-	printf("\n-- ce qu'une ecriture leve, par mot (.... = intouchable, * = collant) --\n");
+	// BOUNDED, and that did not go without saying: the first version of this loop went up to 0x43E while
+	// the array stops at 0x42E, and printed the memory after it -- 374b, c473, 44d0, which were the
+	// registers of nothing. An overrun returns figures, and figures look like a measurement.
+	printf("\n-- what a write raises, by word (.... = untouchable, * = sticky) --\n");
 	for (std::uint32_t octet = 0; octet < 0x430; octet += 0x20) {
 		printf("  %03x ", octet);
 		for (std::uint32_t k = 0; k < 0x20 && octet + k < 0x430; k += 2) {
@@ -239,7 +241,7 @@ int main(int argc, char **argv)
 	}
 
 	printf("\n");
-	if (echecs) { printf("%d echec(s).\n", echecs); return 1; }
+	if (echecs) { printf("%d failure(s).\n", echecs); return 1; }
 	printf("all cases pass\n");
 	return 0;
 }
