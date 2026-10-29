@@ -3637,6 +3637,11 @@ int main(int argc, char **argv)
 				video::Raster::arcade_lod = !cfg.sharp_textures;
 				cfg_dirty = true;
 			  }, {}, {}, 0, false, 0 },
+			// A LINE THAT IS DRAWN AND STEPPED OVER, which is this page's own idiom for something that is
+			// coming: no step and no act, so the cursor passes it by and it is painted grey, exactly as
+			// COUNTRY is. The shadows and the lighting are being worked on in another session; the line is
+			// here so the page does not move under the player's eye on the day they land.
+			{ "ENHANCED SHADOWS", [&] { return std::string("NO"); }, {}, {}, {}, 0, false, 0 },
 			{ "SMOOTH MOTION", [&] {
 				return std::string(cfg.smooth ? "ON" : "OFF") + (cfg.smooth && gov.smooth_off ? " (60 NOW)" : "");
 			  }, [&](int) { cfg.smooth = !cfg.smooth; cfg_dirty = true; gov_fresh(); }, {}, {}, 0, false, 0 },
