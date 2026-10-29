@@ -3892,14 +3892,16 @@ int main(int argc, char **argv)
 		};
 		// ---- GAME: what is left of the port's own page, and it is on its way out ----
 		//
-		// PLAY STYLE went to DISPLAY and ENDING to GAME ASSIGNMENTS the 2026-10-29, which leaves two buttons
-		// that are not settings at all. Frederic, the same day: "ligne et page GAME a supprimer par la suite".
-		// It stands until then rather than being emptied in two steps.
-		options.own[fv2_options::SCR_GAME] = {
+		// PLAY STYLE went to DISPLAY and ENDING to GAME ASSIGNMENTS the 2026-10-29, and the page itself went
+		// with them: "ligne et page GAME a supprimer". What was left were two buttons that set nothing, and
+		// a door into a page of two buttons is a corridor. They are at the FOOT OF OPTIONS now, under a gap
+		// -- where the disc keeps the one button it has -- and that is also the only place a pad can still
+		// reach them, the port's own menu under Escape being the keyboard's.
+		options.own[fv2_options::SCR_OPTIONS] = {
 			// AND THE PAGE GOES WITH THE RESET. A game restarted under an open page would come back with the
 			// tree still in front of it and the state still saying the game is held -- the port's own menu
 			// closes itself for the same reason (reset_game calls menu.close).
-			{ "RESET GAME", {}, {}, [&] { enter(cstate::PLAY, "RESET GAME"); reset_game(); }, {}, 0, true, 0 },
+			{ "RESET GAME", {}, {}, [&] { enter(cstate::PLAY, "RESET GAME"); reset_game(); }, {}, 0, true, 1.2f },
 			{ "QUIT", {}, {}, [&] { running = false; }, {}, 0, true, 0.32f },
 		};
 		options.ctl = cfg.ctl;   // CONTROLLER reads the bindings and writes them
