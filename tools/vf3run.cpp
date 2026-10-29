@@ -105,7 +105,7 @@ int main(int argc, char **argv)
 	// the same way the host takes the player's; the injections of --console-mode are not, which is how a mode
 	// chosen from the list hands the game a Start of its own.
 	std::vector<long> console_start;
-	std::string hd_dump, hd_pack;
+	std::string hd_dump, hd_pack, vrom_out, tex_out;
 	bool hd_flats = false;
 	int tile_scale = 1;   // HD 2D: 1 is the hardware's own, and then nothing of it runs (src/video/tilehd.h)
 	std::string tile_pack_dir, tile_dump_dir;
@@ -130,6 +130,8 @@ int main(int argc, char **argv)
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--poly-at" && i + 1 < argc) poly_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--cull-at" && i + 1 < argc) cull_at = strtol(argv[++i], nullptr, 10);
+		else if (a == "--vrom-out" && i + 1 < argc) vrom_out = argv[++i];
+		else if (a == "--tex-out" && i + 1 < argc) tex_out = argv[++i];
 		else if (a == "--modes") modes_log = true;
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
 		else if (a == "--trace-pc" && i + 1 < argc) trace_pc = uint32_t(strtoul(argv[++i], nullptr, 16));
@@ -381,6 +383,88 @@ int main(int argc, char **argv)
 			    dst + n <= board.poly_ram.size() && src + n <= board.poly_ram.size())
 				std::copy(board.poly_ram.begin() + src, board.poly_ram.begin() + src + n,
 				          board.poly_ram.begin() + dst);
+		}
+		// VF3_POLY_LOAD=word@file puts a file of 32-bit words into polygon RAM at that word, before every frame.
+		// A model read out of ANOTHER game's VROM has to be put where this one's renderer can reach it, and
+		// polygon RAM is that place: an address below 0x100000 is read from it (src/video/r3d_scene.cpp,
+		// model_at). The file is read once.
+		if (static const char *pl = getenv("VF3_POLY_LOAD"); pl) {
+			static std::vector<uint32_t> loaded;
+			static unsigned long at = 0;
+			static bool tried = false;
+			if (!tried) {
+				tried = true;
+				char path[512] = { 0 };
+				if (sscanf(pl, "%lx@%511[^\n]", &at, path) == 2)
+					if (FILE *lf = fopen(path, "rb")) {
+						uint32_t v;
+						while (fread(&v, 4, 1, lf) == 1) loaded.push_back(v);
+						fclose(lf);
+						if (!quiet) printf("VF3_POLY_LOAD: %zu words at polygon RAM %lX, from %s\n",
+						                   loaded.size(), at, path);
+					}
+			}
+			if (!loaded.empty() && at + loaded.size() <= board.poly_ram.size())
+				std::copy(loaded.begin(), loaded.end(), board.poly_ram.begin() + at);
+		}
+		// VF3_TEX_LOAD=page,x,y,w,h@file lays a rectangle of 16-bit texels into the board's texture sheet before
+		// every frame, in the board's own formats. A model carries the place it reads from in its polygons
+		// (docs/fv2-parts.md section 8); giving a foreign one its own colours means putting them at that place.
+		// (several squares at once: the entries separated by ';', since a whole character names ten of them)
+		if (static const char *tl = getenv("VF3_TEX_LOAD"); tl) {
+			struct Square { unsigned long pg, x, y, w, h; std::vector<uint16_t> tex; };
+			static std::vector<Square> squares;
+			static bool tried = false;
+			if (!tried) {
+				tried = true;
+				for (const char *q = tl; q; q = strchr(q, ';'), q = q ? q + 1 : nullptr) {
+					Square s{};
+					char path[512] = { 0 };
+					if (sscanf(q, "%lu,%lu,%lu,%lu,%lu@%511[^;\n]", &s.pg, &s.x, &s.y, &s.w, &s.h, path) != 6)
+						break;
+					if (FILE *tf = fopen(path, "rb")) {
+						uint16_t v;
+						while (fread(&v, 2, 1, tf) == 1) s.tex.push_back(v);
+						fclose(tf);
+						if (s.tex.size() >= size_t(s.w) * s.h) squares.push_back(std::move(s));
+					}
+				}
+				if (!quiet) printf("VF3_TEX_LOAD: %zu squares laid in the sheet\n", squares.size());
+			}
+			for (const Square &s : squares)
+				for (unsigned long j = 0; j < s.h; j++)
+					for (unsigned long i = 0; i < s.w; i++)
+						board.tex_ram[((s.pg * 1024 + s.y + j) & 2047) * 2048 + ((s.x + i) & 2047)] = s.tex[j * s.w + i];
+		}
+		// VF3_CULL_LOAD=word@file puts a file of 32-bit words into the culling RAM, before every frame: a whole
+		// character's nodes do not fit in VF3_CULL_SET's list.
+		if (static const char *cl = getenv("VF3_CULL_LOAD"); cl) {
+			static std::vector<uint32_t> blob;
+			static unsigned long at = 0;
+			static bool tried = false;
+			if (!tried) {
+				tried = true;
+				char path[512] = { 0 };
+				if (sscanf(cl, "%lx@%511[^\n]", &at, path) == 2)
+					if (FILE *cf = fopen(path, "rb")) {
+						uint32_t v;
+						while (fread(&v, 4, 1, cf) == 1) blob.push_back(v);
+						fclose(cf);
+						if (!quiet) printf("VF3_CULL_LOAD: %zu words at culling RAM %lX, from %s\n",
+						                   blob.size(), at, path);
+					}
+			}
+			if (!blob.empty() && at + blob.size() <= board.cull_lo.size())
+				std::copy(blob.begin(), blob.end(), board.cull_lo.begin() + at);
+		}
+		// VF3_CULL_SET=addr=value,... writes whole words into the culling RAM (hex, both of them), before every
+		// frame: a node built by hand, rather than copied, is what a part that is not the game's own needs.
+		if (static const char *cs = getenv("VF3_CULL_SET"); cs) {
+			unsigned long ca = 0, cv = 0;
+			for (const char *q = cs; q; q = strchr(q, ','), q = q ? q + 1 : nullptr) {
+				if (sscanf(q, "%lx=%lx", &ca, &cv) != 2) break;
+				if (ca < board.cull_lo.size()) board.cull_lo[ca] = uint32_t(cv);
+			}
 		}
 		// VF3_CULL_COPY=dst=src:words, the same for the culling RAM, which is where a part's own nodes live and
 		// where the directory of docs/fv2-parts.md section 5 points. The game fills words 0x40000 to 0x79797 of
@@ -1276,6 +1360,26 @@ int main(int argc, char **argv)
 		// --cull-at FRAME writes the culling RAM, both halves, beside --poly-at's dump: the models' addresses
 		// are reached through nodes that live there, and nothing else in this port shows them
 		// (docs/fv2-parts.md section 7).
+		// --tex-out FILE writes the board's texture sheet once (2048x2048 16-bit texels, two pages), beside
+		// --vrom-out: a foreign model's colours have to be read out of its own game's sheet first.
+		if (!tex_out.empty() && long(board.frame) == (cull_at >= 0 ? cull_at : 3300)) {
+			if (FILE *tf = fopen(tex_out.c_str(), "wb")) {
+				fwrite(board.tex_ram.data(), 2, board.tex_ram.size(), tf);
+				fclose(tf);
+				if (!quiet) printf("--tex-out: %zu texels written to %s\n", board.tex_ram.size(), tex_out.c_str());
+			}
+			tex_out.clear();
+		}
+		// --vrom-out FILE writes the Real3D's model ROM once, so a model of one game can be read and tried in
+		// another (docs/fv2-parts.md section 7).
+		if (!vrom_out.empty()) {
+			if (FILE *vf = fopen(vrom_out.c_str(), "wb")) {
+				fwrite(board.vrom.data(), 1, board.vrom.size(), vf);
+				fclose(vf);
+				if (!quiet) printf("--vrom-out: %zu bytes written to %s\n", board.vrom.size(), vrom_out.c_str());
+			}
+			vrom_out.clear();
+		}
 		if (long(board.frame) == cull_at) {
 			std::string p = "cull_lo_" + std::to_string(board.frame) + ".bin";
 			if (FILE *cf = fopen(p.c_str(), "wb")) {

@@ -299,7 +299,252 @@ What this does **not** say is that a part from somewhere else would look right. 
 address in the VROM and its polygons name a place in the texture sheet; a part that is not already in this
 machine needs both, and neither was tried here.
 
-## 8. What is not settled
+## 8. A model out of Virtua Fighter 3, drawn in Fighting Vipers 2
+
+Section 7 adds a part the game does not have, out of parts the game does have. This section takes the geometry
+from the other game on this port, and it works.
+
+### Choosing one, measured rather than guessed
+
+Virtua Fighter 3 runs on the same binary, so its culling RAM is dumped the same way. Its board is **Step 1.0,
+so a node has no shift**: the child is `n[5]`, not `n[7]` (`src/video/r3d_scene.cpp`, `node_shift`). Read with
+the wrong shift the sweep returns bytes like `0x1B1B1B`, which is how the mistake announces itself.
+
+Read right, at frame 1500 of `tools/scripts/vf3-match.txt`: **22,196 distinct models in the VROM** under its
+nodes, and 3,292 children into polygon RAM. Walking each one by the polygon rule the port uses -- seven words
+a polygon plus `((w0 & 0x40) ? 4 : 3) - shared[w0 & 0xF]` vertices of four, until `w1 & 4` -- the biggest is
+**1,429 polygons, 18,939 words, at VROM word `0x18ED02`**.
+
+(Two frames of the fight were also dumped and diffed, which separates what moves -- the fighters -- from the
+stage. Under the nodes that moved: 10 models in the VROM against 169 in polygon RAM, so **Virtua Fighter 3
+builds most of a fighter each frame** where Fighting Vipers 2 reads his parts from the VROM. The model used
+below is not one of those ten; it is a big piece of scenery, and it was chosen for being visible.)
+
+### Putting it in the other game
+
+Three levers, all in `tools/vf3run.cpp`: `--vrom-out` writes the model ROM so one game's can be read while the
+other runs, `VF3_POLY_LOAD=word@file` puts a file of words into polygon RAM before every frame, and
+`VF3_CULL_SET=addr=value,...` writes whole words into the culling RAM.
+
+```
+VF3_POLY_LOAD=60000@vf3_big_18ED02.bin          the model, in free polygon RAM
+VF3_CULL_SET=80000=801A9012,...,80007=1060000,80008=1000000,80009=F819F819
+VF3_POKE=3057CF=0,3057CE=8,3057CD=0,3057CC=0,   directory[0x1500] = 0x00080000
+         7CB83=0,7CB82=0,7CB81=21,7CB80=0       Picky's slot 1 = 0x1500
+```
+
+The node at culling word `0x80000` is one of Fighting Vipers 2's own, with one word changed: its child is
+`0x01060000`, type 1, the model at polygon RAM word `0x60000`.
+
+**It is drawn.** Against the baseline the pictures move by 399 to 9,076 pixels, and the geometry is plainly
+there: a long grey walkway across the arena at frame 4151, a panel in Picky's hands at 3401, in a fight that
+is otherwise identical.
+
+### Finding the fighters, and what happens to their models
+
+The scenery model above was the biggest in the dump, not a fighter's. The fighters are found by structure
+rather than by guessing. Virtua Fighter 3's scene is a chain of **five viewports** in the upper culling RAM
+(`0x800070` onwards, each naming the next at `v[1]` and its tree at `v[2]`), and walking each tree separates
+them at once:
+
+| root | models in the VROM | models in polygon RAM | nodes |
+|---|---|---|---|
+| `8000A0` | 25 | **87** | 250 |
+| `8000D8` | 80 | **82** | 329 |
+| `800110` | 100 | 0 | 192 |
+| `800180` | 317 | 0 | 490 |
+
+Models in polygon RAM are the ones the game builds each frame -- the joints between a fighter's limbs. The two
+roots that have them are the fighters; the two that have none are the stage. (The same split, counted another
+way, is in the note above: the port already names those built models in `src/video/r3d_scene.cpp`.)
+
+The biggest model under each: **586 polygons** at VROM `0xB15994`, and **93 polygons** at `0x82228C`. Both were
+put into Fighting Vipers 2 exactly as the scenery model was.
+
+**Neither comes out.**
+
+- The 586-polygon one draws **nothing at all**: its pictures are byte-identical to the control that points the
+  directory entry at zeros.
+- The 93-polygon one leaves **the two fighters untouched to the pixel** and changes almost everything else --
+  70 % to 87 % of the picture: the stage's girders, walls and water go dark, in a fight that is otherwise
+  identical.
+
+Neither is what it looks like, and the next section is the answer rather than the guess that came first.
+
+### Why one draws and the others do not
+
+Two leads were followed and closed before the answer came, and both are kept here because each cost a
+measurement.
+
+**Not the shared vertices.** Fighting Vipers 2's own scene was walked the same way -- sixteen viewports, Step
+2.0 so the child is `n[7]` -- and every model it draws read in its own VROM (`--vrom-out` on this set):
+**not one of its 249 models shares a vertex with the model before it**, fighters and stage alike. Nothing here
+inherits anything from a foreign model.
+
+**Not the vertex scale, though the scale is real.** This port reads a vertex differently on the two boards
+(`src/video/r3d_scene.cpp`):
+
+```cpp
+vertex_scale = board.stepping > 0x10 ? 1.0f / 2048.0f : 1.0f / 128.0f;
+```
+
+Both fighter models were written again with every vertex multiplied by sixteen; the pictures did not move by
+one pixel. (Why not is in the answer below.)
+
+**Not the node either.** The same hand-made node, with its child pointed at one of *this* game's models in the
+VROM, gives the baseline back to 683 pixels. So what changes the picture is the foreign model's own content.
+
+**The answer is the models' own numbers.** Read in the units this board uses, with the span of each model's
+vertices:
+
+| model | vertices | size | textured | translucent | centred on its origin |
+|---|---|---|---|---|---|
+| VF3 `18ED02` | 2,234 | **2,193** | yes | no | yes |
+| VF3 `B15994` | 903 | 25 | yes | no | **no: x runs 1,311 to 30,121** |
+| VF3 `82228C` | 200 | 35 | **no** | **yes** | yes |
+| FV2 `6D8CB9`, one of its own parts | 130 | **0.3** | yes | no | yes |
+
+Three facts, and each explains one of the three results.
+
+- **A Virtua Fighter 3 model is enormous here.** This game's own parts span 0.3 of a unit, because a Step 2.0
+  node carries a scale word for what hangs below it; Step 1.0 has no such word, so Virtua Fighter 3's models
+  carry their full size. `18ED02` therefore crosses the whole arena -- which is exactly the walkway in the
+  picture.
+- **`B15994` is not centred on its origin**: its x runs from 1,311 to 30,121, fifteen units to one side of the
+  node it was given. It is drawn outside the picture, and multiplying its vertices by sixteen only sends it
+  sixteen times further out. That is why the rescaling changed nothing.
+- **`82228C` is the only untextured, translucent one of the three.** Enormous and centred, it is a tinted
+  sheet over everything behind it: the stage goes dark, and the fighters, which are in front of it, do not
+  change by a pixel. A uniform tint over the whole background is the same tint whatever the size, which is the
+  other half of why the rescaling changed nothing. (`VF3_TRANS_AUDIT` exists in this port for exactly this
+  shape of bug -- "finding the one that covers the picture".)
+
+So the two games' models are compatible, and what a foreign one needs is not a format but **the size and the
+place its own game's nodes gave it** -- which the next part builds.
+
+### A node of our own, and a limb of Virtua Fighter 3 on a fighter of this one
+
+The answer above says what a foreign model needs. Building it took one more thing out of the code, and a
+false start worth keeping.
+
+**`attr.scale` does not scale a model.** The node word that looks like a scale (`n[1]`, bit 0, read as
+`as_float(n[1] & ~3u)`) is used in three places and **none of them is a vertex**: the culling radius
+`float16(w7) * attr.scale`, the level-of-detail radius beside it, and dividing the normal matrix
+(`src/video/r3d_raster.cpp`). Three runs at scales 0.004, 0.012 and 0.04 therefore drew **nothing at all** --
+not because the model was small but because a shrunken sphere fails
+
+```cpp
+if (attr.no_cull || (!outside && lod_scale >= lod_del(3))) { ... }
+```
+
+**So the node must say "never cull me", and the size must go into the vertices.** The node is the same ten
+words with `n[1] = 2` -- bit 1, `attr.no_cull` -- and the model is rewritten: every vertex centred on the
+model's own middle and multiplied so that its span matches one of this game's parts (600 in the raw units,
+which is the 0.3 of the table above).
+
+| what was drawn | pixels against the baseline, frame 3851 |
+|---|---|
+| the model as it comes, never culled | 973 -- the baseline's own "part missing" |
+| centred, span 600 | 1,007 -- there, a few dozen pixels of it |
+| centred, span 1,800 | **6,179** |
+
+At span 1,800 it is plainly on screen: a shape of Virtua Fighter 3's, 586 polygons, sitting on Picky's chest,
+carried by his pose frame for frame, with Charlie and the clock untouched. It is **white and cream**, because
+its polygons name places in a texture sheet that is this game's, not its own -- which is the limit section 8
+already stated, now visible.
+
+So a part of the other game can be put on a fighter here, and what it takes is: its words in polygon RAM, a
+node that is not culled, its vertices fitted, a directory entry, and a slot that names it. Five things, none
+of them in the ROM, and the textures still wrong.
+
+### What that says, and what it does not
+
+**The model format is shared.** The port parses both games' models with the same code and the same rule, and a
+model lifted whole from one and handed to the other draws. What differs between the two boards is the **node**
+(Step 1.0 against Step 2.0, the two extra words), not the polygon.
+
+What this does **not** show:
+
+- **Its textures.** The model names places in a texture sheet, and the sheet here is Fighting Vipers 2's. What
+  is drawn wears whatever is at those coordinates.
+- **Its place and its size.** Both come from the node it was given, which is Grace's; nothing here fits a
+  foreign model to a fighter's skeleton.
+- **A square of the sheet this game leaves alone.** Section 9 pays for a foreign part's colours with the
+  host's at the same coordinates; which squares are free was not looked for.
+- **The joint a part should hang from.** The placement above is by hand, not from the game's own skeleton.
+- **Virtua Fighter 3's own part tables and where its sheet is uploaded from.** Without them a character can
+  only be lifted as the snapshot above.
+- **Virtua Fighter 3's own part tables** -- its equivalent of section 5's directory -- were not looked for.
+
+### A whole character does not come out of the ROM half
+
+Carrying one model across is section 8. Carrying a whole fighter was tried next, and it says something about
+Virtua Fighter 3 that one model did not.
+
+Its five viewports, counted at frame 1500 of a fight -- models in the ROM against models the game builds in
+polygon RAM each frame:
+
+| root | | models in the ROM | polygons | textured | built in polygon RAM | polygons | textured |
+|---|---|---|---|---|---|---|---|
+| `8000A0` | a fighter | 25 | 385 | **0** | **87** | **2,988** | 2,656 |
+| `8000D8` | a fighter | 80 | 1,431 | 949 | **82** | **1,955** | 1,887 |
+| `800110` | stage | 100 | 250 | 139 | 0 | 0 | 0 |
+| `800180` | stage | 317 | 6,565 | 6,331 | 0 | 0 | 0 |
+
+**Virtua Fighter 3 deforms its fighters every frame and leaves the result in polygon RAM.** The stage is all
+ROM; a fighter is half ROM and half built, and one of the two is almost entirely built. So the ROM half alone
+is not a character -- which is exactly what the first attempt looked like.
+
+Taking both halves works as a transplant: walking the tree with the matrices from the game's own matrix table
+(the viewport's word `0x16` says where it is), every vertex carried into the world and written back, gives
+**175 models, 53,724 words, 33 squares of the sheet**, and they draw. But what it is, is **a statue in the
+pose of that one frame**: the deformed half is a snapshot, not geometry a skeleton could move again. And 33
+squares laid in the host's sheet take 33 squares of the host's own, which is most of what the picture then
+shows.
+
+So the honest conclusion of this section is a direction, not a result: **a character should be read out of
+Virtua Fighter 3's ROM**, through its own part tables -- the thing section 5 found for this game -- and its
+textures from wherever the sheet is uploaded from. Neither was looked for.
+
+## 9. Its own colours, and what they cost
+
+Section 8's part is drawn in white and cream because its polygons name places in a texture sheet that is this
+game's. The places are in the polygons, so they can be read: **one 256x256 square of page 1**, at (384, 256)
+and (512, 256), 128x256 each, format 0 (T1RGB5).
+
+Read out of **Virtua Fighter 3's own sheet** at those coordinates (`--tex-out`, added for this), that square
+is **a face: a fighter's head from the front and from the side**. So the 586-polygon model of section 8 is not
+a limb at all. It is a head, which is why it carries that many polygons.
+
+Read out of **Fighting Vipers 2's sheet** at the very same coordinates: rust and orange, the stage's own
+materials.
+
+`VF3_TEX_LOAD=page,x,y,w,h@file` lays a rectangle of 16-bit texels into the board's sheet before every frame.
+With Virtua Fighter 3's square laid at `1,384,256,256,256`, the part stops being white and **takes its own
+skin and hair**: 214 to 2,373 pixels a picture against the same run without it.
+
+**And the rest of that difference is the cost.** The sheet is shared **by place**, not by object. Everything
+of this game that was reading the same square now reads a face: in the pictures, the bike's frame and a knee
+pad turn skin-coloured. Giving a foreign part its colours takes the colours of whatever lives at those
+coordinates. Two ways out, neither tried: find a square this game does not use and rewrite the model's
+polygons to name it, or hand the sheet to the pack machinery of `docs/fv2-hd-3d.md`, which already replaces a
+texture by the content it holds.
+
+### Size and place
+
+The first fitting made the head **three times** a part of this game (span 1,800 against 600) and it swallowed
+the fighter's chest. At **500** it is the size of one of his own parts and sits where a part sits.
+
+Where it sits is still not where a head goes: it is on the shoulder. The node's translation is Grace's slot-1
+offset with a lift added by hand (0.8, then 1.2 and 1.6 along the axis that raises it), not the joint the game
+would use. **Fitting a foreign part to a skeleton is not done here**: what is done is putting it in, at the
+right size, with its own colours.
+
+So the whole of it, for a part that is not this game's: **its words in polygon RAM, a node that is not culled,
+its vertices fitted, its texels in the sheet, a directory entry, and a slot that names it.** Six things, none
+of them in the ROM.
+
+## 10. What is not settled
 
 - **The model's own format** was not read here, only its place. Nothing on this page parses a model; the port's
   renderer does (`src/video/r3d_scene.cpp`).
@@ -308,8 +553,10 @@ machine needs both, and neither was tried here.
 - **`0x00580E34`**, the fourth word that moves with a part id, a running total of some kind. Not chased.
 - **The 1.14 MB the CROM copies into polygon RAM** (section 5). No node points there, and nothing here says
   what reads it.
-- **A part from outside this machine.** Section 7 adds an id, a node and a slot; a model of its own in the
-  VROM, and the textures it names, were not tried.
+- **A part from outside this machine, with its textures.** Section 8 draws a Virtua Fighter 3 model here; the
+  textures it names are this game's, and nothing was done about that.
+- **Virtua Fighter 3's own part tables.** Not looked for. Its fighters are largely built in polygon RAM each
+  frame, which is not where Fighting Vipers 2 keeps its parts.
 - **What the four 45-slot tables are.** Table 0 is what a fight draws; tables 1 to 3 were never reached, so
   "the armour states" is a guess, not a measurement. Their ids are in different bands from table 0's, which a
   plain armour variant would not need.
