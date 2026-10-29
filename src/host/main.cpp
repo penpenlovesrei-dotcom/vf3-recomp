@@ -1659,6 +1659,13 @@ int main(int argc, char **argv)
 		while (SDL_PollEvent(&e)) {}   // (the window answers while the game loads; nothing is acted on yet)
 		SDL_Surface *face = SDL_GetWindowSurface(win);
 		if (!face) return;
+		// It says what it is drawing ON, once: the picture is 3630 by 2048 and the window asks for 16:9, so
+		// anything but a hair of black at the edges means the surface is not the shape the window looks.
+		static bool said = false;
+		if (!said) {
+			said = true;
+			fprintf(stderr, "the loading screen draws on a %d by %d surface\n", face->w, face->h);
+		}
 		SDL_FillSurfaceRect(face, nullptr, SDL_MapSurfaceRGB(face, 0, 0, 0));
 		const float k = std::min(float(face->w) / float(splash_art->w), float(face->h) / float(splash_art->h));
 		SDL_Rect to = { int((face->w - splash_art->w * k) * 0.5f), int((face->h - splash_art->h * k) * 0.5f),
@@ -1866,6 +1873,8 @@ int main(int argc, char **argv)
 			game.run_frame(false, false);
 			game.audio.clear();
 			game_frame++;
+			// the loading screen stays up and stays answering: this loop is most of the wait
+			if (game_frame % 60 == 0) splash();
 		}
 		game.tiles_on = true;
 		game.rebuilt_after_boot = true;
@@ -1883,6 +1892,8 @@ int main(int argc, char **argv)
 	static const char *R3D_NAMES[] = { "CPU", "GPU", "Auto" };
 	int r3d_mode = cfg.renderer3d;
 	if (const char *e = getenv("VF3_3D")) r3d_mode = !strcmp(e, "gpu") ? R3D_GPU : !strcmp(e, "auto") ? R3D_AUTO : R3D_CPU;
+	// THE SURFACE IS GIVEN BACK before the renderer takes the window: the two cannot both own it.
+	if (splash_art) { SDL_DestroyWindowSurface(win); SDL_DestroySurface(splash_art); splash_art = nullptr; }
 	SDL_Renderer *ren = nullptr;
 	auto failed_before = [&](const char *d) { return (" " + cfg.gpu3d_failed + " ").find(std::string(" ") + d + " ") != std::string::npos; };
 	if (r3d_mode != R3D_CPU && !getenv("SDL_RENDER_DRIVER")) {
