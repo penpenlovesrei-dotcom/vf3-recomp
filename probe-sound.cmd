@@ -26,4 +26,8 @@ if "%VF3_DATA:~-1%"=="\" set "VF3_DATA=%VF3_DATA:~0,-1%"
 set VF3_MENU_SOUND=1
 set "VF3_SOUND_WAV=%VF3_DATA%\sound.wav"
 cd /d "%~dp0"
-"build\bin\vf3.exe" "%ROM%" --console %*
+rem LA FENETRE NOIRE NE RESTE PAS. Le jeu est bati avec -mwindows : il n ecrit rien dans cette
+rem console, et tout son journal va dans log.txt du dossier de donnees. Elle restait donc ouverte,
+rem vide et noire, les quarante secondes du demarrage -- Frederic l a photographiee le 2026-10-29.
+rem `start` lance le jeu et rend la main tout de suite, donc la console se ferme.
+start "" "build\bin\vf3.exe" "%ROM%" --console %*
