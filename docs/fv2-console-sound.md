@@ -766,3 +766,27 @@ while it is frozen is the next place to look. The 68000 and its DSP go on runnin
 Measured along the way, and worth keeping for whoever picks this up: of the seventeen indices of bank 0x2E,
 0x26 is among the cleanest through the game's loop (no tail at all), so the fault is not in the choice of
 sound.
+
+## 2026-10-29, after the one door: a session with no crackle at all, and its figures
+
+The pump is gone (one door: the frame loop makes a frame without the PowerPC when the state says the game
+does not run). Frédéric played a full session with `probe-sound.cmd` on -- a music running, the list opened
+over it, the cursor moved again and again -- and heard nothing: "pas de bug sonore cette fois ci".
+
+What the instrument saw while a surface was up, over thirty-two passes:
+
+```
+  queue depth    min 3.2   average 4.3   max 5.4 frames
+  under 2 frames   none
+  under 1 frame    none
+```
+
+Against the evening of the pump, where the device queue reached zero 795 times in one of his sessions, this
+is a different machine. The figure to keep is the FLOOR: 3.2 frames. A queue that never falls under three
+cannot rasp, whatever else is wrong.
+
+One thing the numbers do say, and it is not the crackle: the queue SITS ABOVE ITS TARGET while a surface is
+up -- 4.3 frames against the 3.0 the governor aims for, drifting to 5.4 -- so about ninety-four milliseconds
+of sound are waiting at the device instead of sixty. That is latency, not noise, and it is the governor
+pulling gently in a state where no picture is being paced. Worth measuring again before touching it: a
+floor of 3.2 is cheap at the price.
