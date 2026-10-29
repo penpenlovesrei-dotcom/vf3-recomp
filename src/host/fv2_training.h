@@ -33,7 +33,12 @@
 struct fv2_training
 {
 	static constexpr int CELL = 96;           // the atlas's step, measured on the file
-	static constexpr int LINES = 8;           // how many inputs stay on screen
+	// HOW MANY INPUTS STAY ON SCREEN, and how tall each line is. Both were raised the 2026-10-29 at
+	// Frederic's word -- "plus haute avec plus de lignes" -- the band having been eight lines of 4.7 per
+	// cent, a little over a third of the picture. Twelve lines of 5.2 gives 62 per cent: the column runs
+	// from a third of the way down to its foot, which is where a training mode's input history belongs.
+	// The icons follow ROW_H, so they grow with it.
+	static constexpr int LINES = 12;
 	// In fractions of the WINDOW's height, so the column keeps its proportions whatever its shape. The left
 	// margin is a height too, which is what stops it drifting away from the edge as the window widens.
 	//
@@ -43,7 +48,7 @@ struct fv2_training
 	// slide up out of it.
 	static constexpr float MARGIN = 0.028f;
 	static constexpr float BOTTOM = 0.945f;   // where the newest line's foot sits
-	static constexpr float ROW_H = 0.047f;    // one line's height, arrow and buttons alike
+	static constexpr float ROW_H = 0.052f;    // one line's height, arrow and buttons alike
 	static constexpr float GAP = 0.008f;      // between the arrow and the first button
 	static constexpr float DMG_CAP = 0.026f;  // the damage figure's capitals
 	// The ground it is read on. A fight is a bright, busy picture and white arrows on it are a guess; this is
