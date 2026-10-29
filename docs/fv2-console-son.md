@@ -690,3 +690,46 @@ Un bip arrive donc 56 ms après la touche, soit trois rafraîchissements — per
 **Après** : plus une seule ligne « thrown away », et la file ne descend plus jamais à zéro à l'ouverture
 (min 2,5 images sur 106 relevés, contre 0,0 à chaque ouverture avant). Les trois routes de
 `verifier-console.cmd` passent toujours.
+
+## The menu's beep comes out with an echo (2026-10-29)
+
+Frederic: "parfois le son du menu principal gresille, ou plutot a un echo", and then, after a session
+recorded with `VF3_SOUND_WAV`: "oui et c'est plutot un echo avec gresillement". He heard it in the
+recording itself, so it is in what this port hands the card, not in his device.
+
+### The measurement that finally isolated it
+
+Six hidden runs had come out clean, and the reason is itself worth writing down: **in a fresh hidden
+run the menu's beep does not sound at all**. The peak over a whole menu stay is 4421, which is the
+tail of the SEGA voice; after that, nothing. Bank 0x2E is not loaded until a mode has been played, so
+every measurement so far had been measuring the cleanliness of a sound that never played.
+
+What worked was a timed gesture in his own session: open a menu, five seconds untouched, ONE move of
+the cursor, five seconds untouched. That gives one transient with a known place and a control either
+side of it.
+
+### What the isolated beep says
+
+The floor around it is **a constant -492 on every sample, standard deviation zero**, identical on both
+channels -- so anything that moves is the beep. Its envelope, in 2 ms steps from the attack:
+
+```
+   78 - 128 ms   the beep        peak 3672
+  284 - 328 ms   a repeat        peak  939
+  450 - 484 ms   a third         peak  391
+```
+
+About **180 ms apart, each a quarter of the one before**. That is a delay line with feedback, which is
+the SCSP's own DSP -- the part another session is measuring variant by variant. An effect on bank 0x2E
+comes out of this port with a 180 ms echo at about a quarter, and that is the handle.
+
+### Two things read in passing
+
+**The output carries a constant DC.** It creeps in -- 0, then -209, -349, -424, -480 -- and sticks at
+-492, where it stays for minutes with a standard deviation of zero. A direct component is not heard in
+itself, but it turns every interruption of the stream into a click of 492, about -36 dB: a queue that
+runs dry stops being a gap and becomes a tick.
+
+**Every sample is a multiple of four.** That is `LEVEL = 4.0`, the 12 dB chosen for Virtua Fighter 3:
+the board's output is multiplied by four, so two bits of resolution go. Inaudible on its own, noted
+because it shows in every figure above.
