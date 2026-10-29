@@ -529,7 +529,7 @@ pourquoi.
 00602666  bsr.w   $602712             ; ses 0x10 octets remis a zero
 0060266C  move.b  (a2)+, d0
 0060266E  andi.b  #$60, d0
-00602672  or.b    d0, $0(a4)          ; deux bits de drapeau pris dans l'en-tete du son
+00602672  or.b    d0, $0(a4)          ; deux bits de drapeau pris dans l'en-head du son
 00602676  clr.b   $eeb.w              ; UN FONDU DESCENDANT EN COURS EST ANNULE
 0060267A  move.l  (a2)+, $4(a4)
 0060267E  move.l  a2, $8(a4)          ; +8 = LE POINTEUR DE FLUX de la sequence
@@ -2172,7 +2172,7 @@ qui le nomment, en faisant la même chose dans l'autre sens :
 ```
 00600B54  cmp.w $2(a1), d1 ; ble -> 600b6a     ; d1 au-dela du maximum : on refuse
 00600B6A  sub.w (a1), d1                       ; moins l'indice de base
-00600B6C  tst.l (a1)+                          ; on saute l'en-tete
+00600B6C  tst.l (a1)+                          ; on saute l'en-head
 00600B6E  mulu.w #$c, d1 ; adda.l d1, a1       ; la fiche
 00600B74  move.l a1, $ed0.w                    ; 0xED0 : LA FICHE COURANTE
 00600B78  move.b $0(a1), $ed6.w ; bmi -> rts   ; son octet de drapeaux, bit 7 = deja en RAM

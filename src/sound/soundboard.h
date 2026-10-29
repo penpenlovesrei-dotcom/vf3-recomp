@@ -96,14 +96,14 @@ private:
 	// (scsp_device::set_group_gain) : c'est pourquoi le coeur du projet est utilisable sans eux, et pourquoi
 	// la carte le dit au lieu de les laisser tomber en silence.
 	scsp_mame *extras[2] = { nullptr, nullptr };
-	// LA TETE PAR LAQUELLE LA CARTE PARLE A LA PUCE, et c'est `tete[n]` et non `scsp[n]` qu'il faut appeler.
+	// LA TETE PAR LAQUELLE LA CARTE PARLE A LA PUCE, et c'est `head[n]` et non `scsp[n]` qu'il faut appeler.
 	//
 	// Sans VF3_SCSP_TRACE elle vaut scsp[n].get() et ne coute rien. Avec, c'est un scsp::enregistreur qui
 	// enveloppe la puce et note chaque appel (src/sound/scsp_trace.h), si bien que la trace passe par UNE
 	// porte au lieu d'etre posee a huit endroits -- et qu'un neuvieme appel ajoute un jour ne peut pas y
 	// echapper en silence. Les `->device()` restent sur scsp[n] : ils ne sont pas l'affaire de la puce.
 	std::unique_ptr<scsp::recorder> trace[2];
-	scsp::core *tete[2] = { nullptr, nullptr };
+	scsp::core *head[2] = { nullptr, nullptr };
 	// Ce que la carte branche sous chaque puce : trois methodes au lieu de cinq std::function.
 	struct Sink final : scsp::sink {
 		SoundBoard *b = nullptr;

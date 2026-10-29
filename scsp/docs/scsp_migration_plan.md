@@ -1,238 +1,239 @@
-# Sortir du SCSP de MAME — le plan, et ce qui est déjà fait
+# Getting out of MAME's SCSP — the plan, and what is already done
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/sound.md](son.md).
+> This document is one of the nine on the sound. The front door, which says where everything is:
+> [docs/sound.md](sound.md).
 
-**C'est un plan.** Au 2026-10-27, les étapes 0, 2 et 3 sont faites. **Le SCSP du projet existe** —
-`src/sound/scsp_own.{h,cpp}` — et il rend le même son que celui de MAME **à l'octet** sur une scène
-réelle. **Les sept blocs sont écrits**, et le dernier — le DSP d'effets — l'a été contre une spécification
-mesurée d'abord (`tools/sound/test_scsp_dsp.cpp`), faute de la moindre description de son jeu d'instructions.
-Le cœur du projet ne contient donc **plus une ligne de MAME**.
+**This is a plan.** As of 2026-10-27, steps 0, 2 and 3 are done. **The project's SCSP exists** —
+`src/sound/scsp_own.{h,cpp}` — and it produces the same sound as MAME's **byte for byte** over a real
+scene. **The seven blocks are written**, and the last one — the effects DSP — was written against a
+specification measured first (`tools/sound/test_scsp_dsp.cpp`), for want of the slightest description of
+its instruction set. So the project's core no longer contains **a line of MAME**.
 
-**Au rejoueur, sur la scène entière de `fv2-fight.txt` (4200 images) : IDENTIQUES.** 3 219 865 échantillons
-par puce, 208 360 interruptions, 69 311 armements de timer, 265 469 lectures de registre — tout concorde,
-échantillon par échantillon, sur les deux puces.
+**On the replayer, over the whole scene of `fv2-fight.txt` (4200 frames): IDENTICAL.** 3 219 865 samples
+per chip, 208 360 interrupts, 69 311 timer arms, 265 469 register reads — everything agrees, sample by
+sample, on both chips.
 
-**ET DE BOUT EN BOUT, LE JEU ENTIER : MÊME EMPREINTE.** `vf3run` sur les 4200 images, une fois avec chaque
-cœur, donne le même WAV — `9A2310F8AF000E09EB18BD114852B003`, qui est **exactement la référence prise
-avant tout ce travail** (commit de l'étape 3). Le rejoueur jugeait la puce sur une séquence figée ; ceci la
-juge en place, avec le 68000 qui lui répond et le mélangeur de la carte derrière.
+**AND END TO END, THE WHOLE GAME: THE SAME FOOTPRINT.** `vf3run` over the 4200 frames, once with each
+core, gives the same WAV — `9A2310F8AF000E09EB18BD114852B003`, which is **exactly the reference taken
+before all this work** (step 3's commit). The replayer judged the chip over a frozen sequence; this judges
+it in place, with the 68000 answering it and the board's mixer behind.
 
-**La carte peut désormais tourner sur l'un ou l'autre** : `VF3_SCSP_CORE=mame` (par défaut) ou `own`.
-Deux des quatre extras ont disparu en chemin — `MVOL` se **lit dans le registre**, la puce ne l'appliquant
-pas elle-même, et `reg_word` n'était qu'un `read_reg` déguisé. Le **miroir MADRS** est porté par les deux
-cœurs, chacun sur sa classe concrète, parce qu'il appartient au jeu et non à la puce.
+**The board can now run on either**: `VF3_SCSP_CORE=mame` (the default) or `own`. Two of the four extras
+disappeared along the way — `MVOL` is **read from the register**, the chip not applying it itself, and
+`reg_word` was only a `read_reg` in disguise. The **MADRS mirror** is carried by both cores, each on its
+own concrete class, because it belongs to the game and not to the chip.
 
-Ce qui reste dû, et c'est nommé dans `soundboard.h` : **les gains par groupe** (le partage musique/effets du
-menu), **la sonde d'énergie** et **le journal des key-on** ne vivent que dans le cœur de MAME. Les deux
-derniers sont des diagnostics ; le premier compte pour le joueur, mais il est **inerte tant que les deux
-volumes valent 1**. C'est pourquoi le cœur du projet est utilisable sans eux, et pourquoi le défaut reste
-`mame` : rien ne change sans qu'on le demande.
-
-
-## Pourquoi, et dans quel ordre les quatre objectifs se servent
-
-Le cahier des charges les classe D > A > B > C : processeur, puis sortir de MAME, puis la fidélité, puis le
-C++. Mais ils ne sont pas indépendants, et il faut dire comment :
-
-- **D (processeur) ne demande pas A.** Démontré : les 24 % gagnés le 2026-10-24 l'ont été **dans** le code de
-  MAME, sans rien changer à ce qu'il produit. Les deux tiers du coût étaient dans le DSP, et le DSP se gagne
-  par la forme du code, pas par la propriété du code.
-- **A (sortir de MAME) met B (la fidélité) en jeu**, et c'est le vrai coût du projet. Aujourd'hui, le code de
-  MAME **est** la référence de fidélité de ce portage : chaque écart documenté (`docs/scsp_audit.md` §2) a été
-  mesuré contre lui, jeu par jeu. Un cœur neuf ne garde cette fidélité que s'il est comparé échantillon par
-  échantillon à celui-là — donc A ne peut pas avancer sans que l'ancien reste disponible.
-- **La licence ne presse pas.** MAME est BSD-3-Clause, compatible avec le MIT de ce dépôt, et les obligations
-  sont tenues (`docs/scsp_references.md`). Rien n'oblige à sortir ; l'intérêt est la maîtrise, pas la
-  conformité.
-
-Conséquence : **A se fait par blocs, derrière un sélecteur, et le dernier bloc retiré est le plus risqué**, pas
-le premier venu.
+What is still owed, and it is named in `soundboard.h`: **the per-group gains** (the menu's music/effects
+split), **the energy probe** and **the key-on log** live only in MAME's core. The last two are
+diagnostics; the first matters to the player, but it is **inert as long as both volumes are 1**. That is
+why the project's core is usable without them, and why the default stays `mame`: nothing changes unless it
+is asked for.
 
 
-## Étape 0 — faite le 2026-10-24
+## Why, and in what order the four objectives serve each other
+
+The specification ranks them D > A > B > C: processor, then getting out of MAME, then fidelity, then the
+C++. But they are not independent, and how has to be said:
+
+- **D (processor) does not require A.** Demonstrated: the 24% won on 2026-10-24 was won **inside** MAME's
+  code, without changing anything it produces. Two thirds of the cost was in the DSP, and the DSP is won
+  through the code's shape, not through the code's ownership.
+- **A (getting out of MAME) puts B (fidelity) at stake**, and that is the project's real cost. Today,
+  MAME's code **is** this port's fidelity reference: every documented departure (`docs/scsp_audit.md` §2)
+  was measured against it, game by game. A new core only keeps that fidelity if it is compared sample by
+  sample with that one — so A cannot move forward without the old one staying available.
+- **The licence is not pressing.** MAME is BSD-3-Clause, compatible with this repository's MIT, and the
+  obligations are met (`docs/scsp_references.md`). Nothing compels getting out; the point is mastery, not
+  compliance.
+
+The consequence: **A is done block by block, behind a selector, and the last block removed is the riskiest
+one**, not whichever comes first.
+
+
+## Step 0 — done on 2026-10-24
 
 | | |
 |---|---|
-| mesurer | `src/sound/sound_prof.h` : où va le temps de la carte son, vérifié sans effet sur ce qu'elle produit |
-| cartographier | `docs/scsp_audit.md` : pièces, provenance, licences, interfaces, chemins chauds |
-| sourcer | `docs/scsp_references.md` : ce qui a été lu à la source, et l'avertissement sur la non-indépendance des émulateurs |
-| le harnais | `tools/sound/compare-sound.cmd` : le son contre un commit de référence, octet par octet |
-| gagner | trois lots sur `scspdsp`, **−24,3 %** sur la carte son, WAV identique à l'octet sur les deux jeux |
-| le lot défait | un quatrième, sur les voix, qui ne gagnait rien : défait, et le résultat négatif consigné |
-| tester | `tools/sound/test_scspdsp.cpp` (`make test`) : les deux corps du DSP contre une référence qui décode dans la boucle, seize cas, et quatre fautes injectées pour montrer qu'il sait échouer |
+| measure | `src/sound/sound_prof.h`: where the sound board's time goes, checked to have no effect on what it produces |
+| map | `docs/scsp_audit.md`: parts, provenance, licences, interfaces, hot paths |
+| source | `docs/scsp_references.md`: what was read at the source, and the warning about the emulators' lack of independence |
+| the harness | `tools/sound/compare-sound.cmd`: the sound against a reference commit, byte by byte |
+| win | three batches on `scspdsp`, **−24.3%** on the sound board, byte-identical WAV on both games |
+| the batch undone | a fourth, on the voices, that gained nothing: undone, and the negative result recorded |
+| test | `tools/sound/test_scspdsp.cpp` (`make test`): the DSP's two bodies against a reference that decodes in the loop, sixteen cases, and four faults injected to show it knows how to fail |
 
-Ce que l'étape 0 n'avait pas fait a été fait depuis, et il faut le lire avant la suite. Elle laissait un seul
-test de bloc sur sept ; **les sept en ont un** maintenant, les six derniers écrits le 2026-10-26 : les
-registres (1), les fentes (2), l'enveloppe (3), les LFO (4), le DSP (5), les timers et les interruptions (6)
-et le mélange (7). Ce qui manque encore : **une seule scène de mesure**, le démarrage et l'attract.
+What step 0 had not done has been done since, and it should be read before what follows. It left one block
+test out of seven; **all seven have one** now, the last six written on 2026-10-26: the registers (1), the
+slots (2), the envelope (3), the LFOs (4), the DSP (5), the timers and the interrupts (6) and the mixing
+(7). What is still missing: **one measurement scene only**, the start-up and the attract.
 
-**Les trois mesures qui manquaient sont faites** :
+**The three measurements that were missing are done**:
 
-| où | part du son | ce que ça dit |
+| where | the sound's share | what it says |
 |---|---|---|
-| `vf3run --rec`, la carte dans la boucle d'image | **30,5 % de l'image** (§4 bis, 2026-10-25) | la carte Model 3 y est 4,3 fois plus rapide et le son, lui, ne change pas. C'est là que sa marge compte |
-| l'hôte, la carte sur son fil, machine de bureau | **8,5 % d'un cœur, 0,00 % de l'image** (§4 ter, 2026-10-26) | le jeu ne l'attend jamais |
-| l'hôte, **portable AMD à deux cœurs** | **17,4 % d'un cœur, 0,00 % de l'image** (§4 quater, 2026-10-26) | deux fois plus cher, et l'attente reste nulle. La cadence y est tenue par les téléversements de la photo, pas par le son |
+| `vf3run --rec`, the board inside the frame loop | **30.5% of the frame** (§4 bis, 2026-10-25) | the Model 3 board is 4.3 times faster there and the sound itself does not change. That is where its margin counts |
+| the host, the board on its thread, desktop machine | **8.5% of one core, 0.00% of the frame** (§4 ter, 2026-10-26) | the game never waits for it |
+| the host, **two-core AMD laptop** | **17.4% of one core, 0.00% of the frame** (§4 quater, 2026-10-26) | twice as dear, and the wait stays zero. The rate there is held by the photo's uploads, not by the sound |
 
-Le DSP fait la moitié du son dans les trois. Ce qui reste non mesuré : la **concurrence** sur deux cœurs — la
-sonde compte l'attente bloquante, pas le coût de partager le cache et l'ordonnanceur ; il faudrait la même
-scène son coupé. Et toujours une seule scène, le démarrage et l'attract.
-
-
-## Étape 1 — le reste du gain processeur, s'il en faut
-
-Dans l'ordre de ce que la mesure dit, après l'étape 0 : DSP 52-60 %, 68000 28-31 %, voix 7-17 %.
-
-1. **Le DSP, une forme compilée par programme.** Le programme est fixe entre deux écritures de MPRO : 112 pas
-   rejoués 44 100 fois par seconde. La forme décodée (`Inst`) et les contrôles groupés (`Inst::f`) sont déjà
-   au-delà de MAME et de Supermodel, qui décodent dans la boucle. La suite est d'émettre, à chaque `Start`, une
-   suite d'opérations sans branche de décodage — pas un JIT, une liste de micro-opérations choisies par pas.
-   À mesurer avant d'y croire : le plancher est la chaîne de dépendance de `ACC`, qui ne se vectorise pas.
-2. **Le 68000**, et c'est le mur : son coût propre tient aux appels virtuels de bus, un par accès mémoire, et
-   ses gestionnaires sont ceux de MAME par contrat. Deux voies honnêtes, aucune petite : activer LTO sur
-   l'ensemble, ou donner au cœur une interface de bus non virtuelle (ce qui le modifie, donc sort du contrat
-   « inchangé »).
-3. **Les voix** : le lot 4 a montré que ce n'est pas la boucle d'adresses. Restent les tables de panoramique
-   (deux `int[0x10000]`, 256 Ko chacune), l'enveloppe et le LFO. **Non mesuré dans le détail.**
-
-Aucune de ces trois n'est nécessaire : à 1,40 ms par image sur un budget de 17,4, et sur un fil à part dans
-l'hôte, la carte son n'est plus un problème. L'étape 1 est à faire **si** quelqu'un en a besoin, pas parce
-qu'elle est là.
+The DSP is half the sound in all three. What remains unmeasured: **concurrency** on two cores — the probe
+counts the blocking wait, not the cost of sharing the cache and the scheduler; it would take the same
+scene with the sound off. And still one scene only, the start-up and the attract.
 
 
-## Étape 2 — les préalables de la réécriture
+## Step 1 — the rest of the processor gain, if any is needed
 
-Rien ne s'écrit avant ces trois-là, et c'est le gros du travail :
+In the order the measurement gives, after step 0: DSP 52-60%, 68000 28-31%, voices 7-17%.
 
-0. **Le contrat matériel**, qui n'était pas dans cette liste et aurait dû l'être : ce que la puce doit faire,
-   par opposition à la façon dont on la branche. Écrit le 2026-10-25 — `src/sound/scsp_contract.h`, 48 champs
-   et les constantes du pilote, chaque nombre portant sa provenance et les écarts assumés marqués comme tels
-   — et **vérifié** par `tools/sound/test_scsp_contract.cpp` : 55 contrôles contre `src/sound/scsp.cpp` et
-   contre la ROM du pilote, avec un compte qui doit fermer pour qu'aucun champ ne soit silencieusement sauté.
-1. **Les tests par bloc** de `docs/scsp_validation.md` §3b, écrits avant les blocs qu'ils testent. Le premier
-   des sept existe depuis le 2026-10-24 (`make test` : le DSP, ses deux corps et les quatre contrôles que
-   les jeux ne posent jamais) — ~~les six autres non~~ **et les six autres depuis le 2026-10-26** : registres,
-   fentes, enveloppe, LFO, timers et interruptions, mélange. **Le contrat ci-dessus est testé lui aussi**, par
-   le même `make test`, qui enchaîne désormais neuf tests.
-2. ~~**Le sélecteur et le rejoueur**~~ — **faits le 2026-10-26.**
-   - `src/sound/scsp_select.h` : `scsp::make(nom, ...)`, la porte par laquelle un second cœur entrera.
-     Aujourd'hui `mame` est la seule entrée, et le fichier le dit plutôt que de faire semblant.
-   - `src/sound/scsp_trace.h` : le format de trace, l'enregistreur et le rejoueur. **Le format est neuf, et
-     `VF3_SCSP_WLOG` ne pouvait pas servir de départ** : il note l'image et non l'échantillon — donc
-     l'instant d'une écriture dans la trame, qui est ce qui décide où tombent les interruptions — et il
-     laisse de côté la puce 1, les lectures, le MIDI entrant, les timers qui se déclenchent et **les
-     écritures de la RAM son**, sans lesquelles un rejeu n'a aucun échantillon à jouer.
-   - `tools/sound/replay.cpp` et `replay.cmd` : le rejeu et la comparaison du PCM, des interruptions, des
-     armements de timer, des lectures de registre et du MIDI sortant — la première divergence, située à
-     l'échantillon.
-   - L'enregistrement passe par **une seule porte**, `SoundBoard::tete[n]` : un décorateur de `scsp::core`
-     plutôt qu'une sonde posée aux huit sites d'appel, pour qu'un neuvième ajouté un jour ne puisse pas
-     échapper à la trace en silence.
+1. **The DSP, a form compiled per program.** The program is fixed between two writes of MPRO: 112 steps
+   replayed 44 100 times a second. The decoded form (`Inst`) and the grouped controls (`Inst::f`) are
+   already beyond MAME's and Supermodel's, which decode in the loop. What follows is to emit, on every
+   `Start`, a sequence of operations with no decoding branch — not a JIT, a list of micro-operations chosen
+   per step. To be measured before believing in it: the floor is `ACC`'s dependency chain, which does not
+   vectorise.
+2. **The 68000**, and that is the wall: its own cost comes from the virtual bus calls, one per memory
+   access, and its handlers are MAME's by contract. Two honest routes, neither of them small: turn LTO on
+   over the whole thing, or give the core a non-virtual bus interface (which modifies it, hence leaves the
+   "unchanged" contract).
+3. **The voices**: batch 4 showed it is not the address loop. What remain are the pan tables (two
+   `int[0x10000]`, 256 KB each), the envelope and the LFO. **Not measured in detail.**
 
-   **Ce qui a été vérifié**, et dans cet ordre, parce qu'un contrôle ne vaut rien sans celui d'avant :
+None of those three is necessary: at 1.40 ms per frame on a budget of 17.4, and on a separate thread in
+the host, the sound board is no longer a problem. Step 1 is to be done **if** somebody needs it, not
+because it is there.
+
+
+## Step 2 — the rewrite's prerequisites
+
+Nothing is written before those three, and they are the bulk of the work:
+
+0. **The hardware contract**, which was not in this list and should have been: what the chip must do, as
+   opposed to how it is wired up. Written on 2026-10-25 — `src/sound/scsp_contract.h`, 48 fields and the
+   driver's constants, every number carrying its provenance and the owned departures marked as such — and
+   **checked** by `tools/sound/test_scsp_contract.cpp`: 55 checks against `src/sound/scsp.cpp` and against
+   the driver's ROM, with a count that must close so that no field is silently skipped.
+1. **The per-block tests** of `docs/scsp_validation.md` §3b, written before the blocks they test. The
+   first of the seven has existed since 2026-10-24 (`make test`: the DSP, its two bodies and the four
+   controls the games never set) — ~~the other six not~~ **and the other six since 2026-10-26**:
+   registers, slots, envelope, LFO, timers and interrupts, mixing. **The contract above is tested too**, by
+   the same `make test`, which now chains nine tests.
+2. ~~**The selector and the replayer**~~ — **done on 2026-10-26.**
+   - `src/sound/scsp_select.h`: `scsp::make(name, ...)`, the door a second core will come in through.
+     Today `mame` is the only entry, and the file says so rather than pretending.
+   - `src/sound/scsp_trace.h`: the trace format, the recorder and the replayer. **The format is new, and
+     `VF3_SCSP_WLOG` could not serve as a starting point**: it records the frame and not the sample — hence
+     the instant of a write within the frame, which is what decides where the interrupts fall — and it
+     leaves out chip 1, the reads, incoming MIDI, the timers that fire and **the writes to sound RAM**,
+     without which a replay has no sample to play at all.
+   - `tools/sound/replay.cpp` and `replay.cmd`: the replay and the comparison of the PCM, the interrupts,
+     the timer arms, the register reads and the outgoing MIDI — the first divergence, located to the
+     sample.
+   - The recording goes through **a single door**, `SoundBoard::head[n]`: a decorator of `scsp::core`
+     rather than a probe placed at the eight call sites, so that a ninth added one day cannot escape the
+     trace in silence.
+
+   **What was checked**, and in this order, because a check is worth nothing without the one before it:
    | | |
    |---|---|
-   | la trace est **complète, sur la scène entière** | le rejeu retrouve le PCM que la carte a produit, **identique à l'octet sur 3 219 865 échantillons par puce** (4 200 images), pour les deux puces. C'est ce qui établit qu'aucun état n'entre par une porte que la trace ne note pas. **Établi d'abord sur 300 images seulement, et c'était trop court** : sur la scène entière ce contrôle échouait (échantillons 772 067 et 1 149 006), parce que le **miroir MADRS** se posait hors de l'interface et n'entrait donc pas dans la trace. Trouvé, nommé et refermé le 2026-10-28 — en-tête de trace version 2, porte unique dans `scsp_select.h` ; `docs/scsp_validation.md` §3 c porte toute la mesure |
-   | le comparateur **sait échouer** | un seul échantillon modifié dans la référence, et il le nomme : « échantillon 100000 droite » |
-   | `mame` contre `mame` | identiques sur les cinq flux |
-   | la carte n'a **pas changé** | `vf3run` 1200 images contre la construction de `9753fde` : **même empreinte MD5**. Le détour par `tete[n]` ne coûte rien au son |
-3. ~~**L'interface** de `docs/scsp_architecture.md` §2, posée **d'abord sur le cœur de MAME**~~ — **faite le
-   2026-10-26.** `src/sound/scsp_core.h` est l'interface telle que le §2 l'avait dessinée (trois méthodes de
-   `sink`, le temps **poussé** par `run(n, out)`, l'unité l'échantillon, aucune allocation) ;
-   `src/sound/scsp_mame.{h,cpp}` est l'adaptateur qui présente l'ancien cœur à travers elle ; et
-   `tools/sound/test_scsp_core.cpp` est ce qui décide que le contrat tient — il pilote MAME **uniquement** par
-   `scsp::core`, et **écrit ses registres par la table de champs du contrat**, de sorte qu'un champ faux y
-   coupe le son au lieu d'attendre d'être trouvé dans un jeu.
+   | the trace is **complete, over the whole scene** | the replay finds the PCM the board produced, **byte-identical over 3 219 865 samples per chip** (4 200 frames), for both chips. That is what establishes that no state comes in through a door the trace does not record. **Established first over 300 frames only, and that was too short**: over the whole scene this check failed (samples 772 067 and 1 149 006), because the **MADRS mirror** was being set outside the interface and so did not go into the trace. Found, named and closed on 2026-10-28 — trace header version 2, single door in `scsp_select.h`; `docs/scsp_validation.md` §3 c carries the whole measurement |
+   | the comparator **knows how to fail** | one sample changed in the reference, and it names it: "sample 100000 right" |
+   | `mame` against `mame` | identical on all five streams |
+   | the board has **not changed** | `vf3run` 1200 frames against the build of `9753fde`: **the same MD5 footprint**. The detour through `head[n]` costs the sound nothing |
+3. ~~**The interface** of `docs/scsp_architecture.md` §2, laid **on MAME's core first**~~ — **done on
+   2026-10-26.** `src/sound/scsp_core.h` is the interface as §2 had drawn it (three `sink` methods, time
+   **pushed** by `run(n, out)`, the sample as the unit, no allocation); `src/sound/scsp_mame.{h,cpp}` is
+   the adapter that presents the old core through it; and `tools/sound/test_scsp_core.cpp` is what decides
+   that the contract holds — it drives MAME **only** through `scsp::core`, and **writes its registers
+   through the contract's field table**, so that a wrong field there cuts the sound instead of waiting to
+   be found in a game.
 
-   **Les trois endroits où l'ancien cœur et la forme neuve ne coïncident pas** sont nommés dans
-   `scsp_mame.h` plutôt que masqués : le temps est **tiré** chez l'ancien (l'adaptateur répond lui-même à la
-   question « quelle heure est-il »), la sortie est en flottants (la reconversion est **exacte**, les
-   diviseurs étant des puissances de deux), et **la sortie MIDI est en bits là où le contrat demande des
-   octets** — l'adaptateur ne la franchit pas, il **compte les bits** pour que le manque soit visible.
+   **The three places where the old core and the new shape do not line up** are named in `scsp_mame.h`
+   rather than papered over: time is **pulled** in the old one (the adapter answers the question "what time
+   is it" itself), the output is in floats (the conversion back is **exact**, the divisors being powers of
+   two), and **the MIDI output is in bits where the contract asks for bytes** — the adapter does not bridge
+   it, it **counts the bits** so that the gap is visible.
 
-   **Et la carte est branchée dessus**, le 2026-10-26 aussi : `soundboard.cpp` ne parle plus aux puces que
-   par l'interface — registres, temps, timers, MIDI — et n'atteint l'ancienne classe, par `->device()`, que
-   pour ce qui n'est pas l'affaire de la puce (les gains par groupe, la sonde d'énergie, le miroir MADRS).
-   Ces `device()`-là sont ce qui doit partir en dernier.
+   **And the board is wired onto it**, on 2026-10-26 as well: `soundboard.cpp` no longer speaks to the
+   chips except through the interface — registers, time, timers, MIDI — and reaches the old class, through
+   `->device()`, only for what is not the chip's business (the per-group gains, the energy probe, the MADRS
+   mirror). Those `device()` calls are what must go last.
 
-   **Au harnais : IDENTIQUE A L'OCTET**, sur `fv2-fight.txt`, 4 200 images, `--rec`, et sur **trois arènes**
-   (2, 7 et 9) — mêmes longueurs, mêmes empreintes MD5. Celle de l'arène 9 est `9a2310f8af00…`, c'est-à-dire
-   **exactement la référence prise le matin même avant tout ce travail** : c'est aussi l'arène que le jeu
-   choisit seul, ce qui ferme la boucle.
+   **On the harness: BYTE-IDENTICAL**, on `fv2-fight.txt`, 4 200 frames, `--rec`, and on **three arenas**
+   (2, 7 and 9) — same lengths, same MD5 footprints. Arena 9's is `9a2310f8af00…`, that is to say
+   **exactly the reference taken that same morning before all this work**: it is also the arena the game
+   picks by itself, which closes the loop.
 
-   **Trois choses que le harnais a trouvées et que le raisonnement seul n'aurait pas données :**
+   **Three things the harness found and that reasoning alone would not have given:**
 
-   - **le §2 se trompait sur les interruptions.** Il proposait `irq(int level)`, 0 pour rien, « pas une
-     ligne à la fois ». Or la puce éteint **quatre lignes distinctes** indépendamment et peut en éteindre
-     une pendant qu'une autre est levée : un seul numéro ne peut pas dire laquelle est retombée.
-     `scsp_core.h` porte donc `irq(level, on)`, et dit pourquoi. **C'est exactement ce que l'étape 3 existe
-     pour découvrir.**
-   - **vider le tampon de l'ancien cœur en entier perdait des échantillons.** `run()` copiait `2n` valeurs
-     puis appelait `clear()` : tout ce que l'ancien cœur avait fabriqué au-delà partait. Le harnais l'a vu —
-     une paire perdue à l'image 1006, et tout le son d'après identique **une fois décalé d'un échantillon**.
-     Un `clear()` de trop fait passer un cœur fidèle pour infidèle.
-   - **et une hypothèse à moi, fausse, écartée par la mesure** : j'avais cru que remettre les *deux* puces à
-     l'heure à chaque accès (au lieu de celle qu'on touche) expliquait l'écart. Corrigé, l'empreinte n'a pas
-     bougé d'un bit. La correction est juste — l'ancien chemin n'avançait qu'une puce — mais **elle
-     n'expliquait rien**, et c'est la mesure qui l'a dit.
+   - **§2 was wrong about the interrupts.** It proposed `irq(int level)`, 0 for nothing, "not one line at
+     a time". But the chip puts out **four distinct lines** independently and can put one out while
+     another is raised: a single number cannot say which one dropped. So `scsp_core.h` carries
+     `irq(level, on)`, and says why. **That is exactly what step 3 exists to discover.**
+   - **draining the old core's buffer entirely was losing samples.** `run()` copied `2n` values then
+     called `clear()`: everything the old core had made beyond that went. The harness saw it — one pair
+     lost at frame 1006, and all the sound after it identical **once shifted by one sample**. One `clear()`
+     too many makes a faithful core look unfaithful.
+   - **and a hypothesis of my own, wrong, ruled out by measurement**: I had believed that bringing *both*
+     chips up to date on every access (instead of the one being touched) explained the gap. Corrected, the
+     footprint did not move by a bit. The correction is right — the old path only advanced one chip — but
+     **it explained nothing**, and it is the measurement that said so.
 
-   - **et la paire manquante était une convention de comptage.** L'`update()` de l'ancien cœur fait
-     `n = idx - m_written + 1` : il fabrique les échantillons d'indice `m_written` **jusqu'à `idx` inclus**,
-     donc à l'horloge `idx` il en a fait `idx + 1`. La nouvelle interface dit « `run(n)` fait n
-     échantillons », ce qui est plus propre — mais il fallait que l'adaptateur absorbe l'écart. Il le fait
-     en annonçant un indice **en retard d'un** sur son compteur, et la carte vise `cible + 1`. Sans ça le
-     tout premier échantillon de la partie n'était jamais fabriqué : **une paire sur 3 219 865**, que ni le
-     code ni l'oreille n'auraient montrée, et que le harnais a trouvée en une comparaison.
+   - **and the missing pair was a counting convention.** The old core's `update()` does
+     `n = idx - m_written + 1`: it makes the samples with index `m_written` **up to and including `idx`**,
+     so at clock `idx` it has made `idx + 1` of them. The new interface says "`run(n)` makes n samples",
+     which is cleaner — but the adapter had to absorb the difference. It does so by reporting an index
+     **one behind** its counter, and the board aims at `target + 1`. Without that the game's very first
+     sample was never made: **one pair in 3 219 865**, which neither the code nor the ear would have
+     shown, and which the harness found in one comparison.
 
-   Reste ouvert de cette étape : les horloges du récepteur et de l'émetteur MIDI perdent la précision du
-   cycle en passant par une interface comptée en échantillons (`soundboard.cpp`, `Sink::timer`). Ça ne
-   s'entend pas sur cette scène — l'empreinte est identique — mais ça reste une perte de précision écrite
-   dans le code plutôt que corrigée.
+   Left open from this step: the MIDI receiver's and transmitter's clocks lose cycle precision going
+   through an interface counted in samples (`soundboard.cpp`, `Sink::timer`). It is not audible on this
+   scene — the footprint is identical — but it remains a loss of precision written into the code rather
+   than corrected.
 
-L'ordre importait : (3) avant (2), parce qu'un rejoueur écrit contre l'ancienne interface aurait été à
-refaire. Il a été respecté — l'interface le 2026-10-26 au matin, le rejoueur le soir, et le rejoueur ne
-connaît que `scsp::core`.
+The order mattered: (3) before (2), because a replayer written against the old interface would have had to
+be redone. It was respected — the interface on the morning of 2026-10-26, the replayer in the evening, and
+the replayer knows nothing but `scsp::core`.
 
-**L'étape 2 est donc close, et rien ne bloque plus l'étape 3.**
+**So step 2 is closed, and nothing blocks step 3 any more.**
 
 
-## Étape 3 — les blocs, un par un
+## Step 3 — the blocks, one by one
 
-Le découpage et l'ordre sont dans `docs/scsp_architecture.md` §3. Pour chaque bloc, la même boucle :
+The partition and the order are in `docs/scsp_architecture.md` §3. For each block, the same loop:
 
 ```
-écrire le test  ->  écrire le bloc  ->  le harnais dit « identique »  ->  mesurer le coût  ->  garder
-                                     \-> sinon : comprendre l'écart, pas élargir la tolérance
+write the test  ->  write the block  ->  the harness says "identical"  ->  measure the cost  ->  keep it
+                                      \-> otherwise: understand the gap, do not widen the tolerance
 ```
 
-Et une règle sur l'ordre : **commencer par les blocs dont la fidélité est vérifiable sans le jeu** (registres,
-PCM, PACK/UNPACK, le shifter du DSP), finir par ceux dont le seul juge est le jeu lui-même (les tables de temps
-des enveloppes, la profondeur de modulation, le miroir de MADRS). Ces derniers portent les écarts mesurés de ce
-portage, et ce sont eux qui peuvent casser le son sans qu'un test le voie.
+And one rule about the order: **begin with the blocks whose fidelity is checkable without the game**
+(registers, PCM, PACK/UNPACK, the DSP's shifter), finish with those whose only judge is the game itself
+(the envelopes' time tables, the modulation depth, the MADRS mirror). Those last ones carry this port's
+measured departures, and they are the ones that can break the sound without a test seeing it.
 
 
-## Critères d'acceptation
+## Acceptance criteria
 
-Repris du cahier des charges, et rendus vérifiables ici :
+Taken from the specification, and made checkable here:
 
-| | critère | comment on le voit |
+| | criterion | how it is seen |
 |---|---|---|
-| 1 | ça compile dans les configurations servies | `make build/bin/vf3run build/bin/vf3lock build/bin/vf3` sans erreur |
-| 2 | les tests existants passent, ou l'écart est expliqué et isolé | `verifier-vf3.cmd` dit IDENTIQUE partout |
-| 3 | les scènes sonores de référence se refont | `tools/sound/compare-sound.cmd` sur les deux jeux |
-| 4 | les écarts audio sont mesurés, classés, documentés | pour une optimisation : **aucun écart**, WAV identique à l'octet. Pour un cœur neuf : la liste des écarts, chacun avec sa mesure (erreur max, RMS, corrélation, spectre) et sa cause |
-| 5 | le coût processeur est mesuré contre la ligne de base | `VF3_PROF=1`, même scène, même machine, et la répartition avec `VF3_SND_PROF=1` |
-| 6 | aucun gain annoncé sans chiffres refaisables | les commandes sont dans `docs/scsp_benchmark_baseline.md` |
-| 7 | les dépendances et les licences sont documentées | `docs/scsp_audit.md` §2, `docs/scsp_references.md`, `third_party/README.md` |
-| 8 | le repli reste utilisable pendant la validation | le sélecteur de l'étape 2, et l'ancien cœur derrière. Depuis le 2026-10-28 **chaque cœur s'inscrit dans son propre `.cpp`** : le sélecteur ne nomme plus aucune classe concrète, donc ce qui est lié décide ce qui existe, et `make test-without-mame` construit les sept tests de bloc **sans une ligne du cœur de MAME** — le dernier préalable d'un dépôt séparé |
+| 1 | it compiles in the configurations served | `make build/bin/vf3run build/bin/vf3lock build/bin/vf3` with no error |
+| 2 | the existing tests pass, or the difference is explained and isolated | `verifier-vf3.cmd` says IDENTIQUE everywhere |
+| 3 | the reference sound scenes can be redone | `tools/sound/compare-sound.cmd` on both games |
+| 4 | the audio differences are measured, classified, documented | for an optimisation: **no difference**, byte-identical WAV. For a new core: the list of differences, each with its measurement (max error, RMS, correlation, spectrum) and its cause |
+| 5 | the processor cost is measured against the baseline | `VF3_PROF=1`, the same scene, the same machine, and the breakdown with `VF3_SND_PROF=1` |
+| 6 | no gain announced without reproducible figures | the commands are in `docs/scsp_benchmark_baseline.md` |
+| 7 | the dependencies and the licences are documented | `docs/scsp_audit.md` §2, `docs/scsp_references.md`, `third_party/README.md` |
+| 8 | the fallback stays usable during the validation | step 2's selector, and the old core behind it. Since 2026-10-28 **each core registers itself in its own `.cpp`**: the selector no longer names any concrete class, so what is linked decides what exists, and `make test-without-mame` builds the seven block tests **without a line of MAME's core** — the last prerequisite for a separate repository |
 
-**État au 2026-10-28 :** **les huit sont satisfaits.** 1 ✔. **2 ✔, lancé ce jour** après tout le travail
-du son : `verifier-vf3.cmd 3000` dit **IDENTIQUE** sur les quatre contrôles — l'état du PowerPC image par
-image, les 8 Mo de RAM, les images rendues, l'hôte complet — et le pas à pas interpréteur contre code
-recompilé concorde sur 2 231 images. 3 ✔ sur les deux jeux. 4 ✔ : **aucun écart**, l'empreinte
-`9A2310F8AF000E09EB18BD114852B003` tenue par les deux cœurs sur les 4 200 images. 5 ✔, et deux crans plus
-fin depuis (`scsp_audit.md` §4 sexies à §4 octies). 6 ✔. 7 ✔. 8 sans objet : rien n'a été remplacé, et le
-sélecteur permet maintenant de ne **pas lier** l'ancien cœur du tout (`make test-without-mame`).
+**State as of 2026-10-28:** **all eight are satisfied.** 1 ✔. **2 ✔, run that day** after all the sound
+work: `verifier-vf3.cmd 3000` says **IDENTIQUE** on all four checks — the PowerPC's state frame by frame,
+the 8 MB of RAM, the frames rendered, the whole host — and the step-by-step interpreter against recompiled
+code agrees over 2 231 frames. 3 ✔ on both games. 4 ✔: **no difference**, the footprint
+`9A2310F8AF000E09EB18BD114852B003` held by both cores over the 4 200 frames. 5 ✔, and two notches finer
+since (`scsp_audit.md` §4 sexies to §4 octies). 6 ✔. 7 ✔. 8 not applicable: nothing has been replaced, and
+the selector now makes it possible **not to link** the old core at all (`make test-without-mame`).
 
-(L'état du 2026-10-24 disait « 2 non revérifié depuis les lots — à lancer quand même ». C'est fait, et il
-fallait : un contrôle qu'on remet à plus tard n'est pas un contrôle.)
+(The state of 2026-10-24 said "2 not rechecked since the batches — to be run anyway". It is done, and it
+needed to be: a check put off is not a check.)

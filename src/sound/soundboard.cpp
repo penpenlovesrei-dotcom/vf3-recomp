@@ -43,8 +43,8 @@ struct SoundBoard::Bus : m68000_bus
 		switch (a >> 20) {
 		// Les deux puces a l'heure AVANT de les lire : l'interface neuve ne remet pas le temps a jour
 		// d'elle-meme (soundboard.h, sync_sound).
-		case 0x1: b.sync_sound(0); return b.tete[0]->read_reg((a & 0xFFF) >> 1);
-		case 0x3: b.sync_sound(1); return b.tete[1]->read_reg((a & 0xFFF) >> 1);
+		case 0x1: b.sync_sound(0); return b.head[0]->read_reg((a & 0xFFF) >> 1);
+		case 0x3: b.sync_sound(1); return b.head[1]->read_reg((a & 0xFFF) >> 1);
 		default: return peek(a);
 		}
 	}
@@ -108,9 +108,9 @@ struct SoundBoard::Bus : m68000_bus
 				else fprintf(wl, "%d b %04x %02x\n", b.frames, (a & 0xFFFF) + 1, data & 0xFF);
 			}
 			b.sync_sound(0);
-			b.tete[0]->write_reg((a & 0xFFF) >> 1, data, mem_mask);
+			b.head[0]->write_reg((a & 0xFFF) >> 1, data, mem_mask);
 			break;
-		case 0x3: b.sync_sound(1); b.tete[1]->write_reg((a & 0xFFF) >> 1, data, mem_mask); break;
+		case 0x3: b.sync_sound(1); b.head[1]->write_reg((a & 0xFFF) >> 1, data, mem_mask); break;
 		case 0x4:
 			if (a == 0x400000 && (mem_mask & 0xFF)) b.ctrl = uint8_t(data);
 			break;
@@ -181,13 +181,13 @@ void SoundBoard::reset()
 		// VF3_SCSP_TRACE=f: the access trace, one file per chip (f.0 and f.1), for tools/sound/replay.
 		// It begins HERE, at the reset, because the RAM is known there -- eight words, the 68000's vectors
 		// that the board has just copied into it. The recorder checks that rather than assuming it.
-		tete[n] = scsp[n].get();
+		head[n] = scsp[n].get();
 		trace[n].reset();
 		if (const char *base = getenv("VF3_SCSP_TRACE")) {
 			const std::string f = std::string(base) + "." + std::to_string(n);
 			auto e = std::make_unique<scsp::recorder>(*scsp[n], f.c_str(), unsigned(n), 45158400 / 2,
 			                                             ram[n].data(), uint32_t(ram[n].size() * 2));
-			if (e->good()) { tete[n] = e.get(); trace[n] = std::move(e); }
+			if (e->good()) { head[n] = e.get(); trace[n] = std::move(e); }
 		}
 		if (extras[n]) extras[n]->device().group_of = [this, n](int slot) { return group_of(n, slot); };
 		if (extras[n]) for (int g = 0; g < 2; g++) extras[n]->device().set_group_gain(g, volume[g]);
@@ -246,7 +246,7 @@ void SoundBoard::set_volumes(float music, float effects)
 uint16_t SoundBoard::reg_word(int n, uint32_t i)
 {
 	sync_sound(n);
-	return tete[n]->read_reg(i);   // (c'etait un ->device().read : l'interface suffit)
+	return head[n]->read_reg(i);   // (c'etait un ->device().read : l'interface suffit)
 }
 
 void SoundBoard::energy_on(bool on)
@@ -266,7 +266,7 @@ void SoundBoard::energy_take(double e[2][32])
 
 void SoundBoard::midi_in(uint8_t byte)
 {
-	tete[0]->midi_in(byte);
+	head[0]->midi_in(byte);
 }
 
 void SoundBoard::fire_due()
@@ -277,7 +277,7 @@ void SoundBoard::fire_due()
 			if (tm.on && tm.at <= now) {
 				if (tm.period) tm.at += tm.period;
 				else tm.on = false;
-				tete[n]->timer_fired(t);
+				head[n]->timer_fired(t);
 			}
 		}
 }
@@ -324,12 +324,12 @@ void SoundBoard::sync_sound(int n)
 	// l'echantillon d'indice 0 compris (scsp_mame.cpp, sample_index). Sans ce +1 le tout premier echantillon
 	// de la partie n'etait jamais fabrique -- une paire sur 3 219 865, que seul le harnais a vue.
 	const uint64_t veut = cycles_now() / 256 + 1;
-	const uint64_t fait = tete[n]->samples_made();
+	const uint64_t fait = head[n]->samples_made();
 	if (veut <= fait) return;
 	const uint32_t k = uint32_t(veut - fait);
 	const size_t base = pcm[n].size();
 	pcm[n].resize(base + size_t(k) * 2);
-	tete[n]->run(k, pcm[n].data() + base);
+	head[n]->run(k, pcm[n].data() + base);
 }
 
 void SoundBoard::run(double seconds, std::vector<int16_t> &out)
@@ -371,7 +371,7 @@ void SoundBoard::run(double seconds, std::vector<int16_t> &out)
 	// MVOL, LE VOLUME MAITRE, SE LIT DANS LE REGISTRE : la puce ne l'applique pas elle-meme, elle l'expose
 	// seulement (scsp_contract.h §13 point 7), et un registre se lit par l'interface. Ce ->device()-la etait
 	// donc une dette gratuite.
-	auto mvol = [&](int n) { return float(tete[n]->read_reg(0x400 / 2) & 0x000F) / 15.0f; };
+	auto mvol = [&](int n) { return float(head[n]->read_reg(0x400 / 2) & 0x000F) / 15.0f; };
 	float ga = mvol(0), gb = mvol(1);
 	static const int solo = getenv("VF3_SCSP_SOLO") ? atoi(getenv("VF3_SCSP_SOLO")) : -1;   // (tests: one SCSP alone)
 	if (solo == 0) gb = 0;

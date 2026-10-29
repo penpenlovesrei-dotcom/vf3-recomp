@@ -1,276 +1,278 @@
-# Valider le son — ce qui est en place, et ce qui manque
+# Validating the sound — what is in place, and what is missing
 
-> Ce document est l'un des neuf du son. La porte d'entrée, qui dit où est quoi : [docs/sound.md](son.md).
+> This document is one of the nine on the sound. The front door, which says where everything is:
+> [docs/sound.md](sound.md).
 
-État au 2026-10-24. La partie « en place » a été exécutée et vérifiée ; la partie « manque » est une liste de
-travaux, pas une promesse tenue.
-
-
-## 1. La règle
-
-**Pour une optimisation, l'identité exacte est la seule réponse acceptable.** Une optimisation qui change le
-son n'est pas une optimisation, c'est une modification du portage, et elle se juge alors sur la fidélité et pas
-sur la vitesse. Il n'y a pas de tolérance à élargir : si le WAV bouge d'un échantillon, on cherche pourquoi.
-
-Les mesures plus souples (erreur max, RMS, corrélation, spectre, dérive de tempo, transitoires) ont leur place
-ailleurs — quand on compare deux *implémentations* dont on n'attend pas l'identité, ou le portage à une autre
-émulation. Elles ne remplacent jamais la comparaison stricte quand celle-ci s'applique.
+State as of 2026-10-24. The "in place" part has been run and checked; the "missing" part is a list of work,
+not a promise kept.
 
 
-## 2. Ce qui est en place, et ce que ça couvre
+## 1. The rule
 
-### Le son, octet par octet, contre un commit de référence
+**For an optimisation, exact identity is the only acceptable answer.** An optimisation that changes the
+sound is not an optimisation, it is a change to the port, and it is then judged on fidelity and not on
+speed. There is no tolerance to widen: if the WAV moves by one sample, we look for why.
 
-`tools/sound/compare-sound.cmd <jeu> <script> <images> [commit]`
+The looser measurements (max error, RMS, correlation, spectrum, tempo drift, transients) have their place
+elsewhere — when two *implementations* are compared from which identity is not expected, or the port
+against another emulation. They never replace the strict comparison where that one applies.
 
-Construit (une fois) un arbre de travail du commit de référence dans `C:\Temp\fv2-son-ref`, fait jouer la même
-scène aux deux `vf3run`, et compare les deux WAV avec `fc /b`.
 
-Le 2026-10-24, chacun des quatre lots a été comparé à l'octet (`cmp`) contre un WAV de référence produit par la
-construction d'avant les lots, sur 4200 images de `tools/scripts/fv2-fight.txt` sur `fvipers2.zip`
-(12 879 504 octets à chaque fois) : **identique**, aux quatre lots. Puis le script lui-même a été lancé, contre
-une construction du commit `335c050`, sur les **deux** jeux que le portage sert :
-`fvipers2`/`fv2-fight.txt`/4200 images et `vf3`/`vf3-match.txt`/2400 images — **identique à l'octet** aux deux.
+## 2. What is in place, and what it covers
 
-Ce que ça couvre, et c'est beaucoup : tout le chemin réel — 68000, pilote de son du jeu, 32 voix × 2 chips,
-enveloppes, LFO, modulation, DSP, timers, interruptions, les deux SCSP et le mélange — sur une séquence que le
-jeu lui-même produit. Un seul échantillon de travers et ça se voit.
+### The sound, byte by byte, against a reference commit
 
-Ce que ça ne couvre pas : les cas limites que *ce jeu, cette fois* ne traverse pas. Un bouclage à l'envers, un
-`EGHOLD`, un DMA, une valeur réservée : si le pilote de son de Fighting Vipers 2 ne les demande jamais, le
-harnais ne les regarde pas.
+`tools/sound/compare-sound.cmd <game> <script> <frames> [commit]`
 
-### Les deux corps du DSP, l'un contre l'autre et contre une référence
+Builds (once) a worktree of the reference commit in `C:\Temp\fv2-son-ref`, makes both `vf3run`s play the
+same scene, and compares the two WAVs with `fc /b`.
 
-`make test` → `build/bin/test_scspdsp` (`tools/sound/test_scspdsp.cpp`). Pas de ROM, pas de RAM de jeu, pas de
-fenêtre : les programmes sont engendrés depuis des graines fixes, donc deux lancements font la même chose.
+On 2026-10-24, each of the four batches was compared byte for byte (`cmp`) against a reference WAV produced
+by the build from before the batches, over 4200 frames of `tools/scripts/fv2-fight.txt` on `fvipers2.zip`
+(12 879 504 bytes every time): **identical**, for all four batches. Then the script itself was run, against
+a build of commit `335c050`, on **both** games the port serves:
+`fvipers2`/`fv2-fight.txt`/4200 frames and `vf3`/`vf3-match.txt`/2400 frames — **byte-identical** on both.
 
-Le test porte une **référence naïve** du DSP : elle décode les champs de bits du MPRO **dans** la boucle, comme
-MAME `master` et Supermodel le font encore, sans table décodée, sans contrôles groupés, sans patron et sans
-copies locales de `DEC`/`RBL`/`RBP`. Elle teste donc exactement la machinerie que ce portage a ajoutée. Les
-deux côtés reçoivent le même programme, les mêmes tables, la même RAM, les mêmes `MIXS` à chaque échantillon,
-et après **chacun** des 64 échantillons on compare `EFREG`, `TEMP`, `MEMS`, `DEC` et les **524 288 mots** de la
-ligne de retard.
+What that covers, and it is a lot: the whole real path — 68000, the game's sound driver, 32 voices × 2
+chips, envelopes, LFO, modulation, DSP, timers, interrupts, both SCSPs and the mixing — over a sequence the
+game itself produces. One sample out of place and it shows.
 
-Les seize cas, et ce que chacun attrape :
+What it does not cover: the edge cases *this game, this time* does not go through. A reverse loop, an
+`EGHOLD`, a DMA, a reserved value: if Fighting Vipers 2's sound driver never asks for them, the harness
+does not look at them.
 
-| cas | ce qu'il exerce |
+### The DSP's two bodies, against each other and against a reference
+
+`make test` → `build/bin/test_scspdsp` (`tools/sound/test_scspdsp.cpp`). No ROM, no game RAM, no window:
+the programs are generated from fixed seeds, so two runs do the same thing.
+
+The test carries a **naive reference** of the DSP: it decodes MPRO's bit fields **inside** the loop, as
+MAME `master` and Supermodel still do, with no decoded table, no grouped controls, no template and no local
+copies of `DEC`/`RBL`/`RBP`. So it tests exactly the machinery this port added. Both sides receive the same
+program, the same tables, the same RAM, the same `MIXS` on every sample, and after **each** of the 64
+samples `EFREG`, `TEMP`, `MEMS`, `DEC` and the **524 288 words** of the delay line are compared.
+
+The sixteen cases, and what each one catches:
+
+| case | what it exercises |
 |---|---|
-| deux programmes sans aucun des quatre | `Run<0>`, le corps que les deux jeux prennent |
-| le même, `uses` forcé à `USES_ALL` | **les deux corps doivent s'accorder sur le même programme** |
-| les quatre ensemble, 48 puis 112 pas | `Run<USES_ALL>` sur ce que personne ne jouait |
-| `FRCL`, `ADRL`, `YRL`, `NEGB` seuls | chacun isolé, et `uses` vaut exactement son bit |
-| `RBL` 16k/64k, `RBP` 1/3 | l'adressage de la ligne de retard hors du cas par défaut |
-| `IRA` hors plage au pas 20, puis au pas 0 | l'abandon du pas entier : ni `DEC` ni `MIXS` ne bougent |
-| « les quatre mordent » | garde-fou : les quatre contrôles **changent** la RAM de retard (296 mots), donc le générateur les a bien posés et le cas n'est pas secrètement celui d'à côté |
-| `Decode` ajoute un bit | un pas réécrit sans `Start` : `uses` gagne le bit et le corps générique prend le relais |
-| `Start` recalcule `uses` | sur un objet réutilisé, `uses` **redescend** de 15 à 0 — la seule affirmation de `scspdsp.h` que rien ne tenait |
+| two programs with none of the four | `Run<0>`, the body both games take |
+| the same, `uses` forced to `USES_ALL` | **the two bodies must agree on the same program** |
+| all four together, 48 then 112 steps | `Run<USES_ALL>` on what nobody was playing |
+| `FRCL`, `ADRL`, `YRL`, `NEGB` alone | each one isolated, and `uses` is exactly its bit |
+| `RBL` 16k/64k, `RBP` 1/3 | the delay line's addressing outside the default case |
+| `IRA` out of range at step 20, then at step 0 | the whole step giving up: neither `DEC` nor `MIXS` moves |
+| "the four bite" | a guard: the four controls **do change** the delay RAM (296 words), so the generator really did set them and the case is not secretly the one next door |
+| `Decode` adds a bit | a step rewritten with no `Start`: `uses` gains the bit and the generic body takes over |
+| `Start` recomputes `uses` | on a reused object, `uses` **goes back down** from 15 to 0 — the one assertion in `scspdsp.h` that nothing was holding |
 
-**Et le test a montré qu'il sait échouer**, ce qui est la seule chose qui rende un test vert intéressant. Quatre
-fautes injectées puis défaites :
+**And the test has shown it knows how to fail**, which is the only thing that makes a green test
+interesting. Four faults injected and then undone:
 
-| faute injectée | cas en échec |
+| fault injected | case that failed |
 |---|---|
-| `NEGB` ne nie plus, dans le corps générique | 5 |
-| la boucle lit `TWT` à la place de `XSEL` | 12 |
-| `SHIFT` lu avec un décalage de trop | 13 |
-| `Start` ne remet pas `uses` à zéro | 1 (celui écrit pour ça) |
+| `NEGB` no longer negates, in the generic body | 5 |
+| the loop reads `TWT` instead of `XSEL` | 12 |
+| `SHIFT` read with one shift too many | 13 |
+| `Start` does not reset `uses` | 1 (the one written for it) |
 
-Une cinquième, l'échange de deux valeurs de l'énumération `F_XSEL`/`F_TWT`, **n'a rien fait échouer** — et à
-raison : échanger deux étiquettes change l'écriture et la lecture ensemble, c'est un renommage, pas une faute.
-Noté parce qu'une mutation qui ne mute rien n'est pas une preuve que le test est aveugle.
+A fifth, swapping two values of the `F_XSEL`/`F_TWT` enumeration, **made nothing fail** — and rightly so:
+swapping two labels changes the write and the read together, which is a rename, not a fault. Noted because
+a mutation that mutates nothing is not proof that the test is blind.
 
-Ce que ce test ne dit pas : il ne redérive pas le comportement du chip depuis une documentation matérielle, et
-`PACK`/`UNPACK` y sont **transcrits** plutôt que re-raisonnés (ce portage n'y touche pas). Un `IDENTIQUE` ici
-veut dire « le portage calcule toujours ce que la boucle simple calcule », qui est la question posée, et pas
-« le matériel fait ça ».
+What this test does not say: it does not rederive the chip's behaviour from hardware documentation, and
+`PACK`/`UNPACK` are **transcribed** in it rather than re-reasoned (this port does not touch them). An
+IDENTICAL here means "the port still computes what the simple loop computes", which is the question asked,
+and not "the hardware does that".
 
-### Le même trou, de l'autre côté — et bouché le 2026-10-28
+### The same hole, from the other side — and plugged on 2026-10-28
 
-Tout ce qui précède porte sur le DSP de MAME et sur ses **deux corps**. Le DSP du projet,
-`src/sound/dsp_own`, avait exactement le même trou, au même endroit, et pour la même raison : il porte
-`FRCL`, `ADRL`, `YRL` et `NEGB` **écrits**, son second corps ne tourne que quand l'un des quatre est posé,
-et **aucun jeu ne les pose**. Mesuré ce jour sur tous les sets que le portage connaît : 152 écritures de
-programme, cinq formes distinctes, trois jeux dont Sega Rally 2 avec un tout autre programme, et pas un pas
-(`docs/scsp_audit.md` §5). Il n'y avait donc rien à aller chercher : le rejoueur ne pouvait pas en être juge.
+Everything above concerns MAME's DSP and its **two bodies**. The project's DSP, `src/sound/dsp_own`, had
+exactly the same hole, in the same place, and for the same reason: it carries `FRCL`, `ADRL`, `YRL` and
+`NEGB` **written**, its second body only runs when one of the four is set, and **no game sets them**.
+Measured that day on every set the port knows: 152 program writes, five distinct shapes, three games
+including Sega Rally 2 with an altogether different program, and not one step (`docs/scsp_audit.md` §5). So
+there was nothing to go and find: the replayer could not be their judge.
 
-**`tools/sound/test_scsp_dsp.cpp` cas 9 à 13** les mesurent, et chacun par le seul chemin de lecture qui
-existe — ces registres n'ont pas de fenêtre :
+**`tools/sound/test_scsp_dsp.cpp` cases 9 to 13** measure them, each by the only read path that exists —
+those registers have no window:
 
-| cas | ce qui le rend observable | relevé |
+| case | what makes it observable | reading |
 |---|---|---|
-| `NEGB` | le signe de B sur un pas de maintien, le même programme des deux côtés | `+2330` / `−2330` |
-| `FRCL` | `FRC_REG` relu **comme Y** (`YSEL=0`), remultiplié par le même X | `331` à `SHIFT=0`, `2912` à `SHIFT=3` |
-| `YRL` | `Y_REG` relu par `YSEL=2` puis `YSEL=3` : deux fenêtres du même registre | `662` / `946` |
-| `ADRL` | l'adresse que `ADREB` décale : un témoin différent au mot `0x12` de la ligne de retard | `MEMS[1] = 0x567800` |
-| les deux corps | la chaîne du cas 4 inchangée, plus un `FRCL` nul qui force le corps complet | `EFREG[0] = 2330` |
+| `NEGB` | B's sign on a hold step, the same program on both sides | `+2330` / `−2330` |
+| `FRCL` | `FRC_REG` read back **as Y** (`YSEL=0`), multiplied again by the same X | `331` at `SHIFT=0`, `2912` at `SHIFT=3` |
+| `YRL` | `Y_REG` read back through `YSEL=2` then `YSEL=3`: two windows of the same register | `662` / `946` |
+| `ADRL` | the address `ADREB` offsets: a different control at word `0x12` of the delay line | `MEMS[1] = 0x567800` |
+| the two bodies | case 4's chain unchanged, plus a null `FRCL` that forces the full body | `EFREG[0] = 2330` |
 
-**Le cœur du projet rend les cinq du premier coup**, identiques à ceux du cœur de MAME. C'est une
-confirmation et non une correction : ce code était juste, il n'avait simplement aucun témoin.
+**The project's core returns all five first time**, identical to MAME's core's. It is a confirmation and
+not a correction: that code was right, it simply had no witness.
 
-**Et ces cas savent échouer**, par la même méthode qu'au-dessus — quatre fautes injectées dans
-`dsp_own.cpp`, une à la fois, **chacune attrapée par son propre cas** : `NEGB` qui ne nie plus, `FRCL`
-qui prend l'autre tranche, `YRL` qui retient l'entrée décalée d'un bit, `ADRL` qui décale de huit au lieu de
-seize. Une cinquième tentative, `YRL` retenant `SHIFTED`, **ne compile pas** — et c'est en soi un fait du
-bloc : à cet endroit du pas, `shifted` n'existe pas encore, parce que le shifter est un pas en retard.
+**And those cases know how to fail**, by the same method as above — four faults injected into
+`dsp_own.cpp`, one at a time, **each caught by its own case**: `NEGB` that no longer negates, `FRCL` that
+takes the other slice, `YRL` that latches the input shifted by one bit, `ADRL` that shifts by eight instead
+of sixteen. A fifth attempt, `YRL` latching `SHIFTED`, **does not compile** — and that is itself a fact
+about the block: at that point in the step, `shifted` does not exist yet, because the shifter is one step
+behind.
 
-Ce que ça ne dit pas, et c'est la même limite qu'au-dessus : **que MAME ait raison.** Personne n'a mesuré ces
-quatre champs sur du matériel, et `scsp_references.md` refuse le consensus entre émulateurs comme preuve. Le
-comportement visé par ce portage est celui de MAME ; ces cas établissent que son DSP l'atteint, et rien de
-plus. La différence avec les huit premiers cas est réelle et vaut d'être dite : ceux-là sont recoupés par le
-jeu à chaque rejeu, ces cinq-là par rien d'autre qu'eux-mêmes.
+What that does not say, and it is the same limit as above: **that MAME is right.** Nobody has measured
+those four fields on hardware, and `scsp_references.md` refuses consensus between emulators as proof. The
+behaviour this port aims at is MAME's; these cases establish that its DSP reaches it, and nothing more. The
+difference from the first eight cases is real and worth saying: those are cross-checked by the game on
+every replay, these five by nothing but themselves.
 
-### Le reste de la carte, déjà en place avant ce travail
+### The rest of the board, already in place before this work
 
-| | ce que ça compare |
+| | what it compares |
 |---|---|
-| `verifier-vf3.cmd` | l'état du PowerPC image par image et les 8 Mo de RAM, cette branche contre `main`, sur Virtua Fighter 3 — le contrat de non-régression du portage |
-| `tools/statecmp.py` | deux fichiers d'état (celui de Supermodel instrumenté et celui de `vf3run --state`) |
-| `build/bin/vf3lock` | l'interpréteur contre le code recompilé |
-| `VF3_SCSP_WLOG` | chaque écriture de registre SCSP, image par image — une trace d'accès déjà exploitable |
-| `VF3_KEYON_LOG` | chaque voix démarrée, avec sa forme (TL, AR/D1R/D2R/RR, DL, EGHOLD, LPCTL, LSA/LEA/SA) et l'état du 68000 |
-| `VF3_SCSP_SOLO=0\|1` | un seul des deux SCSP à la fois |
-| `VF3_DUMP_SOUND_RAM` | la RAM son et les registres des deux chips, à des images données |
-| `m_probe_*` / `energy_on` | l'énergie que chaque fente a envoyée, directe et vers le DSP, et l'énergie des sorties du DSP |
-| `VF3_SCSP_MADRS_SEPARATE` / `_MIRROR`, `VF3_SCSP_MSLC_LATCH` | forcer un choix de fidélité dans un sens ou l'autre, pour comparer |
+| `verifier-vf3.cmd` | the PowerPC's state frame by frame and the 8 MB of RAM, this branch against `main`, on Virtua Fighter 3 — the port's non-regression contract |
+| `tools/statecmp.py` | two state files (the instrumented Supermodel's and `vf3run --state`'s) |
+| `build/bin/vf3lock` | the interpreter against the recompiled code |
+| `VF3_SCSP_WLOG` | every SCSP register write, frame by frame — an access trail already usable |
+| `VF3_KEYON_LOG` | every voice started, with its shape (TL, AR/D1R/D2R/RR, DL, EGHOLD, LPCTL, LSA/LEA/SA) and the 68000's state |
+| `VF3_SCSP_SOLO=0\|1` | one of the two SCSPs at a time |
+| `VF3_DUMP_SOUND_RAM` | the sound RAM and both chips' registers, at given frames |
+| `m_probe_*` / `energy_on` | the energy each slot sent, direct and towards the DSP, and the energy of the DSP's outputs |
+| `VF3_SCSP_MADRS_SEPARATE` / `_MIRROR`, `VF3_SCSP_MSLC_LATCH` | force a fidelity choice one way or the other, for comparison |
 
-Ce dépôt est donc **bien outillé pour l'enquête** et peu outillé pour le test automatique — `make test` est le
-premier, et il ne couvre qu'un bloc sur huit. C'est l'inverse de ce qu'on voudrait pour une réécriture, et
-c'est le point à corriger avant d'en entamer une.
+So this repository is **well equipped for investigation** and poorly equipped for automatic testing —
+`make test` is the first, and it covers only one block out of eight. That is the opposite of what one would
+want for a rewrite, and it is the point to correct before starting one.
 
 
-## 3. Ce qui manque
+## 3. What is missing
 
-### a. Les scènes
+### a. The scenes
 
-Il n'y a **qu'une scène** pour le son : `fv2-fight.txt`. Il manque, et le cahier des charges les demande :
+There is **only one scene** for the sound: `fv2-fight.txt`. What is missing, and the specification asks for
+them:
 
-| scène | ce qu'il faudrait | pourquoi ça manque |
+| scene | what it would take | why it is missing |
 |---|---|---|
-| silence | le jeu à un moment où rien ne joue | aucun moment de la scène actuelle n'est muet ; il faudrait le trouver ou l'imposer |
-| musique seule | `VF3_VOLUMES=100,0` | **faisable tout de suite**, pas encore fait |
-| effets seuls | `VF3_VOLUMES=0,100` | **faisable tout de suite**, pas encore fait ; attention, ces deux-là allument le niveleur d'effets (`m_group_gains`), donc ils ne mesurent pas le mélange d'origine |
-| sound test | le menu de test de la borne | se traverse à la manette ; `console_play` n'a pas de levier pour y aller sans main humaine |
-| Virtua Fighter 3, le temps | `vf3-match.txt` avec `VF3_PROF=1` | la scène existe et sert déjà à la non-régression ; son **temps** n'a pas été relevé |
+| silence | the game at a moment when nothing is playing | no moment of the current scene is silent; it would have to be found or imposed |
+| music only | `VF3_VOLUMES=100,0` | **doable right now**, not done yet |
+| effects only | `VF3_VOLUMES=0,100` | **doable right now**, not done yet; careful, those two turn the effects leveller on (`m_group_gains`), so they do not measure the original mix |
+| sound test | the cabinet's test menu | crossed with the pad; `console_play` has no lever to get there without a human hand |
+| Virtua Fighter 3, the time | `vf3-match.txt` with `VF3_PROF=1` | the scene exists and already serves for non-regression; its **time** has not been recorded |
 
-### b. Les tests par bloc
+### b. The per-block tests
 
-**Un sur huit**, le DSP (`make test`, décrit plus haut). Les sept autres n'existent pas, et rien n'exerce le
-SCSP lui-même en dehors du jeu. La liste de ce qu'il faudrait, par ordre de dépendance (le découpage est celui
-de `docs/scsp_architecture.md` §3) :
+**One out of eight**, the DSP (`make test`, described above). The other seven do not exist, and nothing
+exercises the SCSP itself outside the game. The list of what it would take, in order of dependency (the
+partition is `docs/scsp_architecture.md` §3's):
 
-1. **registres** — écrire chaque mot de 0x000 à 0xFFF et le relire ; les bits réservés ; la plage 0x7C0-0x7FF,
-   où ce portage et MAME ne font pas la même chose (`docs/scsp_references.md`) ;
-2. **PCM** — 8 et 16 bits, les quatre `LPCTL`, `SA`/`LSA`/`LEA`, l'interpolation, les bords de la RAM
-   (`read_byte`/`read_word` masquent à 0xFFFFF et renvoient 0 au-delà : à exercer) ;
-3. **enveloppes** — les quatre états et leurs transitions, `EGHOLD`, `KRS`, `LPSLNK`, le key-off en pleine
-   attaque, les rates 0 et 1 (« infinity » dans les tables) ;
-4. **pitch, LFO, modulation** — `OCT`/`FNS` aux extrêmes, les quatre formes, et la modulation par anneau avec
-   la profondeur de ce portage ;
-5. **DSP** — ✔ **fait** (`make test`) : les deux corps, les quatre contrôles que ces jeux ne posent jamais,
-   l'adressage de la ligne de retard, l'abandon du pas, `uses` ajouté par `Decode` et recalculé par `Start`.
-   Reste dehors : `PACK`/`UNPACK` sur toute la plage 24 bits pour eux-mêmes (le test les transcrit, donc une
-   faute partagée passerait), et la saturation du shifter aux bords exacts plutôt qu'au hasard des graines ;
-6. **timers et interruptions** — A/B/C et leurs périodes, `SCIEB`/`SCIPD`/`SCILV`, le décodage de priorité, le
-   DMA, et l'ordre relatif des accès du 68000 ;
-7. **les deux chips et le mélange** — `DISDL`/`EFSDL`, le panoramique, `MVOL`, `DAC18B` ;
-8. **reset et répétabilité** — deux runs identiques donnent le même PCM (c'est déjà vrai de fait : les WAV de
-   deux runs se comparent à l'octet, et la seule source aléatoire, `machine_rand`, a une graine fixe).
+1. **registers** — write every word from 0x000 to 0xFFF and read it back; the reserved bits; the range
+   0x7C0-0x7FF, where this port and MAME do not do the same thing (`docs/scsp_references.md`);
+2. **PCM** — 8 and 16 bits, the four `LPCTL`s, `SA`/`LSA`/`LEA`, the interpolation, RAM's edges
+   (`read_byte`/`read_word` mask to 0xFFFFF and return 0 beyond: to be exercised);
+3. **envelopes** — the four states and their transitions, `EGHOLD`, `KRS`, `LPSLNK`, key-off in mid
+   attack, rates 0 and 1 ("infinity" in the tables);
+4. **pitch, LFO, modulation** — `OCT`/`FNS` at the extremes, the four waveforms, and ring modulation with
+   this port's depth;
+5. **DSP** — ✔ **done** (`make test`): the two bodies, the four controls these games never set, the delay
+   line's addressing, the step giving up, `uses` added by `Decode` and recomputed by `Start`. Left outside:
+   `PACK`/`UNPACK` over the whole 24-bit range for themselves (the test transcribes them, so a shared fault
+   would pass), and the shifter's saturation at the exact edges rather than at the seeds' mercy;
+6. **timers and interrupts** — A/B/C and their periods, `SCIEB`/`SCIPD`/`SCILV`, the priority decoding,
+   the DMA, and the relative order of the 68000's accesses;
+7. **the two chips and the mixing** — `DISDL`/`EFSDL`, the pan, `MVOL`, `DAC18B`;
+8. **reset and repeatability** — two identical runs give the same PCM (which is already true in fact: two
+   runs' WAVs compare byte for byte, and the only random source, `machine_rand`, has a fixed seed).
 
-### c. Le harnais à deux cœurs
+### c. The two-core harness
 
-`compare-sound.cmd` compare deux **constructions**. Pour une réécriture, il faut comparer deux **cœurs dans le
-même binaire** : la même séquence d'accès rejouée dans les deux, et la comparaison des PCM, des états
-observables, des interruptions et des timers, pas seulement du WAV final.
+`compare-sound.cmd` compares two **builds**. For a rewrite, two **cores in the same binary** have to be
+compared: the same sequence of accesses replayed through both, and the comparison of the PCM, the
+observable state, the interrupts and the timers, not just the final WAV.
 
-**Fait le 2026-10-26** : `tools/sound/replay` et `tools/sound/replay.cmd`, sur le format de
-`src/sound/scsp_trace.h` et le sélecteur de `src/sound/scsp_select.h`. `VF3_SCSP_WLOG` n'a pas servi de
-départ : il note l'image et non l'échantillon, et laisse de côté la puce 1, les lectures, le MIDI entrant,
-les timers et les écritures de RAM. Le rejeu retrouve le PCM de la carte **à l'octet** sur 229 991
-échantillons, ce qui établit que la trace est complète — le contrôle à passer avant que comparer deux cœurs
-veuille dire quelque chose.
+**Done on 2026-10-26**: `tools/sound/replay` and `tools/sound/replay.cmd`, on the format of
+`src/sound/scsp_trace.h` and the selector of `src/sound/scsp_select.h`. `VF3_SCSP_WLOG` did not serve as a
+starting point: it records the frame and not the sample, and leaves out chip 1, the reads, incoming MIDI,
+the timers and the RAM writes. The replay finds the board's PCM **byte for byte** over 229 991 samples,
+which establishes that the trace is complete — the check to pass before comparing two cores means
+anything.
 
-**Et il faut dire jusqu'où, parce que ce n'était pas jusqu'au bout.** Ces 229 991 échantillons sont
-**300 images**, la valeur par défaut de `replay.cmd`. Lancé le 2026-10-28 sur la scène entière — 4 200
-images, 3 219 865 échantillons par puce — **ce contrôle échouait** :
+**And how far has to be said, because it was not all the way.** Those 229 991 samples are **300 frames**,
+`replay.cmd`'s default. Run on 2026-10-28 over the whole scene — 4 200 frames, 3 219 865 samples per chip
+— **this check failed**:
 
-| puce | première divergence | ce que le rejeu rendait | ce que la carte avait produit |
+| chip | first divergence | what the replay returned | what the board had produced |
 |---|---|---|---|
-| 0 | échantillon **772 067** gauche (image ~1 007) | 0 | −4 |
-| 1 | échantillon **1 149 006** droite (image ~1 499) | −992 | −976 |
+| 0 | sample **772 067** left (frame ~1 007) | 0 | −4 |
+| 1 | sample **1 149 006** right (frame ~1 499) | −992 | −976 |
 
-**Trouvé et refermé le même jour.** Ce qui suit est la mesure qui l'a nommé, gardée parce que la façon dont
-cette divergence se cachait est le plus instructif de l'affaire.
+**Found and closed the same day.** What follows is the measurement that named it, kept because the way this
+divergence hid itself is the most instructive part of the affair.
 
-### Ce que la mesure disait avant de savoir
+### What the measurement said before knowing
 
-1. **Ce n'était pas une divergence entre les deux cœurs.** Le second contrôle, `mame` contre `own` sur
-   la même trace de 4 200 images, disait **IDENTIQUES** sur les cinq flux. L'identité des cœurs tenait donc
-   sur la scène entière ; c'était **la complétude de la trace** qui ne tenait que sur 300 images.
-2. **L'étendue, et c'est elle qui a orienté.** Non pas un échantillon isolé : **84,7 % des valeurs après la
-   première divergence**, jusqu'au bout, d'amplitude minuscule — écart médian 12 sur 131 072, maximum 156,
-   et **tous multiples de 4** (la sortie 18 bits dont les deux bits bas tombent). Donc un état, pas un
-   accident de calcul. Et la puce 1 était **identique à l'octet** sur les 1 050 premières images alors que
-   la puce 0 divergeait : la cause dépendait de ce que le pilote écrivait, puce par puce.
-3. **Trois pistes écartées par la mesure, pas par le raisonnement** : un chemin d'écriture de la RAM son qui
-   manquerait à la trace (il n'y en a qu'un, `Bus` cas 0x0/0x2, et il appelle `ram_ecrite`) ; les gains par
-   groupe (inertes, les deux volumes valant 1, et `m_group_gains` reste faux) ; la ROM d'échantillons
-   (les SCSP ne jouent que depuis leur RAM, le 68000 y recopie — `soundboard.h`).
+1. **It was not a divergence between the two cores.** The second check, `mame` against `own` over the same
+   4 200-frame trace, said **IDENTICAL** on all five streams. So the cores' identity held over the whole
+   scene; it was **the trace's completeness** that only held over 300 frames.
+2. **The extent, and it is what gave the direction.** Not one isolated sample: **84.7% of the values after
+   the first divergence**, all the way to the end, of tiny amplitude — median difference 12 out of 131 072,
+   maximum 156, and **all multiples of 4** (the 18-bit output whose two low bits fall away). So a state,
+   not a calculation accident. And chip 1 was **byte-identical** over the first 1 050 frames while chip 0
+   diverged: the cause depended on what the driver was writing, chip by chip.
+3. **Three leads ruled out by measurement, not by reasoning**: a sound-RAM write path that the trace might
+   be missing (there is only one, `Bus` cases 0x0/0x2, and it calls `ram_written`); the per-group gains
+   (inert, both volumes being 1, and `m_group_gains` stays false); the sample ROM (the SCSPs only play from
+   their own RAM, the 68000 copies into it — `soundboard.h`).
 
-### La cause, et elle était écrite d'avance
+### The cause, and it was written in advance
 
-`scsp_core.h` la nommait depuis le début, dans sa section **« AND WHAT IS DELIBERATELY ABSENT »** : quatre
-choses de ce portage ne passent pas par l'interface, et la carte les posait **directement sur la classe
-concrète**. Le miroir MADRS est la seule des quatre **qui change le son**, et il change **par jeu** : vrai
-pour Virtua Fighter 3, **faux pour Fighting Vipers 2**. Il se posait dans `SoundBoard::reset`, par un
-`dynamic_cast`, **après** la création de l'enregistreur — donc la trace ne pouvait pas le voir, et un rejeu
-le laissait à son défaut, `true`.
+`scsp_core.h` had named it from the start, in its **"AND WHAT IS DELIBERATELY ABSENT"** section: four
+things of this port's do not go through the interface, and the board was setting them **directly on the
+concrete class**. The MADRS mirror is the only one of the four **that changes the sound**, and it changes
+**per game**: true for Virtua Fighter 3, **false for Fighting Vipers 2**. It was being set in
+`SoundBoard::reset`, through a `dynamic_cast`, **after** the recorder was created — so the trace could not
+see it, and a replay left it at its default, `true`.
 
-**Le contrôle décisif n'a demandé aucun code** : la même scène réenregistrée avec `VF3_SCSP_MADRS_MIRROR=1`,
-qui met la carte dans le réglage que le rejeu supposait, se rejouait **identique à l'octet sur les deux
-puces**. C'est ce qui a nommé le coupable au lieu de le soupçonner.
+**The decisive check needed no code**: the same scene recorded again with `VF3_SCSP_MADRS_MIRROR=1`, which
+puts the board in the setting the replay was assuming, replayed **byte-identical on both chips**. That is
+what named the culprit instead of suspecting it.
 
-Et cela explique pourquoi 300 images passaient : la première écriture dans `0x7C0-0x7FF` arrive à
-l'échantillon **29 211**, mais elle vaut **zéro** — or le miroir ne distingue les deux réglages que quand
-une valeur non nulle y va et que le programme DSP s'en sert. Le contrôle ne mentait pas ; il était trop court.
+And it explains why 300 frames passed: the first write into `0x7C0-0x7FF` arrives at sample **29 211**, but
+it is **zero** — and the mirror only tells the two settings apart when a non-zero value goes there and the
+DSP program uses it. The check was not lying; it was too short.
 
-### Ce qui a été refermé
-
-| | |
-|---|---|
-| **une seule porte** | `scsp::regle_miroir_madrs` et `scsp::miroir_madrs` dans `scsp_select.h` — dont l'en-tête nommait déjà ce manque. Le `dynamic_cast` ne vit plus dans `soundboard.cpp` |
-| **l'ordre** | le miroir se pose **avant** que l'enregistreur existe, et l'enregistreur le **relit de la puce** au lieu qu'on pense à le lui dire |
-| **la trace le porte** | en-tête **version 3** : `# scsp-trace 3 chip=N clock=H ram=B mirror=0|1`, et le rejeu le pose avant la première ligne |
-| **une trace v1 est refusée** | avec un message qui dit quoi faire, et non devinée — supposer est précisément ce qui a coûté cette divergence |
-
-**Vérifié le 2026-10-28, scène entière**, et les trois contrôles comptent ensemble :
+### What was closed
 
 | | |
 |---|---|
-| `tools/sound/replay.cmd fvipers2 tools/scripts/fv2-fight.txt 4200 mame maison` | **TOUT CONCORDE** — les quatre contrôles, 3 219 865 échantillons par puce, les deux puces |
-| `make test` | les dix tests, **tous les cas passent**, les deux cœurs là où le test prend un nom de cœur |
-| `vf3run --frames 4200 --rec --wav`, chaque cœur | même empreinte **`9A2310F8AF000E09EB18BD114852B003`** — le correctif ne change pas une valeur du son |
+| **a single door** | `scsp::set_madrs_mirror_on` and `scsp::madrs_mirror_of` in `scsp_select.h` — whose header already named this gap. The `dynamic_cast` no longer lives in `soundboard.cpp` |
+| **the order** | the mirror is set **before** the recorder exists, and the recorder **reads it back from the chip** instead of being told it |
+| **the trace carries it** | header **version 3**: `# scsp-trace 3 chip=N clock=H ram=B mirror=0\|1`, and the replay sets it before the first line |
+| **a v1 or v2 trace is refused** | with a message that says what to do, and not guessed at — assuming is precisely what this divergence cost |
 
-La complétude de la trace est donc établie sur la scène entière, et plus seulement sur 300 images.
+**Checked on 2026-10-28, whole scene**, and the three checks count together:
 
-**La leçon, et elle est générale :** *un état qui n'arrive pas par un appel n'entre pas dans une trace
-d'appels.* Les trois autres extras du portage ne changent pas le son au réglage par défaut, et c'est la
-seule raison pour laquelle ils ne sont pas dans l'en-tête ; si l'un d'eux se mettait à compter, il faudrait
-l'y mettre aussi.
+| | |
+|---|---|
+| `tools/sound/replay.cmd fvipers2 tools/scripts/fv2-fight.txt 4200 mame own` | **EVERYTHING AGREES** — the four checks, 3 219 865 samples per chip, both chips |
+| `make test` | the ten tests, **all cases pass**, both cores wherever the test takes a core name |
+| `vf3run --frames 4200 --rec --wav`, each core | the same footprint **`9A2310F8AF000E09EB18BD114852B003`** — the fix does not change one value of the sound |
+
+So the trace's completeness is established over the whole scene, and no longer over 300 frames only.
+
+**The lesson, and it is a general one:** *state that does not arrive through a call does not go into a
+trace of calls.* The port's three other extras do not change the sound at the default setting, and that is
+the only reason they are not in the header; if one of them started to count, it would have to go in as
+well.
 
 
-## 4. Le trou que ce travail a creusé, et qui est bouché
+## 4. The hole this work dug, and that is plugged
 
-Le lot 1 du 2026-10-24 a coupé le corps du DSP en deux chemins (`docs/scsp_audit.md` §7). Pour les deux jeux de
-ce portage, c'est le chemin maigre qui tourne, et il est vérifié à l'octet ; l'autre n'était vérifié par rien,
-et c'était le premier test à écrire si ce portage servait un jour un troisième jeu.
+Batch 1 of 2026-10-24 cut the DSP's body into two paths (`docs/scsp_audit.md` §7). For this port's two
+games, it is the lean path that runs, and it is verified byte for byte; the other was verified by nothing,
+and it was the first test to write if this port ever served a third game.
 
-**Il est écrit** (`tools/sound/test_scspdsp.cpp`, §2) : `Run<USES_ALL>` est exercé par onze des seize cas, sur des
-programmes qui posent les quatre contrôles ensemble puis chacun seul, et sur le programme même des jeux avec
-`uses` forcé — ce dernier cas étant celui qui dit que **les deux corps s'accordent**. Quatre fautes injectées
-dans le corps générique ont bien fait tomber le test.
+**It is written** (`tools/sound/test_scspdsp.cpp`, §2): `Run<USES_ALL>` is exercised by eleven of the
+sixteen cases, on programs that set the four controls together and then each one alone, and on the games'
+own program with `uses` forced — that last case being the one that says **the two bodies agree**. Four
+faults injected into the generic body did bring the test down.
 
-Ce qui reste du trou, et il est petit : le test compare le portage à une transcription de la même sémantique,
-pas à une documentation matérielle. Il attraperait un `if constexpr` mal câblé, un bit de `Inst::f` mal lu, un
-`uses` périmé, une copie locale décalée — c'est-à-dire tout ce que ce lot pouvait casser. Il n'attraperait pas
-une erreur que MAME aurait déjà, ni une faute recopiée à l'identique dans la référence.
+What is left of the hole, and it is small: the test compares the port with a transcription of the same
+semantics, not with hardware documentation. It would catch a miswired `if constexpr`, a misread bit of
+`Inst::f`, a stale `uses`, a shifted local copy — that is to say everything this batch could break. It
+would not catch an error MAME already has, nor a fault copied identically into the reference.

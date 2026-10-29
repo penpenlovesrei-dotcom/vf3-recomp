@@ -815,7 +815,7 @@ Quatre tentatives, et aucune des trois premieres ne dit qu'elle echoue :
 | | pourquoi ca ne sortait rien |
 |---|---|
 | sans elevation | `Failed to configure counters` — le seul message franc des quatre |
-| `-Pmc <compteurs> CSWITCH` | compte sur un evenement : `-a perfctrs` rend `No Counter Info`, `-a pmc` un en-tete sans lignes, et les evenements `CSwitch` ne portent pas de colonne de compteur |
+| `-Pmc <compteurs> CSWITCH` | compte sur un evenement : `-a perfctrs` rend `No Counter Info`, `-a pmc` un en-head sans lignes, et les evenements `CSwitch` ne portent pas de colonne de compteur |
 | `-PmcProfile` avec `-on PROC_THREAD+LOADER` | le bon commutateur, mais **le groupe noyau qui enregistre les echantillons n'etait pas allume** : 54 885 `UnknownEvent/Classic` et pas un `PmcInterrupt` |
 | `-on PROC_THREAD+LOADER+PMC_PROFILE` | **celui-la marche.** `PMC_PROFILE : PMC sampling events`, et `xperf -providers K` le nomme lui-meme |
 
