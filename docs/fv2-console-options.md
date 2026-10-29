@@ -1,110 +1,110 @@
-# OPTIONS : le plan
+# OPTIONS: the plan
 
-Écrit le 2026-10-22, avant d'avoir écrit une ligne. Ce n'est pas une description : ce sont les questions, dans
-l'ordre, et la mesure qui tranche chacune.
+Written on 2026-10-22, before a line of it had been written. This is not a description: it is the questions,
+in order, and the measurement that settles each one.
 
-`OPTIONS` est la dernière ligne de la liste qui ait un sens ici. `NETWORK` n'a rien derrière lui sur la borne ;
-`OPTIONS`, si : les **treize réglages** du menu de test du jeu. L'inventaire le disait déjà — « le travail,
-c'est la page, pas le mécanisme ». C'est à moitié vrai, et la moitié fausse est ce document.
+`OPTIONS` is the last line of the list that means anything here. `NETWORK` has nothing behind it on the
+cabinet; `OPTIONS` does: the game test menu's **thirteen settings**. The inventory said it already — "the
+work is the page, not the mechanism". That is half true, and the false half is this document.
 
 
-## Ce qui est acquis
+## What is settled
 
-### Les treize réglages, mesurés en août
+### The thirteen settings, measured in August
 
-`MenuConsole.md` §9 : un guetteur imprimait tout octet qui changeait dans `0x120540`-`0x12055F` pendant qu'on
-modifiait **un réglage à la fois** dans le menu de test.
+`MenuConsole.md` §9: a watcher printed every byte that changed in `0x120540`-`0x12055F` while **one setting at
+a time** was modified in the test menu.
 
-| réglage | adresse | plage | usine |
+| setting | address | range | factory |
 |---|---|---|---|
 | `MATCH COUNT 1P` | `0x12054C` | 2-5 | 2 |
 | `MATCH COUNT VS` | `0x12054D` | 2-5 | 3 |
-| `ROUND TIME 1P` | `0x120555` | 20-60 par 5 | 30 |
-| `ROUND TIME VS` | `0x120556` | 20-60 par 5 | 45 |
+| `ROUND TIME 1P` | `0x120555` | 20-60 by 5 | 30 |
+| `ROUND TIME VS` | `0x120556` | 20-60 by 5 | 45 |
 | `DIFFICULTY` | `0x12054E` | 0-4 | 2 `NORMAL` |
-| `ENERGY MAX 1P` | `0x120540` | 160-360 par 10, **16 bits gros-boutiste** | 210 |
-| `ENERGY MAX VS` | `0x120542` | idem | 210 |
+| `ENERGY MAX 1P` | `0x120540` | 160-360 by 10, **16-bit big-endian** | 210 |
+| `ENERGY MAX VS` | `0x120542` | the same | 210 |
 | `ADVERTISE SOUND` | `0x12054F` | 0/1 | `ON` |
 | `SURVIVAL MODE` | `0x120550` | 0/1 | `OFF` |
-| `COUNTRY` | `0x120557` | lecture seule | `JAPAN` |
+| `COUNTRY` | `0x120557` | read-only | `JAPAN` |
 | `VS FINISH` | `0x120558` | 0/1 | `OFF` |
 | `SUPER K.O.` | `0x120554` | 0/1 | `ON` |
 | `BIKE LOGO` | `0x12055A` | 0/1 | `ON` |
 
-L'ordre à l'écran n'est pas l'ordre des adresses — `ROUND TIME` est neuf octets après `MATCH COUNT` alors
-qu'il le précède. Et **rien ne borne une écriture directe** : le menu de test refuserait une valeur hors
-plage, nous non. Les plages ci-dessus sont donc la seule garde.
+The order on screen is not the order of the addresses — `ROUND TIME` is nine bytes after `MATCH COUNT` while
+it comes before it. And **nothing bounds a direct write**: the test menu would refuse a value out of range,
+we would not. So the ranges above are the only guard.
 
-`SURVIVAL MODE` (`0x120550`) est déjà employé par ce portage, à côté du drapeau de Survival.
+`SURVIVAL MODE` (`0x120550`) is already used by this port, next to the Survival flag.
 
-### Le piège : ce bloc n'est qu'une copie de travail
+### The trap: this block is only a working copy
 
-Le jeu le charge depuis sa **sauvegarde** au démarrage. Le changer ne dure pas : seul le menu de test du jeu
-recopie vers la sauvegarde, en sortant. Le menu d'août a contourné ça avec un fichier à lui, relu au
-lancement et reposé **à l'instant où le jeu vient de charger son bloc**. La question 1 ci-dessous rend ce
-contournement inutile : la sauvegarde est atteignable.
+The game loads it from its **backup** at start-up. Changing it does not last: only the game's test menu copies
+back to the backup, on the way out. August's menu worked round that with a file of its own, read back at
+launch and put in place **at the instant the game has just loaded its block**. Question 1 below makes that
+workaround unnecessary: the backup is reachable.
 
-### Mais ce portage sait déjà faire mieux, pour l'autre jeu
+### But this port already knows how to do better, for the other game
 
-Pour Virtua Fighter 3, la page « Arcade settings » n'écrit pas la copie de travail : elle écrit **la sauvegarde
-elle-même**, un octet par réglage à partir de `0x1E000`, trouvés en changeant chacun dans le menu de test. Le
-jeu les relit en démarrant, donc une modification **redémarre la partie** à la fermeture du menu, et elle
-tient.
+For Virtua Fighter 3, the "Arcade settings" page does not write the working copy: it writes **the backup
+itself**, one byte per setting from `0x1E000` on, found by changing each of them in the test menu. The game
+reads them back when starting, so a change **restarts the game** when the menu is closed, and it holds.
 
-Et ce portage a déjà fait exactement ce travail-là pour Fighting Vipers 2 une fois : l'octet `0x17` de la
-sauvegarde, le réglage COIN/CREDIT, trouvé en pilotant le menu de test du jeu depuis un script d'entrées puis
-en comparant la sauvegarde avant et après (`docs/fv2-console.md`).
+And this port has already done exactly that work for Fighting Vipers 2 once: the backup's byte `0x17`, the
+COIN/CREDIT setting, found by driving the game's test menu from an input script and then comparing the backup
+before and after (`docs/fv2-console.md`).
 
 
-## Question 1 — où sont ces treize réglages dans la sauvegarde : **close le 2026-10-22**
+## Question 1 — where those thirteen settings are in the backup: **closed on 2026-10-22**
 
-`HANDOFF.md` §7 disait que la sauvegarde « ne contient pas ces valeurs telles quelles » et que personne ne
-l'avait décodée. C'est fait, et il n'a pas fallu piloter le menu de test treize fois : il a suffi de regarder
-**qui écrit la copie de travail au démarrage**.
+`HANDOFF.md` §7 said that the backup "does not contain those values as they stand" and that nobody had
+decoded it. It is done, and it did not take driving the test menu thirteen times: it was enough to look at
+**who writes the working copy at start-up**.
 
-`vf3run --watch 120540` donne `store32 00120540 = D200D2 at PC 0002026C (LR 00020F60)` — 210 et 210, les deux
-`ENERGY MAX` à leur valeur d'usine, en un seul mot. `0x00020240` est un `memcpy` par mots (r3 destination, r4
-source, r5 compte) : l'information est chez l'appelant, et il y en a deux.
+`vf3run --watch 120540` gives `store32 00120540 = D200D2 at PC 0002026C (LR 00020F60)` — 210 and 210, both
+`ENERGY MAX` at their factory value, in a single word. `0x00020240` is a `memcpy` by words (r3 destination, r4
+source, r5 count): the information is at the caller, and there are two of them.
 
-| | r3 (vivant) | r4 (source) | compte |
+| | r3 (live) | r4 (source) | count |
 |---|---|---|---|
-| `0x00020D80` | `0x00120520` | **`0xFE0C0000`, la sauvegarde** | 30 demi-mots |
-| `0x00020F38` | `0x00120520` | `0x00120D24`, **la table d'usine dans le programme** | 60 octets |
+| `0x00020D80` | `0x00120520` | **`0xFE0C0000`, the backup** | 30 half-words |
+| `0x00020F38` | `0x00120520` | `0x00120D24`, **the factory table in the program** | 60 bytes |
 
-Et l'arbitre est `0x00020F98`, qui charge **quatre** blocs puis valide :
+And the arbiter is `0x00020F98`, which loads **four** blocks and then validates:
 
-| bloc | vivant | sauvegarde | octets |
+| block | live | backup | bytes |
 |---|---|---|---|
 | 1 | `0x0011F024` | `0xFE0C1000` | 1604 |
 | 2 | `0x0011F668` | `0xFE0C2000` | 376 |
 | 3 | `0x0011F7E0` | `0xFE0C3000` | 3392 |
-| 4 | **`0x00120520`** | **`0xFE0C0000`** | **60 — les réglages** |
+| 4 | **`0x00120520`** | **`0xFE0C0000`** | **60 — the settings** |
 
-Les quatre sont **contigus en RAM** (`0x0011F024` à `0x0012057C`) et sur **quatre pages séparées** de la
-sauvegarde. La validité, c'est trois champs en tête du bloc 1 : le mot `0x0011F024` égal à `0x53454741`
-(« SEGA »), le demi-mot `0x0011F028` égal à `0x8221` et `0x0011F02A` égal à `0x0312` — une estampille de
-version. Si l'un manque, `0x00020F74` remet l'usine et `0x00021008` la **réécrit dans la sauvegarde**.
+The four are **contiguous in RAM** (`0x0011F024` to `0x0012057C`) and on **four separate pages** of the
+backup. Validity is three fields at the head of block 1: the word `0x0011F024` equal to `0x53454741`
+("SEGA"), the half-word `0x0011F028` equal to `0x8221` and `0x0011F02A` equal to `0x0312` — a version stamp.
+If one is missing, `0x00020F74` restores the factory settings and `0x00021008` **writes them back into the
+backup**.
 
-### La correspondance
+### The correspondence
 
-Le chargeur lit un **mot** de la sauvegarde par **demi-mot** vivant (`lwbrx` puis `sthu`), donc chaque valeur
-de 16 bits occupe quatre octets de la sauvegarde et seuls deux portent la donnée. Pour un octet vivant à
-`0x00120520 + k` :
+The loader reads one **word** of the backup per live **half-word** (`lwbrx` then `sthu`), so each 16-bit value
+occupies four bytes of the backup and only two carry the data. For a live byte at `0x00120520 + k`:
 
 ```
-indice dans board.backup = 2k + 2   si k est pair
-                           2k + 1   si k est impair
+index in board.backup = 2k + 2   if k is even
+                        2k + 1   if k is odd
 ```
 
-**Contrôle croisé immédiat** : l'octet des pièces déjà connu de ce portage, `0x17`, retombe sur `k = 11`, soit
-`0x0012052B` — dans les `COIN ASSIGNMENTS`, à sa place. Il avait été trouvé à tâtons ; la formule le redonne.
+**An immediate cross-check**: the coin byte this port already knew, `0x17`, falls back on `k = 11`, that is
+`0x0012052B` — inside the `COIN ASSIGNMENTS`, where it belongs. It had been found by trial and error; the
+formula gives it again.
 
-### Les treize, mesurés
+### The thirteen, measured
 
-Les colonnes « vivant » et « usine » sont lues dans un dump de RAM ; la colonne « sauvegarde » est l'indice
-dans `board.backup`, et sa valeur a été relue dans **votre** `backup-fvipers2` du 21 octobre. Les treize
-concordent, et les valeurs d'usine sont exactement celles mesurées en août dans le menu de test — deux sources
-indépendantes.
+The "live" and "factory" columns are read from a RAM dump; the "backup" column is the index in
+`board.backup`, and its value was read back from **your** `backup-fvipers2` of 21 October. All thirteen
+agree, and the factory values are exactly those measured in August in the test menu — two independent
+sources.
 
 | réglage | vivant | k | sauvegarde | usine |
 |---|---|---|---|---|
@@ -122,12 +122,12 @@ indépendantes.
 | `VS FINISH` | `0x120558` | 56 | `0x72` | 0 `OFF` |
 | `BIKE LOGO` | `0x12055A` | 58 | `0x76` | 1 `ON` |
 
-### La vérification de bout en bout
+### The end-to-end check
 
-Lire la table ne prouve pas qu'écrire marche. Deux runs, un témoin et un essai, la sauvegarde réelle posée
-octet par octet par `VF3_POKE` et cinq réglages changés dans l'essai :
+Reading the table does not prove that writing works. Two runs, a control and a trial, the real backup laid
+down byte by byte by `VF3_POKE` and five settings changed in the trial:
 
-| réglage | témoin | essai | attendu |
+| setting | control | trial | expected |
 |---|---|---|---|
 | `MATCH COUNT 1P` | 02 | **05** | 05 |
 | `ROUND TIME 1P` | 1E | **3C** | 3C |
@@ -135,460 +135,453 @@ octet par octet par `VF3_POKE` et cinq réglages changés dans l'essai :
 | `DIFFICULTY` | 02 | **04** | 04 |
 | `BIKE LOGO` | 01 | **00** | 00 |
 
-Cinq sur cinq. **Écrire l'octet dans la sauvegarde fait charger la valeur au jeu** : `OPTIONS` sera durable,
-par le même mécanisme que la page « Arcade settings » de Virtua Fighter 3, et la copie de travail n'a pas à
-être touchée.
+Five out of five. **Writing the byte into the backup makes the game load the value**: `OPTIONS` will be
+durable, by the same mechanism as Virtua Fighter 3's "Arcade settings" page, and the working copy need not be
+touched.
 
-Un piège pour la prochaine fois : `VF3_POKE` lit ses valeurs en **décimal** (`%lu`), et `sscanf` **s'arrête à
-la première valeur illisible** — un `D2` écrit en hexadécimal fait perdre silencieusement tout ce qui suit. Le
-premier essai a conclu « le jeu ignore la sauvegarde » pour cette seule raison.
+A trap for next time: `VF3_POKE` reads its values in **decimal** (`%lu`), and `sscanf` **stops at the first
+unreadable value** — a `D2` written in hexadecimal silently loses everything that follows. The first trial
+concluded "the game ignores the backup" for that reason alone.
 
-### Ce qui reste du bloc
+### What is left of the block
 
-Le bloc fait 60 octets et treize réglages n'en occupent que quinze. `0x120544`, `0x120546`, `0x120548` et
-`0x12054A` portent `0x0078`, `0x0078`, `0x0045`, `0x00B4` (120, 120, 69, 180) et ne sont nommés par rien :
-d'autres énergies ou d'autres durées. On n'y touche pas.
+The block is 60 bytes and thirteen settings occupy only fifteen of them. `0x120544`, `0x120546`, `0x120548`
+and `0x12054A` carry `0x0078`, `0x0078`, `0x0045`, `0x00B4` (120, 120, 69, 180) and are named by nothing:
+other energies or other durations. We leave them alone.
 
-### 2. Avec quoi dessine-t-on la page ?
+### 2. What do we draw the page with?
 
-**La question que l'image n'a pas résolue.** `assets/menu-console/option_bg.png` est un **fond** — le logo
-assombri — sans un seul libellé. Les treize noms et leurs valeurs doivent donc être du **texte**, et ce
-portage n'a pas de moteur de texte en dehors de RmlUi, qui est celui du menu de la touche Échap.
+**The question the image did not resolve.** `assets/menu-console/option_bg.png` is a **background** — the
+darkened logo — without a single label. So the thirteen names and their values have to be **text**, and this
+port has no text engine outside RmlUi, which is the Escape-key menu's.
 
-Trois voies étaient ouvertes : un document RmlUi à elle, la police du jeu par le générateur de tuiles, ou la
-police de la Dreamcast à sortir de `TEX_DAT.AFS`.
+Three ways were open: a RmlUi document of its own, the game's font through the tile generator, or the
+Dreamcast's font to be got out of `TEX_DAT.AFS`.
 
-**Tranchée le 2026-10-22, et par un fichier plutôt que par un arbitrage** : Frédéric a déposé `police.png`
-**parmi les images du menu**, dans `texture_remplacement_2d/fvipers2/`, et non parmi les tuiles nommées par
-leur empreinte. C'est donc une quatrième voie, qui est la bonne : sa propre feuille de glyphes, dessinée
-directement comme `fv2_mode_list.h` dessine déjà la liste des modes. Ni RmlUi, ni le générateur de tuiles, ni
-l'archive du disque.
+**Settled on 2026-10-22, and by a file rather than by a judgement call**: Frédéric dropped `police.png`
+**among the menu's images**, in `texture_remplacement_2d/fvipers2/`, and not among the tiles named by their
+footprint. So it is a fourth way, and it is the right one: its own glyph sheet, drawn directly the way
+`fv2_mode_list.h` already draws the list of modes. Neither RmlUi, nor the tile generator, nor the disc's
+archive.
 
-### Ce que porte `police.png`, mesuré
+### What `police.png` carries, measured
 
 | | |
 |---|---|
-| image | 1024 × 384, RGBA, glyphes **blancs sur transparent** |
-| grille | **16 colonnes × 6 rangées**, cases de **64 × 64** |
-| correspondance | **ASCII `0x20` à `0x7F`**, dans l'ordre, une case par code |
-| cases vides | exactement deux : `0x20` (espace) et `0x7F` — ce qui confirme la correspondance |
-| position | les glyphes sont **centrés dans leur case**, horizontalement *et verticalement* |
-| capitales et chiffres | tous exactement de `y = 16` à `y = 46`, le seul écart étant la queue du `Q` (13 à 49) |
-| chasses de l'encre | de 6 px (`'`) à 41 px (`W`), médiane 22 |
+| image | 1024 × 384, RGBA, **white glyphs on transparent** |
+| grid | **16 columns × 6 rows**, cells of **64 × 64** |
+| mapping | **ASCII `0x20` to `0x7F`**, in order, one cell per code |
+| empty cells | exactly two: `0x20` (space) and `0x7F` — which confirms the mapping |
+| position | the glyphs are **centred in their cell**, horizontally *and* vertically |
+| capitals and digits | all exactly from `y = 16` to `y = 46`, the only exception being the `Q`'s tail (13 to 49) |
+| ink widths | from 6 px (`'`) to 41 px (`W`), median 22 |
 
-Et la trouvaille qui compte, parce qu'elle décide de ce qu'on peut écrire avec cette feuille : **elle n'a pas
-de ligne de base**. Chaque glyphe est centré dans sa case, verticalement aussi. `O` occupe `y = 16..46`, `o`
-occupe `20..42`, le point `29..33`, la virgule `26..37`, les deux-points `21..41` — tous de milieu 31. Une
-fonte pose ces quatre-là sur une même ligne ; celle-ci les empile autour d'un centre.
+And the finding that counts, because it decides what can be written with this sheet: **it has no baseline**.
+Every glyph is centred in its cell, vertically too. `O` occupies `y = 16..46`, `o` occupies `20..42`, the full
+stop `29..33`, the comma `26..37`, the colon `21..41` — all with a midpoint of 31. A font puts those four on
+one line; this one stacks them around a centre.
 
-Trois conséquences, et elles sont nettes :
+Three consequences, and they are clear-cut:
 
-- un rendu proportionnel doit passer par **la boîte d'encre de chaque case**, pas par la case, puisque les
-  glyphes ne sont pas calés à gauche. D'où la table des 96 boîtes dans `src/host/fv2_texte.h`, relevée par
-  `tools/fv2/mesurer_police.py` ;
-- **verticalement, il n'y a rien à calculer** : on dessine la case entière, et les glyphes gardent l'alignement
-  que la feuille leur donne déjà. Pour une page en **capitales et chiffres** — ce que sont les treize réglages
-  et leurs valeurs — c'est *exact*, puisque les 35 partagent la même boîte ;
-- en revanche les **minuscules et la ponctuation sont fausses** sur une ligne de texte ordinaire : le `o` flotte
-  4 px au-dessus du `O`, et le point se lit comme un point médian — `SUPER K.O.` sort en `SUPER K·O·`. Ce n'est
-  pas un défaut du dessin, c'est la feuille qui est ainsi. La corriger demanderait de **choisir** une ligne de
-  base que la feuille ne donne pas, c'est-à-dire d'inventer : à Frédéric de dire s'il la veut, et laquelle.
+- proportional rendering has to go through **each cell's ink box**, not through the cell, since the glyphs are
+  not flush left. Hence the table of 96 boxes in `src/host/fv2_texte.h`, measured by
+  `tools/fv2/mesurer_police.py`;
+- **vertically, there is nothing to compute**: the whole cell is drawn, and the glyphs keep the alignment the
+  sheet already gives them. For a page in **capitals and digits** — which is what the thirteen settings and
+  their values are — that is *exact*, since all 35 share the same box;
+- the **lower case and the punctuation are wrong**, on the other hand, on an ordinary line of text: the `o`
+  floats 4 px above the `O`, and the full stop reads as a middle dot — `SUPER K.O.` comes out as
+  `SUPER K·O·`. That is not a flaw of the drawing, it is how the sheet is. Correcting it would mean
+  **choosing** a baseline the sheet does not give, that is to say inventing: it is for Frédéric to say
+  whether he wants one, and which.
 
-Rien dans ce portage ni dans le travail d'été ne se servait de cette feuille : la seule fonte du portage est
-celle de RmlUi.
+Nothing in this port nor in the summer's work used this sheet: the port's only font is RmlUi's.
 
-### 3. Qu'est-ce qu'une modification doit faire ? — **tranchée le 2026-10-22, et pas comme prévu**
+### 3. What should a change do? — **settled on 2026-10-22, and not as planned**
 
-Le plan disait : « pour Virtua Fighter 3, elle redémarre la partie à la fermeture du menu. C'est le
-comportement à reprendre, pas à réinventer. » **C'était faux**, et c'est Frédéric qui l'a vu en jouant : le
-redémarrage passe l'écran au noir et laisse la fenêtre muette plusieurs secondes pendant que la carte réamorce.
-Il l'a d'abord pris pour un plantage, et il avait raison de le prendre pour tel — sur un écran d'options de
-console, ça n'a aucun sens.
+The plan said: "for Virtua Fighter 3, it restarts the game when the menu is closed. That is the behaviour to
+take up, not to reinvent." **That was false**, and it is Frédéric who saw it while playing: the restart
+blacks out the screen and leaves the window silent for several seconds while the board boots again. He first
+took it for a crash, and he was right to take it for one — on a console options screen it makes no sense.
 
-La bonne réponse est d'écrire **les deux copies** :
+The right answer is to write **both copies**:
 
-| | ce qu'elle apporte |
+| | what it brings |
 |---|---|
-| la **sauvegarde** (`board.backup`, par la formule ci-dessus) | le réglage **dure** : le jeu le relira au prochain démarrage |
-| la **copie de travail** (`0x00120520 + k`, directement en RAM) | le réglage **prend effet tout de suite** : c'est celle-là, et elle seule, que le jeu lit en tournant |
+| the **backup** (`board.backup`, through the formula above) | the setting **lasts**: the game will read it again at the next start-up |
+| the **working copy** (`0x00120520 + k`, directly in RAM) | the setting **takes effect at once**: that is the one, and the only one, the game reads while running |
 
-Écrire la seule sauvegarde oblige à redémarrer pour être lu ; écrire la seule copie de travail ne survit pas à
-la partie suivante. Les deux ensemble, et il n'y a plus rien à redémarrer.
+Writing the backup alone forces a restart to be read; writing the working copy alone does not survive into
+the next session. Both together, and there is nothing left to restart.
 
-Mesuré : deux `Right` sur `ROUND TIME 1P` et la sortie de la page, sans redémarrage — l'octet `0x6B` de la
-sauvegarde écrite sur disque passe de 40 à 50, et la page affiche la nouvelle valeur parce qu'elle lit la copie
-vivante.
+Measured: two `Right` on `ROUND TIME 1P` and the page left, with no restart — byte `0x6B` of the backup
+written to disc goes from 40 to 50, and the page shows the new value because it reads the live copy.
 
-**Ce qui reste à vérifier**, et qui demande de jouer : chaque réglage ne prend effet qu'au moment où le jeu le
-relit. `ROUND TIME` et `MATCH COUNT` sont a priori lus au début d'un match, `ENERGY MAX` aussi ; mais rien ne
-dit qu'aucun des treize n'est verrouillé plus tôt. Un réglage qui ne bougerait qu'après un redémarrage doit
-être relevé ici plutôt que supposé.
-
-
-## L'ordre
-
-1. ~~**Question 1** : les treize adresses dans la sauvegarde.~~ **Close le 2026-10-22**, relevé ci-dessus,
-   vérifiée par un essai contre témoin.
-2. ~~**Question 2**.~~ **Close le 2026-10-22** : `police.png`, mesurée ci-dessus.
-3. La page, les treize lignes, les plages comme garde.
-4. `verifier-vf3.cmd`, et une partie jouée.
-
-## Ce que ce plan ne fait pas
-
-- **Il n'écrit pas la copie de travail** si la sauvegarde est atteignable. Un réglage qui ne survit pas au
-  redémarrage n'est pas un réglage.
-- **Il ne borne rien au hasard** : les plages sont celles du §9, mesurées.
-- **Il ne touche pas au menu de la touche Échap**, qui garde sa page de réglages du portage.
+**What remains to be checked**, and it takes playing: each setting only takes effect at the moment the game
+reads it again. `ROUND TIME` and `MATCH COUNT` are presumably read at the start of a match, `ENERGY MAX` too;
+but nothing says that none of the thirteen is locked in earlier. A setting that only moved after a restart
+should be noted here rather than supposed.
 
 
-## Ce que le travail d'août avait déjà appris — relu le 2026-10-22
+## The order
 
-Frédéric a signalé qu'« il y avait un sous-menu avant cet écran ». Le travail d'été est dans
-`Documents/SEGA Model 3/Sauvegardes/2026-08-20_23h04/Docs/MenuConsole.md`, et il dit beaucoup plus que ça.
+1. ~~**Question 1**: the thirteen addresses in the backup.~~ **Closed on 2026-10-22**, recorded above,
+   verified by a trial against a control.
+2. ~~**Question 2**.~~ **Closed on 2026-10-22**: `police.png`, measured above.
+3. The page, the thirteen lines, the ranges as the guard.
+4. `verifier-vf3.cmd`, and a game played.
 
-### La forme d'OPTIONS en août
+## What this plan does not do
 
-Ce n'était pas une page plate de treize lignes. `OPTIONS` était **une page de seize lignes** : les treize
-`GAME ASSIGNMENTS`, un `INITIALIZE`, et deux entrées menant ailleurs —
-
-- **`SOUNDS`** : le test des bruitages, celui des vingt musiques, les deux volumes et le choix du pack ;
-- **`STATS`** : le VS DIAGRAM, dessiné à partir des compteurs de la sauvegarde.
-
-Et la **Dreamcast a exactement cette forme** : sept réglages, puis `SOUNDS`, `CONTROLLER`, `RESULT`, puis
-`INITIALIZE`. Les trois sources concordent — la page porte des réglages *et* des portes.
-
-Notre page n'a que les treize et `INITIALIZE`. Ce qui manque, ce sont les portes, et elles ne mènent nulle
-part aujourd'hui : la couche sonore a été défaite (`docs/fv2-console-son.md`), et le VS DIAGRAM n'est pas
-dessiné ici.
-
-### La densité, que le propriétaire avait mesurée avant moi
-
-Son relevé des choses en suspens, mot pour mot : « *densité d'`OPTIONS` : seize lignes ne peuvent pas être
-grosses. Deux sorties : sortir les treize `GAME ASSIGNMENTS` sur leur propre page, ou passer à deux
-colonnes.* » C'est précisément le problème rencontré ici, où le pas des lignes a dû être resserré sous celui
-de la Dreamcast parce qu'elle en tient sept et nous treize. **Sortir les treize sur leur propre page le
-résout des deux côtés à la fois** : la page des réglages respire, et `OPTIONS` redevient une courte liste de
-portes, comme sur le disque.
-
-### Trois règles de dessin, payées en août
-
-1. **Le filet de sélection s'ancre par le bas.** `option_cursor.png` porte un ergot vertical qui *monte
-   au-dessus* du trait, donc le trait visible est en bas de l'image. Placée par le haut, elle souligne la
-   ligne suivante. **Ce portage avait exactement ce défaut**, et je l'avais « corrigé » en déplaçant une
-   constante jusqu'à ce que ça tombe bien — ce qui n'est pas la même chose : à une autre taille il serait
-   revenu. Corrigé le 2026-10-22, le filet est maintenant suspendu à la position voulue de son trait.
-2. **Un bloc se centre sur la largeur qu'il *peut* occuper, jamais sur celle qu'il occupe.** Sinon la page
-   glisse sous l'œil dès qu'une valeur s'allonge — mesuré en août sur `DIFFICULTY` passant de `HARD` à
-   `VERY HARD`. D'où son `SetValueRoom`, où chaque page déclare sa largeur réservée : neuf caractères pour
-   `OPTIONS` (`VERY HARD`), quatorze pour `SOUNDS` (`BRAIN CLEANSER`). **Ce portage ne le fait pas** : chaque
-   valeur est centrée sur la sienne, donc elle se recentre quand on la change. La Dreamcast, elle, centre bien
-   ses valeurs — la tension est réelle et n'est pas tranchée.
-3. **Une page trop longue cherche de la place avant de rétrécir** : on élargit la bande (jusqu'à 0,20 en haut
-   et 0,96 en bas) avant de réduire le texte. Sans cet ordre, toute augmentation de la police est annulée par
-   le resserrement, « deux effets qui s'annulent exactement, et une correction qui semble ne rien faire ».
-
-### Et une chose qu'on a faite mieux
-
-Son relevé portait aussi : « *police italique : la référence Dreamcast est en italique, notre atlas ne l'est
-pas. Un second atlas le permettrait.* » Il n'en a pas fallu un second : la pente est mesurée à 7,5° et posée
-par cisaillement au dessin (`src/host/fv2_texte.h`).
+- **It does not write the working copy** if the backup is reachable. A setting that does not survive a
+  restart is not a setting.
+- **It bounds nothing at random**: the ranges are §9's, measured.
+- **It does not touch the Escape-key menu**, which keeps its page of port settings.
 
 
-## L'arborescence, refaite sur celle d'août — le 2026-10-22
+## What August's work had already learned — reread on 2026-10-22
 
-Demandé par Frédéric : refaire l'arborescence des sous-menus d'OPTIONS en prenant pour exemple août 2026.
-Elle a été relue dans `Src/OSD/SDL/Main.cpp` de la sauvegarde du 20 août (`OptionsEntries` et `OptionLines`),
-pas reconstituée de mémoire.
+Frédéric pointed out that "there was a sub-menu before that screen". The summer's work is in
+`Documents/SEGA Model 3/Sauvegardes/2026-08-20_23h04/Docs/MenuConsole.md`, and it says a great deal more than
+that.
+
+### OPTIONS' shape in August
+
+It was not a flat page of thirteen lines. `OPTIONS` was **a page of sixteen lines**: the thirteen
+`GAME ASSIGNMENTS`, an `INITIALIZE`, and two entries leading elsewhere —
+
+- **`SOUNDS`**: the sound effects test, the one for the twenty pieces of music, the two volumes and the choice
+  of pack;
+- **`STATS`**: the VS DIAGRAM, drawn from the backup's counters.
+
+And the **Dreamcast has exactly that shape**: seven settings, then `SOUNDS`, `CONTROLLER`, `RESULT`, then
+`INITIALIZE`. The three sources agree — the page carries settings *and* doors.
+
+Our page has only the thirteen and `INITIALIZE`. What is missing is the doors, and they lead nowhere today:
+the sound layer was undone (`docs/fv2-console-son.md`), and the VS DIAGRAM is not drawn here.
+
+### The density, which the owner had measured before me
+
+His list of outstanding things, word for word: "*`OPTIONS`' density: sixteen lines cannot be large. Two ways
+out: put the thirteen `GAME ASSIGNMENTS` on their own page, or go to two columns.*" That is exactly the
+problem met here, where the line pitch had to be tightened below the Dreamcast's because it holds seven and
+we hold thirteen. **Putting the thirteen on their own page solves it from both sides at once**: the settings
+page can breathe, and `OPTIONS` becomes a short list of doors again, as on the disc.
+
+### Three rules of drawing, paid for in August
+
+1. **The selection rule is anchored by its bottom.** `option_cursor.png` carries a vertical tab that rises
+   *above* the line, so the visible line is at the bottom of the image. Placed by its top, it underlines the
+   next row. **This port had exactly that flaw**, and I had "fixed" it by moving a constant until it fell
+   right — which is not the same thing: at another size it would have come back. Corrected on 2026-10-22, the
+   rule now hangs from the intended position of its line.
+2. **A block is centred on the width it *can* occupy, never on the width it does occupy.** Otherwise the page
+   slides under the eye as soon as a value gets longer — measured in August on `DIFFICULTY` going from `HARD`
+   to `VERY HARD`. Hence its `SetValueRoom`, where each page declares its reserved width: nine characters for
+   `OPTIONS` (`VERY HARD`), fourteen for `SOUNDS` (`BRAIN CLEANSER`). **This port does not do it**: each value
+   is centred on its own width, so it recentres when it is changed. The Dreamcast, for its part, does centre
+   its values — the tension is real and is not settled.
+3. **A page that is too long looks for room before shrinking**: the band is widened (up to 0.20 at the top and
+   0.96 at the bottom) before the text is reduced. Without that order, any increase of the font is cancelled
+   by the tightening, "two effects that cancel exactly, and a correction that seems to do nothing".
+
+### And one thing done better
+
+His list also carried: "*an italic font: the Dreamcast reference is in italics, our atlas is not. A second
+atlas would allow it.*" A second one was not needed: the slant is measured at 7.5° and applied by shearing at
+draw time (`src/host/fv2_texte.h`).
+
+
+## The tree, redone on August's — on 2026-10-22
+
+Asked for by Frédéric: redo the tree of OPTIONS' sub-menus taking August 2026 as the example. It was reread
+in `Src/OSD/SDL/Main.cpp` of the 20 August backup (`OptionsEntries` and `OptionLines`), not reconstructed
+from memory.
 
 ```
 OPTIONS
-├─ les treize réglages        nom à gauche, valeur centrée
-├─ DISPLAY                    → un écran           (demi-ligne de blanc avant)
-├─ SOUNDS                     → un écran
-├─ CONTROLLER                 → un écran
-├─ STATS                      → un écran
-└─ INITIALIZE                 une action, en image  (1,2 ligne de blanc avant)
+├─ the thirteen settings      name on the left, value centred
+├─ DISPLAY                    -> a screen           (half a blank line before)
+├─ SOUNDS                     -> a screen
+├─ CONTROLLER                 -> a screen
+├─ STATS                      -> a screen
+└─ INITIALIZE                 an action, as an image  (1.2 blank line before)
 ```
 
-Les quatre portes sont dessinées **en gras et centrées**, comme en août et pour la raison qu'il donnait :
-elles mènent quelque part plutôt qu'elles ne règlent quelque chose. Le gras est l'épaississement du titre
-sans la condensation — la feuille n'a qu'une graisse, c'est ainsi qu'elle en gagne une seconde. Les deux
-blancs sont les siens. `B` **remonte d'un écran** au lieu de viser la liste des modes en dur : c'est sa pile
-de retour.
+The four doors are drawn **bold and centred**, as in August and for the reason he gave: they lead somewhere
+rather than set something. The bold is the title's thickening without the condensing — the sheet has only one
+weight, that is how it gains a second. Both blanks are his. `B` **goes up one screen** instead of aiming at
+the list of modes in hard code: that is its return stack.
 
-La Dreamcast a les mêmes portes à deux noms près — `SOUNDS`, `CONTROLLER`, `RESULT`, puis `INITIALIZE`.
-`DISPLAY` et `STATS` sont du fork, `RESULT` est du disque ; on suit août, c'est ce qui était demandé.
+The Dreamcast has the same doors but for two names — `SOUNDS`, `CONTROLLER`, `RESULT`, then `INITIALIZE`.
+`DISPLAY` and `STATS` are the fork's, `RESULT` is the disc's; we follow August, which is what was asked for.
 
-**Ce qu'il y a derrière chaque porte, honnêtement : rien encore**, sauf `CONTROLLER`, qui était déjà
-titre-et-rien-d'autre en août — « *LA PAGE CONTROLLER, VIDE POUR L'INSTANT. Demandée le 2026-08-18 : le
-titre et rien d'autre* ». Pour celle-là l'arbre est donc complet. Les trois autres portaient : `DISPLAY`
-`WIDESCREEN`, `HD ART`, `FPS COUNTER`, `ENDING` ; `SOUNDS` le test des bruitages, les vingt musiques, les
-deux volumes et le choix du pack ; `STATS` le VS DIAGRAM. Chacune affiche aujourd'hui son titre et, en
-sourdine, ce qu'elle tiendra.
+**What is behind each door, honestly: nothing yet**, except `CONTROLLER`, which was already
+a-title-and-nothing-else in August — "*THE CONTROLLER PAGE, EMPTY FOR NOW. Asked for on 2026-08-18: the title
+and nothing else*". So for that one the tree is complete. The three others carried: `DISPLAY` `WIDESCREEN`,
+`HD ART`, `FPS COUNTER`, `ENDING`; `SOUNDS` the sound effects test, the twenty pieces of music, the two
+volumes and the choice of pack; `STATS` the VS DIAGRAM. Each one shows its title today and, quietly, what it
+will hold.
 
-### La densité, annoncée en août et mesurée ici
+### The density, announced in August and measured here
 
-Le relevé d'août disait : « *seize lignes ne peuvent pas être grosses* ». La page en porte **dix-huit**.
-Mesuré sur une capture de 1440 × 1080 :
+August's list said: "*sixteen lines cannot be large*". The page carries **eighteen**. Measured on a
+1440 × 1080 capture:
 
-| | la Dreamcast | cette page |
+| | the Dreamcast | this page |
 |---|---|---|
-| hauteur de capitale | 0,0292 | **0,0176** — 60 % |
-| pas des lignes | 0,0584 | **0,0361** — 62 % |
+| capital height | 0.0292 | **0.0176** — 60 % |
+| line pitch | 0.0584 | **0.0361** — 62 % |
 
-C'est exactement ce qu'il avait prévu. **Tranché le jour même par Frédéric** : la première de ses deux
-sorties, les treize réglages sur leur propre page.
+That is exactly what he had foreseen. **Settled the same day by Frédéric**: the first of his two ways out,
+the thirteen settings on their own page.
 
-### L'arborescence telle qu'elle est
+### The tree as it stands
 
 ```
 OPTIONS
-├─ GAME ASSIGNMENTS  → les treize réglages, puis INITIALIZE
-├─ DISPLAY           → un écran
-├─ SOUNDS            → un écran
-├─ CONTROLLER        → un écran : les affectations, avec leur témoin
-└─ STATS             → un écran
+├─ GAME ASSIGNMENTS  -> the thirteen settings, then INITIALIZE
+├─ DISPLAY           -> a screen
+├─ SOUNDS            -> a screen
+├─ CONTROLLER        -> a screen : the bindings, with their indicator
+└─ STATS             -> a screen
 ```
 
-`OPTIONS` fait cinq lignes, `GAME ASSIGNMENTS` en fait quatorze. **`INITIALIZE` a suivi les réglages**, et
-c'est une divergence délibérée d'avec août et le disque, qui le gardent tous deux au pied d'`OPTIONS` : il
-ne remet que ces treize valeurs, donc sur une page qui ne les montre plus ce serait un bouton dont on ne peut
-pas voir l'effet. Eux pouvaient l'y laisser, les réglages y étaient.
+`OPTIONS` is five lines, `GAME ASSIGNMENTS` is fourteen. **`INITIALIZE` followed the settings**, and that is
+a deliberate divergence from August and from the disc, which both keep it at the foot of `OPTIONS`: it
+restores only those thirteen values, so on a page that no longer shows them it would be a button whose effect
+cannot be seen. They could leave it there, the settings were there.
 
-Et **une page courte ne s'étire pas** : le pas est celui du disque tant que les lignes le permettent, et le
-bloc se centre dans sa bande. Sans quoi `OPTIONS`, avec ses cinq lignes, aurait eu un pas trois fois celui de
-`GAME ASSIGNMENTS` et les deux écrans n'auraient pas eu l'air du même menu.
+And **a short page does not stretch**: the pitch is the disc's as long as the lines allow, and the block is
+centred in its band. Otherwise `OPTIONS`, with its five lines, would have had a pitch three times
+`GAME ASSIGNMENTS`', and the two screens would not have looked like the same menu.
 
-### Ce que ça a rendu, mesuré
+### What that gave, measured
 
-| | capitale | pas | % du disque |
+| | capital | pitch | % of the disc |
 |---|---|---|---|
-| dix-huit lignes | 0,0176 | 0,0361 | 60 % |
-| quatorze lignes | **0,0231** | **0,0472** | **79 %** |
-| la Dreamcast | 0,0292 | 0,0584 | 100 % |
+| eighteen lines | 0.0176 | 0.0361 | 60 % |
+| fourteen lines | **0.0231** | **0.0472** | **79 %** |
+| the Dreamcast | 0.0292 | 0.0584 | 100 % |
 
-Il reste 21 % d'écart, et il vient de ce que le disque n'affiche que **sept** réglages là où la borne en a
-treize. Les réduire voudrait dire en cacher, ce qui n'est pas la même chose que les ranger.
+21 % of difference remains, and it comes from the disc showing only **seven** settings where the cabinet has
+thirteen. Reducing them would mean hiding some, which is not the same thing as arranging them.
 
+## The pages behind the doors, ported — on 2026-10-22
 
-## Les pages derrière les portes, portées — le 2026-10-22
-
-Frédéric a dû le demander deux fois : la première livraison était la charpente, avec quatre portes qui ne
-menaient nulle part. Les voici remplies, ligne pour ligne d'après `Src/OSD/SDL/Main.cpp` du 20 août.
+Frédéric had to ask twice: the first delivery was the framework, with four doors that led nowhere. Here they
+are filled, line for line after `Src/OSD/SDL/Main.cpp` of 20 August.
 
 ### `DISPLAY` — `DISPLAY_LINES`
 
-| ligne | ici |
+| line | here |
 |---|---|
-| `WIDESCREEN` | **la forme de l'image**, qui défile sur les cinq du portage (`FIT`, `4:3`, `16:10`, `16:9`, `21:9`). Août n'en avait que deux, d'où son `ON`/`OFF` ; la ligne est la même, elle en fait plus |
-| `HD ART` | `ON` ou `NONE`. **Enjambée** : le pack de textures 3D est lu une fois au démarrage et rien ne sait le relâcher |
-| `FPS COUNTER` | **réel**, le compteur du portage |
-| `ENDING` | **enjambée** : la fin à la Dreamcast est du fork, rien de tel ici |
+| `WIDESCREEN` | **the image's shape**, which cycles through the port's five (`FIT`, `4:3`, `16:10`, `16:9`, `21:9`). August had only two, hence its `ON`/`OFF`; the line is the same, it does more |
+| `HD ART` | `ON` or `NONE`. **Stepped over**: the 3D texture pack is read once at start-up and nothing knows how to release it |
+| `FPS COUNTER` | **real**, the port's counter |
+| `ENDING` | **stepped over**: the Dreamcast-style ending is the fork's, there is nothing like it here |
 
 ### `SOUNDS` — `SOUND_LINES`
 
-| ligne | ici |
+| line | here |
 |---|---|
-| `SE` | **réelle depuis le 2026-10-23** : les 256 index de la banque `0x2E`, joués à chaque pas. Les trois seuls nommés s'affichent par leur nom, les autres par le numéro du SOUND TEST du jeu (index + 353) |
-| `SE VOLUME` | **réelle**, jauge de vingt segments |
-| `BGM` | **réelle depuis le 2026-10-23** : les vingt musiques par leur nom, jouées à chaque pas, arrêtées en quittant la page. Août l'affichait `BGM` et l'aiguillait sur `BGM TEST`, deux lignes `VOLUME` étant indiscernables |
-| `BGM SET` | **enjambée** |
-| `BGM VOLUME` | **réelle**, jauge de vingt segments |
-| `INITIALIZE` | **réelle**, remet les deux volumes à fond |
+| `SE` | **real since 2026-10-23**: the 256 indices of bank `0x2E`, played at every step. The only three that are named show by their name, the others by the game's SOUND TEST number (index + 353) |
+| `SE VOLUME` | **real**, a gauge of twenty segments |
+| `BGM` | **real since 2026-10-23**: the twenty pieces of music by name, played at every step, stopped on leaving the page. August showed it as `BGM` and routed it to `BGM TEST`, two `VOLUME` lines being indistinguishable |
+| `BGM SET` | **stepped over** |
+| `BGM VOLUME` | **real**, a gauge of twenty segments |
+| `INITIALIZE` | **real**, puts both volumes back to full |
 
-Les quatre lignes enjambées de `SOUNDS` demandent toutes de **tendre une note à la carte son**, c'est-à-dire
-la couche défaite le 2026-10-21 et qui attend que `docs/fv2-console-son.md` soit validé. Elles sont dessinées
-et passées, jamais retirées : « *une ligne avec rien à basculer est enjambée plutôt que retirée* ».
+`SOUNDS`' four stepped-over lines all require **handing a note to the sound board**, which is to say the layer
+undone on 2026-10-21 and waiting for `docs/fv2-console-son.md` to be approved. They are drawn and skipped,
+never removed: "*a line with nothing to toggle is stepped over rather than removed*".
 
-Les jauges sont `option_vol_up_on.png` et `option_vol_up_off.png`, vingt segments, **dans leurs couleurs à
-lui** : les teinter au jaune de la ligne choisie ne disait rien, le segment allumé étant déjà jaune.
+The gauges are `option_vol_up_on.png` and `option_vol_up_off.png`, twenty segments, **in his own colours**:
+tinting them with the selected line's yellow said nothing, the lit segment being yellow already.
 
-### `CONTROLLER` — les affectations
+### `CONTROLLER` — the bindings
 
-Titre et rien d'autre en août, où elle fut demandée ainsi le 18. Elle règle maintenant les commandes :
-**neuf lignes** — les quatre directions, poing, garde, pied, Start et `SELECT` — **sur deux colonnes**,
-`1P` et `2P`. La ligne choisie porte le **filet rose** de `GAME ASSIGNMENTS`, le même dessin, posé par son
-bas comme là-bas, sur la largeur de cette grille-ci.
-Haut et bas parcourent les lignes, gauche et droite passent d'un joueur à l'autre, `A` ouvre une ligne et
-**la touche ou le bouton suivant devient l'affectation**. Retour arrière **et Start** annulent, ce qui en
-fait les deux seules commandes qu'on ne puisse pas lier ici. Start ressort aussi, hors capture.
+A title and nothing else in August, where it was asked for that way on the 18th. It now sets the controls:
+**nine lines** — the four directions, punch, guard, kick, Start and `SELECT` — **over two columns**, `1P` and
+`2P`. The selected line carries `GAME ASSIGNMENTS`' **pink rule**, the same drawing, placed by its bottom as
+over there, over this grid's width.
+Up and down walk the lines, left and right move from one player to the other, `A` opens a line and **the next
+key or button becomes the binding**. Backspace **and Start** cancel, which makes them the only two controls
+that cannot be bound here. Start also exits, outside a capture.
 
-**Pourquoi Start n'est pas liable, et ce que ça a coûté** : dans la première version, seul Retour arrière annulait une
-capture. À la manette il n'y avait donc **aucune sortie** : tout bouton liait. La première main à l'essayer l'a
-prouvé en une session —  est passé de  à , ce qui n'est pas un réglage qu'on demande mais un
-Start pressé pour ressortir. Une capture qui avale tout enferme.
+**Why Start is not bindable, and what that cost**: in the first version, only Backspace cancelled a capture.
+On a gamepad there was therefore **no way out**: every button bound. The first hand to try it proved it in one
+session —  went from  to , which is not a setting anyone asks for but a Start pressed to get out. A
+capture that swallows everything shuts you in.
 
-**Et une neuvième ligne qui ne lie rien** : `TEST`, une sous chaque colonne, qui ouvre le **miroir** de ce
-joueur — les huit directions et les trois boutons en grand, allumés tant qu'on les tient, avec leur
-affectation sous chacun. Une diagonale s'allume seule, les deux droites restant éteintes, ce qui rend un coin
-de stick indiscutable. Start revient à la grille.
+**And a ninth line that binds nothing**: `TEST`, one under each column, which opens that player's **mirror** —
+the eight directions and the three buttons, large, lit as long as they are held, with their binding under
+each. A diagonal lights on its own, the two straight ones staying dark, which makes a corner of the stick
+indisputable. Start returns to the grid.
 
-Le partage est le bon, et c'est Frédéric qui l'a demandé ainsi : **la grille dit ce qui est lié, le miroir dit
-que ça arrive**. Le miroir seul ne réglait rien ; accroché à l'éditeur, il vaut d'être là.
+The split is the right one, and it is Frédéric who asked for it that way: **the grid says what is bound, the
+mirror says that it arrives**. The mirror alone set nothing; attached to the editor, it earns its place.
 
-Chaque ligne porte l'icône du jeu correspondante, **toujours allumée** : ici elle dit de quelle commande il
-s'agit, pas si on la tient. C'est le miroir, derrière `TEST`, qui répond à cette question-là — et il y répond
-mieux, en grand.
+Each line carries the game's corresponding icon, **always lit**: here it says which control is meant, not
+whether it is held. It is the mirror, behind `TEST`, that answers that question — and it answers it better,
+large.
 
-**`SELECT` est la pièce de ce portage.** La borne a Start, Coin, Test et Service et pas de Select du tout : le
-nom est celui de la manette de console, et le levier est celui sur lequel il tombe là-bas — le bouton où la
-main va pour mettre un crédit. Elle ne porte pas d'icône, la planche ne dessinant que ce qu'un combattant
-fait.
+**`SELECT` is this port's coin.** The cabinet has Start, Coin, Test and Service and no Select at all: the name
+is the console pad's, and the lever is the one it falls on over there — the button a hand goes to in order to
+put a credit in. It carries no icon, the sheet drawing only what a fighter does.
 
-Les icônes viennent de `assets/menu-console/inputs.png`, 512 × 512, qui ne servait nulle part. Ses onze cases
-ont été **mesurées sur l'encre** : les flèches n'ont pas toutes la même largeur — 71 pour les droites, 59 pour
-les diagonales, 70 pour haut et bas — et les forcer dans une case unique engraisserait les diagonales. Chacune
-est dessinée à hauteur commune. L'éteint est la même image à l'alpha 70.
+The icons come from `assets/menu-console/inputs.png`, 512 × 512, which was used nowhere. Its eleven cells were
+**measured on the ink**: the arrows are not all the same width — 71 for the straight ones, 59 for the
+diagonals, 70 for up and down — and forcing them into a single cell would fatten the diagonals. Each is drawn
+at a common height. The unlit one is the same image at alpha 70.
 
-### Deux versions, et pourquoi la première ne valait rien
+### Two versions, and why the first was worth nothing
 
-La première version était **un miroir seul** : les huit directions et les trois boutons allumés, rien à
-régler. Elle avait déjà un défaut de commandes — Frédéric l'a essayée à la manette et a vu en moins d'une
-minute que **tester gauche et droite changeait de joueur** ; en regardant mieux, le **poing validait** et le
-**pied ressortait**, le pied étant le `B` de la manette. Toutes les commandes que la page devait refléter, le
-menu les lisait.
+The first version was **a mirror only**: the eight directions and the three buttons lit, nothing to set. It
+already had a controls flaw — Frédéric tried it on a gamepad and saw in under a minute that **testing left
+and right changed player**; looking closer, **punch confirmed** and **kick exited**, kick being the pad's `B`.
+Every control the page was meant to reflect, the menu was reading.
 
-J'ai corrigé ça en dessinant les deux joueurs ensemble, pour n'avoir plus rien à commuter et ne garder que
-Start. Techniquement juste, et **à côté de la question** : son verdict suivant a été *« en l'état cette page
-ne sert à rien, on ne peut rien régler, juste vérifier que les touches fonctionnent »*. Un miroir est un
-diagnostic, pas un écran d'options.
+I fixed that by drawing both players together, so as to have nothing left to switch and to keep only Start.
+Technically right, and **beside the point**: his next verdict was *"as it stands this page is of no use, you
+can't set anything, just check that the keys work"*. A mirror is a diagnostic, not an options screen.
 
-**Et en faire un éditeur dissout le problème de commandes au lieu de le contourner.** Un miroir doit laisser
-toutes les commandes libres — d'où l'impasse. Un éditeur **veut** avaler ce qu'on presse, puisque cet appui
-est la réponse à sa question. Les mêmes touches qui gênaient le miroir sont exactement ce dont la capture a
-besoin.
+**And making an editor of it dissolves the controls problem instead of working round it.** A mirror has to
+leave every control free — hence the dead end. An editor **wants** to swallow what is pressed, since that
+press is the answer to its question. The very keys that got in the mirror's way are exactly what the capture
+needs.
 
-**Vérifié** en partie cachée : descendre jusqu'à `PUNCH`, `A`, puis `Q` — et `p1_key_punch` passe de `X` à
-`Q` dans `settings.ini`, la ligne affichant `Q / A`. Le réglage survit au redémarrage. `VF3_LIVE=n,m` allume
-les bits de chaque joueur, un événement poussé ne changeant pas l'état clavier que SDL rapporte.
+**Verified** in a hidden session: go down to `PUNCH`, `A`, then `Q` — and `p1_key_punch` goes from `X` to `Q`
+in `settings.ini`, the line showing `Q / A`. The setting survives a restart. `VF3_LIVE=n,m` lights each
+player's bits, since a pushed event does not change the keyboard state SDL reports.
 
-### `STATS` — le VS DIAGRAM
+### `STATS` — the VS DIAGRAM
 
-Le tableau du jeu, `vs_global.png`, avec les chiffres posés dans ses cases : quatorze personnages, un `TOTAL`
-en jaune, et huit colonnes. La grille est relevée sur l'image par ses filets blancs — `x` de 327 à 2219 en
-huit parts égales, `y` de 99 à 1391 — ce qui retombe exactement sur la mesure d'août.
+The game's table, `vs_global.png`, with the figures laid in its cells: fourteen characters, a `TOTAL` in
+yellow, and eight columns. The grid is measured on the image by its white rules — `x` from 327 to 2219 in
+eight equal parts, `y` from 99 to 1391 — which falls exactly on August's measurement.
 
-Les compteurs viennent de la sauvegarde, par la disposition du §12 d'août : `bloc = base + n × 0x1A8`,
-`KO` à +0x000, `JUDGE` à +0x018, puis `FIGHT`, `WIN` et `LOSE` par adversaire tous les 8 octets — **seize
-adversaires et non quatorze**, parce que la rangée fait 0x80 et que Del Sol est l'adversaire 14. Deux points
-de cette description ont été corrigés par la mesure, plus bas : **`DRAW` est rangé**, à +0x020, et le codage
-est **contigu** et non espacé.
+The counters come from the backup, by August's §12 layout: `block = base + n × 0x1A8`, `KO` at +0x000,
+`JUDGE` at +0x018, then `FIGHT`, `WIN` and `LOSE` per opponent every 8 bytes — **sixteen opponents and not
+fourteen**, because the row is 0x80 and Del Sol is opponent 14. Two points of that description were corrected
+by measurement, below: **`DRAW` is filed**, at +0x020, and the encoding is **contiguous** and not spaced.
 
-**Une seule chose a dû être retrouvée** : ses offsets sont dans *son* vidage de NVRAM, pas dans le `backup`
-de ce portage. L'empreinte qu'il imprime les relie — à son `0x188` il lit `210 210 120 120 69 180`, qui est
-le bloc `GAME ASSIGNMENTS`, et la même suite est à `0x42` ici. Donc **le nôtre est le sien moins `0x146`**, ce
-qui place le premier bloc à `0x3006` — quelques octets dans la troisième page de la sauvegarde, qui est
-précisément là où commence le troisième bloc. Deux contrôles indépendants qui concordent.
+**Only one thing had to be found again**: his offsets are in *his* NVRAM dump, not in this port's `backup`.
+The footprint he prints links them — at his `0x188` he reads `210 210 120 120 69 180`, which is the
+`GAME ASSIGNMENTS` block, and the same run is at `0x42` here. So **ours is his minus `0x146`**, which puts
+the first block at `0x3006` — a few bytes into the backup's third page, which is precisely where the third
+block begins. Two independent checks that agree.
 
-**Non confirmé sur des chiffres vivants** : tous les compteurs sont à zéro dans une sauvegarde où aucun match
-n'a jamais été joué. Il faudra en jouer un pour le dire.
+**Not confirmed on live figures**: every counter is zero in a backup where no match has ever been played. One
+will have to be played to say.
 
-`SKO 1` et `SKO 2` restent **vides**, et c'est voulu : la liste des points en suspens d'août les donne
-« *affichés à zéro sans qu'on sache où ils vivent — le seul chiffre du tableau qu'on ne puisse pas
-justifier* ». Une case vide le dit ; un zéro le prétendrait.
+`SKO 1` and `SKO 2` stay **empty**, and that is intended: August's list of outstanding points gives them as
+"*shown as zero without anyone knowing where they live — the only figure in the table that cannot be
+justified*". An empty cell says so; a zero would pretend.
 
 
-## `SOUNDS` remplie — le 2026-10-23
+## `SOUNDS` filled — on 2026-10-23
 
-Les deux essais de la page marchent. Ce qui les bloquait n'était pas le tableau des sorties mis de côté — ils
-ne touchent pas à la musique du jeu — mais le fait qu'une note tendue à la carte **sous un écran gelé** ne
-s'entendait pas. C'est fait depuis la veille, donc ils sont faisables.
+The page's two tests work. What was blocking them was not the set-aside table of outputs — they do not touch
+the game's music — but the fact that a note handed to the board **under a frozen screen** could not be heard.
+That has been done since the day before, so they are feasible.
 
-| ligne | ce qu'elle fait |
+| line | what it does |
 |---|---|
-| `SE` | parcourt les 256 index de la banque `0x2E` et joue à chaque pas |
-| `BGM` | parcourt les vingt musiques par leur nom et joue à chaque pas |
+| `SE` | walks the 256 indices of bank `0x2E` and plays at every step |
+| `BGM` | walks the twenty pieces of music by name and plays at every step |
 
-Les noms et la numérotation sont les tables mesurées d'août : sur la banque `0x10` le numéro du SOUND TEST est
-l'index plus dix, sur `0x2E` l'index plus 353. **Vérifié ici deux fois** dans le relevé MIDI : l'attraction
-envoie `A0 10 07`, qui est le n° 17 `ATTRACT`, et le replay `A0 10 11`, qui est le n° 27 `DEMO`.
+The names and the numbering are August's measured tables: on bank `0x10` the SOUND TEST number is the index
+plus ten, on `0x2E` the index plus 353. **Verified here twice** in the MIDI log: the attract sends
+`A0 10 07`, which is no. 17 `ATTRACT`, and the replay `A0 10 11`, which is no. 27 `DEMO`.
 
-Et une décision à nous : **une musique d'essai est arrêtée en quittant la page**, par la commande de silence du
-jeu. Sans ça un essai suivait le joueur dans la partie, et ce n'est plus un essai.
+And one decision of ours: **a test piece of music is stopped on leaving the page**, by the game's silence
+command. Without that, a test followed the player into the game, and that is no longer a test.
 
-`BGM SET` reste enjambée : les packs de musique sont du fork, et ses propres notes disent que le remplacement
-y a été branché sans jamais être entendu.
+`BGM SET` stays stepped over: the music packs are the fork's, and his own notes say the replacement was wired
+in there without ever being heard.
 
-`DISPLAY` est laissée à ses quatre lignes d'août, dont deux vivantes. Lui en ajouter (échelle de rendu, choix
-du rasteriseur, mouvement fluide) serait inventer une page qui n'est pas la sienne ; les deux enjambées le
-sont pour une raison dite à leur ligne.
+`DISPLAY` is left with its four lines from August, two of them live. Adding more (render scale, choice of
+rasteriser, smooth motion) would be inventing a page that is not his; the two stepped-over ones are so for a
+reason stated at their line.
 
 
-## Pourquoi `ROUND TIME` ne prenait pas, et ce qu'il fallait écrire en plus — 2026-10-23
+## Why `ROUND TIME` did not take, and what else had to be written — 2026-10-23
 
-Frédéric a mis `ROUND TIME 1P` à 60 et le round a duré 30. Mesuré, et la réponse n'est pas celle que
-`docs/fv2-console-options.md` supposait depuis la veille.
+Frédéric set `ROUND TIME 1P` to 60 and the round lasted 30. Measured, and the answer is not the one
+`docs/fv2-console-options.md` had been supposing since the day before.
 
-**Le match ne lit pas le réglage.** Il lit un mot **déjà converti** : `0x0000C2EC` choisit entre `0x00581418`
-(un joueur) et `0x0058141C` (deux) selon `0x0058145A`, et pose le résultat dans le chrono `0x00581404`.
+**The match does not read the setting.** It reads an **already converted** word: `0x0000C2EC` chooses between
+`0x00581418` (one player) and `0x0058141C` (two) according to `0x0058145A`, and puts the result into the clock
+`0x00581404`.
 
-**Et la conversion n'a lieu qu'une fois, à l'amorçage.** `VF3_RAMLOG` montre `0x00581418` déjà égal à `0x780`
-à l'**image 223**, en mode 0, et il ne bouge plus de toute la partie. Le calcul est en `0x00038DB8` :
-`rlwinm ...,6`, soit **la valeur fois 64** — le jeu compte 64 images par seconde pour ce chrono, pas 60.
-30 × 64 = 1920, et 60 × 64 = 3840.
+**And the conversion happens only once, at boot.** `VF3_RAMLOG` shows `0x00581418` already equal to `0x780`
+at **frame 223**, in mode 0, and it does not move again for the whole session. The computation is at
+`0x00038DB8`: `rlwinm ...,6`, that is **the value times 64** — the game counts 64 frames a second for that
+clock, not 60. 30 × 64 = 1920, and 60 × 64 = 3840.
 
-Écrire le réglage seul ne pouvait donc **rien** faire après l'amorçage, et c'est exactement ce qu'il a vu. La
-version qui redémarrait la partie le cachait sans le résoudre.
+So writing the setting alone could do **nothing** after boot, and that is exactly what he saw. The version
+that restarted the game hid it without solving it.
 
-### Quels réglages sont ainsi mis en cache
+### Which settings are cached that way
 
-Pas deviné : deux amorçages ont été vidés, l'un avec les réglages poussés et l'autre non, et **tout
-`0x00580000`–`0x00582000` comparé**. Deux endroits seulement bougent :
+Not guessed: two boots were dumped, one with the settings pushed and the other not, and **all of
+`0x00580000`–`0x00582000` compared**. Two places only move:
 
-| réglage | son cache | la forme |
+| setting | its cache | the form |
 |---|---|---|
-| `ROUND TIME 1P` | `0x00581418` | valeur × 64 |
-| `ROUND TIME VS` | `0x0058141C` | valeur × 64 |
+| `ROUND TIME 1P` | `0x00581418` | value × 64 |
+| `ROUND TIME VS` | `0x0058141C` | value × 64 |
 
-Les **énergies n'ont rien bougé** : elles sont lues vives et n'ont besoin de rien.
+The **energies did not move**: they are read live and need nothing.
 
-### Et une erreur dans ce même relevé, trouvée le soir même
+### And an error in that same measurement, found the same evening
 
-Ce relevé donnait aussi `ADVERTISE SOUND` pour caché à `0x0058142C`, « gardé comme le réglage plus un ». **Il
-ne l'est pas.** `0x0058142C` est le **nombre de rounds d'un match**, et la première lecture était une
-coïncidence : `ADVERTISE SOUND` valait 1, donc « plus un » faisait 2, et `MATCH COUNT 1P` valait 2 aussi.
+That measurement also gave `ADVERTISE SOUND` as cached at `0x0058142C`, "kept as the setting plus one". **It
+is not.** `0x0058142C` is the **number of rounds in a match**, and the first reading was a coincidence:
+`ADVERTISE SOUND` was 1, so "plus one" made 2, and `MATCH COUNT 1P` was 2 as well.
 
-Mesuré proprement, un réglage à la fois :
+Measured properly, one setting at a time:
 
-| poussé | ce qui bouge dans `0x00580000`–`0x00582000` |
+| pushed | what moves in `0x00580000`–`0x00582000` |
 |---|---|
-| `MATCH COUNT 1P` à 5 | `0x0058142F` seul — l'octet bas du mot à `0x0058142C`, qui lit alors 5 |
-| `MATCH COUNT VS` à 5 | rien à l'amorçage |
-| `ADVERTISE SOUND` à 0 | rien à `0x0058142C` ; une douzaine d'octets dans les tables de son, à `0x00580E8D` et `0x0058135D`–`6F` |
+| `MATCH COUNT 1P` to 5 | `0x0058142F` alone — the low byte of the word at `0x0058142C`, which then reads 5 |
+| `MATCH COUNT VS` to 5 | nothing at boot |
+| `ADVERTISE SOUND` to 0 | nothing at `0x0058142C`; a dozen bytes in the sound tables, at `0x00580E8D` and `0x0058135D`–`6F` |
 
-Et ce mot n'est pas décoratif : `FUN_000136B0`, qui résout un coup fatal, compare **les rounds déjà gagnés
-plus ce que vaut le coup** à `0x0058142C` pour décider si le match est fini. Y écrire un mauvais nombre
-raccourcit ou rallonge donc tous les matchs — ce que faisait la page depuis le matin, dès qu'on touchait à
-`ADVERTISE SOUND`.
+And that word is not decorative: `FUN_000136B0`, which resolves a fatal blow, compares **the rounds already
+won plus what the blow is worth** with `0x0058142C` to decide whether the match is over. Writing a wrong
+number there therefore shortens or lengthens every match — which is what the page had been doing since the
+morning, as soon as `ADVERTISE SOUND` was touched.
 
-**La ligne a été retirée, et rien ne la remplace** : le jeu **recuit** le nombre de rounds au début de chaque
-match. Poussé vif pendant l'attraction, il se lit 5 dans le combat qui suit. `ADVERTISE SOUND`, lui, est
-réparti dans des tables de son à l'amorçage et n'a pas un mot à réécrire ; il demande un redémarrage, que
-cette page ne fait pas.
+**The line was removed, and nothing replaces it**: the game **recooks** the number of rounds at the start of
+each match. Pushed live during the attract, it reads 5 in the fight that follows. `ADVERTISE SOUND`, for its
+part, is spread over sound tables at boot and has no word to rewrite; it needs a restart, which this page does
+not do.
 
-### La correction
+### The correction
 
-`Model3::fv2_set_option` écrit maintenant **trois** choses : la sauvegarde, la copie de travail, et le cache
-quand il y en a un (`fv2_recook_option`).
+`Model3::fv2_set_option` now writes **three** things: the backup, the working copy, and the cache when there
+is one (`fv2_recook_option`).
 
-**Vérifié**, en deux moitiés qui se rejoignent.
+**Verified**, in two halves that meet.
 
-*Que le cache soit relu* : en posant `0x00581418` à `0xF00` à partir de l'image 1500 — donc bien après
-l'amorçage — le round suivant part à **3840 images, soixante secondes**, contre 1920 au témoin. Le cache est
-donc relu à chaque match, et l'écrire suffit.
+*That the cache is read again*: by setting `0x00581418` to `0xF00` from frame 1500 on — so well after boot —
+the next round starts at **3840 frames, sixty seconds**, against 1920 for the control. So the cache is read
+again at every match, and writing it is enough.
 
-*Que la page écrive bien ce mot-là* : `VF3_OPTION_LOG=1` fait dire à `fv2_recook_option` ce qu'elle pose et où.
-La route est `tools/scripts/fv2-console-options-timer.txt` — Start à l'image 1200 tombe sur l'écran titre et
-ouvre la liste ; de là le jeu est gelé, donc la suite se pilote à l'horloge (`VF3_KEYS_S`), seule chose qui
-atteigne une surface dessinée par-dessus un jeu arrêté :
+*That the page does write that word*: `VF3_OPTION_LOG=1` makes `fv2_recook_option` say what it sets and
+where. The route is `tools/scripts/fv2-console-options-timer.txt` — Start at frame 1200 falls on the title
+screen and opens the list; from there the game is frozen, so the rest is driven by the clock (`VF3_KEYS_S`),
+the only thing that reaches a surface drawn over a stopped game:
 
 ```
 VF3_HIDDEN=1 VF3_OPTION_LOG=1 VF3_SCRIPT=tools/scripts/fv2-console-options-timer.txt
 VF3_KEYS_S=Down@30,Down@31,Down@32,Down@33,Down@34,Down@35,Return@37,Return@39,Down@41,Down@42,Left@44,Left@45,Right@47,Right@48
 ```
 
-Six *bas* mènent à OPTIONS, deux *valider* ouvrent la page puis GAME ASSIGNMENTS, deux *bas* tombent sur
-`ROUND TIME 1P`, et les pas donnent :
+Six *downs* lead to OPTIONS, two *confirms* open the page and then GAME ASSIGNMENTS, two *downs* fall on
+`ROUND TIME 1P`, and the steps give:
 
 ```
 option 120555 = 55, cooked 00581418 = 3520 (55 s)
@@ -597,22 +590,22 @@ option 120555 = 55, cooked 00581418 = 3520 (55 s)
 option 120555 = 60, cooked 00581418 = 3840 (60 s)
 ```
 
-Les deux moitiés se recouvrent sur `3840` : la page pose le mot que le match relit.
+The two halves overlap on `3840`: the page sets the word the match reads again.
 
-**À savoir pour le prochain essai** : si le réglage est déjà au maximum, un pas vers la droite ne change rien
-et n'écrit rien — c'est ce qui s'est passé au premier essai, où la sauvegarde portait déjà 60. Faire descendre
-la valeur avant de la remonter, sinon on lit un silence pour une panne.
+**Worth knowing for the next trial**: if the setting is already at its maximum, a step to the right changes
+nothing and writes nothing — that is what happened on the first trial, where the backup already carried 60.
+Bring the value down before bringing it back up, or a silence gets read as a failure.
 
-### Le round de vérification
+### The verification round
 
-Les deux moitiés se recouvrent, mais aucune des deux n'est un match. Celui-là a été joué, en partie cachée, du
-premier appui jusqu'au chrono : `tools/scripts/fv2-console-options-round.txt` ouvre la liste à l'image 1200,
-`VF3_KEYS_S` mène à `ROUND TIME 1P` et le fait **descendre de 60 à 20**, ressort de la page par deux retours
-arrière, l'appui de l'image 1260 rouvre la liste, *valider* prend ARCADE, et le poing de l'image 1500 choisit
-le combattant. `VF3_TIMER_LOG=1` suit alors `0x00581404`.
+The two halves overlap, but neither of them is a match. That one was played, in a hidden session, from the
+first press to the clock: `tools/scripts/fv2-console-options-round.txt` opens the list at frame 1200,
+`VF3_KEYS_S` leads to `ROUND TIME 1P` and brings it **down from 60 to 20**, leaves the page with two
+backspaces, the press at frame 1260 reopens the list, *confirm* takes ARCADE, and the punch at frame 1500
+picks the fighter. `VF3_TIMER_LOG=1` then follows `0x00581404`.
 
-La sauvegarde a été copiée dans un dossier de données à part, pour que celle du propriétaire ne bouge pas :
-elle portait 60, donc l'amorçage avait cuit `3840`. Le journal donne :
+The backup was copied into a separate data folder, so that the owner's would not move: it carried 60, so the
+boot had cooked `3840`. The log gives:
 
 ```
 option 120555 = 20, cooked 00581418 = 1280 (20 s)
@@ -622,102 +615,99 @@ timer f 3401: 1280 left (20.0 s), the round starts from 20 (1P) / 45 (2P)
 timer f 4842: 0 left (0.0 s)
 ```
 
-**Deux rounds partis de 1280**, les vingt secondes posées par la page, et non les 3840 de l'amorçage. Le
-premier s'est terminé avant la fin du temps (remise à 1280 à l'image 3401), le second a expiré à l'image 4842.
+**Two rounds started from 1280**, the twenty seconds the page set, and not the boot's 3840. The first ended
+before time was up (reset to 1280 at frame 3401), the second expired at frame 4842.
 
-Deux choses se lisent en passant :
+Two things read out in passing:
 
-- **`0x00581404` compte des images, pas des secondes.** 1280 pour vingt secondes : soixante-quatre par
-  seconde, le même compte que la conversion. Les `5, 4, 3, 2, 1` relevés dans `fv2-flux-de-match.md` étaient
-  ses cinq dernières images, pas des secondes.
-- **`ROUND TIME VS` est resté à 45**, la valeur de la sauvegarde que rien n'a touchée. L'écriture ne déborde
-  pas sur le réglage voisin.
+- **`0x00581404` counts frames, not seconds.** 1280 for twenty seconds: sixty-four a second, the same count
+  as the conversion. The `5, 4, 3, 2, 1` noted in `fv2-flux-de-match.md` were its last five frames, not
+  seconds.
+- **`ROUND TIME VS` stayed at 45**, the backup's value, which nothing touched. The write does not spill over
+  onto the neighbouring setting.
 
-## VS DIAGRAM : les vrais chiffres
+## VS DIAGRAM: the real figures
 
-Le tableau était construit et lisait déjà la sauvegarde, mais sur rien : dans une sauvegarde où aucun match
-n'a été mené à terme, tous les compteurs sont à zéro, et un tableau de zéros ne dit pas si on lit au bon
-endroit. Quatre matchs joués en partie cachée, chacun contre la sauvegarde que le précédent avait écrite,
-l'ont rempli — et ont corrigé la description au passage.
+The table was built and already read the backup, but on nothing: in a backup where no match has been played
+to the end, every counter is zero, and a table of zeros does not say whether the right place is being read.
+Four matches played in hidden sessions, each against the backup the previous one had written, filled it — and
+corrected the description along the way.
 
-### Un match ARCADE n'écrit rien de tout ça
+### An ARCADE match writes none of this
 
-Le round de vérification de la section précédente a bougé **quatorze octets**, tous ailleurs. Le tableau est
-un relevé de **versus** : c'est un versus qu'il faut. Les routes sont dans `tools/scripts/` :
-`fv2-console-vs-diagram.txt` (personne ne bouge), `fv2-console-vs-decide.txt` (le joueur 1 frappe sans
-arrêt), `fv2-console-vs-juge.txt` (il frappe huit secondes puis laisse le chrono finir) et
-`fv2-console-vs-sko.txt` (poing et pied alternés). Toutes passent par `ROUND TIME VS` au minimum, pour que les
-rounds expirent vite.
+The previous section's verification round moved **fourteen bytes**, all elsewhere. The table is a record of
+**versus** play: a versus match is what is needed. The routes are in `tools/scripts/`:
+`fv2-console-vs-diagram.txt` (nobody moves), `fv2-console-vs-decide.txt` (player 1 hits without stopping),
+`fv2-console-vs-juge.txt` (he hits for eight seconds then lets the clock run out) and
+`fv2-console-vs-sko.txt` (punch and kick alternating). All go through `ROUND TIME VS` at its minimum, so that
+the rounds expire quickly.
 
-### Ce que chaque match a déplacé
+### What each match moved
 
-| match | ce qui s'est passé | ce qui a bougé dans la table |
+| match | what happened | what moved in the table |
 |---|---|---|
-| 1 | quatre rounds, personne ne bouge → quatre nuls | `FIGHT` 0 → 4 et `0x020` 0 → 4, **dans les deux blocs** |
-| 2 | trois rounds décidés au KO | `FIGHT` 4 → 7, `LOSE` 0 → 3 d'un côté, `WIN` 0 → 3 de l'autre, `KO` 0 → 3 ; **`0x020` reste à 4** |
-| 3 | frappes puis chrono, à santé inégale | `FIGHT` 7 → 10, un `WIN` et un `LOSE`, **`0x018` 0 → 1**, `0x020` 4 → 6 |
-| 4 | poing et pied alternés | `FIGHT` 10 → 13, `LOSE`/`WIN` +3, `KO` 3 → 6 ; **rien à `0x008` ni `0x010`** |
+| 1 | four rounds, nobody moves → four draws | `FIGHT` 0 → 4 and `0x020` 0 → 4, **in both blocks** |
+| 2 | three rounds settled by KO | `FIGHT` 4 → 7, `LOSE` 0 → 3 on one side, `WIN` 0 → 3 on the other, `KO` 0 → 3; **`0x020` stays at 4** |
+| 3 | hits then the clock, at unequal health | `FIGHT` 7 → 10, one `WIN` and one `LOSE`, **`0x018` 0 → 1**, `0x020` 4 → 6 |
+| 4 | punch and kick alternating | `FIGHT` 10 → 13, `LOSE`/`WIN` +3, `KO` 3 → 6; **nothing at `0x008` or `0x010`** |
 
-Cinq octets bougent par match, jamais un de plus : bloc 10 à `0x4096` et bloc 11 à `0x423E`, chacun portant
-l'autre comme adversaire, et chaque paire symétrique — le `LOSE` de CHARLIE contre EMI en face du `WIN` d'EMI
-contre CHARLIE. La base, le pas et la case par adversaire tombent juste **en même temps**, ce qu'aucun
-compteur isolé n'aurait pu montrer.
+Five bytes move per match, never one more: block 10 at `0x4096` and block 11 at `0x423E`, each carrying the
+other as its opponent, and each pair symmetrical — CHARLIE's `LOSE` against EMI facing EMI's `WIN` against
+CHARLIE. The base, the step and the per-opponent cell all fall right **at the same time**, which no single
+counter could have shown.
 
-### Trois choses apprises
+### Three things learned
 
-**`0x020` est DRAW**, que la note d'août donnait pour nulle part. Le match 1 l'a mis à 4 avec quatre nuls ;
-le match 2 l'a laissé à 4 en ajoutant trois combats décidés — un total de combats aurait suivi `FIGHT`
-jusqu'à 7. Et il s'accorde avec `FIGHT - WIN - LOSE` sur chaque ligne mesurée : 10 − 0 − 4 = 6, 10 − 4 − 0 = 6.
-C'est le chiffre stocké qui est lu maintenant, étant le compte du jeu lui-même plutôt qu'une soustraction
-entre trois de ses autres.
+**`0x020` is DRAW**, which August's note gave as being nowhere. Match 1 put it at 4 with four draws; match 2
+left it at 4 while adding three settled fights — a total of fights would have followed `FIGHT` up to 7. And
+it agrees with `FIGHT - WIN - LOSE` on every line measured: 10 − 0 − 4 = 6, 10 − 4 − 0 = 6. It is the stored
+figure that is read now, being the game's own count rather than a subtraction among three of its others.
 
-**Le codage est contigu**, pas espacé comme celui des réglages : deux octets gros-boutiens en `+0` et `+1`
-d'une case de huit, donc six octets sur huit inutilisés. Un compte de 4 n'a bougé que l'octet de `+1`.
+**The encoding is contiguous**, not spaced like the settings': two big-endian bytes at `+0` and `+1` of a
+cell of eight, so six bytes out of eight unused. A count of 4 moved only the byte at `+1`.
 
-**SKO 1 et SKO 2, trouvés par un Super K.O. joué à la main.** Les scalaires vont de huit en huit : `0x000`
-KO, `0x008`, `0x010`, `0x018` JUDGE, `0x020` DRAW. Trois des cinq étaient mesurés, ce qui fixait le pas, et
-les deux trous ne pouvaient guère être que la paire SKO. Restait à le prouver, et **aucune machine n'y est
-arrivée** : ni le script, à six cadences d'Armor Flash, ni trente mille images de jeu aléatoire, ni un combat
-entier contre le processeur — les deux icônes d'armure restent vertes du début à la fin, mesurées sur treize
-images.
+**SKO 1 and SKO 2, found through a Super K.O. played by hand.** The scalars go in eights: `0x000` KO,
+`0x008`, `0x010`, `0x018` JUDGE, `0x020` DRAW. Three of the five were measured, which fixed the step, and the
+two holes could hardly be anything but the SKO pair. It remained to be proved, and **no machine managed it**:
+not the script, at six Armor Flash cadences, not thirty thousand frames of random play, not a whole fight
+against the processor — both armour icons stay green from start to finish, measured over thirteen frames.
 
-Le coup demande une main : l'armure du joueur à terre (Armor Flash — avant, arrière, avant, arrière avec les
-trois boutons) et l'adversaire presque mort, puis avant + poing + pied + garde. **Frédéric l'a joué.** Un
-match versus, et la comparaison est sans appel :
+The move takes a hand: the downed player's armour (Armor Flash — forward, back, forward, back with the three
+buttons) and the opponent nearly dead, then forward + punch + kick + guard. **Frédéric played it.** One versus
+match, and the comparison is beyond appeal:
 
 ```
-0x010 passe de 0 a 1 dans le bloc du vainqueur
-KO, JUDGE et DRAW ne bougent pas du tout
+0x010 goes from 0 to 1 in the winner's block
+KO, JUDGE and DRAW do not move at all
 ```
 
-Une victoire qui ne compte comme aucune des trois fins ordinaires et qui tombe dans l'un des deux trous
-**est** le Super K.O. Les deux cases sont donc remplies, et le tableau n'en a plus de vide.
+A win that counts as none of the three ordinary endings and that falls into one of the two holes **is** the
+Super K.O. So both cells are filled, and the table has none empty left.
 
-**Et ce qui sépare les deux colonnes a été lu dans le code** (`docs/fv2-flux-de-match.md`, section 8), parce
-que Frédéric a demandé à le vérifier là plutôt qu'à l'écran. Ce n'est pas deux coups : `FUN_000701C8`, la
-routine qui range un match, compte **la même fin** dans les deux cas — `0x00581452` vaut 3 de part et d'autre
-— et ce qui décide de la colonne est **le réglage `SUPER K.O.` lui-même** :
+**And what separates the two columns was read in the code** (`docs/fv2-flux-de-match.md`, section 8), because
+Frédéric asked for it to be checked there rather than on screen. It is not two moves: `FUN_000701C8`, the
+routine that files a match away, counts **the same ending** in both cases — `0x00581452` is 3 either way —
+and what decides the column is **the `SUPER K.O.` setting itself**:
 
 ```
-lbz r0, 0x554(r9)      le reglage, a 0x00120554
-beq -> +0x04           ETEINT : la premiere colonne   (sauvegarde 0x008, SKO 1 ici)
-    -> +0x08           ALLUME : la seconde            (sauvegarde 0x010, SKO 2 ici)
+lbz r0, 0x554(r9)      the setting, at 0x00120554
+beq -> +0x04           OFF : the first column    (backup 0x008, SKO 1 here)
+    -> +0x08           ON  : the second          (backup 0x010, SKO 2 here)
 ```
 
-L'exploitant qui éteint `SUPER K.O.` n'empêche donc pas la fin d'arriver : il la fait compter ailleurs. Les
-deux cases séparent **les Super K.O. gagnés réglage éteint de ceux gagnés réglage allumé**. Celui de Frédéric,
-joué réglage allumé, est tombé dans la seconde — et l'ordre dessiné ici, l'éteint d'abord, est celui du code.
+So an operator who turns `SUPER K.O.` off does not stop the ending from happening: he makes it count
+somewhere else. The two cells separate **the Super K.O.s won with the setting off from those won with it on**.
+Frédéric's, played with the setting on, fell into the second — and the order drawn here, off first, is the
+code's.
 
-**Les compteurs sont des entiers 32 bits**, sur une table vivante à `0x0011F7E0` au pas de `0xD4` — soit
-exactement la moitié des `0x1A8` de la sauvegarde, celle-ci n'étant que cette table espacée à deux octets
-utiles sur quatre. Dans la sauvegarde chaque compteur prend huit octets et **la valeur se lit dans les deux
-premiers**, mesuré : `00 01 00 00 00 00 00 00` pour un compte de 1. La lecture 16 bits de la page est donc
-juste jusqu'à 65535.
+**The counters are 32-bit integers**, on a live table at `0x0011F7E0` with a step of `0xD4` — that is exactly
+half the backup's `0x1A8`, the latter being only that table spaced out at two useful bytes in four. In the
+backup each counter takes eight bytes and **the value reads in the first two**, measured:
+`00 01 00 00 00 00 00 00` for a count of 1. So the page's 16-bit read is right up to 65535.
 
-### Ce que la page montre
+### What the page shows
 
-Photographiée sur la sauvegarde des quatre matchs (F12, qui traverse maintenant les surfaces de la
-console) :
+Photographed on the four matches' backup (F12, which now goes through the console's surfaces):
 
 ```
 CHARLIE   FIGHT 13   WIN 0   LOSE 7   DRAW 6   KO 0   JUDGE 0
@@ -725,218 +715,219 @@ EMI       FIGHT 13   WIN 7   LOSE 0   DRAW 6   KO 6   JUDGE 1
 TOTAL           26         7        7       12      6         1
 ```
 
-Les lignes tombent sur les bons personnages, et le total est la somme des colonnes — chaque combat y compte
-deux fois, une par participant, puisque les deux blocs l'enregistrent.
+The rows fall on the right characters, and the total is the sum of the columns — each fight counts twice
+there, once per participant, since both blocks record it.
 
-## `DISPLAY` : `HD ART` et `ENDING`
+## `DISPLAY`: `HD ART` and `ENDING`
 
-Les deux lignes enjambées de cette page sont branchées. Elles ne l'ont pas été de la même façon : l'une
-n'attendait qu'un levier, l'autre a demandé une mesure.
+This page's two stepped-over lines are wired in. They were not wired in the same way: one only needed a
+lever, the other took a measurement.
 
-### `HD ART` : un vrai interrupteur
+### `HD ART`: a real switch
 
-La ligne ne faisait que rapporter, parce que le pack de textures 3D était lu une fois au démarrage et que
-rien ne savait le relâcher. Il n'a pas fallu de nouveau levier : **`load()` vide ce qu'il tient avant de
-lire**, donc charger depuis nulle part est la façon de reposer un pack, et le rendu GPU vérifie déjà le
-nombre de pages au lieu de le supposer — son propre commentaire prévoyait qu'un pack arrive plus tard.
+The line only reported, because the 3D texture pack was read once at start-up and nothing knew how to release
+it. No new lever was needed: **`load()` empties what it holds before reading**, so loading from nowhere is the
+way to put a pack down, and the GPU rendering already checks the number of pages instead of supposing it —
+its own comment foresaw a pack arriving later.
 
-- `NONE` quand il n'y a rien à charger, et la ligne est alors enjambée comme toute ligne sans réglage.
-- `ON` / `OFF` sinon, et le réglage suit dans `settings.ini`.
+- `NONE` when there is nothing to load, and the line is then stepped over like any line with nothing to set.
+- `ON` / `OFF` otherwise, and the setting follows into `settings.ini`.
 
-**Mesuré** avec un pack de quarante PNG tirés du dump : allumée, la page dit `ON` et le journal rapporte
-*40 textures loaded, 0 left out, in 1 page*. Éteinte, *the 3D texture pack put down*, la page refermée, le jeu
-a rendu sept cents images de plus sans une erreur — c'est là que le tampon du GPU est refait, donc c'est là
-que ça devait casser si ça devait casser.
+**Measured** with a pack of forty PNGs taken from the dump: switched on, the page says `ON` and the log
+reports *40 textures loaded, 0 left out, in 1 page*. Switched off, *the 3D texture pack put down*, the page
+closed, the game rendered seven hundred more frames without an error — that is where the GPU's buffer is
+rebuilt, so that is where it had to break if it was going to break.
 
-### `ENDING` : la fin du jeu, qu'on peut enfin regarder
+### `ENDING`: the game's ending, which can finally be watched
 
-Août en faisait un interrupteur pour ses propres illustrations, dont rien n'existe ici. Mais **le jeu a une
-fin** — le générique, mode 12 — que personne n'avait jamais vue tourner : y arriver demande de finir l'échelle,
-et les notes la rangent parmi les états jamais atteints. La ligne n'est donc pas son interrupteur mais un
-moyen de la regarder : *valider* la demande au jeu et la page s'efface.
+August made a switch of it for his own artwork, none of which exists here. But **the game has an ending** —
+the credits, mode 12 — that nobody had ever seen run: getting there means finishing the ladder, and the notes
+file it among the states never reached. So the line is not its switch but a way to watch it: *confirm* asks
+the game for it and the page clears.
 
-Elle se termine toute seule : le générique dure une centaine de secondes, puis le jeu repasse par sa boucle
-d'attraction et revient à son écran titre. Il n'y a rien à remettre en place.
+It ends by itself: the credits run about a hundred seconds, then the game goes back through its attract loop
+and returns to its title screen. There is nothing to put back.
 
-**La moitié seulement en sort, et la ligne est gardée quand même**, parce que la moitié qui sort est le
-générique lui-même.
+**Only half of it comes out, and the line is kept anyway**, because the half that comes out is the credits
+themselves.
 
-La fin **alterne** : environ 225 images de cartons sur le viper, qui se dessinent exactement comme il faut, et
-environ 225 d'un passage en 3D — 279 modèles sur 16 vues, 383 plus tard — qui se dessine comme un **sol blanc
-nu avec une silhouette grosse comme le pouce**, sous des bandeaux 2D restés de la démonstration (« Old
-Armstone Town », « v.s. GRACE »). Rien du décor n'est là.
+The ending **alternates**: about 225 frames of cards over the viper, which draw exactly as they should, and
+about 225 of a 3D passage — 279 models over 16 views, 383 later — which draws as a **bare white floor with a
+silhouette the size of a thumb**, under 2D banners left over from the demonstration ("Old Armstone Town",
+"v.s. GRACE"). None of the scenery is there.
 
-### Une frontière qui n'en était pas une
+### A boundary that was not one
 
-Il faut raconter l'erreur, parce qu'elle est instructive et qu'elle a tenu une demi-journée.
+The mistake has to be told, because it is instructive and it held for half a day.
 
-En poussant `MODE_REQUEST` une image à la fois et en photographiant **toujours à l'image 1900**, le générique
-paraissait cassé demandé de 1201 à 1210, entier à partir de 1212, et partiel à 1211 — une frontière nette à
-dix-huit images après `FV2_TITLE_DSP`, qu'on pouvait expliquer par un écran titre qui n'a pas fini de
-s'installer. Une attente de quarante images a été posée là-dessus.
+By pushing `MODE_REQUEST` one frame at a time and photographing **always at frame 1900**, the credits looked
+broken when asked for from 1201 to 1210, whole from 1212 on, and partial at 1211 — a clean boundary eighteen
+frames after `FV2_TITLE_DSP`, which could be explained by a title screen that has not finished settling. A
+wait of forty frames was laid on top of that.
 
-**C'était un artefact de l'échantillonnage.** Puisque la fin alterne toutes les 225 images, déplacer la
-demande déplace *la phase dans laquelle tombe l'image 1900* : à 1201 elle tombait sur un passage 3D, à 1250
-sur un carton. Photographiées **au même décalage depuis `ENDING_INT`** — +300 et +650 — une demande à 1201 et
-une à 1250 donnent les deux mêmes images, aux mêmes tailles d'octet près. **Le moment de la demande ne change
-rien du tout.** L'attente a été retirée.
+**It was an artefact of the sampling.** Since the ending alternates every 225 frames, moving the request
+moves *the phase frame 1900 falls into*: at 1201 it fell on a 3D passage, at 1250 on a card. Photographed
+**at the same offset from `ENDING_INT`** — +300 and +650 — a request at 1201 and one at 1250 give the same
+two images, down to the same byte sizes. **The moment of the request changes nothing at all.** The wait was
+removed.
 
-La leçon, pour la prochaine fois : comparer des images prises au même instant d'un phénomène périodique, et
-non au même numéro d'image absolu. Le « 1211 partiel » qui semblait si parlant n'était qu'une transition de
-phase prise au vol.
+The lesson, for next time: compare images taken at the same instant of a periodic phenomenon, and not at the
+same absolute frame number. The "partial 1211" that seemed so telling was only a phase transition caught in
+flight.
 
-### Pourquoi il n'y a pas de décor : la fin est faite de rediffusions
+### Why there is no scenery: the ending is made of replays
 
-Sega a laissé les noms de ses états en clair, et ce sont eux qui répondent. Les sept sous-états de la fin
-(`docs/fv2-etats.md`, qui dit aussi comment les lire) :
+Sega left its states' names in the clear, and it is they that answer. The ending's seven sub-states
+(`docs/fv2-etats.md`, which also says how to read them):
 
 ```
 ending_trans_init   ending_trans_wait   ending_replay_init
 ending_replay_ctrl  ending_replay_next  ending_final_mask1  ending_final_mask2
 ```
 
-**Trois sur sept ne parlent que de replays.** Le générique n'est pas un film : c'est le défilé des crédits
-alternant avec **les rediffusions des combats que le joueur vient de gagner**. Les bandeaux que j'avais pris
-pour des restes de démonstration — « Old Armstone Town », « v.s. GRACE » — sont les surimpressions du replay
-lui-même, qui annonce son lieu et son adversaire, exactement comme dans l'attraction.
+**Three of the seven speak only of replays.** The credits are not a film: they are the credit roll
+alternating with **replays of the fights the player has just won**. The banners I had taken for leftovers of
+the demonstration — "Old Armstone Town", "v.s. GRACE" — are the replay's own overlays, announcing its place
+and its opponent, exactly as in the attract.
 
-Donc, demandée depuis l'écran titre, la fin n'a **aucun match à rediffuser**. Le sol reste nu parce qu'il n'y
-a pas de décor à charger : il n'y a pas de combat.
+So, asked for from the title screen, the ending has **no match to replay**. The floor stays bare because
+there is no scenery to load: there is no fight.
 
-### Les trois images qui le prouvent
+### The three images that prove it
 
-La même image de la fin, au même décalage depuis `ENDING_INT`, demandée de trois façons :
+The same frame of the ending, at the same offset from `ENDING_INT`, asked for in three ways:
 
-| comment on y entre | ce qui sort | poids |
+| how it is entered | what comes out | weight |
 |---|---|---|
-| `MODE_REQUEST = 12` depuis l'écran titre | un sol blanc nu, une silhouette grosse comme le pouce | 16 Ko |
-| `MODE_REQUEST = 12` **depuis un combat** | les **deux combattants** du combat, texturés, avec leurs ombres — toujours sur un sol nu | 28 Ko |
-| la **branche du jeu lui-même** | la rediffusion entière : *Cross River Damsite*, la cage, les deux combattants, « v.s. PICKY » | 324 Ko |
+| `MODE_REQUEST = 12` from the title screen | a bare white floor, a silhouette the size of a thumb | 16 KB |
+| `MODE_REQUEST = 12` **from a fight** | the fight's **two fighters**, textured, with their shadows — still on a bare floor | 28 KB |
+| the **game's own branch** | the whole replay: *Cross River Damsite*, the cage, the two fighters, "v.s. PICKY" | 324 KB |
 
-La deuxième ligne est la charnière : demander le mode depuis un combat fait apparaître les combattants, parce
-qu'ils sont chargés — et pas le décor, parce que le replay n'a pas été préparé.
+The second row is the hinge: asking for the mode from a fight makes the fighters appear, because they are
+loaded — and not the scenery, because the replay was not prepared.
 
-La troisième se fait sans rien forcer du rendu. `fv2_game_NEXT_PROG_SEL` branche sur la fin quand
-`ADV_INFO_STATUS` porte le bit 3, « l'échelle est finie » — un bit que les notes d'été donnaient comme *lu dans
-le code, jamais vu posé*. Il suffit de le poser : l'octet bas de `0x005813F0` vaut `00` juste avant la branche,
-donc on n'écrase rien. Le jeu prend alors sa propre route, avec tout ce qu'elle fait en plus du mode —
-`FUN_0000DD70`, l'arrêt de sept tâches, le brouillard effacé, le compteur d'écran à `0x140` — et la fin sort
-entière.
+The third is done without forcing anything in the rendering. `fv2_game_NEXT_PROG_SEL` branches to the ending
+when `ADV_INFO_STATUS` carries bit 3, "the ladder is finished" — a bit the summer's notes gave as *read in
+the code, never seen set*. It is enough to set it: the low byte of `0x005813F0` is `00` just before the
+branch, so nothing is overwritten. The game then takes its own route, with everything it does besides the
+mode — `FUN_0000DD70`, seven tasks stopped, the fog cleared, the screen counter at `0x140` — and the ending
+comes out whole.
 
 ```
 VF3_POKE=5813f0=8 VF3_POKE_FRAMES=7170-7178
-vf3run ... --script <la route d un combat> --modes
-   7178  ENDING_INT   19      au lieu de CONTINUE_INT
+vf3run ... --script <a fight's route> --modes
+   7178  ENDING_INT   19      instead of CONTINUE_INT
 ```
 
-### Demandée depuis l'écran titre, elle ne peut que le générique
+### Asked for from the title screen, it can only do the credits
 
-Elle montre **les cartons**, qui sont le contenu propre de la fin, et le jeu se rend la main tout seul. Les
-rediffusions, elle ne peut pas : il n'y a rien à rediffuser quand on arrive de l'écran titre, et un replay
-ne s'invente pas.
+It shows **the cards**, which are the ending's own content, and the game hands control back by itself. The
+replays it cannot: there is nothing to replay when one arrives from the title screen, and a replay cannot be
+invented.
 
-**La vraie fin du jeu est à portée, et elle y est maintenant.**
+**The game's real ending is within reach, and it is there now.**
 
-### Le levier : où poser le bit 3
+### The lever: where to set bit 3
 
-`fv2_game_NEXT_PROG_SEL` est le point de branche de **chaque round**, pas seulement de chaque match. C'est
-toute la difficulté : poser le bit trop tôt fait prendre la branche à un round intermédiaire, qui n'a encore
-rien enregistré à rediffuser. Mesuré sur un combat dont le vrai point de branche tombe à l'image 7178 :
+`fv2_game_NEXT_PROG_SEL` is the branch point of **every round**, not only of every match. That is the whole
+difficulty: setting the bit too early makes an intermediate round take the branch, and it has recorded
+nothing to replay yet. Measured on a fight whose real branch point falls at frame 7178:
 
-| posé à | ce que fait le jeu |
+| set at | what the game does |
 |---|---|
-| 7178 | **trop tard** — la branche a déjà lu le bit, le jeu va à `CONTINUE` |
-| 7177, 7176 | la fin, entière |
-| 6922, une seule fois | la fin, entière — le bit **tient** 256 images, rien n'a besoin de le maintenir |
-| 3000, en plein combat | la fin à l'image 4740, **à la fin du premier round**, et **nue** |
-| 1250, sur l'écran titre, avant même le match | pareil : nue, à 4740 |
+| 7178 | **too late** — the branch has already read the bit, the game goes to `CONTINUE` |
+| 7177, 7176 | the ending, whole |
+| 6922, once only | the ending, whole — the bit **holds** for 256 frames, nothing needs to maintain it |
+| 3000, mid-fight | the ending at frame 4740, **at the end of the first round**, and **bare** |
+| 1250, on the title screen, before the match even | the same: bare, at 4740 |
 
-Les deux dernières lignes sont la leçon. Le bit survit à tout — l'écran de choix, le début du match — mais il
-est consommé par le premier `NEXT_PROG_SEL` venu, et celui d'un round sans match fini n'a pas de replay.
+The last two rows are the lesson. The bit survives everything — the selection screen, the start of the match
+— but it is consumed by the first `NEXT_PROG_SEL` that comes along, and a round's, with no finished match, has
+no replay.
 
-**Le jeu dit lui-même quand le match est fini** : `0x40000000` dans le même mot, le bit que sa propre question
-« un round de plus ? » va lire. D'où la règle, et elle est simple :
+**The game says itself when the match is over**: `0x40000000` in the same word, the bit its own question "one
+more round?" is going to read. Hence the rule, and it is simple:
 
-> poser le bit 3 à la première image où `ADV_INFO_STATUS` porte déjà `0x40000000`.
+> set bit 3 at the first frame where `ADV_INFO_STATUS` already carries `0x40000000`.
 
-Une écriture, jamais tenue, comme toutes les demandes de ce portage. Le jeu réécrit le mot entier à chaque
-image depuis `0x000122C4` en conservant sa valeur, donc une écriture posée avant une image vaut pour les
-lectures de cette image-là.
+One write, never held, like all of this port's requests. The game rewrites the whole word on every frame from
+`0x000122C4`, preserving its value, so a write laid down before a frame counts for that frame's reads.
 
-### Ce que la ligne `ENDING` fait maintenant
+### What the `ENDING` line does now
 
-Deux choses, que gauche et droite choisissent :
+Two things, which left and right choose between:
 
-| valeur | ce que *valider* fait |
+| value | what *confirm* does |
 |---|---|
-| `ROLL NOW` | le générique tout de suite, par-dessus l'écran titre. Les crédits sont entiers, les passages de replay sont nus — il n'y a pas de match à rediffuser |
-| `AFTER A MATCH` | **arme**. Au premier match qui se termine, le jeu prend sa propre branche et donne sa fin entière, replays sur leurs décors |
+| `ROLL NOW` | the credits at once, over the title screen. The credits are whole, the replay passages are bare — there is no match to replay |
+| `AFTER A MATCH` | **arms**. At the first match that ends, the game takes its own branch and gives its whole ending, replays on their scenery |
 
-Armée, la ligne le dit (`>`) et la page reste ouverte : il y a une partie à aller jouer. L'armement tient
-jusqu'à ce qu'un match se termine.
+Armed, the line says so (`>`) and the page stays open: there is a game to go and play. The arming holds until
+a match ends.
 
-### Le tour de vérification
+### The verification run
 
-Joué dans l'hôte, en partie cachée, de bout en bout : la liste, `OPTIONS`, `DISPLAY`, `ENDING` mis sur
-`AFTER A MATCH`, *valider*, sortie de la page, puis `ARCADE` et un match. Le journal :
+Played in the host, in a hidden session, end to end: the list, `OPTIONS`, `DISPLAY`, `ENDING` set to
+`AFTER A MATCH`, *confirm*, out of the page, then `ARCADE` and a match. The log:
 
 ```
 the console's list: OPTIONS chosen
 the console's list: ARCADE chosen
-the console ENDING: the match is over -- the game's own ending asked for     image 6258
-image 6835 mode 12 sub 19     ENDING_INT, par la branche du jeu
-image 6847 mode 13 sub 19     ENDING_DSP
-image 7073 : 336 modeles      le passage de replay, garni
+the console ENDING: the match is over -- the game's own ending asked for     frame 6258
+frame 6835 mode 12 sub 19     ENDING_INT, through the game's branch
+frame 6847 mode 13 sub 19     ENDING_DSP
+frame 7073 : 336 models       the replay passage, furnished
 ```
 
-**336 modèles** dans le passage 3D, là où la demande nue n'en donnait que les restes.
+**336 models** in the 3D passage, where the bare request gave only the leftovers.
 
-### Et le décor est bien là — pour le match qu'on a joué
+### And the scenery is indeed there — for the match that was played
 
-Photographié dans l'hôte, à l'image près, la fin montre **Cross River Damsite** : le barrage, l'eau, la cage,
-les deux combattants en plein échange, « v.s. EMI ». C'est la rediffusion du match qui vient d'être joué, sur
-son décor, en écran large.
+Photographed in the host, to the frame, the ending shows **Cross River Damsite**: the dam, the water, the
+cage, the two fighters mid-exchange, "v.s. EMI". It is the replay of the match just played, on its scenery,
+in widescreen.
 
-**Mais la fin rediffuse l'échelle entière, et l'échelle n'a qu'un barreau.** Les passages se suivent :
+**But the ending replays the whole ladder, and the ladder has only one rung.** The passages follow each
+other:
 
-| passage | modèles | ce qu'on voit |
+| passage | models | what is seen |
 |---|---|---|
-| le premier | 334 à 338 | le match joué, décor compris |
-| le suivant | 279 | le sol nu, « Old Armstone Town », « v.s. GRACE » |
+| the first | 334 to 338 | the match played, scenery included |
+| the next | 279 | the bare floor, "Old Armstone Town", "v.s. GRACE" |
 
-Le second n'est pas un défaut du portage : c'est un adversaire que le joueur n'a jamais affronté, donc un
-replay qui n'existe pas. Une vraie partie d'arcade en remplirait huit.
+The second is not a flaw of the port: it is an opponent the player never faced, so a replay that does not
+exist. A real arcade run would fill eight of them.
 
-**Et c'est ce qui explique ma longue erreur de lecture.** Quatre photos de suite sont tombées sur le second
-passage ou sur un carton, et j'en ai conclu que l'hôte ne chargeait pas les décors alors que `vf3run` les
-chargeait — deux moteurs, deux résultats, une belle fausse piste. Il n'y avait aucune différence de moteur :
-l'image de `vf3run` était le premier passage, les miennes le second. **Même leçon qu'à la section
-précédente, au même endroit : sur un phénomène qui alterne, une image prise au hasard ne prouve rien.**
+**And that is what explains my long misreading.** Four photographs in a row fell on the second passage or on
+a card, and I concluded from them that the host was not loading the scenery while `vf3run` was — two engines,
+two results, a fine false trail. There was no difference of engine at all: `vf3run`'s image was the first
+passage, mine the second. **The same lesson as in the previous section, in the same place: on a phenomenon
+that alternates, an image taken at random proves nothing.**
 
-### Le tour de vérification
+### The verification run
 
-Joué dans l'hôte, en partie cachée, du premier appui jusqu'au générique. La liste s'ouvre à l'image 1200, la
-page mène à `DISPLAY` puis à `ENDING`, *valider* la demande, et la page s'efface. Le jeu reprend à l'image 1200,
-et — ce tour ayant été joué pendant que l'attente de quarante images était encore en place, dà déduite depuis :
-
-```
-image 1241 mode 12 sub 5     ENDING_INT, quarante-sept images apres FV2_TITLE_DSP
-image 1253 mode 13 sub 5     ENDING_DSP
-```
-
-Les photographies montrent les cartons entiers et qui avancent — *Chief Programmer HIDEYA SHIBAZAKI* puis,
-vingt secondes plus tard, *Character Designers KENTAROW NISHIMURA...* — sur le viper, en écran large. **Les
-deux sont tombées sur des cartons**, ce qui est précisément le piège décrit plus haut : elles ne disent rien
-des passages 3D, qui eux restent au sol nu.
-
-Et elle rend la main toute seule, ce qui était la condition pour n'avoir rien à remettre en place :
+Played in the host, in a hidden session, from the first press to the credits. The list opens at frame 1200,
+the page leads to `DISPLAY` then to `ENDING`, *confirm* asks for it, and the page clears. The game resumes at
+frame 1200, and — this run having been played while the forty-frame wait was still in place, since removed:
 
 ```
-image 7167 mode 18 sub 5     OVER_INT : le generique est fini
-image 7360 mode  3 sub 1     la boucle d attraction reprend
-image 7558 mode  3 sub 5     l ecran titre
-image 7777 mode  3 sub 10    la rediffusion, comme si de rien n etait
+frame 1241 mode 12 sub 5     ENDING_INT, forty-seven frames after FV2_TITLE_DSP
+frame 1253 mode 13 sub 5     ENDING_DSP
 ```
 
-Le jeu passe donc par son GAME OVER avant de revenir à l'attraction. Six mille trois cents images entre
-la demande et le retour, un peu moins de deux minutes.
+The photographs show the cards whole and advancing — *Chief Programmer HIDEYA SHIBAZAKI* then, twenty seconds
+later, *Character Designers KENTAROW NISHIMURA...* — over the viper, in widescreen. **Both fell on cards**,
+which is precisely the trap described above: they say nothing about the 3D passages, which stay on the bare
+floor.
+
+And it hands control back by itself, which was the condition for having nothing to put back:
+
+```
+frame 7167 mode 18 sub 5     OVER_INT : the credits are finished
+frame 7360 mode  3 sub 1     the attract loop resumes
+frame 7558 mode  3 sub 5     the title screen
+frame 7777 mode  3 sub 10    the replay, as if nothing had happened
+```
+
+So the game goes through its GAME OVER before coming back to the attract. Six thousand three hundred frames
+between the request and the return, a little under two minutes.
