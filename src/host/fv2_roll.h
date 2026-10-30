@@ -246,7 +246,6 @@ struct fv2_roll
 		// The window's height is the Dreamcast's 480: that is what keeps Sega's proportions whatever the
 		// window's shape, and the column is centred across it.
 		const float k = all.h / DC_H;
-		const float left = all.x + (all.w - DC_W * k) * 0.5f;   // where the Dreamcast's 640 begins
 		// THE ILLUSTRATION OF THE PAGE THAT IS UP. The topmost visible page owns the screen's picture, and
 		// it comes in from the side as the disc brings it in: 600 pixels in fifteen frames, from the right
 		// for one page and from the left for the next.
@@ -293,18 +292,23 @@ struct fv2_roll
 			}
 		}
 		if (face && face_h > 0) {
-			// in from the left, resting on the right, and out by the right
-			const float rest = DC_W - FACE_RIGHT - face_w;
+			// IN FROM THE LEFT, RESTING ON THE RIGHT, OUT BY THE RIGHT -- and the right is THE WINDOW'S, not
+			// the 4:3 frame's. Frederic asked twice for the picture further right and the text further left:
+			// the second time it was not the margins that were wrong but the frame they were measured in.
+			// On a 16:9 window the Dreamcast's 640 occupies the middle, so a picture hard against its right
+			// edge still has an eighth of the screen beyond it.
+			const float w = face_w * k, h = face_h * k;
+			const float rest = all.x + all.w - FACE_RIGHT * k - w;
 			float fx = rest;
 			if (face_u < SLIDE_S) {
 				const float t = float(std::clamp(face_u / SLIDE_S, 0.0, 1.0));
-				fx = -face_w + (rest + face_w) * t;
+				fx = (all.x - w) + (rest - (all.x - w)) * t;
 			} else if (face_u > face_w_s - SLIDE_S) {
 				const float t = float(std::clamp((face_u - (face_w_s - SLIDE_S)) / SLIDE_S, 0.0, 1.0));
-				fx = rest + (DC_W - rest) * t;
+				fx = rest + (all.x + all.w - rest) * t;
 			}
 			const SDL_FRect src = { float(face_ink.x), float(face_ink.y), float(face_ink.w), float(face_ink.h) };
-			const SDL_FRect to = { left + fx * k, all.y, face_w * k, face_h * k };
+			const SDL_FRect to = { fx, all.y, w, h };
 			SDL_RenderTexture(ren, face, &src, &to);
 		}
 		float y = y0;
@@ -312,10 +316,11 @@ struct fv2_roll
 			if (sl.page >= 0) {
 				const page &p = pages[size_t(sl.page)];
 				if (y + p.h > 0 && y < DC_H) {
-					const float x0 = TEXT_LEFT;   // left-aligned, the disc's own
+					// left-aligned ON THE WINDOW, so the column begins where the screen does
+					const float x0 = all.x + TEXT_LEFT * k;
 					for (const piece &q : p.parts) {
 						if (!q.t) continue;
-						const SDL_FRect to = { left + (x0 + q.dx) * k, all.y + (y + q.dy) * k, q.w * k, q.h * k };
+						const SDL_FRect to = { x0 + q.dx * k, all.y + (y + q.dy) * k, q.w * k, q.h * k };
 						SDL_RenderTexture(ren, q.t, nullptr, &to);
 					}
 				}
