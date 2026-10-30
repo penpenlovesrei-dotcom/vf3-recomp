@@ -302,7 +302,7 @@ struct fv2_mode_list
 			// WELL BELOW THE BLOCK, and that is Frederic's own placing of the 2026-10-30: "descend le exit
 			// game beaucoup plus bas sur le main menu". Two bands under the list's foot leaves it clear of
 			// the seven and near the bottom of the picture, where a way out belongs.
-			const float y = block_y + block_h + band * 3.4f;
+			const float y = block_y + block_h + band * 4.6f;
 			const SDL_Color grey = { 150, 150, 150, 255 }, lit = { 252, 252, 10, 255 };
 			const SDL_Color col = sel == EXIT ? lit : grey;
 			const uint8_t a = sel == EXIT ? uint8_t(255 * chosen) : 255;
