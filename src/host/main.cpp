@@ -5307,7 +5307,16 @@ int main(int argc, char **argv)
 				else game.finish_frame(!ff, true);
 				half = false;
 				pass_kind = std::max(pass_kind, 2);
-			} else { game.run_frame(!ff, true); pass_kind = 3; }
+			} else {
+				// AND THE 2D LAYERS ARE NOT BUILT WHILE THE ROLL OWNS THE SCREEN. The game draws its credit
+				// pages line by line into the tile layer, every frame, and under the port's own roll not one
+				// of those lines is ever looked at -- the same reason the boot runs with them off. Frederic,
+				// the 2026-10-30, with the 3D already skipped: "le jeu n'atteint plus les 60fps". His own
+				// log has the rest of it: a frame costing 7.72 ms where a fight's costs two or three.
+				game.tiles_on = !(cfg.ending_dc && cplay.in_ending && roll.ready());
+				game.run_frame(!ff, true);
+				pass_kind = 3;
+			}
 			game.publish();
 			game_frame++;
 			game.hold_roster();   // (nothing to do unless the player asked for the hidden fighters)
