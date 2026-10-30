@@ -41,7 +41,7 @@ struct fv2_roll
 	// PIXELS A SECOND, and the number is the ending's own length. The game's ending runs about 6300 frames,
 	// which is 110 seconds; the column is 2272 pixels and has a screen to cross on either side, so 30 a
 	// second fills the ending almost exactly (92 s). VF3_ENDING_SCROLL tries another without a build.
-	static constexpr float SPEED = 110.0f;
+	static constexpr float SPEED = 94.0f;
 	static constexpr float HD = 4.0f;         // the art is four times the sheets it was cut from
 
 	struct box { int x = 0, y = 0, w = 0, h = 0; };   // what a picture covers in its file

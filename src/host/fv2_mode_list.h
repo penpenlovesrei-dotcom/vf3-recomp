@@ -299,7 +299,10 @@ struct fv2_mode_list
 			const float band = block_h / float(PAINTED);
 			const float cap = band * 0.34f;
 			const float h = cap / fv2_text::CAP;
-			const float y = block_y + block_h + band * 0.45f;
+			// WELL BELOW THE BLOCK, and that is Frederic's own placing of the 2026-10-30: "descend le exit
+			// game beaucoup plus bas sur le main menu". Two bands under the list's foot leaves it clear of
+			// the seven and near the bottom of the picture, where a way out belongs.
+			const float y = block_y + block_h + band * 2.0f;
 			const SDL_Color grey = { 150, 150, 150, 255 }, lit = { 252, 252, 10, 255 };
 			const SDL_Color col = sel == EXIT ? lit : grey;
 			const uint8_t a = sel == EXIT ? uint8_t(255 * chosen) : 255;

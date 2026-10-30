@@ -2214,13 +2214,12 @@ int main(int argc, char **argv)
 	fv2_ending ending;
 	// and the roll the port draws itself, which owns the screen for the whole of the ending (fv2_roll.h)
 	static fv2_roll roll;
-	// THE ROLL OUTLIVES THE GAME'S ENDING. With the replay passages cut, the game walks its eight segments
-	// in about 2100 frames -- 36 seconds, measured -- while the port's own credits take 92. So the roll is
-	// LATCHED: it begins when the game enters its ending and runs on its own frames until it is past the
-	// top, and it owns the screen all the while. The game goes home behind it, through its own GAME OVER,
-	// exactly as it does behind the list's entering half (console_state.h).
-	bool roll_on = false;
-	uint64_t roll_frames = 0;
+	// THE ROLL LIVES INSIDE THE GAME'S ENDING AND NOT A FRAME LONGER. It was latched once, so that it could
+	// outlive an ending shortened by cutting the replays -- and it then ran on over the states that follow,
+	// which Frederic saw at once the 2026-10-30: "il est plus long que la version arcade et deborde sur les
+	// sous etats suivants". The latch is gone: the roll is drawn while the game is in mode 12 or 13, paced
+	// by that ending's own frames, and it ends with it. What makes it fit is the other half of the
+	// correction -- the replays are left in, so the ending keeps the arcade's own length.
 	uint32_t side_colour[2] = { 0xFF000000u, 0xFF000000u };   // widescreen's bars beside the 2D (left, right)
 	bool sky_wide = false;
 	float bg_shift_x = 0, bg_shift_y = 0;   // the layers below the 3D moved back towards the frame before (draw_below)
@@ -2580,7 +2579,14 @@ int main(int argc, char **argv)
 				// VF3_HUD_WIDE_FOOT=1 draws it on any stage, which is how the drawing was checked without
 				// playing the ladder as far as the bonus stage (a run with no hands takes it slowly).
 				static const bool foot_always = getenv("VF3_HUD_WIDE_FOOT") != nullptr;
-				hud_wide_foot = mine && (foot_always || board.fv2_bonus_stage() == 1);
+				const bool bonus_now = mine && (foot_always || board.fv2_bonus_stage() == 1);
+				hud_wide_foot = bonus_now;
+				// AND THE BAND BETWEEN THE TWO AS WELL. BONUS STAGE is a blinking text, and a blink is not
+				// where it is: Frederic says it is still in its 4:3 place, so the word is not in the foot's
+				// sixty rows but in the band above them -- the one ROUND X lives in, which is drawn wide
+				// only while a round is announced. On the bonus stage that band is drawn wide throughout,
+				// so the word is placed the same way ROUND X is wherever in it it sits.
+				if (bonus_now) hud_wide_mid = true;
 			}
 			// VF3_HUD_AUDIT=1: WHERE THE 2D ACTUALLY IS, row band by row band and column run by column run.
 			// Written to spread Fighting Vipers 2's HUD in widescreen -- the life bars and what hangs off them
@@ -2946,8 +2952,8 @@ int main(int argc, char **argv)
 		// its pages over its inverted logo, the port draws its own ground and the credits climbing it
 		// (fv2_roll.h). It owns the screen for as long as the game is in mode 12 or 13, which is also what
 		// takes the inverted logo away -- nothing of the game's picture is drawn at all.
-		if (ending.want && roll_on && roll.ready()) {
-			roll.render(ren, all, double(roll_frames) / FRAME_HZ);
+		if (ending.want && cplay.in_ending && roll.ready()) {
+			roll.render(ren, all, double(cplay.ending_frames) / FRAME_HZ);
 			ending_on = true;
 		} else if (ending.want && cplay.ending_art >= 0 && ending.have()) {
 			ending.show(ren, cplay.ending_art, stderr);
@@ -3204,7 +3210,11 @@ int main(int argc, char **argv)
 		ending.find(find_assets(), stderr);
 		roll.load(ren, find_assets(), stderr);
 		ending.want = cfg.ending_dc;
-		cplay.ending_no_replays = cfg.ending_dc;   // (the roll without the fights: console_play.h)
+		// THE REPLAYS ARE LEFT IN, and nothing of them is seen: the port owns the screen for the whole
+		// ending. Cutting them walks the game through its eight segments in 2100 frames instead of 6300,
+		// so the roll would have a third of the time it needs -- which is what made it overrun when it was
+		// latched. VF3_CUT_REPLAYS=1 cuts them again for whoever measures that road.
+		cplay.ending_no_replays = cfg.ending_dc && getenv("VF3_CUT_REPLAYS") != nullptr;
 	}
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
@@ -3953,7 +3963,6 @@ int main(int argc, char **argv)
 			  ending.have() ? std::function<void(int)>([&](int) {
 				  cfg.ending_dc = !cfg.ending_dc;
 				  ending.want = cfg.ending_dc;
-				  cplay.ending_no_replays = cfg.ending_dc;
 				  cfg_dirty = true;
 			  }) : std::function<void(int)>(), {}, {}, 0, false, 0 },
 		};
@@ -5087,6 +5096,13 @@ int main(int argc, char **argv)
 				board.mute_game_midi = cplay.ui.port_sound();
 				game.mute_fight_voice = cplay.training_on && cplay.train_hush > 0;
 				cplay.step(board, console_ctl);
+				// VF3_BONUS=1 (tests): the game's own BONUS_STG_FLAG set while a round runs, so the game
+				// draws its own BONUS STAGE at the foot of an ordinary match. The placement of that word in
+				// widescreen is judged on it, the bonus stage itself being an hour of ladder away.
+				if (static const bool bonus = getenv("VF3_BONUS") != nullptr; bonus && board.set == "fvipers2") {
+					const int m2 = board.fv2_mode();
+					if (m2 == 6 || m2 == 7) board.fv2_set_bonus_stage(true);
+				}
 				// PLAYER ONE'S LIFE HELD FULL, when ENERGY MAX 1P has been stepped past the game's highest.
 				// Frederic, the 2026-10-29: "pour finir le mode arcade, je voudrais de la vie infinie".
 				//
@@ -5101,30 +5117,6 @@ int main(int argc, char **argv)
 				// the game reads only when the match is not a versus (ROUND_MASK_INT, docs/fv2-match-flow.md),
 				// so the step above it keeps the same scope: holding one side's life against a human is not
 				// a setting, it is a second player with nothing to do.
-				// THE ENDING IS HELD OPEN FOR AS LONG AS THE ROLL TAKES, and let go the moment it is done.
-				// Cutting the replays shortens the game's own ending to almost nothing -- its segments ARE
-				// the replay cycles, and the first measurement of the cut read "over after 1 segment". So
-				// the port holds the ending's own clock (0x0058FD54, the word ENDING_INT sets to 320 and
-				// ENDING_DSP ends the ending on) above zero while its credits climb, and stops holding when
-				// they are past the top. The game then leaves by its own road, through its own GAME OVER.
-				if (cfg.ending_dc && roll.ready() && board.set == "fvipers2") {
-					if (cplay.in_ending && !roll_on) { roll_on = true; roll_frames = 0; }
-					if (roll_on) {
-						roll_frames++;
-						if (roll.over(double(roll_frames) / FRAME_HZ)) {
-							roll_on = false;
-							fprintf(stderr, "the console's roll: over after %llu frames\n",
-									(unsigned long long)roll_frames);
-						} else if (cplay.in_ending) board.fv2_set_ending_timer(120);
-					}
-				}
-				// VF3_BONUS=1 (tests): the game's own BONUS_STG_FLAG set while a round runs, so the game
-				// draws its own BONUS STAGE at the foot of an ordinary match. The placement of that word in
-				// widescreen is judged on it, the bonus stage itself being an hour of ladder away.
-				if (static const bool bonus = getenv("VF3_BONUS") != nullptr; bonus && board.set == "fvipers2") {
-					const int m2 = board.fv2_mode();
-					if (m2 == 6 || m2 == 7) board.fv2_set_bonus_stage(true);
-				}
 				if (cfg.endless_1p && board.set == "fvipers2") {
 					const int m = board.fv2_mode(), su = board.fv2_submode();
 					if ((m == 6 || m == 7) && (su == 11 || su == 12) && board.fv2_players() != 3) {
