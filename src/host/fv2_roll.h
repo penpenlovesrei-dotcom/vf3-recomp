@@ -254,18 +254,27 @@ struct fv2_roll
 		double face_u = 0, face_w_s = 0;
 		const float y0 = DC_H - float(seconds) * speed;
 		{
-			// WHICH PICTURE IS UP, and for how long it has been. Its window is its place in the column plus
-			// half a screen either side, so it comes in before the page it belongs to has gone and leaves
-			// after the next has arrived -- which is what the disc's own capture shows.
+			// WHICH PICTURE IS UP, AND FOR HOW LONG. A picture takes its turn when its place in the column
+			// passes the middle of the screen, and keeps it until the NEXT one gets there -- so there is
+			// always exactly one, it comes in, it stays while its page of credits goes by, and it leaves.
+			//
+			// The window used to be the slot's own crossing plus half a screen either side, which at this
+			// speed is twenty-eight seconds: the first picture held the screen for a quarter of the roll
+			// and the others never had their turn. Frederic, the 2026-10-30: "il n'y a plus aucun
+			// defilement des illustrations!!".
 			float yy = y0;
+			float here = 0, next_y = 0;
+			bool found = false;
 			for (const slot &sl : column) {
 				if (sl.face >= 0) {
-					const float enter = DC_H * 1.5f;              // half a screen below the bottom
-					const double u = double(yy - enter) / -double(speed);
-					const double w = double(sl.h + 2.0f * DC_H) / double(speed);
-					if (u >= 0 && u <= w) { want = sl.face; face_u = u; face_w_s = w; break; }
+					if (yy <= DC_H * 0.5f) { want = sl.face; here = yy; found = true; }
+					else if (found) { next_y = yy; break; }
 				}
 				yy += sl.h;
+			}
+			if (found) {
+				face_u = double(DC_H * 0.5f - here) / double(speed);
+				face_w_s = next_y > 0 ? double(next_y - here) / double(speed) : face_u + 2.0 * SLIDE_S;
 			}
 		}
 		if (want != face_at) {
