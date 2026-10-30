@@ -87,12 +87,19 @@ struct fv2_roll
 	static constexpr float FACE_RIGHT = 6.0f;   // where its right edge rests, from the screen's right
 	static constexpr float SLIDE = 600.0f;    // 40 pixels a frame for fifteen
 	static constexpr double SLIDE_S = 15.0 / 57.524160;
-	static constexpr float TEXT_LEFT = 18.0f;    // the column is left-aligned, as the capture has it
-	std::vector<std::string> faces;           // the files, in their own order
-	SDL_Texture *face = nullptr;              // the one up, and which page it belongs to
+	static constexpr float TEXT_LEFT = 40.0f;    // the column is left-aligned, a little clear of the edge
+	// THEY ARE ALL READ AT THE START, and that is the answer to the stutter: reading a picture of 2560
+	// square and making its texture took a frame of its own, every time one came in. They are halved on the
+	// way in to a thousand rows -- more than any window shows of them -- so the fifteen together are about
+	// sixty megabytes instead of four hundred, and nothing is read while the roll runs.
+	static constexpr int FACE_TALL = 1024;
+	struct art {
+		SDL_Texture *t = nullptr;
+		box ink;
+		float w = 0, h = 0;                   // what it is drawn at, in the DC's pixels
+	};
+	std::vector<art> art_of;
 	int face_at = -1;
-	box face_ink;                             // what it covers in its file, so it is drawn to its own size
-	float face_w = 0, face_h = 0;
 	bool tried = false;
 	float speed = SPEED;
 	float total = 0;                          // the whole column's height, in the DC's pixels
@@ -108,16 +115,21 @@ struct fv2_roll
 				if (q.t) { SDL_DestroyTexture(q.t); q.t = nullptr; }
 		pages.clear();
 		if (ground) { SDL_DestroyTexture(ground); ground = nullptr; }
-		if (face) { SDL_DestroyTexture(face); face = nullptr; }
+		for (art &a : art_of)
+			if (a.t) { SDL_DestroyTexture(a.t); a.t = nullptr; }
+		art_of.clear();
 		face_at = -1;
-		faces.clear();
 		tried = false;
 		total = 0;
 	}
 
 	// One PNG, as a texture, with its size in the DC's own pixels (the art being four times that).
+	// `tall` is the most rows the texture may keep. The art is 2048 to 2560 square and is drawn at most the
+	// height of the window, so the rest is paid for and never seen: at 2560 a picture is 26 MB of texture,
+	// and reading it is what Frederic feels -- "l'apparition des illustrations fait ralentir le jeu un court
+	// instant". Halved until it fits, which keeps the box filter exact.
 	static SDL_Texture *read(SDL_Renderer *ren, const std::string &path, float &w, float &h, FILE *log,
-							 box *ink = nullptr)
+							 box *ink = nullptr, int tall = 0)
 	{
 		std::vector<uint32_t> px;
 		int pw = 0, ph = 0;
@@ -125,6 +137,30 @@ struct fv2_roll
 		if (!read_png(path.c_str(), px, pw, ph, why)) {
 			if (log) fprintf(log, "the console's roll: %s %s\n", path.c_str(), why.c_str());
 			return nullptr;
+		}
+		int shrink = 1;
+		while (tall > 0 && ph / shrink > tall && (pw / shrink) % 2 == 0 && (ph / shrink) % 2 == 0) shrink *= 2;
+		if (shrink > 1) {
+			const int nw = pw / shrink, nh = ph / shrink;
+			std::vector<uint32_t> small(size_t(nw) * size_t(nh));
+			for (int yy = 0; yy < nh; yy++)
+				for (int xx = 0; xx < nw; xx++) {
+					uint32_t r = 0, g = 0, b = 0, a = 0;
+					for (int j = 0; j < shrink; j++)
+						for (int i = 0; i < shrink; i++) {
+							const uint32_t c = px[size_t(yy * shrink + j) * size_t(pw) + size_t(xx * shrink + i)];
+							const uint32_t ca = c >> 24;
+							r += (c & 0xFF) * ca; g += ((c >> 8) & 0xFF) * ca; b += ((c >> 16) & 0xFF) * ca;
+							a += ca;
+						}
+					// COLOURS AVERAGED WEIGHTED BY ALPHA, or the transparent border's black bleeds into the
+					// figure's edge and leaves it rimmed.
+					const uint32_t aa = a / uint32_t(shrink * shrink);
+					const uint32_t rr = a ? r / a : 0, gg = a ? g / a : 0, bb = a ? b / a : 0;
+					small[size_t(yy) * size_t(nw) + size_t(xx)] = (aa << 24) | (bb << 16) | (gg << 8) | rr;
+				}
+			px.swap(small);
+			pw = nw; ph = nh;
 		}
 		SDL_Texture *t = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC, pw, ph);
 		if (!t) {
@@ -148,8 +184,8 @@ struct fv2_roll
 			if (x1 >= x0 && y1 >= y0) *ink = { x0, y0, x1 - x0 + 1, y1 - y0 + 1 };
 			else *ink = { 0, 0, pw, ph };
 		}
-		w = float(pw) / HD;
-		h = float(ph) / HD;
+		w = float(pw * shrink) / HD;
+		h = float(ph * shrink) / HD;
 		return t;
 	}
 
@@ -201,21 +237,33 @@ struct fv2_roll
 			// a file is how the order is changed, and the first eight are the ones the roll has room for --
 			// one in each gap between two pages.
 			const std::string fin = assets + "/menu-console/ending-art/";
+			std::vector<std::string> names;
 			std::error_code ec2;
 			for (const auto &e : std::filesystem::directory_iterator(fin, ec2)) {
 				if (!e.is_regular_file(ec2)) continue;
 				std::string ext = e.path().extension().string();
 				for (char &c : ext) c = char(tolower((unsigned char)c));
-				if (ext == ".png") faces.push_back(e.path().string());
+				if (ext == ".png") names.push_back(e.path().string());
 			}
-			std::sort(faces.begin(), faces.end());
+			std::sort(names.begin(), names.end());
+			for (const std::string &n : names) {
+				art a;
+				float fw = 0, fh = 0;
+				a.t = read(ren, n, fw, fh, log, &a.ink, FACE_TALL);
+				if (!a.t) continue;
+				// drawn to its own ink and to the screen's whole height
+				const float k2 = FACE / float(std::max(1, a.ink.h));
+				a.w = float(a.ink.w) * k2;
+				a.h = FACE;
+				art_of.push_back(a);
+			}
 		}
 		// the column: a page, then a picture, then a page ... and the pictures left over after them
 		column.clear();
 		total = 0;
-		for (size_t i = 0; i < std::max(pages.size(), faces.size()); i++) {
+		for (size_t i = 0; i < std::max(pages.size(), art_of.size()); i++) {
 			if (i < pages.size()) { column.push_back({ int(i), -1, pages[i].h }); total += pages[i].h; }
-			if (i < faces.size()) { column.push_back({ -1, int(i), GAP }); total += GAP; }
+			if (i < art_of.size()) { column.push_back({ -1, int(i), GAP }); total += GAP; }
 		}
 		float gw = 0, gh = 0;
 		ground = read(ren, dir + "ground.png", gw, gh, log);
@@ -223,7 +271,7 @@ struct fv2_roll
 		ground_h = int(gh * HD);
 		if (log)
 			fprintf(log, "the console's roll: %d pages, %d illustrations, %.0f pixels of column, %.0f a second (%.0f s), the ground %s\n",
-					int(pages.size()), int(faces.size()), total, speed, (DC_H + total) / speed, ground ? "is in" : "is missing");
+					int(pages.size()), int(art_of.size()), total, speed, (DC_H + total) / speed, ground ? "is in" : "is missing");
 	}
 
 	// Over the whole window. `seconds` counts from the first frame of the game's own ending, so the roll is
@@ -276,28 +324,15 @@ struct fv2_roll
 				face_w_s = next_y > 0 ? double(next_y - here) / double(speed) : face_u + 2.0 * SLIDE_S;
 			}
 		}
-		if (want != face_at) {
-			if (face) { SDL_DestroyTexture(face); face = nullptr; }
-			face_at = want;
-			face_w = face_h = 0;
-			if (want >= 0 && want < int(faces.size())) {
-				float fw = 0, fh = 0;
-				face = read(ren, faces[size_t(want)], fw, fh, nullptr, &face_ink);
-				if (face) {
-					// to its own ink and to the screen's whole height
-					const float k2 = FACE / float(std::max(1, face_ink.h));
-					face_w = float(face_ink.w) * k2;
-					face_h = FACE;
-				}
-			}
-		}
-		if (face && face_h > 0) {
+		face_at = want;
+		const art *a = want >= 0 && want < int(art_of.size()) ? &art_of[size_t(want)] : nullptr;
+		if (a && a->t) {
 			// IN FROM THE LEFT, RESTING ON THE RIGHT, OUT BY THE RIGHT -- and the right is THE WINDOW'S, not
 			// the 4:3 frame's. Frederic asked twice for the picture further right and the text further left:
 			// the second time it was not the margins that were wrong but the frame they were measured in.
 			// On a 16:9 window the Dreamcast's 640 occupies the middle, so a picture hard against its right
 			// edge still has an eighth of the screen beyond it.
-			const float w = face_w * k, h = face_h * k;
+			const float w = a->w * k, h = a->h * k;
 			const float rest = all.x + all.w - FACE_RIGHT * k - w;
 			float fx = rest;
 			if (face_u < SLIDE_S) {
@@ -307,9 +342,9 @@ struct fv2_roll
 				const float t = float(std::clamp((face_u - (face_w_s - SLIDE_S)) / SLIDE_S, 0.0, 1.0));
 				fx = rest + (all.x + all.w - rest) * t;
 			}
-			const SDL_FRect src = { float(face_ink.x), float(face_ink.y), float(face_ink.w), float(face_ink.h) };
+			const SDL_FRect src = { float(a->ink.x), float(a->ink.y), float(a->ink.w), float(a->ink.h) };
 			const SDL_FRect to = { fx, all.y, w, h };
-			SDL_RenderTexture(ren, face, &src, &to);
+			SDL_RenderTexture(ren, a->t, &src, &to);
 		}
 		float y = y0;
 		for (const slot &sl : column) {
