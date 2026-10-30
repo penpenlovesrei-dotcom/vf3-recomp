@@ -643,7 +643,8 @@ struct settings
 		flag("smooth_motion", smooth);
 		flag("full_roster", full_roster);
 		flag("honey_costume", honey_costume);
-		flag("ending_dreamcast", ending_dc);
+		// (no longer read: the Dreamcast roll is shut, so a file that still carries the line is ignored and
+		// the line goes away at the next save -- see where the setting's row is drawn grey)
 		if (auto it = kv.find("portraits_folder"); it != kv.end()) portraits = it->second;
 		flag("portraits_off", portraits_off);
 		flag("endless_life_1p", endless_1p);
@@ -1398,8 +1399,16 @@ struct Game
 	std::thread emu_thread;
 	std::mutex emu_m;
 	std::condition_variable emu_cv;
-	bool emu_busy = false, emu_quit = false, emu_sound_on = true;
-	void job_start(bool sound_on)
+	bool emu_busy = false, emu_quit = false, emu_sound_on = true, emu_picture = true;
+	// WHAT A FRAME COSTS ON THE GAME'S OWN THREAD. The pace line's "a frame" counts only what the loop's own
+	// thread spends, and with smooth motion the frame is run over here: during the roll it read 0.4 ms while
+	// this thread was building a fight's picture. Measured where the work is, or it is not measured.
+	std::atomic<uint64_t> emu_ns{ 0 };
+	std::atomic<uint32_t> emu_frames{ 0 };
+	// THE SAME DOOR AS run_frame's. Smooth motion starts nearly every frame here, on the game's own thread,
+	// and this is where `picture` was nailed to true: the skip written into the frame loop was reached only on
+	// the passes that start no half, which is why the roll still cost a fight's frame. One flag, both roads.
+	void job_start(bool sound_on, bool picture)
 	{
 		if (!emu_thread.joinable())
 			emu_thread = std::thread([this] {
@@ -1408,9 +1417,12 @@ struct Game
 				for (;;) {
 					emu_cv.wait(lk, [this] { return emu_busy || emu_quit; });
 					if (emu_quit) return;
-					const bool snd = emu_sound_on;
+					const bool snd = emu_sound_on, pic = emu_picture;
 					lk.unlock();
-					run_frame(snd, true);
+					const uint64_t t0 = SDL_GetTicksNS();
+					run_frame(snd, pic);
+					emu_ns += SDL_GetTicksNS() - t0;
+					emu_frames++;
 					lk.lock();
 					emu_busy = false;
 					emu_cv.notify_all();
@@ -1419,6 +1431,7 @@ struct Game
 		{
 			std::lock_guard<std::mutex> lk(emu_m);
 			emu_sound_on = sound_on;
+			emu_picture = picture;
 			emu_busy = true;
 		}
 		emu_cv.notify_all();
@@ -3214,13 +3227,19 @@ int main(int argc, char **argv)
 		train.load(ren, find_assets(), &console_font, stderr);
 		curtain.load(ren, find_assets(), stderr);
 		ending.find(find_assets(), stderr);
-		roll.load(ren, find_assets(), stderr);
+		// THE DREAMCAST ENDING IS SHUT, and shut here: the roll's 25 pictures are not even read, so the
+		// player's road costs nothing at all -- no VRAM, no boot time, no frame. It would not hold 60
+		// frames a second at Frederic's over three runs (docs/fv2-dreamcast-ending.md, the 2026-10-30),
+		// and an ending that stutters is worse than the game's own, which is what the port shows again.
+		// VF3_ENDING_DC=1 is the only door left, for whoever measures the day it is taken up again.
+		cfg.ending_dc = false;
+		if (getenv("VF3_ENDING_DC")) roll.load(ren, find_assets(), stderr);
 		ending.want = cfg.ending_dc;
 		// THE REPLAYS ARE LEFT IN, and nothing of them is seen: the port owns the screen for the whole
 		// ending. Cutting them walks the game through its eight segments in 2100 frames instead of 6300,
 		// so the roll would have a third of the time it needs -- which is what made it overrun when it was
 		// latched. VF3_CUT_REPLAYS=1 cuts them again for whoever measures that road.
-		cplay.ending_no_replays = cfg.ending_dc && getenv("VF3_CUT_REPLAYS") != nullptr;
+		cplay.ending_no_replays = getenv("VF3_ENDING_DC") && getenv("VF3_CUT_REPLAYS");
 	}
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
@@ -3965,12 +3984,14 @@ int main(int argc, char **argv)
 			//
 			// Watching the roll from here has gone with it. It was a way to see a thing nobody had seen
 			// running, and it has been seen; a settings line that STARTS something is not a setting.
-			{ "ENDING", [&] { return std::string(cfg.ending_dc ? "DREAMCAST" : "ARCADE"); },
-			  ending.have() ? std::function<void(int)>([&](int) {
-				  cfg.ending_dc = !cfg.ending_dc;
-				  ending.want = cfg.ending_dc;
-				  cfg_dirty = true;
-			  }) : std::function<void(int)>(), {}, {}, 0, false, 0 },
+			//
+			// AND THE CHOICE IS SHUT, the 2026-10-30: the line keeps its place and says ARCADE, grey and
+			// stepped over, because it has neither a step nor an act -- the one way fv2_options.h is told
+			// a line is not to be picked (it draws MUTED and the cursor passes it by). The reason is
+			// measured and written down in docs/fv2-dreamcast-ending.md: the roll did not hold 60 frames
+			// a second on Frederic's machine, three runs over, and a stuttering ending is worse than the
+			// game's own. The roll's code stays, and VF3_ENDING_DC=1 opens it for measurement alone.
+			{ "ENDING", [&] { return std::string("ARCADE"); }, {}, {}, {}, 0, false, 0 },
 		};
 		// The twenty tracks, and the numbering, are August's measured tables (GameFV2.h): on bank 0x10 the
 		// sound test's number is the index plus ten, and on bank 0x2E the index plus 353. Confirmed here
@@ -4585,7 +4606,7 @@ int main(int argc, char **argv)
 					if (cplay.on) {
 						cplay.ask_ending(board);
 						fprintf(stderr, "F7: the game's ending asked for (%s)\n",
-								cfg.ending_dc ? "DREAMCAST" : "ARCADE");
+								ending.want ? "DREAMCAST" : "ARCADE");
 					}
 					break;
 				case SDL_SCANCODE_F5: set_scale(scale % MAX_SCALE + 1); break;
@@ -5244,6 +5265,12 @@ int main(int argc, char **argv)
 				if (test_frames > 0) { c.test[0] = true; test_frames--; }
 				game.builder.widen = std::max(1.0f, float(picture_aspect()) * 0.75f) * 1.05f;   // (a little more: smooth motion)
 		};
+		// WHILE THE CONSOLE'S ROLL OWNS THE SCREEN the game's picture is worth nothing: the roll covers every
+		// pixel of the window. Asked here, once, by whichever road starts the frame -- the half on the game's
+		// thread, or the whole frame run on this one.
+		// (exactly the test the drawing makes -- `ending.want`, not the setting: a test run turns the roll on
+		// with VF3_ENDING_DC without touching the saved option, and the two must not disagree)
+		auto roll_owns = [&] { return ending.want && cplay.in_ending && roll.ready(); };
 		// WHAT A FRAME'S SOUND DOES NEXT, and both kinds of frame go through it: the recording's file, the
 		// VF3_SOUND_WAV probe, the device. It is a lambda rather than two copies because the two copies are
 		// exactly what let the menu's sound drift away from the game's.
@@ -5290,7 +5317,7 @@ int main(int argc, char **argv)
 				frame_clock = std::min(frame_clock, double(frames_run) + 1.0);
 				const uint64_t th = SDL_GetTicksNS();
 				frame_inputs(half_hk, half_act, half_left);
-				game.job_start(!ff);
+				game.job_start(!ff, !roll_owns());
 				half = true;
 				half_ns = SDL_GetTicksNS() - th;
 				break;
@@ -5304,20 +5331,26 @@ int main(int argc, char **argv)
 			else frame_inputs(hk, act, left_test);
 			if (half) {
 				if (emu_threaded) game.job_wait();
-				else game.finish_frame(!ff, true);
+				else game.finish_frame(!ff, !roll_owns());
 				half = false;
 				pass_kind = std::max(pass_kind, 2);
 			} else {
-				// AND THE 2D LAYERS ARE NOT BUILT WHILE THE ROLL OWNS THE SCREEN. The game draws its credit
-				// pages line by line into the tile layer, every frame, and under the port's own roll not one
-				// of those lines is ever looked at -- the same reason the boot runs with them off. Frederic,
-				// the 2026-10-30, with the 3D already skipped: "le jeu n'atteint plus les 60fps". His own
-				// log has the rest of it: a frame costing 7.72 ms where a fight's costs two or three.
-				game.tiles_on = !(cfg.ending_dc && cplay.in_ending && roll.ready());
-				game.run_frame(!ff, true);
+				// AND NO PICTURE IS BUILT AT ALL WHILE THE ROLL OWNS THE SCREEN. Not the 2D layers, not the
+				// 3D scene, not the copy that publishes them: finish_frame takes `picture` and returns
+				// before every one of them when it is false, which is how the boot runs its 960 frames.
+				//
+				// Taking the drawing out was not enough, and Frederic's log said so twice: with the 3D
+				// skipped at the drawing end, A FRAME still cost 8.33 then 14.30 ms where a fight's costs
+				// two or three, and one pass did 443 ms of work before its present. That is the ending's
+				// replays -- real matches, their scene built out of the display list every frame -- and the
+				// only place to stop it is here, before the frame makes a picture nobody will see.
+				game.run_frame(!ff, !roll_owns());
 				pass_kind = 3;
 			}
-			game.publish();
+			// (and nothing is published either while the roll owns the screen: publish copies the 2D layers and
+			// the scene for the drawing to read, and the drawing reads none of them -- megabytes a frame for a
+			// picture that is never shown)
+			if (!roll_owns()) game.publish();
 			game_frame++;
 			game.hold_roster();   // (nothing to do unless the player asked for the hidden fighters)
 			// a boot the player watches: the same check, once it is over
@@ -5355,7 +5388,7 @@ int main(int argc, char **argv)
 			frame_clock - double(frames_run) >= 0.5) {
 			const uint64_t th = SDL_GetTicksNS();
 			frame_inputs(half_hk, half_act, half_left);
-			if (emu_threaded) game.job_start(!ff);
+			if (emu_threaded) game.job_start(!ff, !roll_owns());
 			else game.start_frame();
 			half = true;
 			pass_kind = std::max(pass_kind, 1);
@@ -5601,6 +5634,11 @@ int main(int argc, char **argv)
 					pace.frames / s, pace.pictures / all_s, stopped_note, (unsigned long long)between_n, (unsigned long long)cut_n, pace.frames ? pace.emu_ms / pace.frames : 0.0,
 					pace.draw_ms / pics, g3_shown ? "the GPU's set-up" : "the CPU's 3D", g3_shown ? pace.gpu_ms / pics : (pace.draw_ms - pace.upload_ms) / pics,
 					pace.upload_ms / pics, scale, tex_w, tex_h, gov.smooth_off ? ", smooth motion held to 60 a second" : "", audio ? SDL_GetAudioStreamQueued(audio) : -1);
+			if (const uint32_t ef = game.emu_frames.exchange(0)) {
+				const double ems = double(game.emu_ns.exchange(0)) / 1e6;
+				fprintf(stderr, "  on the game's own thread: %u frames, %.2f ms each\n", ef, ems / ef);
+			} else
+				game.emu_ns = 0;
 			if (const std::string pl = sysinfo::placement(); !pl.empty()) fprintf(stderr, "  %s\n", pl.c_str());
 			if (g3_shown && pics > 0)
 				fprintf(stderr, "  a picture's 3D: the in-between %.2f ms, the triangles prepared %.2f ms, the GPU's renderer %.2f ms (its set-up %.2f, the rest waiting on the GPU)\n",

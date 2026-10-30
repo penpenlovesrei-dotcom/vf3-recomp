@@ -201,11 +201,18 @@ struct fv2_roll
 		}
 		const std::string dir = assets + "/menu-console/ending-text/";
 		// The eight pages the Dreamcast's script asks for, in its order: ranks 80, 81, 82, 84 ... 88.
-		static const char *const NAMES[8] = {
+		// TEN PAGES, NOT EIGHT. The disc's script asks for ranks 80 to 88 and leaves two of the sheet's
+		// pages unasked: 79, the heading FightingVipers2 STAFF, and 89, "Presented by Original Game / SEGA
+		// ENTERPRISES, LTD." -- their params, 21 and 30, appear in no scene of that table. A roll that
+		// starts on "Director" with no title is what Frederic saw the 2026-10-30, so the heading opens the
+		// column and the presentation closes it, where a roll puts them.
+		static const char *const NAMES[10] = {
+			"page0_r79.png",
 			"page1_r80.png", "page2_r81.png", "page3_r82.png", "page4_r84.png",
 			"page5_r85.png", "page6_r86.png", "page7_r87.png", "page8_r88.png",
+			"page9_r89.png",
 		};
-		for (int i = 0; i < 8; i++) {
+		for (int i = 0; i < 10; i++) {
 			page p;
 			piece a;
 			a.t = read(ren, dir + NAMES[i], a.w, a.h, log);
@@ -216,7 +223,7 @@ struct fv2_roll
 			// THE PROGRAMMERS' NAMES ARE TWO PATTERNS. 208 to the right and 24 lower: the game's own
 			// placement, read off its call -- rank 82 at the page's place, rank 83 at (378, 161) when the
 			// page itself is at (170, 137).
-			if (i == 2) {
+			if (i == 3) {   // page3_r82: the Programmers' names are cut in two by the sheet's edge
 				piece b;
 				b.t = read(ren, dir + "extra_r83.png", b.w, b.h, log);
 				if (b.t) {

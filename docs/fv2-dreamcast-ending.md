@@ -156,3 +156,40 @@ not in the game's mode pair, so cutting them means finding that block first.
 Nothing of the replays is seen meanwhile: the port owns the screen for the whole ending (`fv2_roll.h`), so
 they run under a picture that is not drawn. What they still cost is time — the ending lasts about 110
 seconds whatever is on it, which is why the roll's own speed is set to fill that length.
+
+## Shut, the 2026-10-30, and why
+
+Frédéric, after three runs: "c'est catastrophique après 3 relances, toujours pas de 60fps, revient à la
+version qui fonctionnait bien, rend la ligne ending grisée et non selectionnable". The roll is therefore
+closed on the player's road, and this is the record of what was and was not established.
+
+**What the setting does now.** `cfg.ending_dc` is forced to false where the console's pictures are read
+(`src/host/main.cpp`), `ending_dreamcast` is no longer read out of `settings.ini`, and the roll's 25
+pictures are not loaded at all unless `VF3_ENDING_DC=1` is set: on the player's road the feature costs no
+VRAM, no boot time and no frame. The ENDING line keeps its place on GAME ASSIGNMENTS, reads ARCADE, and is
+given neither a `step` nor an `act` — the one way `fv2_options.h` is told a line is not to be picked
+(`skipped()` passes the cursor over it, and the drawing gives it `MUTED`). The roll's code, its assets and
+everything above in this file stay as they are.
+
+**The measurement trap that cost three runs.** The pace line's `a frame` counts only what the loop's own
+thread spends. With smooth motion the frame is run on the game's own thread, started by `job_start`, and
+`job_start` passed `picture = true` unconditionally -- so the skip written into the frame loop was reached
+only on the passes that start no half, which is almost never. Worse, the figure that was used to call it
+fixed (0.28 ms a frame) was measured on the thread that was doing nothing. The port now prints the real
+one, every pace line:
+
+    on the game's own thread: 115 frames, 3.82 ms each
+
+With `picture` carried through to that thread, the roll's frame measures **3.5 to 4.2 ms** against **5.3 to
+6.8 ms** at the attract, in a hidden run at 2732x1536 -- well inside the 16.7 ms of a 60 Hz frame. The
+arcade ending on the same build and the same machine measures 3.7 to 5.6 ms.
+
+**So the cause of what Frédéric sees was never isolated.** Three things were never measured in his own
+window, and whoever takes this up starts there:
+
+* the roll's own drawing. A hidden run reports `a picture 0.35 ms`, but it draws through the CPU path; his
+  window draws through the GPU renderer, where the roll lays a full-window fill, the ground, ten text
+  quads and one 1024-tall illustration scaled to 1536 lines, 130 times a second.
+* the VRAM the 25 preloaded pictures hold while the game's own textures are live.
+* the pace line's own figures during the drop, on his machine, which were never read after the fix: every
+  number above comes from a hidden run.
