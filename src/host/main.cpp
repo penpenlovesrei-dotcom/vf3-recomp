@@ -2959,7 +2959,7 @@ int main(int argc, char **argv)
 		// (fv2_roll.h). It owns the screen for as long as the game is in mode 12 or 13, which is also what
 		// takes the inverted logo away -- nothing of the game's picture is drawn at all.
 		if (ending.want && cplay.in_ending && roll.ready()) {
-			roll.render(ren, all, double(cplay.ending_frames) / FRAME_HZ);
+			roll.render(ren, all, cplay.ending_progress());
 			ending_on = true;
 		} else if (ending.want && cplay.ending_art >= 0 && ending.have()) {
 			ending.show(ren, cplay.ending_art, stderr);

@@ -86,7 +86,9 @@ struct fv2_roll
 	static constexpr float FACE = DC_H;       // the picture's height on screen: all of it
 	static constexpr float FACE_RIGHT = 6.0f;   // where its right edge rests, from the screen's right
 	static constexpr float SLIDE = 600.0f;    // 40 pixels a frame for fifteen
-	static constexpr double SLIDE_S = 15.0 / 57.524160;
+	// The slide is measured in the column's own travel rather than in seconds, the column no longer having
+	// a speed of its own: 26 pixels of it, which at any of the endings' lengths is about a quarter second.
+	static constexpr float SLIDE_PX = 26.0f;
 	static constexpr float TEXT_LEFT = 40.0f;    // the column is left-aligned, a little clear of the edge
 	// THEY ARE ALL READ AT THE START, and that is the answer to the stutter: reading a picture of 2560
 	// square and making its texture took a frame of its own, every time one came in. They are halved on the
@@ -106,7 +108,7 @@ struct fv2_roll
 
 	bool ready() const { return !pages.empty(); }
 	// When the last page has left the top: the roll is over and the screen can go back to the game.
-	bool over(double seconds) const { return float(seconds) * speed > DC_H + total; }
+	bool over(double progress) const { return progress >= 1.0; }
 
 	void drop()
 	{
@@ -274,9 +276,10 @@ struct fv2_roll
 					int(pages.size()), int(art_of.size()), total, speed, (DC_H + total) / speed, ground ? "is in" : "is missing");
 	}
 
-	// Over the whole window. `seconds` counts from the first frame of the game's own ending, so the roll is
-	// paced by the game's frames and not by the wall clock: a slow machine shows the same roll, slower.
-	void render(SDL_Renderer *ren, const SDL_FRect &all, double seconds)
+	// Over the whole window. `progress` is how far through its ending the GAME is, 0 to 1 (console_play.h
+	// counts it in the game's own segments), so the roll takes exactly as long as the ending does -- long
+	// when the replays have matches to play, short when they have none, and never cut off.
+	void render(SDL_Renderer *ren, const SDL_FRect &all, double progress)
 	{
 		if (pages.empty()) return;
 		// The ground covers the window, its own shape kept: a credit roll with bars down the sides reads as
@@ -299,7 +302,7 @@ struct fv2_roll
 		// for one page and from the left for the next.
 		int want = -1;
 		double face_u = 0, face_w_s = 0;
-		const float y0 = DC_H - float(seconds) * speed;
+		const float y0 = DC_H - float(progress) * (DC_H + total);
 		{
 			// WHICH PICTURE IS UP, AND FOR HOW LONG. A picture takes its turn when its place in the column
 			// passes the middle of the screen, and keeps it until the NEXT one gets there -- so there is
@@ -320,8 +323,8 @@ struct fv2_roll
 				yy += sl.h;
 			}
 			if (found) {
-				face_u = double(DC_H * 0.5f - here) / double(speed);
-				face_w_s = next_y > 0 ? double(next_y - here) / double(speed) : face_u + 2.0 * SLIDE_S;
+				face_u = double(DC_H * 0.5f - here);                       // how far past the middle it is
+				face_w_s = next_y > 0 ? double(next_y - here) : face_u + 2.0 * SLIDE_PX;
 			}
 		}
 		face_at = want;
@@ -335,11 +338,11 @@ struct fv2_roll
 			const float w = a->w * k, h = a->h * k;
 			const float rest = all.x + all.w - FACE_RIGHT * k - w;
 			float fx = rest;
-			if (face_u < SLIDE_S) {
-				const float t = float(std::clamp(face_u / SLIDE_S, 0.0, 1.0));
+			if (face_u < SLIDE_PX) {
+				const float t = float(std::clamp(face_u / SLIDE_PX, 0.0, 1.0));
 				fx = (all.x - w) + (rest - (all.x - w)) * t;
-			} else if (face_u > face_w_s - SLIDE_S) {
-				const float t = float(std::clamp((face_u - (face_w_s - SLIDE_S)) / SLIDE_S, 0.0, 1.0));
+			} else if (face_u > face_w_s - SLIDE_PX) {
+				const float t = float(std::clamp((face_u - (face_w_s - SLIDE_PX)) / SLIDE_PX, 0.0, 1.0));
 				fx = rest + (all.x + all.w - rest) * t;
 			}
 			const SDL_FRect src = { float(a->ink.x), float(a->ink.y), float(a->ink.w), float(a->ink.h) };

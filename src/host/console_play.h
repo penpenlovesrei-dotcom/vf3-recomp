@@ -713,6 +713,32 @@ struct console_play
 	// the same roll more slowly instead of a shorter one.
 	bool in_ending = false;
 	uint64_t ending_frames = 0;
+	uint64_t ending_seg_at = 0;   // the frame the last segment boundary fell on
+	uint64_t ending_seg1_at = 0;  // and the frame the FIRST one did, which is almost the ending's own start
+	// HOW FAR THROUGH ITS ENDING THE GAME IS, 0 to 1, and the port's own roll is paced by this rather than
+	// by a speed of its own. The reason is that the ending has no fixed length: asked for from the title
+	// screen it runs 3876 frames, because its replays have no match to play; reached by finishing the
+	// ladder it runs about 6300, replays and all. A roll at a fixed speed is cut short in one case and
+	// finishes early in the other -- Frederic, the 2026-10-30: "le defilement [...] est trop lent par
+	// rapport a la duree de la sequence, la fin est coupee".
+	//
+	// The game counts its own progress in SEGMENTS, eight of them whatever the length (model3.cpp reads the
+	// sequence pointer). So the roll is placed at (segments done + how far into this one) / eight, and how
+	// far into this one is measured against the average segment so far -- which settles after the first.
+	static constexpr int ENDING_SEGMENTS = 8;
+	static constexpr double ENDING_SEG_GUESS = 480.0;   // frames, until two boundaries have been seen
+	double ending_progress() const
+	{
+		if (ending_seg <= 0) return 0;
+		// THE AVERAGE IS MEASURED BETWEEN BOUNDARIES, not from the ending's start: the first boundary falls
+		// within a few frames of it, so dividing by the count gave an average of twenty frames and the roll
+		// saturated its segment at once and then stood still -- which is exactly what the photographs of the
+		// first attempt showed, five shots a thousand frames apart and not a pixel of difference.
+		const double seen = double(ending_seg - 1);
+		const double avg = seen >= 1 ? double(ending_seg_at - ending_seg1_at) / seen : ENDING_SEG_GUESS;
+		const double in = avg > 1 ? double(ending_frames - ending_seg_at) / avg : 0;
+		return std::min(1.0, (seen + std::min(1.0, in)) / double(ENDING_SEGMENTS));
+	}
 	// THE REPLAYS, CUT BY THE ENDING'S OWN DOOR. Frederic, the 2026-10-29: "est il possible de supprimer
 	// proprement les phases de combat du ending ?". Three of its seven states are the replay and nothing
 	// else -- ending_replay_init, _ctrl, _next, Sega's own names. They are NOT in MODE_SUB: watched byte by
@@ -740,7 +766,7 @@ struct console_play
 				fprintf(stderr, "the console's ending: over after %llu frames, %d segment%s, %d picture%s shown\n",
 						(unsigned long long)ending_frames, ending_seg, ending_seg == 1 ? "" : "s", ending_shown, ending_shown == 1 ? "" : "s");
 			ending_art = -1; ending_seg = 0; ending_ptr = -1; ending_replay = 0;
-			ending_shown = 0; ending_fall = 0; ending_frames = 0;
+			ending_shown = 0; ending_fall = 0; ending_frames = 0; ending_seg_at = ending_seg1_at = 0;
 			return;
 		}
 		in_ending = true;
@@ -766,6 +792,8 @@ struct console_play
 		if (ptr != ending_ptr) {          // a boundary: the segment advances, and nothing else happens here
 			ending_ptr = ptr;
 			ending_seg++;
+			ending_seg_at = ending_frames;
+			if (ending_seg == 1) ending_seg1_at = ending_frames;
 		}
 		if (rep != ending_replay) {
 			ending_replay = rep;
