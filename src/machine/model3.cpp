@@ -1666,6 +1666,11 @@ void Model3::fv2_redo_fighter_model(int player)
 namespace {
 constexpr uint32_t FV2_TASK_ENTRY1 = 0x00700000;
 constexpr uint32_t FV2_SURVIVAL_FLAG = 0x0058145F;
+// THE BONUS STAGE SAYS SO IN ITS OWN BYTE. MODE_INFO's BONUS_STG_FLAG, beside the survival flag and the
+// random-character one, and it is also a CONFIG setting of the same name (docs/fv2-match-flow.md, the table
+// of the game's own names). The port reads it to know when the foot of the screen carries BONUS STAGE
+// rather than STAGE n, because that word is placed differently in widescreen (main.cpp).
+constexpr uint32_t FV2_BONUS_STAGE = 0x00581461;
 constexpr uint32_t FV2_RANDOM_CHARA = 0x0058145E;
 constexpr uint32_t FV2_SURVIVAL_SETTING = 0x00120550;
 constexpr uint32_t FV2_REGION = 0x00120557;
@@ -1775,6 +1780,22 @@ int Model3::fv2_task_state() const
 {
 	if (set != "fvipers2" || ram.size() <= FV2_TASK_ENTRY1 + 3) return -1;
 	return int(*reinterpret_cast<const uint32_t *>(&ram[FV2_TASK_ENTRY1]));
+}
+
+// 1 while the match being played is the bonus stage, 0 otherwise, -1 when this is not that game.
+int Model3::fv2_bonus_stage() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_BONUS_STAGE) return -1;
+	return ram[FV2_BONUS_STAGE ^ 3] ? 1 : 0;
+}
+
+// WRITTEN, for tests only: the bonus stage is deep in the ladder and a run with no hands takes an hour to
+// get there. The game draws its own BONUS STAGE from this byte, so setting it on an ordinary match puts the
+// real word on the real screen -- which is what a placement has to be judged on.
+void Model3::fv2_set_bonus_stage(bool on)
+{
+	if (set != "fvipers2" || ram.size() <= FV2_BONUS_STAGE) return;
+	ram[FV2_BONUS_STAGE ^ 3] = on ? 1 : 0;
 }
 
 int Model3::fv2_survival() const

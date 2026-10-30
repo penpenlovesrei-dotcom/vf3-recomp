@@ -2178,6 +2178,13 @@ int main(int argc, char **argv)
 	// So it is drawn across the picture the player is looking at, at the picture's own scale, on its own
 	// middle. Only in the states that announce a round (GAME's 4 to 10), which is where that art lives.
 	bool hud_wide_mid = false;
+	// AND THE SAME FOR THE FOOT WHEN THE MATCH IS THE BONUS STAGE. Frederic, the 2026-10-30: "le mot BONUS
+	// STAGE en bas a gauche de l'ecran n'est pas recale pour le 16/9 [...] tu dois recaler BONUS STAGE de la
+	// meme facon que tu as fait pour ROUND X". ROUND X is drawn across the whole picture at the picture's
+	// own scale, growing about its middle, rather than cut in three and pushed out; the foot's BONUS STAGE
+	// wants the same, because it is an announcement and not a block hanging off an edge. The game says when
+	// it is the bonus stage in a byte of its own, MODE_INFO's BONUS_STG_FLAG (model3.cpp).
+	bool hud_wide_foot = false;
 	// HOW DEEP THE TOP BAND GOES, and it is measured, not rounded. At 100 it cut a drawing in half:
 	// under the right-hand bar there is a mark that comes and goes during a fight -- Frederic calls it
 	// the joystick's animation -- and the audit of a training fight has it at rows 93..108, columns
@@ -2570,6 +2577,10 @@ int main(int argc, char **argv)
 				// timer's field, which Frederic photographed the 2026-10-29. The HUD begins at ROUND (4).
 				hud_hide_mid = mine && cplay.training_on && gsub >= 4;
 				hud_wide_mid = mine && gsub >= 4 && gsub <= 10;
+				// VF3_HUD_WIDE_FOOT=1 draws it on any stage, which is how the drawing was checked without
+				// playing the ladder as far as the bonus stage (a run with no hands takes it slowly).
+				static const bool foot_always = getenv("VF3_HUD_WIDE_FOOT") != nullptr;
+				hud_wide_foot = mine && (foot_always || board.fv2_bonus_stage() == 1);
 			}
 			// VF3_HUD_AUDIT=1: WHERE THE 2D ACTUALLY IS, row band by row band and column run by column run.
 			// Written to spread Fighting Vipers 2's HUD in widescreen -- the life bars and what hangs off them
@@ -3002,7 +3013,8 @@ int main(int argc, char **argv)
 				band(hud_top, 0, HUD_TOP_ROWS, true, hud_hide_mid);
 				if (hud_wide_mid) band_wide(HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS);
 				else slice(0, video::W, HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS, 0);
-				band(hud_foot, video::H - HUD_FOOT_ROWS, video::H, false, false);
+				if (hud_wide_foot) band_wide(video::H - HUD_FOOT_ROWS, video::H);
+				else band(hud_foot, video::H - HUD_FOOT_ROWS, video::H, false, false);
 			} else if (hud_hide_mid) {
 				// in 4:3 there is nothing to spread, but the clock still goes
 				band(HudCut(), 0, HUD_TOP_ROWS, false, true);
@@ -5105,6 +5117,13 @@ int main(int argc, char **argv)
 									(unsigned long long)roll_frames);
 						} else if (cplay.in_ending) board.fv2_set_ending_timer(120);
 					}
+				}
+				// VF3_BONUS=1 (tests): the game's own BONUS_STG_FLAG set while a round runs, so the game
+				// draws its own BONUS STAGE at the foot of an ordinary match. The placement of that word in
+				// widescreen is judged on it, the bonus stage itself being an hour of ladder away.
+				if (static const bool bonus = getenv("VF3_BONUS") != nullptr; bonus && board.set == "fvipers2") {
+					const int m2 = board.fv2_mode();
+					if (m2 == 6 || m2 == 7) board.fv2_set_bonus_stage(true);
 				}
 				if (cfg.endless_1p && board.set == "fvipers2") {
 					const int m = board.fv2_mode(), su = board.fv2_submode();

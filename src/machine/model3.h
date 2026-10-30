@@ -404,6 +404,8 @@ public:
 	// starting at all, the injected Start is ignored and no credit is ever taken -- so the host arms it and
 	// only writes once a game is running, then holds it (docs/fv2-console.md).
 	int fv2_survival() const;            // 1 on, 0 off, -1 not this game
+	int fv2_bonus_stage() const;         // 1 while the bonus stage is the match, -1 not this game
+	void fv2_set_bonus_stage(bool on);   // tests: VF3_BONUS puts the word on an ordinary match
 	void fv2_set_survival(bool on);
 	// RANDOM: the game's own flag for it, which Sega's debug tables name RANDOM_CHARA (0x0058145E, beside the
 	// Survival flag). Set, the select screen says RANDOM MODE. It does not need holding; model3.cpp says what
