@@ -4569,6 +4569,19 @@ int main(int argc, char **argv)
 					cfg.timings = !cfg.timings; cfg_dirty = true; title_now.clear();
 					t9 = {}; t9.t0 = SDL_GetTicksNS();
 					break;
+				// F7: THE ENDING, ASKED FOR WHERE YOU STAND. Frederic, the 2026-10-30: "trouve une facon de
+				// lancer le ending sans que je traverse toute l'echelle". It is the game's own request --
+				// MODE_REQUEST = ENDING, the lever VF3_CONSOLE_ENDING has used in every measurement here --
+				// so the roll that follows is the real one, and the game comes back to its attract by
+				// itself. Asked from the title screen there is no match to replay, which the port's own
+				// credits cover anyway; asked from a fight it ends the fight.
+				case SDL_SCANCODE_F7:
+					if (cplay.on) {
+						cplay.ask_ending(board);
+						fprintf(stderr, "F7: the game's ending asked for (%s)\n",
+								cfg.ending_dc ? "DREAMCAST" : "ARCADE");
+					}
+					break;
 				case SDL_SCANCODE_F5: set_scale(scale % MAX_SCALE + 1); break;
 				case SDL_SCANCODE_F6: set_shape((aspect_i + 1) % N_ASPECTS); break;
 				case SDL_SCANCODE_F11: set_fullscreen(!(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN)); break;

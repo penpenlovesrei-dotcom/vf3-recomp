@@ -37,11 +37,15 @@ struct fv2_roll
 	// BETWEEN TWO PAGES, and it is wide because the illustration goes in it. On the disc the pictures and
 	// the credits never share the screen: scenes 4 and 6 are the roll, the other eleven are a picture each
 	// (docs/fv2-dreamcast-ending.md). So here a page passes, then a picture, then the next page.
-	static constexpr float GAP = 560.0f;   // wider than the screen, so a picture is alone when it crosses
+	// BETWEEN TWO PAGES. The text and the picture SHARE the screen -- Frederic sent a capture of the disc's
+	// own ending the 2026-10-30 and there it is: the credits climbing the left of the screen, the fighter
+	// standing the whole height of the right. So the gap is short, and a picture is simply up while its
+	// place in the column crosses.
+	static constexpr float GAP = 160.0f;
 	// PIXELS A SECOND, and the number is the ending's own length. The game's ending runs about 6300 frames,
 	// which is 110 seconds; the column is 2272 pixels and has a screen to cross on either side, so 30 a
 	// second fills the ending almost exactly (92 s). VF3_ENDING_SCROLL tries another without a build.
-	static constexpr float SPEED = 94.0f;
+	static constexpr float SPEED = 39.0f;
 	static constexpr float HD = 4.0f;         // the art is four times the sheets it was cut from
 
 	struct box { int x = 0, y = 0, w = 0, h = 0; };   // what a picture covers in its file
@@ -76,10 +80,14 @@ struct fv2_roll
 	//
 	// ONE AT A TIME IN MEMORY. Eight of 2048 square would be a hundred and thirty megabytes of texture for
 	// the one on screen, which is the reason fv2_ending.h gives for holding only one; the same here.
-	static constexpr float FACE = 330.0f;     // its height on screen; the disc draws two tiles of 128
+	// THE PICTURES TAKE THE WHOLE HEIGHT, which is the capture again, and they come in from the LEFT, stop
+	// on the RIGHT and leave by the right -- "les illustration arrivent bien de la gauche pour s'arreter a
+	// droite, puis ne disparaissent pas mais sortent de l'ecran par la droite".
+	static constexpr float FACE = DC_H;       // the picture's height on screen: all of it
+	static constexpr float FACE_RIGHT = 70.0f;   // where its right edge rests, from the screen's right
 	static constexpr float SLIDE = 600.0f;    // 40 pixels a frame for fifteen
 	static constexpr double SLIDE_S = 15.0 / 57.524160;
-	static constexpr float FACE_Y = 112.0f;   // where it sits down the screen
+	static constexpr float TEXT_LEFT = 54.0f;    // the column is left-aligned, as the capture has it
 	std::vector<std::string> faces;           // the files, in their own order
 	SDL_Texture *face = nullptr;              // the one up, and which page it belongs to
 	int face_at = -1;
@@ -243,21 +251,19 @@ struct fv2_roll
 		// it comes in from the side as the disc brings it in: 600 pixels in fifteen frames, from the right
 		// for one page and from the left for the next.
 		int want = -1;
-		float face_x = 0;
+		double face_u = 0, face_w_s = 0;
 		const float y0 = DC_H - float(seconds) * speed;
 		{
-			// WHICH PICTURE IS UP: the one whose slot the screen's middle is crossing.
+			// WHICH PICTURE IS UP, and for how long it has been. Its window is its place in the column plus
+			// half a screen either side, so it comes in before the page it belongs to has gone and leaves
+			// after the next has arrived -- which is what the disc's own capture shows.
 			float yy = y0;
 			for (const slot &sl : column) {
-				if (sl.face >= 0 && yy < DC_H * 0.5f && yy + sl.h > DC_H * 0.5f) {
-					want = sl.face;
-					const double in = double(yy - DC_H * 0.5f) / -double(speed);
-					const float t = float(std::clamp(in / SLIDE_S, 0.0, 1.0));
-					const bool from_right = (sl.face % 2) == 0;
-					const float x0 = from_right ? DC_W + 40.0f : -FACE - 40.0f;
-					const float x1 = (DC_W - FACE) * 0.5f;
-					face_x = x0 + (x1 - x0) * t;
-					break;
+				if (sl.face >= 0) {
+					const float enter = DC_H * 1.5f;              // half a screen below the bottom
+					const double u = double(yy - enter) / -double(speed);
+					const double w = double(sl.h + 2.0f * DC_H) / double(speed);
+					if (u >= 0 && u <= w) { want = sl.face; face_u = u; face_w_s = w; break; }
 				}
 				yy += sl.h;
 			}
@@ -270,8 +276,7 @@ struct fv2_roll
 				float fw = 0, fh = 0;
 				face = read(ren, faces[size_t(want)], fw, fh, nullptr, &face_ink);
 				if (face) {
-					// drawn to its OWN ink, not to the file's edges: the art is a square with a figure in
-					// the middle of it, and placed by the file it comes out a third of the size it should be
+					// to its own ink and to the screen's whole height
 					const float k2 = FACE / float(std::max(1, face_ink.h));
 					face_w = float(face_ink.w) * k2;
 					face_h = FACE;
@@ -279,9 +284,18 @@ struct fv2_roll
 			}
 		}
 		if (face && face_h > 0) {
+			// in from the left, resting on the right, and out by the right
+			const float rest = DC_W - FACE_RIGHT - face_w;
+			float fx = rest;
+			if (face_u < SLIDE_S) {
+				const float t = float(std::clamp(face_u / SLIDE_S, 0.0, 1.0));
+				fx = -face_w + (rest + face_w) * t;
+			} else if (face_u > face_w_s - SLIDE_S) {
+				const float t = float(std::clamp((face_u - (face_w_s - SLIDE_S)) / SLIDE_S, 0.0, 1.0));
+				fx = rest + (DC_W - rest) * t;
+			}
 			const SDL_FRect src = { float(face_ink.x), float(face_ink.y), float(face_ink.w), float(face_ink.h) };
-			const SDL_FRect to = { left + (face_x + (FACE - face_w) * 0.5f) * k, all.y + FACE_Y * k,
-								   face_w * k, face_h * k };
+			const SDL_FRect to = { left + fx * k, all.y, face_w * k, face_h * k };
 			SDL_RenderTexture(ren, face, &src, &to);
 		}
 		float y = y0;
@@ -289,7 +303,7 @@ struct fv2_roll
 			if (sl.page >= 0) {
 				const page &p = pages[size_t(sl.page)];
 				if (y + p.h > 0 && y < DC_H) {
-					const float x0 = (DC_W - p.w) * 0.5f;
+					const float x0 = TEXT_LEFT;   // left-aligned, the disc's own
 					for (const piece &q : p.parts) {
 						if (!q.t) continue;
 						const SDL_FRect to = { left + (x0 + q.dx) * k, all.y + (y + q.dy) * k, q.w * k, q.h * k };
