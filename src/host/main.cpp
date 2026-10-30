@@ -2377,6 +2377,12 @@ int main(int argc, char **argv)
 	double picture_fixed_ms = 0;   // the last picture's in-between and triangles prepared (the governor's)
 	auto draw_picture = [&](double t, bool new_2d) {
 		ensure_3d();
+		// WHEN THE PORT'S OWN ROLL OWNS THE SCREEN, THE GAME'S PICTURE IS NOT MADE AT ALL. It was still
+		// being made and thrown away: the ending's replays are real matches, drawn at the player's render
+		// scale with his antialiasing, and Frederic found the roll running at twenty pictures a second --
+		// "le ending est a 20fps, c'est n'importe quoi !!!". Nothing of it is shown (fv2_roll.h draws over
+		// the whole window), so nothing of it is drawn: no 3D on the GPU, no 3D on the CPU.
+		const bool roll_owns = ending.want && cplay.in_ending && roll.ready();
 		const double fixed_before = pace.interp_ms + pace.prep_ms;
 		picture_fixed_ms = 0;
 		// the stage's sky where the 3D camera is now, not where it was 3 frames before (sky_lead.h)
@@ -2402,7 +2408,7 @@ int main(int argc, char **argv)
 		bool on_gpu = false;
 		// (not before the first frame's copy: with no sound to wait on, the first picture can come before any frame,
 		// and the GPU's first upload is the whole texture memory, read from that copy)
-		if (g3.on && g3_texture() && !game.view.tex.empty()) {
+		if (g3.on && !roll_owns && g3_texture() && !game.view.tex.empty()) {
 			const auto tg = std::chrono::steady_clock::now();
 			raster.prepare(*s);
 			// the texture pack's place for each polygon, which the GPU renderer reads out of `raster` as the CPU
@@ -2426,7 +2432,7 @@ int main(int argc, char **argv)
 				if (on_gpu && g3.checked) raster.drop_buffers();
 			}
 		}
-		if (!on_gpu) {
+		if (!on_gpu && !roll_owns) {
 			game.view.uploads.clear();
 			raster.tex_version = 1 + game.view.tex_serial;
 			raster.render(*s, game.view.tex.data());
