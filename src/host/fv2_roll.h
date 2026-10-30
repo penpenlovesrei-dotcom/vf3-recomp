@@ -84,10 +84,10 @@ struct fv2_roll
 	// on the RIGHT and leave by the right -- "les illustration arrivent bien de la gauche pour s'arreter a
 	// droite, puis ne disparaissent pas mais sortent de l'ecran par la droite".
 	static constexpr float FACE = DC_H;       // the picture's height on screen: all of it
-	static constexpr float FACE_RIGHT = 70.0f;   // where its right edge rests, from the screen's right
+	static constexpr float FACE_RIGHT = 6.0f;   // where its right edge rests, from the screen's right
 	static constexpr float SLIDE = 600.0f;    // 40 pixels a frame for fifteen
 	static constexpr double SLIDE_S = 15.0 / 57.524160;
-	static constexpr float TEXT_LEFT = 54.0f;    // the column is left-aligned, as the capture has it
+	static constexpr float TEXT_LEFT = 18.0f;    // the column is left-aligned, as the capture has it
 	std::vector<std::string> faces;           // the files, in their own order
 	SDL_Texture *face = nullptr;              // the one up, and which page it belongs to
 	int face_at = -1;
