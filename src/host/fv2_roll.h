@@ -41,7 +41,7 @@ struct fv2_roll
 	// PIXELS A SECOND, and the number is the ending's own length. The game's ending runs about 6300 frames,
 	// which is 110 seconds; the column is 2272 pixels and has a screen to cross on either side, so 30 a
 	// second fills the ending almost exactly (92 s). VF3_ENDING_SCROLL tries another without a build.
-	static constexpr float SPEED = 30.0f;
+	static constexpr float SPEED = 110.0f;
 	static constexpr float HD = 4.0f;         // the art is four times the sheets it was cut from
 
 	struct box { int x = 0, y = 0, w = 0, h = 0; };   // what a picture covers in its file
@@ -54,6 +54,11 @@ struct fv2_roll
 		float w = 0, h = 0;
 	};
 
+	// THE COLUMN IS A LIST OF SLOTS, one to a page and one to a picture, taken in turn: page, picture, page,
+	// picture ... and when the pages run out -- there are eight of them and Frederic chose fifteen pictures
+	// the 2026-10-30 -- the pictures go on, one after another, each with the screen to itself.
+	struct slot { int page = -1, face = -1; float h = 0; };
+	std::vector<slot> column;
 	std::vector<page> pages;
 	SDL_Texture *ground = nullptr;
 	int ground_w = 0, ground_h = 0;
@@ -179,7 +184,7 @@ struct fv2_roll
 			pages.push_back(p);
 		}
 		total = 0;
-		for (size_t i = 0; i < pages.size(); i++) total += (i ? GAP : 0) + pages[i].h;
+		(void)0;   // (the column is laid below, once the pictures are known)
 		// the illustrations, by name, out of the folder fv2_ending.h reads (its old name is still taken)
 		{
 			// THE DISC'S OWN ART, not the first version's. Frederic, the 2026-10-30: "les illustrations sont
@@ -196,6 +201,13 @@ struct fv2_roll
 				if (ext == ".png") faces.push_back(e.path().string());
 			}
 			std::sort(faces.begin(), faces.end());
+		}
+		// the column: a page, then a picture, then a page ... and the pictures left over after them
+		column.clear();
+		total = 0;
+		for (size_t i = 0; i < std::max(pages.size(), faces.size()); i++) {
+			if (i < pages.size()) { column.push_back({ int(i), -1, pages[i].h }); total += pages[i].h; }
+			if (i < faces.size()) { column.push_back({ -1, int(i), GAP }); total += GAP; }
 		}
 		float gw = 0, gh = 0;
 		ground = read(ren, dir + "ground.png", gw, gh, log);
@@ -232,24 +244,22 @@ struct fv2_roll
 		// for one page and from the left for the next.
 		int want = -1;
 		float face_x = 0;
-		float y = DC_H - float(seconds) * speed;
+		const float y0 = DC_H - float(seconds) * speed;
 		{
-			// WHICH PICTURE IS UP: the one in the gap that the screen's middle is crossing. A page passes,
-			// then its picture, then the next page -- which is the disc's own alternation.
-			float yy = y;
-			for (size_t i = 0; i < pages.size(); i++) {
-				const float gap_top = yy + pages[i].h, gap_bottom = gap_top + GAP;
-				if (gap_top < DC_H * 0.5f && gap_bottom > DC_H * 0.5f) {
-					want = int(i);
-					const double in = double(gap_top - DC_H * 0.5f) / -double(speed);
+			// WHICH PICTURE IS UP: the one whose slot the screen's middle is crossing.
+			float yy = y0;
+			for (const slot &sl : column) {
+				if (sl.face >= 0 && yy < DC_H * 0.5f && yy + sl.h > DC_H * 0.5f) {
+					want = sl.face;
+					const double in = double(yy - DC_H * 0.5f) / -double(speed);
 					const float t = float(std::clamp(in / SLIDE_S, 0.0, 1.0));
-					const bool from_right = (i % 2) == 0;
+					const bool from_right = (sl.face % 2) == 0;
 					const float x0 = from_right ? DC_W + 40.0f : -FACE - 40.0f;
 					const float x1 = (DC_W - FACE) * 0.5f;
 					face_x = x0 + (x1 - x0) * t;
 					break;
 				}
-				yy = gap_bottom;
+				yy += sl.h;
 			}
 		}
 		if (want != face_at) {
@@ -274,17 +284,20 @@ struct fv2_roll
 								   face_w * k, face_h * k };
 			SDL_RenderTexture(ren, face, &src, &to);
 		}
-		for (const page &p : pages) {
-			if (y + p.h > 0 && y < DC_H) {
-				const float x0 = (DC_W - p.w) * 0.5f;
-				for (const piece &q : p.parts) {
-					if (!q.t) continue;
-					const SDL_FRect to = { left + (x0 + q.dx) * k,
-										   all.y + (y + q.dy) * k, q.w * k, q.h * k };
-					SDL_RenderTexture(ren, q.t, nullptr, &to);
+		float y = y0;
+		for (const slot &sl : column) {
+			if (sl.page >= 0) {
+				const page &p = pages[size_t(sl.page)];
+				if (y + p.h > 0 && y < DC_H) {
+					const float x0 = (DC_W - p.w) * 0.5f;
+					for (const piece &q : p.parts) {
+						if (!q.t) continue;
+						const SDL_FRect to = { left + (x0 + q.dx) * k, all.y + (y + q.dy) * k, q.w * k, q.h * k };
+						SDL_RenderTexture(ren, q.t, nullptr, &to);
+					}
 				}
 			}
-			y += p.h + GAP;
+			y += sl.h;
 		}
 	}
 };
