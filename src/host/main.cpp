@@ -2207,6 +2207,13 @@ int main(int argc, char **argv)
 	fv2_ending ending;
 	// and the roll the port draws itself, which owns the screen for the whole of the ending (fv2_roll.h)
 	static fv2_roll roll;
+	// THE ROLL OUTLIVES THE GAME'S ENDING. With the replay passages cut, the game walks its eight segments
+	// in about 2100 frames -- 36 seconds, measured -- while the port's own credits take 92. So the roll is
+	// LATCHED: it begins when the game enters its ending and runs on its own frames until it is past the
+	// top, and it owns the screen all the while. The game goes home behind it, through its own GAME OVER,
+	// exactly as it does behind the list's entering half (console_state.h).
+	bool roll_on = false;
+	uint64_t roll_frames = 0;
 	uint32_t side_colour[2] = { 0xFF000000u, 0xFF000000u };   // widescreen's bars beside the 2D (left, right)
 	bool sky_wide = false;
 	float bg_shift_x = 0, bg_shift_y = 0;   // the layers below the 3D moved back towards the frame before (draw_below)
@@ -2928,8 +2935,8 @@ int main(int argc, char **argv)
 		// its pages over its inverted logo, the port draws its own ground and the credits climbing it
 		// (fv2_roll.h). It owns the screen for as long as the game is in mode 12 or 13, which is also what
 		// takes the inverted logo away -- nothing of the game's picture is drawn at all.
-		if (ending.want && cplay.in_ending && roll.ready()) {
-			roll.render(ren, all, double(cplay.ending_frames) / FRAME_HZ);
+		if (ending.want && roll_on && roll.ready()) {
+			roll.render(ren, all, double(roll_frames) / FRAME_HZ);
 			ending_on = true;
 		} else if (ending.want && cplay.ending_art >= 0 && ending.have()) {
 			ending.show(ren, cplay.ending_art, stderr);
@@ -3170,6 +3177,7 @@ int main(int argc, char **argv)
 	// the probe's counters, reset each time a surface opens so its rate means something (see it)
 	if (cplay.on) {
 		console_font.load(ren, find_assets(), stderr);
+		modes.font = &console_font;
 		options.load(ren, find_assets(), &console_font, stderr);
 		pause.load(ren, find_assets(), &console_font, stderr);
 		stages.load(ren, find_assets(), &console_font, stderr);
@@ -3302,6 +3310,7 @@ int main(int argc, char **argv)
 				if (cplay.on) {   // (read once: the second call is free)
 		modes.load(ren, find_assets(), stderr);
 		console_font.load(ren, find_assets(), stderr);
+		modes.font = &console_font;
 		options.load(ren, find_assets(), &console_font, stderr);
 		pause.load(ren, find_assets(), &console_font, stderr);
 		stages.load(ren, find_assets(), &console_font, stderr);
@@ -4094,6 +4103,14 @@ int main(int argc, char **argv)
 		else if (line == fv2_mode_list::TRAINING) cplay.choose_training();
 		// OPTIONS starts nothing: the list gives way to a page of its own and the game stays frozen behind it,
 		// exactly where it was. Nothing is injected, so the press is swallowed below as for the others.
+		// EXIT GAME is the port's own line, written under the disc's seven (fv2_mode_list.h). It leaves the
+		// game the way the window's cross does -- the loop ends, the settings and the NVRAM are written on
+		// the way out -- so nothing of a session is lost by taking it.
+		else if (line == fv2_mode_list::EXIT) {
+			fprintf(stderr, "the console's list: EXIT GAME chosen -- leaving\n");
+			running = false;
+			return;
+		}
 		else if (line == fv2_mode_list::OPTIONS && options.ready) {
 			enter(cstate::OPTIONS, "OPTIONS chosen in the list");
 			return;
@@ -5078,9 +5095,17 @@ int main(int argc, char **argv)
 				// the port holds the ending's own clock (0x0058FD54, the word ENDING_INT sets to 320 and
 				// ENDING_DSP ends the ending on) above zero while its credits climb, and stops holding when
 				// they are past the top. The game then leaves by its own road, through its own GAME OVER.
-				if (cfg.ending_dc && cplay.in_ending && roll.ready() && board.set == "fvipers2"
-					&& !roll.over(double(cplay.ending_frames) / FRAME_HZ))
-					board.fv2_set_ending_timer(120);
+				if (cfg.ending_dc && roll.ready() && board.set == "fvipers2") {
+					if (cplay.in_ending && !roll_on) { roll_on = true; roll_frames = 0; }
+					if (roll_on) {
+						roll_frames++;
+						if (roll.over(double(roll_frames) / FRAME_HZ)) {
+							roll_on = false;
+							fprintf(stderr, "the console's roll: over after %llu frames\n",
+									(unsigned long long)roll_frames);
+						} else if (cplay.in_ending) board.fv2_set_ending_timer(120);
+					}
+				}
 				if (cfg.endless_1p && board.set == "fvipers2") {
 					const int m = board.fv2_mode(), su = board.fv2_submode();
 					if ((m == 6 || m == 7) && (su == 11 || su == 12) && board.fv2_players() != 3) {

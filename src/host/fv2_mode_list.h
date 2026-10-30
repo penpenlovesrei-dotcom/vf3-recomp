@@ -40,23 +40,30 @@
 #include <string>
 #include <vector>
 #include "controls.h"
+#include "fv2_text.h"
 #include "png.h"
 
 struct fv2_mode_list
 {
-	enum { ARCADE, VERSUS, RANDOM, SURVIVAL, NETWORK, TRAINING, OPTIONS, LINES };
+	// THE SEVEN THE PICTURE HOLDS, and then one of the port's own. The disc's list is a painted image --
+	// title_list.png, seven bands -- so a line this port adds cannot be a band: it is written, in the
+	// console's own letters, under the block. Frederic, the 2026-10-30: "ajoute exit game (retour a
+	// windows) en bas de l'ecran du main menu (police grise qui s'illumine quand elle est selectionnee)".
+	enum { ARCADE, VERSUS, RANDOM, SURVIVAL, NETWORK, TRAINING, OPTIONS, PAINTED };
+	enum { EXIT = PAINTED, LINES };
 	static const char *name(int line)
 	{
-		static const char *const NAMES[LINES] = { "ARCADE", "V.S.", "RANDOM", "SURVIVAL", "NETWORK", "TRAINING", "OPTIONS" };
+		static const char *const NAMES[LINES] = { "ARCADE", "V.S.", "RANDOM", "SURVIVAL", "NETWORK", "TRAINING",
+												  "OPTIONS", "EXIT GAME" };
 		return line >= 0 && line < LINES ? NAMES[line] : "?";
 	}
 
 	// The file, and the measured geometry (docs/fv2-states.md)
 	static constexpr int IMG_W = 709, IMG_H = 897;
 	// the bands' edges in the file's own rows, cut in the middles of the white
-	static constexpr float BANDS[LINES + 1] = { 0, 124.5f, 254, 381.5f, 511.5f, 640.5f, 769, 897 };
+	static constexpr float BANDS[PAINTED + 1] = { 0, 124.5f, 254, 381.5f, 511.5f, 640.5f, 769, 897 };
 	// where each line's ink has its middle, in fractions of the file's width
-	static constexpr float INK_MID[LINES] = { 0.4006f, 0.1728f, 0.4379f, 0.4732f, 0.5035f, 0.4746f, 0.4281f };
+	static constexpr float INK_MID[PAINTED] = { 0.4006f, 0.1728f, 0.4379f, 0.4732f, 0.5035f, 0.4746f, 0.4281f };
 	// the block on the title screen, in fractions of the picture's height, as measured
 	static constexpr float TOP = 0.26157f, HEIGHT = 0.35557f, CENTRE = 0.5f;   // (the measure gives 0.50026)
 	// and the two the owner asked for on top of it (above)
@@ -101,6 +108,7 @@ struct fv2_mode_list
 	SDL_Texture *ground = nullptr;   // the list's own backdrop; without it the game's picture is dimmed instead
 	std::string path;        // where the file was looked for (the log says so once)
 	int stick_y = 0;
+	fv2_text *font = nullptr;   // the sheet, for the one line that is written (EXIT above)
 	uint64_t blink_t0 = 0;   // when the list went up, in SDL's nanoseconds: the blink is read from the clock
 
 	// Reads the picture once. False (and a line in the log) if it isn't there: then the list never opens, and
@@ -270,7 +278,7 @@ struct fv2_mode_list
 		const double secs = double(SDL_GetTicksNS() - blink_t0) / 1e9;
 		const float phase = float(std::fmod(secs, BLINK_SECONDS) / BLINK_SECONDS);
 		const float chosen = BLINK_FLOOR + (1 - BLINK_FLOOR) * 0.5f * (1 + std::cos(6.2831853f * phase));
-		for (int i = 0; i < LINES; i++) {
+		for (int i = 0; i < PAINTED; i++) {
 			const SDL_FRect src = { 0, BANDS[i], float(IMG_W), BANDS[i + 1] - BANDS[i] };
 			// each band slid sideways so its own ink lands in the middle of the block
 			const SDL_FRect dst = { block_x + (0.5f - INK_MID[i]) * block_w,
@@ -281,5 +289,21 @@ struct fv2_mode_list
 			SDL_RenderTexture(ren, tex, &src, &dst);
 		}
 		SDL_SetTextureAlphaMod(tex, 255);
+		// ---- AND THE LINE THIS PORT ADDS, written rather than painted ----
+		//
+		// Grey while it is passed over and lit when it is taken, which is what Frederic asked for, and the
+		// lighting is the same blink the painted lines use -- one chosen line, one way of saying so. It
+		// sits under the block, a line's height below it, so it reads as part of the list without pretending
+		// to be one of the disc's.
+		if (font && font->ready) {
+			const float band = block_h / float(PAINTED);
+			const float cap = band * 0.34f;
+			const float h = cap / fv2_text::CAP;
+			const float y = block_y + block_h + band * 0.45f;
+			const SDL_Color grey = { 150, 150, 150, 255 }, lit = { 252, 252, 10, 255 };
+			const SDL_Color col = sel == EXIT ? lit : grey;
+			const uint8_t a = sel == EXIT ? uint8_t(255 * chosen) : 255;
+			font->draw_mid(ren, name(EXIT), mid.x + mid.w * CENTRE, y, h, col, a);
+		}
 	}
 };
