@@ -100,6 +100,16 @@ bool parse_name(const std::string &name, uint64_t &hash, int &w, int &h, int &fo
 
 } // namespace
 
+// One image of the pack, read and waiting to be laid in a page
+struct Tex3dHd::Pending
+{
+	Key key = {};
+	std::vector<uint8_t> rgba;
+	int w = 0, h = 0;
+	int variant = -1;
+	std::string name;
+};
+
 Tex3dHd &hd3d()
 {
 	static Tex3dHd one;
@@ -127,37 +137,48 @@ bool Tex3dHd::dump_to(const std::string &dir, std::string &error)
 	return true;
 }
 
-bool Tex3dHd::load(const std::string &dir, std::string &report)
+void Tex3dHd::want_variant(const std::string &rel)
 {
-	entries.clear();
-	seen.clear();
-	hd.clear();
-	shelf = {};
-	st = {};
+	if (rel.empty() || variant_index(rel) >= 0) return;
+	Variant v;
+	v.rel = rel;
+	variants.push_back(std::move(v));
+}
+
+int Tex3dHd::variant_index(const std::string &rel) const
+{
+	for (size_t i = 0; i < variants.size(); i++)
+		if (variants[i].rel == rel) return int(i);
+	return -1;
+}
+
+bool Tex3dHd::variant_found(const std::string &rel) const
+{
+	const int i = variant_index(rel);
+	return i >= 0 && variants[size_t(i)].found;
+}
+
+void Tex3dHd::use_variant(const std::string &rel, bool on)
+{
+	const int i = variant_index(rel);
+	if (i < 0 || variants[size_t(i)].on == on) return;
+	variants[size_t(i)].on = on;
+	seen.clear();   // (what find() worked out for the picture before, it worked out with the other set on)
+}
+
+// One folder read: the PNGs in it, nothing below it. variant is -1 for the pack's root.
+void Tex3dHd::scan(const std::string &dir, int variant, std::vector<Pending> &pending)
+{
 	std::error_code ec;
-	if (!std::filesystem::is_directory(dir, ec)) {
-		report = "no 3D texture pack at " + dir;
-		return false;
-	}
+	if (!std::filesystem::is_directory(dir, ec)) return;
+	if (variant >= 0) variants[size_t(variant)].found = true;
 	std::vector<std::filesystem::path> files;
 	for (const auto &e : std::filesystem::directory_iterator(dir, ec))
 		if (e.is_regular_file(ec) && e.path().extension() == ".png")
 			files.push_back(e.path());
 	std::sort(files.begin(), files.end());   // (a folder's order is the filesystem's: laid out the same way every run)
-	// the biggest first, so the shelves pack without gaps
-	struct Pending { Key key; std::vector<uint8_t> rgba; int w = 0, h = 0; std::string name; };
-	std::vector<Pending> pending;
-	for (const auto &p : files) {
-		const std::string name = p.filename().string();
-		Key k = {};
-		if (!parse_name(name, k.hash, k.w, k.h, k.format)) {
-			fprintf(stderr, "3D texture pack: %s is not named <hash>_<width>x<height>_f<format>.png: left out\n", name.c_str());
-			st.rejected++;
-			continue;
-		}
-		Pending pd;
-		pd.key = k;
-		pd.name = name;
+	for (const auto &f : files) {
+		const std::string name = f.filename().string();
 		// The reader here is the one the portrait folders use (src/host/png.h). This file came with one of its
 		// own; they met in a merge and the better of the two stayed -- it takes the forms an editor writes and
 		// says plainly why it refuses a file instead of guessing. It hands back packed words with red in the
@@ -165,8 +186,17 @@ bool Tex3dHd::load(const std::string &dir, std::string &report)
 		// the host's byte order.
 		std::vector<uint32_t> px;
 		std::string why;
-		if (!read_png(p.string().c_str(), px, pd.w, pd.h, why)) {
-			fprintf(stderr, "3D texture pack: %s %s: left out\n", name.c_str(), why.c_str());
+		Pending pd;
+		pd.variant = variant;
+		if (!parse_name(name, pd.key.hash, pd.key.w, pd.key.h, pd.key.format)) {
+			fprintf(stderr, "3D texture pack: %s is not named <hash>_<width>x<height>_f<format>.png: left out\n", name.c_str());
+			st.rejected++;
+			continue;
+		}
+		// A set's image is named by its set as well, so a line in the log says which of the two was drawn
+		pd.name = variant >= 0 ? variants[size_t(variant)].rel + "/" + name : name;
+		if (!read_png(f.string().c_str(), px, pd.w, pd.h, why)) {
+			fprintf(stderr, "3D texture pack: %s %s: left out\n", pd.name.c_str(), why.c_str());
 			st.rejected++;
 			continue;
 		}
@@ -180,34 +210,67 @@ bool Tex3dHd::load(const std::string &dir, std::string &report)
 		}
 		if (pd.w > PAGE_W || pd.h > PAGE_H) {
 			fprintf(stderr, "3D texture pack: %s is %d x %d; a page of texture memory is %d x %d: left out\n",
-					name.c_str(), pd.w, pd.h, PAGE_W, PAGE_H);
+			        pd.name.c_str(), pd.w, pd.h, PAGE_W, PAGE_H);
 			st.rejected++;
 			continue;
 		}
 		pending.push_back(std::move(pd));
 	}
+}
+
+bool Tex3dHd::load(const std::string &dir, std::string &report, bool with_root)
+{
+	entries.clear();
+	seen.clear();
+	hd.clear();
+	shelf = {};
+	st = {};
+	for (Variant &v : variants) { v.found = v.on = false; }
+	std::error_code ec;
+	if (!std::filesystem::is_directory(dir, ec)) {
+		report = "no 3D texture pack at " + dir;
+		return false;
+	}
+	std::vector<Pending> pending;
+	if (with_root) scan(dir, -1, pending);
+	// Only the sets the host asked for. Everything else under the pack folder -- DUMP, a capture put aside, a
+	// folder of work in progress -- is none of this file's business, and laying it in pages of texture memory
+	// would spend the sixteen there are on images nobody asked to be drawn.
+	for (size_t i = 0; i < variants.size(); i++) {
+		scan(dir + "/" + variants[i].rel, int(i), pending);
+		if (!variants[i].found)
+			fprintf(stderr, "3D texture pack: there is no folder %s: that set is not drawn\n", variants[i].rel.c_str());
+	}
+	// the biggest first, so the shelves pack without gaps
 	std::stable_sort(pending.begin(), pending.end(), [](const Pending &a, const Pending &b) { return a.h > b.h; });
+	size_t in_sets = 0;
 	for (auto &pd : pending) {
-		if (entries.count(pd.key)) {
+		std::vector<Entry> &here = entries[pd.key];
+		bool twice = false;
+		for (const Entry &e : here) if (e.variant == pd.variant) twice = true;
+		if (twice) {
 			fprintf(stderr, "3D texture pack: %s is a second file for a texture already loaded: left out\n", pd.name.c_str());
 			st.rejected++;
 			continue;
 		}
 		Entry e;
 		e.name = pd.name;
+		e.variant = pd.variant;
 		if (!place(pd.rgba, pd.w, pd.h, replacement_format(pd.key.format), e.place)) {
 			fprintf(stderr, "3D texture pack: no room left for %s (%d pages of %d x %d used): left out\n",
-					pd.name.c_str(), page_count(), PAGE_W, PAGE_H);
+			        pd.name.c_str(), page_count(), PAGE_W, PAGE_H);
 			st.rejected++;
 			continue;
 		}
 		e.placed = true;
-		entries.emplace(pd.key, e);
+		here.push_back(e);
 		st.loaded++;
+		if (pd.variant >= 0) in_sets++;
 	}
-	char line[160];
-	snprintf(line, sizeof(line), "3D texture pack: %zu textures loaded, %zu left out, in %d page%s of texture memory, from ",
-			 st.loaded, st.rejected, page_count(), page_count() == 1 ? "" : "s");
+	const std::string sets = in_sets ? " (" + std::to_string(in_sets) + " of them in variant sets)" : std::string();
+	char line[200];
+	snprintf(line, sizeof(line), "3D texture pack: %zu textures loaded%s, %zu left out, in %d page%s of texture memory, from ",
+	         st.loaded, sets.c_str(), st.rejected, page_count(), page_count() == 1 ? "" : "s");
 	report = line + dir;   // (the folder last: a long path used to run the rest of the line off the end)
 	return st.loaded > 0;
 }
@@ -276,14 +339,24 @@ bool Tex3dHd::find(const uint16_t *tex, const TexPlace &native, bool translator_
 	}
 	if (!flat || allow_flat) {
 		const Key k = { hash, native.w, native.h, native.format };
-		if (auto e = entries.find(k); e != entries.end() && e->second.placed) {
-			s.hit = true;
-			s.place = e->second.place;
-			st.matched++;
-			if (!e->second.reported) {
-				e->second.reported = true;
-				fprintf(stderr, "3D texture pack: %s drawn, from page %d at %d,%d\n", e->second.name.c_str(),
-						native.page, native.x, native.y);
+		if (auto e = entries.find(k); e != entries.end()) {
+			// The root's image stands in unless a variant set carrying this texture is switched on, and then
+			// that set's image stands in instead (tex3d_hd.h). At most one of them is ever drawn.
+			Entry *pick = nullptr;
+			for (Entry &c : e->second) {
+				if (!c.placed) continue;
+				if (c.variant < 0) { if (!pick) pick = &c; continue; }
+				if (variants[size_t(c.variant)].on) { pick = &c; break; }
+			}
+			if (pick) {
+				s.hit = true;
+				s.place = pick->place;
+				st.matched++;
+				if (!pick->reported) {
+					pick->reported = true;
+					fprintf(stderr, "3D texture pack: %s drawn, from page %d at %d,%d\n", pick->name.c_str(),
+							native.page, native.x, native.y);
+				}
 			}
 		}
 	}

@@ -244,7 +244,10 @@ for, on both of the port's rasterisers: [docs/fv2-hd-3d.md](docs/fv2-hd-3d.md). 
 everything the tile generator draws, and `--tile-scale` / `--tile-pack` put larger pictures in the place of its
 tiles and whole layers the same way: [docs/fv2-hd-2d.md](docs/fv2-hd-2d.md). And the costume players have told
 each other about for twenty-odd years, after thirty straight wins, turns out to be in Sega's code, in Honey's
-own cloth handler and nobody else's: [docs/fv2-honey.md](docs/fv2-honey.md).
+own cloth handler and nobody else's: [docs/fv2-honey.md](docs/fv2-honey.md). Kuhn has four colours instead of
+two, the extra pair being the Dreamcast's blue and black -- which took finding that his armour is one flat
+square of texture, and correcting a page that had said no texture was involved:
+[docs/fv2-colours.md](docs/fv2-colours.md).
 
 The sound is its own subject, and a large one: the board, MAME's SCSP, the effects DSP this port rewrote, the
 68000 sound driver read function by function, and the measurements that back all of it. It lives in five

@@ -197,6 +197,38 @@ The second line comes the **first time that texture is drawn**, and it is the th
 seems to happen: a pack indexed by content never says of itself that it matched.
 
 
+## 5 bis. Variant sets: a second image for the same texture
+
+A replacement is recognised by the content of the texture it stands in for, so one folder holds exactly one
+replacement per texture. That is enough to repaint what the game draws, and not enough to **add** a colour a
+fighter never had: whichever extra colour the player picks, the game draws the same texels.
+
+A **variant set** is the missing half. It is a subfolder of the pack, named by its path with forward slashes,
+holding images for the same textures the root holds images for; its images are drawn only while the set is
+switched on, and then they stand in instead of the root's, or of the game's. At most one image of a texture is
+ever drawn.
+
+```
+texture_replacement\<hash>_<w>x<h>_f<format>.png                      the root: always drawn
+texture_replacement\CHARACTERS\Kuhn\blue\<same names>                 a set: drawn when it is switched on
+```
+
+**Only the sets the host asks for are read** (`Tex3dHd::want_variant`, called before `load`). A pack folder
+also holds `DUMP` and whatever the player keeps beside his images; there are sixteen pages of texture memory
+and they are not to be spent on folders nobody asked for. Measured on the real folder: with Kuhn's two sets
+asked for, 20 images loaded and 0 left out, and the 1700 files of `DUMP` beside them were not read.
+
+**A set names its images the way the root does**, because a replacement is recognised by the content of the
+texture it stands in for and nothing else. Kuhn's armour is one flat 64 x 64 square, so the colour of his
+armour is a file of that set like any other, under that square's own name (`docs/fv2-colours.md`).
+
+The host that uses this is Fighting Vipers 2's four-colour Kuhn: `Game::kuhn_tick` in `src/host/main.cpp`
+turns the two sets on and off, and lifts the refusal of flat textures while a set of his is loaded, his armour
+being one. The sets are read whether or not a texture pack was asked for (`load`'s `with_root`), and with no
+option in front of them: they are read because they are there. Where they are not there, nothing is loaded, no
+page is spent and `resolve_hd` is not installed, exactly as before this existed.
+
+
 ## 6. What it costs, measured
 
 The texels of a place in texture memory are hashed again only when the board has written to it since. The board

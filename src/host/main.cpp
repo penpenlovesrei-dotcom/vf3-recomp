@@ -578,7 +578,6 @@ struct settings
 	bool fullscreen = false, arcade = false, show_fps = false, smooth = true;
 	bool timings = false;    // F9: the timings in the title bar
 	bool full_roster = false;   // Fighting Vipers 2's hidden fighters, selectable (Model3::unlock_roster)
-	bool honey_costume = false; // Honey's other costume, without the thirty wins (Model3::honey_costume)
 	// Which ending the staff roll shows: the arcade's replays of the matches just won, or the Dreamcast's
 	// illustrations in their place (src/host/fv2_ending.h). The arcade's is what the board does, so it is what
 	// this starts at.
@@ -642,7 +641,9 @@ struct settings
 		flag("show_fps", show_fps);
 		flag("smooth_motion", smooth);
 		flag("full_roster", full_roster);
-		flag("honey_costume", honey_costume);
+		// (no longer read, either of them: Honey's four costumes and Kuhn's four colours are not a setting any
+		// more but the wheel the select screen always turns, so a file that still carries one of those lines is
+		// ignored and the line goes away at the next save)
 		// (no longer read: the Dreamcast roll is shut, so a file that still carries the line is ignored and
 		// the line goes away at the next save -- see where the setting's row is drawn grey)
 		if (auto it = kv.find("portraits_folder"); it != kv.end()) portraits = it->second;
@@ -709,7 +710,6 @@ struct settings
 		if (graphics) fprintf(f, "graphics = %d\n", graphics);
 		fprintf(f, "screen_filter = %d\nantialiasing = %d\nmusic_volume = %d\neffects_volume = %d\narcade_coins = %d\nframe_timings = %d\n", filter, aa, music, effects, arcade_coin, int(timings));
 		if (full_roster) fprintf(f, "full_roster = %d\n", int(full_roster));   // (one game's: written only once asked for)
-		if (honey_costume) fprintf(f, "honey_costume = %d\n", int(honey_costume));   // (likewise)
 		if (ending_dc) fprintf(f, "ending_dreamcast = %d\n", int(ending_dc));   // (one game's, likewise)
 		if (console) fprintf(f, "console_mode = %d\n", int(console));         // (likewise: an older build reads the file as the PC way)
 		if (!portraits.empty()) fprintf(f, "portraits_folder = %s\n", portraits.c_str());   // (one game's, likewise)
@@ -1005,12 +1005,15 @@ struct Game
 	// The two instructions go in and come back out, because the choice is per match: positions 0 and 1 must get
 	// Sega's own words back. The native code is made again only when something actually changed, so a player who
 	// keeps the same costume pays nothing between matches.
-	bool honey_costume = false;   // the setting: offer four instead of the game's two
+	//
+	// NOT A SETTING. Frederic, the 2026-10-30: "les costumes doivent toujours etre selectionnables". There was a
+	// line in the menu that switched this on, and a player who had not found it had two costumes and no way of
+	// knowing there were four. The wheel is the select screen's now, always: positions 0 and 1 are Sega's own
+	// two, so nothing is taken from anyone by it always being there.
 	int honey_cycle = 0;          // 0-3 while the select screen is up
 	bool honey_on_select = false, honey_up_was = false;
 	void honey_tick(bool up_now)
 	{
-		if (!honey_costume) return;
 		const bool on_select = board.fv2_task_state() == 5;
 		if (on_select && !honey_on_select) {   // the screen just opened: back to the first costume
 			honey_cycle = 0;
@@ -1032,6 +1035,83 @@ struct Game
 			honey_up_was = up_now;
 		}
 		honey_on_select = on_select;
+	}
+	// Kuhn's four colours.
+	//
+	// The same wheel as Honey's above, and it needs the game's own toggle no more than hers does: positions 2
+	// and 3 of a four-long cycle reach the game as colours 0 and 1. What those two positions add is the colour,
+	// and it comes in two halves because KUHN COMES IN TWO HALVES:
+	//
+	//   * while the armour holds, his whole body is that armour, and the armour is ONE FLAT SQUARE OF TEXTURE;
+	//   * once the armour is knocked off, the model under it has ten textures of its own.
+	//
+	// Both halves are textures, so both come from one folder of the 3D texture pack (src/video/tex3d_hd.h): the
+	// ten images of the model under the armour, and the armour itself -- RGB(49,49,66) for his colour 0 and
+	// RGB(115,90,8) for his colour 1, measured with --hd-flats on this port's own dump. That square is the
+	// whole of his colour, and it is an aplat, not a polygon colour. A flat texture is refused by default,
+	// because its content names every flat square of that size and colour anywhere on the screen, so the pack
+	// is told to accept them once a set of his is there -- the trade tex3d_hd.cpp's find() describes, taken
+	// here on purpose.
+	//
+	// No option in front of any of it: the folders are read because they are there. Where they are not, nothing
+	// is loaded and nothing is drawn differently.
+	//
+	// NOT A SETTING, for the reason Honey's wheel above gives: positions 0 and 1 are Sega's own chrome and gold.
+	//
+	// BOTH HIS ENTRIES WEAR IT, and that is the data's doing rather than a choice made here. The roster patch
+	// puts two Kuhns on the select row -- cursor 12 (id 13, KUHN) and cursor 14 (id 12, DURAL) -- and the word
+	// +0x74 of their two records is the SAME colour list (docs/fv2-two-kuhn.md). One list, one pair of colours
+	// for the two of them; and the ten textures are in the armour-off capture of both entries, ten for ten.
+	//
+	// Measured on this port's own captures: his ten textures appear in the armour-off capture of both his
+	// entries and in neither of the armour-on ones; the two flat squares appear in both. Proved end to end
+	// headless -- the blue square under its arcade name, --hd-flats on, and Kuhn comes out blue.
+	int kuhn_cycle = 0;           // 0-3 while the select screen is up
+	bool kuhn_on_select = false, kuhn_up_was = false, kuhn_said = false;
+	// The two sets, named by their folders under the pack folder. Position 2 is the game's colour 0 and position
+	// 3 its colour 1, and the sets were made that way round: the blue is a recolouring of his chrome, the black
+	// of his gold.
+	static constexpr const char *KUHN_SKIN[2] = { "CHARACTERS/Kuhn/blue", "CHARACTERS/Kuhn/black" };
+	void kuhn_wear(int cycle)
+	{
+		for (int i = 0; i < 2; i++)
+			video::hd3d().use_variant(KUHN_SKIN[i], cycle >= 2 && (cycle & 1) == i);
+	}
+	void kuhn_tick(bool up_now)
+	{
+		const bool on_select = board.fv2_task_state() == 5;
+		if (on_select && !kuhn_on_select) {   // the screen just opened: back to the first colour
+			kuhn_cycle = 0;
+			kuhn_up_was = false;
+			kuhn_wear(0);
+		}
+		if (on_select) {
+			if (up_now && !kuhn_up_was) {
+				kuhn_cycle = (kuhn_cycle + 1) & 3;
+				kuhn_wear(kuhn_cycle);
+				// The pulse is for the preview, as it is for Honey's skirt: nothing in this game watches the
+				// cursor, and the model is built once, when the cursor lands (docs/fv2-honey.md). The textures
+				// themselves need no asking -- they are recognised when they are drawn -- so this is only for
+				// what the select screen shows.
+				for (int p = 0; p < 2; p++) board.fv2_redo_fighter_model(p);
+				if (kuhn_cycle >= 2 && !video::hd3d().variant_found(KUHN_SKIN[kuhn_cycle & 1]) && !kuhn_said) {
+					kuhn_said = true;
+					fprintf(stderr, "Kuhn: his two extra colours are folders of the 3D texture pack (%s and %s), "
+					                "and this run has neither: his own two are all he has\n", KUHN_SKIN[0], KUHN_SKIN[1]);
+				}
+				fprintf(stderr, "Kuhn: colour %d of 4%s\n", kuhn_cycle + 1,
+				        kuhn_cycle >= 2 ? (kuhn_cycle == 2 ? ", the blue" : ", the black") : "");
+			}
+			kuhn_up_was = up_now;
+		}
+		// The game over and the attract loop back: Sega's own two come back with it. Not for tidiness -- the
+		// attract plays demo fights, and a Kuhn in one of them is Sega's Kuhn, not the colour somebody picked
+		// two games ago. The select screen opening resets the wheel as well, so this only matters for between.
+		if (kuhn_cycle && board.fv2_task_state() == 0) {
+			kuhn_cycle = 0;
+			kuhn_wear(0);
+		}
+		kuhn_on_select = on_select;
 	}
 	// The sound board runs on a thread of its own, a frame behind the game (its ~3 ms a frame alongside the next
 	// frame's work, not in a picture's time): it hears only the game's bytes, and its sound is queued a frame later
@@ -1453,7 +1533,6 @@ int main(int argc, char **argv)
 	std::string zip;
 	bool arg_arcade = false, sound = true, show_boot = false, arg_interp = getenv("VF3_INTERP") != nullptr;
 	int arg_full_roster = -1;   // Fighting Vipers 2's hidden fighters (--full-roster / --no-full-roster)
-	int arg_honey = -1;         // Honey's other costume (--honey-costume / --no-honey-costume)
 	int arg_style = -1;         // the play style asked for on the command line: 0 the PC way, 2 the console way
 	                            // (the arcade way is --arcade, which came first and is kept as it was)
 	std::string arg_portraits;      // Fighting Vipers 2's select-screen portraits, from a folder of PNGs (--portraits DIR)
@@ -1488,8 +1567,6 @@ int main(int argc, char **argv)
 		else if (a == "--pc") arg_style = 0;
 		else if (a == "--full-roster") arg_full_roster = 1;
 		else if (a == "--no-full-roster") arg_full_roster = 0;
-		else if (a == "--honey-costume") arg_honey = 1;
-		else if (a == "--no-honey-costume") arg_honey = 0;
 		else if (a == "--portraits" && i + 1 < argc) arg_portraits = argv[++i];
 		else if (a.rfind("--portraits=", 0) == 0) arg_portraits = a.substr(12);
 		else if (a == "--no-portraits") arg_no_portraits = true;
@@ -1602,7 +1679,6 @@ int main(int argc, char **argv)
 	if (arg_music >= 0) cfg.music = arg_music;
 	if (arg_effects >= 0) cfg.effects = arg_effects;
 	if (arg_full_roster >= 0) cfg.full_roster = arg_full_roster;
-	if (arg_honey >= 0) cfg.honey_costume = arg_honey;
 	if (arg_style >= 0) { cfg.console = arg_style == 2; cfg.arcade = false; }
 	// --portraits names a folder other than the one this port keeps for them, and is remembered, so it is named
 	// once. --no-portraits goes back to Sega's and is remembered too -- otherwise a folder still full of PNGs
@@ -1783,7 +1859,6 @@ int main(int argc, char **argv)
 		fprintf(stderr, "HD 2D: the tile plane drawn at %d x %d (%d times the hardware's)\n",
 		        video::W * game.tiles.hd_scale(), video::H * game.tiles.hd_scale(), game.tiles.hd_scale());
 	game.full_roster = cfg.full_roster;
-	game.honey_costume = cfg.honey_costume;
 	if (cfg.full_roster && board.unlock_roster() < 0)
 		fprintf(stderr, "the hidden fighters: that was measured on Fighting Vipers 2 (Japan, Revision A), not on this game\n");
 	// Per-game names for what this port keeps of its own: Virtua Fighter 3 keeps the names it has always had, so
@@ -1802,12 +1877,34 @@ int main(int argc, char **argv)
 	const std::string hd_pack_dir = arg_hd_pack.empty() ? hd_3d_dir : player_folder(arg_hd_pack, data);
 	{
 		const std::string &pack = hd_pack_dir;
-		if (cfg.hd_3d) {
+		// Kuhn's two extra colours are two folders of the pack, and load() reads no subfolder it was not asked
+		// for (src/video/tex3d_hd.h): a pack folder also holds DUMP and whatever the player keeps beside his
+		// images, and the sixteen pages of texture memory are not to be spent on folders nobody asked for.
+		//
+		// Asked for in HIS GAME ONLY. settings.ini is one file for both games, and a pack loaded is resolve_hd
+		// installed, which is exactly what Virtua Fighter 3 is promised never to feel (docs/fv2-hd-3d.md).
+		const bool kuhn_sets = board.set == "fvipers2";
+		if (kuhn_sets)
+			for (const char *skin : Game::KUHN_SKIN) video::hd3d().want_variant(skin);
+		// And read whether or not a texture pack was asked for: his four colours are not a setting (Game's
+		// kuhn_tick), so the two folders are read because they are there, and the sets are named so only those
+		// two are read. The cost when they are not there is nothing at all: no page, and resolve_hd not
+		// installed, exactly as before.
+		if (cfg.hd_3d || kuhn_sets) {
 			std::string report;
-			if (!video::hd3d().load(pack, report))
+			if (!video::hd3d().load(pack, report, cfg.hd_3d))
 				fprintf(stderr, "the 3D texture pack: nothing loaded from %s: the game's own textures are drawn\n", pack.c_str());
 			else
 				fprintf(stderr, "%s\n", report.c_str());
+			// Kuhn's armour IS a flat square of texture, and a flat one is refused by default because its
+			// content names every flat square of that size and colour anywhere on the screen (tex3d_hd.cpp).
+			// With a set of his loaded the refusal is lifted, which is the trade: the pack holds his two
+			// squares and nothing else flat, so what else could be caught is another 64 x 64 of exactly his
+			// grey or his gold.
+			if (video::hd3d().variant_found(Game::KUHN_SKIN[0]) || video::hd3d().variant_found(Game::KUHN_SKIN[1])) {
+				video::hd3d().allow_flat_textures(true);
+				fprintf(stderr, "Kuhn's colours: the flat textures are accepted, his armour being one\n");
+			}
 		}
 		if (arg_hd_dump_on) {
 			const std::string into = arg_hd_dump.empty() ? hd_3d_dir + "/DUMP" : player_folder(arg_hd_dump, data);
@@ -3492,10 +3589,6 @@ int main(int argc, char **argv)
 			[&] { return std::string(cfg.full_roster ? "On" : "Off"); },
 			[&](int) { cfg.full_roster = !cfg.full_roster; game.full_roster = cfg.full_roster; cfg_dirty = true;
 			           if (cfg.full_roster) game.hold_roster(); } });
-		p.items.push_back({ "Honey: four costumes", "The select screen cycles Honey's two costumes with a press of Up. On, it cycles four: Sega's two, then the same two without the skirt -- the costume Sega put behind thirty straight wins in an intruded match. The extra two are chosen the same way, by pressing Up again.",
-			[&] { return std::string(cfg.honey_costume ? "On" : "Off"); },
-			[&](int) { cfg.honey_costume = !cfg.honey_costume; game.honey_costume = cfg.honey_costume; cfg_dirty = true;
-			           game.honey_cycle = 0; } });
 		p.items.push_back(back_item());
 		return p;
 	};
@@ -5244,6 +5337,8 @@ int main(int argc, char **argv)
 				for (int q = 0; q < 2; q++) c.start[q] = c.start[q] || console_ctl.start[q];
 				// Honey's costume wheel, turned by the same presses of up the game turns its own two with
 				game.honey_tick(c.up[0] || c.up[1]);
+				// Kuhn's colour wheel, on the same presses and in the same shape (Game::kuhn_tick)
+				game.kuhn_tick(c.up[0] || c.up[1]);
 				// The arcade's test menu (RAM 0x102002 is 4 while it's up; 0 at the attract, a fight, the boot): Down
 				// moves (the service button) and Start selects (the test button), any pad or key, as VF1's and VF2's;
 				// the menu's Service menu presses test once the game is past its boot; leaving it, the PC way restarts

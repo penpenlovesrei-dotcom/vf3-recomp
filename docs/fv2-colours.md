@@ -137,7 +137,73 @@ A value the game rewrites each frame is reached by **patching the code that writ
 what it reads -- not by writing the value.
 
 
-## What a four-colour Kuhn would need
+## Four colours, done -- and the armour turned out to be a texture after all
+
+The 2026-10-30. Not by this page's chain, and the correction matters more than the feature.
+
+**Kuhn's armour is one flat 64 x 64 square of texture, one per `*1P COLOR`.** Measured with this port's own
+dump, `--hd-flats` on, over a match played on cursor 12:
+
+| `*1P COLOR` | the square | its colour |
+|---|---|---|
+| 0 | `6b3cdf84fa24a325_64x64_f0.png` | RGB(49,49,66) |
+| 1 | `789f257eacd35d25_64x64_f0.png` | RGB(115,90,8) |
+
+Those are the Dreamcast's own first two Kuhn skins, measured at the foot of this page from the other side --
+grey RGB(49,48,65) and gold RGB(115,89,8), to within what five bits a channel can hold. So the blue
+RGB(0,20,106) and the near-black RGB(24,4,0) are the same thing under a different name: **a flat square each,
+carrying that square's arcade name**. With them in the pack and flat textures accepted, Kuhn is blue and black.
+
+Proved headless, end to end: the blue square under the name `6b3cdf84fa24a325_64x64_f0.png`, `--hd-flats`,
+and the picture at frame 3301 has a blue Kuhn where the same run without it has the chrome one. The black the
+same way.
+
+**A flat texture is refused by default** and for a good reason (`src/video/tex3d_hd.cpp`, `find`): a flat
+square's content names every flat square of that size and colour anywhere on the screen. The host lifts the
+refusal once a folder of his is loaded, and the trade is then that another 64 x 64 of exactly his grey or his
+gold would be repainted too. Nothing else flat is in the pack.
+
+### What this page had wrong, and how the mistake was shaped
+
+The chain below -- colour list at `0x0007FACC`, per-match words at `0x003C2D04`, polygon RAM words 0x400 and
+0x401 -- is **real and was measured again today**: poking the list blue, exactly two words of the 4 MB of
+polygon RAM change, those two. What was never measured is the last arrow, *"-> the untextured polygons of his
+armour"*. It does not hold in this port:
+
+- with the list poked blue from before the match loads, the picture at the select screen and at two frames of
+  the fight is **byte-identical** to the run without it;
+- in the gold run, `00CC9900` appears in those two words and **nowhere else in the 4 MB**; no polygon carries
+  it, and no RGB value's count moves by more than 23 polygons between the chrome run and the gold one;
+- over a whole match this port's renderer reads the colour table **twice**, at word 0x410, never at 0x400.
+
+The first difference of a 4 MB diff was read as the answer. It was a difference the game writes and this port
+never reads. The measurement that would have caught it in a minute -- replace the square, look at the screen --
+was not made, because the page had already concluded that no texture was involved.
+
+The sentence at the top of this page, *"no texture is involved"*, came from the same place: his arcade entries
+bring no textures **in the capture that was made**, and that capture refused flat ones. `--hd-flats` existed
+for exactly this and `src/video/tex3d_hd.cpp` names him in its comment -- *"Kuhn's skin is one flat coloured
+square"* -- which is the fact this page needed and did not read.
+
+**What the colour list does, then, is not settled.** The game writes it, the Real3D's DMA carries it to the
+colour table, and nothing this port draws reads it. It may be read by a part not on screen in these runs, or
+by real hardware for something else. `Model3::fv2_kuhn_armour`, written to use it, has been taken out again.
+
+### What it is made of now
+
+The wheel is `Game::kuhn_tick` in `src/host/main.cpp`, with no option in front of it: positions 2 and 3 of a
+four-long cycle switch on a variant set of the 3D texture pack (`docs/fv2-hd-3d.md`), eleven images each --
+the ten of the model under the armour, and the armour's own square.
+
+**Both his entries wear it**, and that is the data's doing: the roster patch puts two Kuhns on the select row,
+cursor 12 (id 13, KUHN) and cursor 14 (id 12, DURAL), and a texture is recognised by its content, which is the
+same for both.
+
+**What is not settled.** Two Kuhns in one match wear whatever the wheel last chose, the pack recognising a
+texture by its content. And nothing of this has been seen in the window yet.
+
+
+## What a four-colour Kuhn would have needed, by the other route
 
 Two changes, both at addresses now known:
 

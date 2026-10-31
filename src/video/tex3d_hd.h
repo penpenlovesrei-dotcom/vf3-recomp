@@ -89,7 +89,30 @@ public:
 	bool dump_to(const std::string &dir, std::string &error);
 	// The pack: dir/<hash>_<w>x<h>_f<format>.png, the name being the key the dump wrote. Any image size; the
 	// name's size is the native one, for identification only. report gets a line for the player.
-	bool load(const std::string &dir, std::string &report);
+	//
+	// with_root false reads the variant sets below and NOT the pack's own images. That is for a host whose
+	// player asked for one fighter's extra colours and not for a texture pack: the sets are asked for by name,
+	// so what is read is those folders and nothing else.
+	bool load(const std::string &dir, std::string &report, bool with_root = true);
+
+	// A VARIANT SET: a subfolder of the pack holding images for the same textures the root holds images for,
+	// drawn only while that set is switched on.
+	//
+	// Why the pack needs one at all. A replacement is recognised by the content of the texture it stands in
+	// for, so one folder can hold exactly one replacement per texture. That is enough to repaint what the game
+	// already draws, and not enough to ADD a colour the fighter never had: the game draws the same texels for
+	// the colour it already has, whichever extra colour the player picked. A set that is switched on and off is
+	// the missing half -- the host turns it on once the player has chosen the extra colour, and those same
+	// texels then come out of the set's image instead of the root's, or of the game's.
+	//
+	// A set is named by its path under the pack folder, with forward slashes (CHARACTERS/Kuhn/blue). The host
+	// says which sets it wants BEFORE load(), and only those subfolders are read: a pack folder also holds DUMP
+	// and whatever else the player keeps beside his images, and pages of texture memory are not to be spent on
+	// folders nobody asked for.
+	void want_variant(const std::string &rel);
+	// Whether load() found that folder, and whether its images are the ones being drawn
+	bool variant_found(const std::string &rel) const;
+	void use_variant(const std::string &rel, bool on);
 
 	// Lifts the refusal of flat textures, for a run and not for the game: see find(). Set by --hd-flats.
 	void allow_flat_textures(bool on) { allow_flat = on; }
@@ -122,6 +145,7 @@ private:
 		TexPlace place;              // where it was put in the HD pages
 		bool placed = false;
 		bool reported = false;       // (said in the log the first time it was drawn)
+		int variant = -1;            // -1: the pack's root, drawn whatever is switched on
 		std::string name;
 	};
 	// (hash, width, height, format) is the identity; packed into the map's key
@@ -138,7 +162,16 @@ private:
 			return size_t(k.hash ^ (uint64_t(k.w) * 0x9E3779B97F4A7C15ull) ^ (uint64_t(k.h) << 20) ^ (uint64_t(k.format) << 40));
 		}
 	};
-	std::unordered_map<Key, Entry, KeyHash> entries;
+	// One texture may have several images: the root's and one per variant set. At most one of them is drawn,
+	// and which is decided in find() by what is switched on.
+	std::unordered_map<Key, std::vector<Entry>, KeyHash> entries;
+	struct Variant
+	{
+		std::string rel;
+		bool on = false, found = false;
+	};
+	std::vector<Variant> variants;
+	int variant_index(const std::string &rel) const;
 	// What find() has already worked out for this picture, by where the texture is (page, x, y, size, format):
 	// the same texture is drawn by many polygons and hashing it once a picture is enough. Cleared by new_picture().
 	struct Seen { bool hit = false; TexPlace place; };
@@ -158,6 +191,9 @@ private:
 	Stats st;
 
 	bool place(const std::vector<uint8_t> &rgba, int w, int h, int format, TexPlace &out);
+	// One folder of the pack read into `pending`: the root (variant -1) or a variant set's subfolder
+	struct Pending;
+	void scan(const std::string &dir, int variant, std::vector<Pending> &pending);
 	void dump_one(const uint16_t *tex, const TexPlace &native, uint64_t hash, AlphaUse alpha);
 };
 
