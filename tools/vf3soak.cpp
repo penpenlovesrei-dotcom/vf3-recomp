@@ -138,6 +138,17 @@ int main(int argc, char **argv)
 		A.cpu.rec = &rec_a;
 		B.cpu.rec = &rec_b;
 	}
+	const uint64_t boot_frames = uint64_t(A.profile->boot_frames);
+	bool rebuilt_a = false, rebuilt_b = false;
+	auto rebuild_from_ram = [&](m3::Model3 &board, ppcrec::Rec &r, const char *which) {
+		if (!rec || r.mismatch_count() == 0) return;
+		const size_t n = r.mismatch_count();
+		const std::vector<uint32_t> img = board.ram_program_image(board.program_image().size());
+		if (r.build(board.cpu, img, board.profile->map, board.profile->map_count) && r.mismatch_count() == 0)
+			printf("%s: recompiled from RAM after the boot (%zu words the game had patched)\n", which, n);
+		else
+			printf("%s: the rebuild after the boot left %zu patched words: the interpreter runs everything\n", which, n);
+	};
 	A.rtc_time = B.rtc_time = 0;   // (as netplay will: the same clock on both sides)
 	A.reset();
 	B.reset();
@@ -156,6 +167,7 @@ int main(int argc, char **argv)
 	bool failed = false;
 	for (uint64_t f = 0;; f++) {
 		if (frames >= 0 && f >= uint64_t(frames)) break;
+		if (!rebuilt_b && f == boot_frames) { rebuilt_b = true; rebuild_from_ram(B, rec_b, "the rolled-back board"); }
 		m3::Controls c = real.empty() ? m3::Controls{} : real.back();
 		InputScript::Actions act = script.step(c, f);
 		if (act.quit) break;
@@ -178,6 +190,7 @@ int main(int argc, char **argv)
 				break;
 			}
 			checked++;
+			if (!rebuilt_a && k == boot_frames) { rebuilt_a = true; rebuild_from_ram(A, rec_a, "the straight board"); }
 			A.controls = real[k];
 			A.run_frame();
 

@@ -1,0 +1,18 @@
+# Fighting Vipers 2, the arcade route for two players (free play: VF3_FREE_PLAY=1, as a netplay match boots).
+# Both press Start on the title, both choose the fighter the cursor starts on (Emi and Charlie), then both play
+# at random long enough for the rounds to be won and the match to end. For vf3detect (the score's bytes in RAM)
+# and for the rollback soak with real player 2 inputs.
+# Confirmed by --shots the 2026-11-01: the title is up by frame 1400, the select from about 1540 (its countdown
+# at 18 on frame 1601), and the fight from about 1900.
+0 mark boot
+1400 press p1.start
++20 press p2.start
++280 press p1.punch
++10 press p2.punch
++200 mark fight
++500 random p1 20261101
++0 random p2 20261102
++7200 random p1 off
++0 random p2 off
++60 mark done
++10 quit

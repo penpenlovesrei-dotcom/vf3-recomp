@@ -42,6 +42,16 @@ struct Board
 			if (rec.build(m.cpu, image, m.profile->map, m.profile->map_count)) m.cpu.rec = &rec;
 			else m.cpu.rec = nullptr;
 		};
+		// A match's boot is a boot of its own, and a game that unpacks or patches its program in RAM
+		// (Fighting Vipers 2) now disagrees with the native code made from the CROM: one word of that turns
+		// the whole recompiler off, so it is built again from RAM, where it agrees. The host does the same
+		// (main.cpp: rebuild_from_ram_if_stale); without it this would time the interpreter.
+		adapter.after_boot = [this] {
+			if (!use_rec || rec.mismatch_count() == 0) return;
+			std::vector<uint32_t> img = m.ram_program_image(image.size());
+			if (rec.build(m.cpu, img, m.profile->map, m.profile->map_count) && rec.mismatch_count() == 0) image = std::move(img);
+			else m.cpu.rec = nullptr;
+		};
 		return true;
 	}
 };

@@ -104,6 +104,11 @@ public:
 	std::function<void()> settle;              // before a save or load: anything running alongside the board waits
 	std::function<void(const std::vector<uint8_t> &)> midi_out;   // bytes for the sound board
 	std::function<void()> on_begin;            // a match's start, before the board is set up for it (keep the player's NVRAM)
+	// The match's own patches in RAM, once the boot has unpacked and patched the program there, and the native code
+	// made again from RAM so that it agrees with it (main.cpp: unlock_roster, rebuild_from_ram_if_stale). Both sides
+	// run it, so whatever it patches must be the match's, not one player's: Fighting Vipers 2's hidden fighters are
+	// part of the online version, as Dural is. Virtua Fighter 3 has nothing to do here.
+	std::function<void()> after_boot;
 	std::function<void()> booting;             // now and then in the match's boot (seconds of frames: the window's events)
 
 	bool begin(const std::vector<uint8_t> &blob) override;

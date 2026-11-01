@@ -126,7 +126,9 @@ bool Adapter::begin(const std::vector<uint8_t> &blob)
 	// copies the program from, free play in the settings, the boot run unseen, the same clock
 	if (!dural) board.set_dural(false);   // (Dural on the select: the match's, the same on both sides)
 	else if (board.set_dural(true) == 0) return false;
-	if (board.hide_free_play_text() != 2) return false;
+	// (the notices are in the program the boot copies from the CROM: a program whose place is not known has none
+	// to hide, and plays free play by the coin setting alone, as Fighting Vipers 2 does)
+	if (board.profile->free_play_text.free_play && board.hide_free_play_text() != 2) return false;
 	if (program_changed) program_changed();
 	board.rtc_time = 0;
 	board.power_on();
@@ -137,12 +139,13 @@ bool Adapter::begin(const std::vector<uint8_t> &blob)
 	if (board.coin_setting() < 0 || (!board.set_coin_setting(m3::Model3::COIN_FREE_PLAY) && !board.free_play())) return false;
 	// and its stage select off, as most arcades had it (no stage screen: the game's own next stage), starting at
 	// the host's random place in the stages' list, as an arcade on all day would be
-	board.backup[stage_select(board)] = 1;
+	if (board.profile->settings.stage_select) board.backup[stage_select(board)] = 1;   // (0: not known for this program)
 	board.power_on();
 	for (int i = 0; i < board.profile->boot_frames; i++) {
 		board.run_frame();
 		if (booting && i % 60 == 59) booting();
 	}
+	if (after_boot) after_boot();
 	set_versus_count(board, blob.back() % 16);
 	board.midi.clear();
 	frame = 0;

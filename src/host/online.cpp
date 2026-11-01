@@ -586,8 +586,9 @@ void Online::close_room()
 namespace {
 
 // The lobby's no, in words: what happened and what to do
-// Two versions apart only by what's added on the online version: Dural on the select (Cheats: "+dural") or Team
-// Battle 1 vs 1 (Game > Team Battle mode: "+1v1"): said so
+// Two versions apart only by what's added on the online version: Dural on the select (Cheats: "+dural"), Team
+// Battle 1 vs 1 (Game > Team Battle mode: "+1v1") or Fighting Vipers 2's hidden fighters (Game > Hidden
+// fighters: "+roster"): said so
 std::string dural_apart(const std::string &theirs, const std::string &mine)
 {
 	const auto plain = [](std::string v) { const size_t at = v.find('+'); return at == std::string::npos ? v : v.substr(0, at); };
@@ -599,6 +600,9 @@ std::string dural_apart(const std::string &theirs, const std::string &mine)
 	if (has(theirs, "+1v1") != has(mine, "+1v1"))
 		return has(theirs, "+1v1") ? "Your opponent plays Team Battle 1 vs 1: switch to it in Game > Team Battle mode to play them."
 		                           : "Your opponent plays Team Battle 3 vs 3: switch to it in Game > Team Battle mode to play them.";
+	if (has(theirs, "+roster") != has(mine, "+roster"))
+		return has(theirs, "+roster") ? "Your opponent has the hidden fighters selectable: turn them on too to play them, or ask them to turn them off."
+		                              : "Your opponent has the hidden fighters off, and you have them on: turn them off to play them.";
 	return "";
 }
 

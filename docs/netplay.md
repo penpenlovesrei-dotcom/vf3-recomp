@@ -22,6 +22,7 @@ The plan: GGPO-style rollback netcode, as a library shared by VF1, VF2 and VF3 R
 | Names under the energy bars | drawn in the HUD's style (`VF3_HUD_NAMES=P1,P2` for vf3run's shots) |
 | Online menu, notices, connection display | built into the game; drawn without the ROM by `menutest` (pictures below); not yet played |
 | Lobby (`tools/lobby`, a Cloudflare Worker), room codes, STUN, hole punching, the TURN relay (`src/net/room_link`, `stun`, `http`) | `roomtest` against a local coturn: direct, both relays, one side's relay only, a wrong token, all pass. Two games through a local lobby (`wrangler dev`): a match direct, and one through the relays (Hide my IP on both), 30 s each, in step |
+| Fighting Vipers 2 | the same adapter, nothing of its own: `vf3net` on `fvipers2.zip`, 40 ms each way, 3,999 frames in step, 13 checkpoints the straight run's, a step 4.9 ms. `vf3soak`, 4,000 frames, rollbacks only on a wrong guess: every frame identical, 7.5-8.4 ms a frame with its rollback |
 | Quick match, watching, rematch, replays | not yet |
 
 ```sh
@@ -37,6 +38,39 @@ it, their relay) and a token; the games try every way at once and keep the first
 / join, a UdpLink) is still in the code for tests, not in the menu: codes only. A match starts at the title screen, both on free
 play (both press Start); the menu doesn't pause it; Leave the match (or the other side going) goes back to playing alone, with
 the player's own NVRAM given back (a match plays on the host's).
+
+## Fighting Vipers 2
+
+It plays online through the same adapter as Virtua Fighter 3, with no code of its own. What it took was the
+profile (`src/machine/profile.cpp`) and three things the adapter had been doing unconditionally:
+
+* **Free play.** Virtua Fighter 3 hides the FREE PLAY notices in the program the boot copies out of the CROM.
+  Fighting Vipers 2's program is not copied from anywhere -- the CROM holds a gzip its own boot stub inflates --
+  so there are no notices to hide and the coin setting alone does it. The adapter now hides them only where the
+  profile says where they are.
+* **The stage select.** Its backup-RAM byte is Revision D's; this game's is not known, so the adapter leaves the
+  setting alone rather than writing a byte it has not measured.
+* **The native code after the boot.** A match boots the board again, and this game unpacks and patches its own
+  program in RAM: the native code made from the CROM then disagrees with it, and one word of that turns the
+  whole recompiler off. The adapter calls `after_boot` once the boot is over, and the host builds the code again
+  from RAM there (and puts the hidden fighters back, if the match has them). Without it a frame cost 18 ms
+  instead of 5.5 and no rollback would have fitted in the 17.4 ms a frame has.
+
+The hidden fighters are part of the game a match plays, so they ride on the online version as Dural does:
+`+roster`. Two players with it set differently are refused, and told which way to turn it.
+
+Honey's four costumes and Kuhn's four colours are the character select's wheels, turned by the player's own
+press of Up; a match's frames do not go through that path at all, so an online match plays Sega's own two of
+each, the same on both sides.
+
+The addresses the host reads out of a match, all measured the 2026-11-01 over `tools/scripts/fv2-versus.txt`:
+
+| What | Where | How it was settled |
+| --- | --- | --- |
+| the character select | `0x00700003` | the low byte of Sega's entry1 task register: 0 through the attract, 5 on the select, 0x2A in a fight |
+| player 1's rounds won | `0x00581454` | in a run where only player 1 played, it went 1, 2, 3 (first to three) and the byte beside it never moved |
+| player 2's rounds won | `0x00581455` | the same byte `model3.cpp` had named ROUNDS_LOST_1P: the rounds player 1 loses are the rounds player 2 wins |
+| who is in the match | `0x0058145A` | 3 while both were in, 1 on the frame player 2 was knocked out: a bitmask, not the count the code had suggested |
 
 ## What's enough: the bar to clear
 

@@ -299,7 +299,7 @@ const Profile VF3_TB = {
 // 897,285 bytes for 2,701,982 of program). So program_at and program_size are 0 and the loader hands the
 // unpacked image over instead -- the board never needed it, only the recompiler does.
 const Profile FV2_REV_A = {
-	"fvipers2", "Fighting Vipers 2 (Japan, Revision A)", "Fighting Vipers 2", nullptr, false,
+	"fvipers2", "Fighting Vipers 2 (Japan, Revision A)", "Fighting Vipers 2", nullptr, true,
 	FV2_ROMS, sizeof FV2_ROMS / sizeof FV2_ROMS[0],
 	{ 0x20, 0x29260E96, true, { 0x800000, 0x4000000, 0x4000000, 0x80000, 0x1000000 } },
 	0, 0,                              // the program: a gzip the boot stub inflates (above)
@@ -307,7 +307,19 @@ const Profile FV2_REV_A = {
 	{ 0x17, 0, 0 },                    // the coin setting: one byte, and that is all of it on this board
 	{ 0x1E000, 0, 0, 0, 0, 0, 0, 0, 0, 0 },   // GAME ASSIGNMENTS: the block's place; its fields are src/host/fv2_options.h's
 	960, 0x102002,                     // the boot, unseen; the test menu's byte (4 while it is up)
-	0, 0, 0, 0, 0, 0, 0,               // the online fields: for the adapter this game does not have yet
+	// The online fields, measured the 2026-11-01 over two-player runs of tools/scripts/fv2-versus.txt (free play,
+	// both players in). The matches between two players since power-on: not known here, so the stages' list starts
+	// where the game puts it (set_versus_count does nothing with 0). The select: the low byte of Sega's entry1 task
+	// register at 0x00700000, which model3.cpp measured as 0 through the whole attract loop, 5 on the select screen
+	// and 0x2A in a fight -- exactly what in_select asks of it. The score: 0x00581454 and 0x00581455, the two
+	// players' rounds won, both back to 0 when the match is over; in a run where only player 1 played, 0x00581454
+	// went 1, 2, 3 (this game is first to three) and 0x00581455 never moved, which is what says which is whose.
+	// Who is in: 0x0058145A, bit 0 player 1 and bit 1 player 2, as Virtua Fighter 3's -- it read 3 with both
+	// players in and 1 the moment player 2 was knocked out of the match, so it is a bitmask and not, as a comment
+	// in model3.cpp had it from the code alone, a count of how many are playing. The select's column and the mode
+	// byte are Dural's business and the backdrops', and this game has neither.
+	0, 0x00700003, 0x00581454, 0x00581455, 0x0058145A,
+	0, 0,
 	{ 0, 0, 0, 0 },                    // the backdrops: this port draws Fighting Vipers 2's its own way
 	ppcrec::fv2_map, ppcrec::fv2_map_count,
 	"",                                // the player's data beside Virtua Fighter 3's, told apart by name (main.cpp)

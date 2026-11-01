@@ -1984,10 +1984,16 @@ constexpr uint32_t FV2_MATCH_OVER = 0x40000000;        // set when the match, no
 constexpr uint32_t FV2_ROUNDS_LOST_1P = 0x00581455;
 constexpr uint32_t FV2_ROUND_NUMBER = 0x00581456;
 // THE TWO BYTES THE MATCH'S BRANCH POINT COUNTS WITH, read at 0x0000DB60 out of a RAM dump the
-// 2026-10-26 (tools/fv2/disasm_ppc.py). HOW MANY ARE PLAYING is already named elsewhere in this file --
-// 0x0000C2EC picks the round's length on it -- and the byte beside it is HOW MANY ARE OUT: the branch
+// 2026-10-26 (tools/fv2/disasm_ppc.py). The byte beside 0x0058145A is HOW MANY ARE OUT: the branch
 // point asks whether the players out are one fewer than the players, which is "all but one", and sends
 // the last one on to the next opponent. Anything else and the game is over for everybody.
+//
+// 0x0058145A was read here as HOW MANY ARE PLAYING, a count, from the code alone. It is a BITMASK: bit 0
+// player 1, bit 1 player 2, the same shape as Virtua Fighter 3's 0x106029. Measured the 2026-11-01 on a
+// two-player run (tools/scripts/fv2-versus.txt, free play): it held 3 all the while both were in and fell
+// to 1 on the frame player 2 was knocked out of the match, where a count would have read 2 and then 1.
+// The arithmetic the branch point does on it happens to come out the same for one and two players, which
+// is why the code did not give it away. Netplay reads it as a bitmask (profile.cpp, FV2_REV_A).
 constexpr uint32_t FV2_PLAYERS = 0x0058145A;
 constexpr uint32_t FV2_PLAYERS_OUT = 0x00581457;
 constexpr uint32_t FV2_ROUNDS_LOST_2P = 0x0058FDBA;

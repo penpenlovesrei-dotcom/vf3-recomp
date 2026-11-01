@@ -4461,6 +4461,7 @@ int main(int argc, char **argv)
 		p.items.push_back({ "Hidden fighters", "Del Sol, Kuhn, BM and Dural on the select screen, the cursor wrapping at 14 instead of 10. Past cursor 10 the game's own names and portraits are wrong or missing.",
 			[&] { return std::string(cfg.full_roster ? "On" : "Off"); },
 			[&](int) { cfg.full_roster = !cfg.full_roster; game.full_roster = cfg.full_roster; cfg_dirty = true;
+			           online_ready = false;   // (the online version carries it: "+roster")
 			           if (cfg.full_roster) game.hold_roster(); } });
 		p.items.push_back(back_item());
 		return p;
@@ -4858,7 +4859,8 @@ int main(int argc, char **argv)
 			if (game.emu_thread.joinable()) game.job_wait();
 			const bool dural = cfg.dural && board.profile->dural;
 			const bool one = board.profile == &m3::VF3_TB && cfg.tb_one;
-			online.identity = { board.profile->set, vf3net::online_version(VF3_VERSION) + (dural ? "+dural" : "") + (one ? "+1v1" : ""), vf3net::content_hash(board), "" };   // (the online version, not the release's)
+			const bool roster = board.profile == &m3::FV2_REV_A && cfg.full_roster;   // (the hidden fighters: the match's, not one player's)
+			online.identity = { board.profile->set, vf3net::online_version(VF3_VERSION) + (dural ? "+dural" : "") + (one ? "+1v1" : "") + (roster ? "+roster" : ""), vf3net::content_hash(board), "" };   // (the online version, not the release's)
 			online.adapter.dural = dural;
 			online_ready = true;
 		}
@@ -5686,6 +5688,16 @@ int main(int argc, char **argv)
 	// ---- online play (online.h): the match's frames through the session, its notices over the game ----
 	online.adapter.settle = [&] { if (game.emu_thread.joinable()) game.job_wait(); };
 	online.adapter.program_changed = [&] { game.program_changed(); };
+	// A match's boot is a boot of its own: the program unpacked into RAM again (Fighting Vipers 2), the hidden
+	// fighters put back if the match has them (the online version carries "+roster", as it carries "+dural": both
+	// sides patch the same thing or they never meet), and the native code made again from RAM, which is what keeps
+	// the game off the interpreter -- at a sixth of its speed, docs/step2-fvipers2.md section 19.
+	online.adapter.after_boot = [&] {
+		game.rebuilt_after_boot = false;
+		game.hold_roster();
+		game.rebuilt_after_boot = true;
+		game.rebuild_from_ram_if_stale();
+	};
 	online.adapter.booting = [] { SDL_PumpEvents(); };   // (the boot's 2 s: the system doesn't take the game for hung)
 	// (tests: VF3_TEST_FRAME_MS="ms[,every s,its ms]" makes each frame of a match cost that much at least, a Steam
 	// Deck's, now and then more, its character select's; a frame run again 40% of it)
