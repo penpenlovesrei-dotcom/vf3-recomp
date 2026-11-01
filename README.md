@@ -15,7 +15,7 @@ pictures a second and the 3D on the GPU.</b></p>
 <p align="center">
   <a href="https://vf3-recomp.pages.dev/">Play</a> ·
   <a href="https://github.com/mr-finster/vf3-recomp/releases/latest">Download</a> ·
-  <a href="https://youtu.be/ZdoFNnHOANA">Trailer</a> ·
+  <a href="https://youtu.be/hqvoalzgnNU">Trailer</a> ·
   <a href="#status">Status</a> ·
   <a href="#controls">Controls</a> ·
   <a href="https://github.com/mr-finster/vf3-recomp/issues">Report a bug</a>
@@ -26,7 +26,7 @@ pictures a second and the 3D on the GPU.</b></p>
 </p>
 
 <p align="center">
-  <a href="https://youtu.be/ZdoFNnHOANA"><img src="https://img.youtube.com/vi/ZdoFNnHOANA/hqdefault.jpg" alt="Watch the trailer" width="560"></a>
+  <a href="https://youtu.be/hqvoalzgnNU"><img src="https://img.youtube.com/vi/hqvoalzgnNU/hqdefault.jpg" alt="Watch the trailer" width="560"></a>
   <br><sub>Trailer (click to watch on YouTube)</sub>
 </p>
 
@@ -59,13 +59,14 @@ the hardware; none of its code is in this one.
 | Menu, keyboard and gamepads, two players, the arcade's settings, screen filters | Working |
 | Portable mode, your own ROM folder | Working |
 | macOS, Windows, Linux / Steam Deck | macOS (Apple silicon) and the Steam Deck: the downloads working, a steady 60 pictures a second on the Deck; Windows tested under Wine; Intel Macs not yet tried (the Mac build is universal) |
-| Online play | Not yet |
+| Online play | Experimental: rollback netplay with room codes, no setup (see [Online play](#online-play-experimental)) |
+| Virtua Fighter 3 Team Battle (`vf3tb`) | Working, online too (see [Team Battle](#team-battle)) |
 
 **This is an alpha.** Please report anything that looks or plays differently from the arcade in
 [Issues](https://github.com/mr-finster/vf3-recomp/issues), with the `log.txt` from the game's data folder.
 
 Known issues: Shun's stage water is the game's own low-resolution
-2D art up close. Virtua Fighter 3 Team Battle (`vf3tb`) isn't supported yet.
+2D art up close.
 
 Known differences from the reference's pictures: textures far away are softer (the Real3D's own mipmap level choice,
 as Supermodel's New3D documents it, where the reference build used OpenGL's).
@@ -77,6 +78,7 @@ as Supermodel's New3D documents it, where the reference build used OpenGL's).
 | macOS 11+ (Apple silicon and Intel) | `VirtuaFighter3Recomp-mac.zip` |
 | Windows 10 or 11 (64-bit) | `VirtuaFighter3Recomp-windows.zip` |
 | Linux / Steam Deck (x86-64) | `VirtuaFighter3Recomp-deck.tar.gz` |
+| Linux on ARM (ARM64: a Raspberry Pi 5; Ubuntu 22.04, Debian 12, Raspberry Pi OS bookworm or newer), unpacked and run as the x86-64 Linux one | `VirtuaFighter3Recomp-linux-arm64.tar.gz` |
 
 **Mac and Windows**
 
@@ -147,19 +149,137 @@ Gamepads: d-pad or left stick, X guard, A punch, B kick, Y escape, LT guard + pu
 RT all three, Start. The menu: View (tapped), L3 + R3, or the touchpad's click (View + Start too). View + LB: render
 scale; View + RB: picture shape. For Arcade play on a pad, set a Coin button in Controls.
 
+Arcade sticks the game doesn't know (DirectInput sticks such as HORI's Virtua Stick High Grade or the Astro City
+Mini) get a fighting stick's layout; Controls > Player 1 (or 2) > Set up buttons sets theirs by pressing each in turn. A
+`gamecontrollerdb.txt` (SDL's mappings) in the data folder or beside the program is read too.
+
 ## Menu
 
 - **Resume** and **Quit**.
 - **Display:** render scale (up to 6x), antialiasing (2x, 3x), the 3D renderer, picture shape (fit the window, 4:3,
   16:10, 16:9, 21:9), background filter, distant textures (sharp, or as the arcade's), smooth motion, screen filter (scanlines, CRT), CRT colours (an arcade monitor's, as Supermodel's presets), Show FPS, fullscreen.
 - **Sound:** volume, and the music's and the effects' own volumes.
-- **Game:** play style (PC: no boot screen, always free play; Arcade: the boot, coins and credits, its coin settings kept for it), reset.
-- **Arcade settings:** difficulty, rounds to win, energy, demo sound, country, and the arcade's own service menu (its
-  other settings, sound test, bookkeeping). A change restarts the game.
+- **Game:** play style (PC: no boot screen, always free play; Arcade: the boot, coins and credits, its coin settings kept for it), reset, and **Version**: Virtua Fighter 3 or Team Battle (it asks first: the game restarts), or **Add Team Battle** while it has only one.
+- **Arcade settings:** difficulty, rounds to win, energy, stage select between two players (off as the arcade ships:
+  each two-player match on the game's next stage, starting from a random one), demo sound, country, and the arcade's
+  own service menu (its other settings, sound test, bookkeeping). A change restarts the game.
 - **Controls:** each player's pad, keys and buttons.
+- **Online:** a random opponent, host a match, join one, play by address, your name, input delay, the connection display (see below).
+- **Cheats:** **Dural on the select** (see [Dural](#dural)).
 
 The settings stay as you set them, as in Virtua Fighter 1 and 2 Recomp: if the computer can't keep up at a render
 scale, choose a lower one (F5).
+
+## Team Battle
+
+Virtua Fighter 3 Team Battle (MAME's `vf3tb`, 1997), three fighters a side, plays too. Either zip works:
+
+- **Have both?** Put `vf3tb.zip` beside your `vf3.zip`. Menu > Game > **Version** switches between them (it asks
+  first: the game saves and starts again in the other). Each keeps its own rankings and arcade settings.
+- **Only `vf3.zip`?** Menu > Game > **Add Team Battle** asks for your `vf3tb.zip`, copies it beside `vf3.zip` and
+  starts Team Battle. A split `vf3tb.zip` (only Team Battle's own ROMs) works beside `vf3.zip`; MAME's full one works
+  on its own.
+- **Press Start in a fight** to change the camera: the normal view, close behind your opponent, high behind you, and
+  from above (Team Battle's own feature).
+- **Online:** Team Battle plays only Team Battle (and Virtua Fighter 3 only Virtua Fighter 3).
+- **The CPU's teams** are new each time you play: the game's random numbers start somewhere new at each launch,
+  as on a cabinet that's been on all day.
+
+## Dural
+
+Menu > **Cheats** > **Dural on the select**: the boss, in a 13th spot past Kage, for either player (right from Kage,
+or left from Akira; Start held for her other colours). Her own picture on the grid and her profile, in both games.
+The arcade froze with her on Akira's stage: fixed here. Changing it restarts the game.
+
+Online, while it's on, you meet only players who have it on too (Random, Host and Join alike). Turn it off to play
+everyone.
+
+## Online play (experimental)
+
+Rollback netplay, as modern fighting games have it: your own inputs show at once (after the input delay), and the
+game quietly corrects the moment your opponent's arrive. Both players need **the same online version** (every release
+from v0.1.7-online-preview on plays the others, until one changes the game: its notes will say; a build of your own
+between releases plays only the same build) and **the same
+`vf3.zip`**; it tells you if not. Matches always play the PC way, free play, with the
+host's arcade settings (rounds, difficulty, energy). The stage is the game's own next one, as on an arcade cabinet
+that's been on all day: a random one for the first match, the game's order after it. Each player uses their own
+Player 1 controls.
+
+**The rounds are the host's.** How many rounds win a match is the host's Menu > Arcade settings >
+**Rounds to win (vs player)** (3 plays first to 3, as SEGA's tournaments and Japan's arcades do).
+Host, and it's yours; join a friend, and it's theirs; with RANDOM, it's whoever the match makes host.
+
+**A random opponent:** Menu > **Online** > **RANDOM**. It finds whoever else is looking, the nearest first (the
+best connection), and widens the search the longer you wait; **Stop** gives up. Play solo while you wait: the match
+takes over once it's found. After the match, **New opponent** looks again.
+
+**With a friend, by room code (anywhere: no setup, nothing to forward):**
+
+1. Both: Menu > **Online**. The first time, it asks your name (up to 10 letters, shown under your energy bar,
+   with your country's flag).
+2. One player: **HOST**. It shows a room code like `FR7-W25` (**Copy code** puts it on the clipboard): send it to
+   the other player.
+3. The other: **JOIN**, and type the code (or paste it). It joins by itself at the 6th letter; the steps on the screen
+   show how far it's got. Once you're both in, the game starts at its title screen: both press Start.
+
+On a controller the code and name screens show letters to pick with A (X deletes, Y pastes); on a keyboard just type.
+In a match, whoever loses is told to press Start for a rematch (as in the arcade, the winner plays on against the
+computer until they do). After leaving a match, **Play again** keeps the same code: the host opens it again and the other player joins it by itself.
+
+The games connect to each other directly whenever they can; when a network won't let them (phones' 5G, some
+office, school and hotel networks), the match goes through a relay (Cloudflare's) instead, automatically. The
+connection display says RELAY then (DIRECT otherwise). The room code only finds the other player: no game data goes through the
+lobby. The flags are the countries Cloudflare places each player's connection in (a VPN shows its own).
+
+**Play by address (the same network, or a VPN like Tailscale: no online service):** Menu > Online, then **Play by
+address** beside Settings. One player picks **Host by address** (it shows the address to give the other), the other
+**Join by address** and types it. **Port** sets the port (7700 unless you change it). From a command line or a
+launcher: `--host` (and `--port N`), or `--join ADDRESS` (with `:PORT` if not 7700), starts it as the game opens.
+
+**If it won't connect**
+
+- The Online screen says what went wrong in plain words, under **Couldn't connect**, and which step it got to:
+  check the code, and that the host is still hosting (a room closes when the host stops). **Try again** goes again.
+- **Firewalls:** the first time you host, allow the game when asked. Windows: if you dismissed it, Windows Security >
+  Firewall > Allow an app, tick Virtua Fighter 3 Recomp for **Private and Public**. Mac: System Settings > Network >
+  Firewall > Options: allow it; each new version of the (unsigned) Mac app may need allowing again. Also System
+  Settings > Privacy & Security > Local Network: on.
+- Hotel, school and public Wi-Fi often keep devices on the same network from seeing each other: the match goes
+  through the relay instead, by itself.
+
+**For the smoothest match**
+
+- A cable beats Wi-Fi. **Steam Deck:** turn off Wi-Fi power management (Settings > System > Developer Mode on, then
+  Settings > Developer > Enable Wi-Fi power management off): it holds packets back in bursts.
+- **Input delay** (Online > Settings): Auto uses as little as it can (none on a LAN, 1 frame almost anywhere else)
+  and accounts for slower machines: each side tells the other how much rollback it can run without a hitch (a Steam
+  Deck in a fight: none), and the other side's delay covers the rest, so neither side stutters. It keeps the game at
+  full speed against a far opponent with more delay instead (up to 15 frames). A short burst of ping is left to rollback; a delay raised for a
+  longer spell comes back down a frame a second once it's over.
+  Or set 0 to 10 yourself: higher means fewer corrections, lower a quicker response.
+- **Connection display:** On shows the other player, the ping, the input delay, the rollback and DIRECT or RELAY at
+  the bottom of the screen (the game's own bars and time are at the top), each in a cell of its own that doesn't move
+  as the numbers change (the dot green, yellow or red); Detailed adds a row: the jitter, the average rollback, how far
+  ahead your side runs and each frame's cost. Under about 100 ms ping plays well; past ~250 ms the delay rises to keep
+  the game at its full speed.
+- **Random: max ping:** Any, or 80 to 250 ms. A random opponent's ping is measured as you connect, before the match
+  starts; over your limit, the game leaves and looks for someone else (and the two of you aren't matched again for 10
+  minutes). Room codes and addresses play whatever the ping.
+- **Match found chime:** On (the default) plays a chime when an online match is found, and the game's window flashes in
+  the taskbar or the Dock if it isn't the one in front, so you can wait for an opponent in another window.
+
+**Good to know**
+
+- The menu doesn't pause a match (it goes on behind it, your inputs off). Leaving a match tells the other player.
+- Your opponent can see your IP address, as in any direct peer-to-peer game (and a friend by code your local network's, in case you share one; a random opponent never gets that). **Hide my IP address** (Menu >
+  Online > Settings) sends matches through the relay instead, so they see only Cloudflare's: it adds a
+  little ping (more on the same network), so it's off unless you want it.
+- Not yet: spectating, replays, rematch without reconnecting.
+
+**Reporting a problem:** please include **both players'** `log.txt` (and `log.1.txt` if the game's been opened again
+since: the last 3 runs' logs are kept as `log.1.txt` to `log.3.txt`; the game's data folder: Windows `%APPDATA%\Virtua
+Fighter 3 Recomp`, Mac `~/Library/Application Support/Virtua Fighter 3 Recomp`, Steam Deck / Linux the game's own
+folder or `~/.local/share/Virtua Fighter 3 Recomp`), what each is playing on, Wi-Fi or cable, and the ping shown.
 
 ## How it works
 

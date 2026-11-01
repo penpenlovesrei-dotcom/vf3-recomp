@@ -43,7 +43,9 @@ public:
 	// (tests: the backdrop's state this frame, a line: its map found, how it agrees with the layer on screen, and the
 	// sides' tiles (as far as 21:9 shows them) from banks of tiles not loaded: whose place another bank on screen has)
 	std::string audit(const m3::Model3 &board) const;
-	void line(const m3::Model3 &board, unsigned y);
+	// line_regs: the tile generator's 64 registers as they were when the line began (a worker thread drawing the line
+	// while the game runs on: only the registers change line by line); null, the board's now
+	void line(const m3::Model3 &board, unsigned y, const uint32_t *line_regs = nullptr);
 	// The two layers as they line up with the 3D: 2 pixels left and up of where they're drawn (as Supermodel
 	// places them, its 3D drawn as ours is)
 	void aligned(std::vector<uint32_t> &below_out, std::vector<uint32_t> &above_out) const;
@@ -78,6 +80,8 @@ private:
 	void hd_begin(const m3::Model3 &board);   // (the frame's first line: the surfaces cleared, the layers looked up)
 	void hd_line_sides(unsigned y);           // (the line's last act: the widened layer's sides, native, enlarged)
 
+	const uint32_t *regs_now = nullptr;   // (line's line_regs while it draws)
+	const uint32_t *regs_of(const m3::Model3 &board) const;
 	// a layer's panorama: its rows as runs of patterns (first, length), learned where the map shows one wrap
 	struct Pano { std::map<int, int> rows; int len = 0; };   // (len: the rows' usual length, the map's rows apart)
 	Pano pano[4];
@@ -127,11 +131,18 @@ private:
 	std::vector<uint64_t> clear_cols = std::vector<uint64_t>(4096 * 4);
 	std::vector<uint8_t> clear_known = std::vector<uint8_t>(4096);   // (8-bit's from 2048)
 	std::vector<uint8_t> solid_memo = std::vector<uint8_t>(1 << 17);   // (this frame: a pattern's entry and depth: 0 not looked at, 1 solid, 2 see-through)
-	uint64_t full_failed_sum = 0, full_failed_frame = 0;   // (the backdrop looked for in the whole map in vain: the screen's rows then, and when)
-	std::unordered_map<uint64_t, uint64_t> row_failed;   // (a row's tiles and the map: the frame it was last looked for in vain)
-	struct RowFound { uint64_t frame = ~0ull; int row = -1; uint64_t sum = 0; bool found = false; int x = 0, y = 0; std::vector<std::pair<int, int>> moved; } row_found;   // (a row looked for alone in the map: the other side's the same)
+	uint64_t full_failed_sum = 0;   // (the backdrop looked for in the whole map in vain: the screen's rows, the map and banks then)
+	static uint64_t banks_sum(const Backdrop &b);
+	std::unordered_map<uint64_t, uint64_t> row_failed;   // (a row's tiles, the map and banks: looked for in vain, and the frame)
+	struct RowFound { uint64_t frame = ~0ull; int row = -1; uint64_t sum = 0; bool found = false, all = true; int x = 0, y = 0; std::vector<std::pair<int, int>> moved; } row_found;   // (a row looked for alone in the map: the other side's the same)
+	// (each screen row's last place found alone, looked at first next frame, and when it was last looked for in all the
+	// map in vain: by the map, its desc)
+	struct RowHint { uint64_t desc = 0; int x = -1, y = 0; uint64_t full_failed_at = ~0ull; } row_hint[64];
 	bool cover2 = false;   // (this frame: layer 2 at the screen's edges for most of its lines, the mask's)
-	void find_backdrop(const m3::Model3 &board, bool full = true);   // (full: all the map looked through, else near the last place)
+	void find_backdrop(const m3::Model3 &board, bool full = true);
+	void refind_backdrop(const m3::Model3 &board, bool full);   // (a row's: not again while nothing it reads has changed)
+	uint64_t backdrop_inputs(const m3::Model3 &board, bool full) const;
+	uint64_t refind_failed = 0;   // (full: all the map looked through, else near the last place)
 	uint32_t backdrop_entry(const m3::Model3 &board, int x, int y, bool table = false) const;   // (table: its bank where the game's table has it, not the screen)   // (the layer's entry, as the game writes it)
 	std::map<uint64_t, bool> mem_mirror;   // (this frame's: by layer, map row and side, the row as made mirrored past what's remembered)
 	void place_seen(const m3::Model3 &board);   // (each frame, before its lines)

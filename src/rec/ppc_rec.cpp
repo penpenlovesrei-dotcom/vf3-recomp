@@ -1068,20 +1068,14 @@ Rec::~Rec()
 	if (code) sljit_free_code(code, nullptr);
 }
 
-const uint32_t *map_for(const std::string &set, size_t &count)
-{
-	if (set == "fvipers2" || set == "fvipers2o") { count = fv2_map_count; return fv2_map; }
-	if (set == "vf3") { count = vf3_map_count; return vf3_map; }
-	count = 0;
-	return nullptr;
-}
-
-bool Rec::build(Cpu &c, const std::vector<uint32_t> &image, Stats *stats, const uint32_t *seed_map, size_t seed_count)
+bool Rec::build(Cpu &c, const std::vector<uint32_t> &image, const uint32_t *seed_map, size_t seed_count, Stats *stats)
 {
 	auto t0 = std::chrono::steady_clock::now();
 	cpu = &c;
 	const uint32_t hi = uint32_t(image.size() * 4);
-	if (!seed_map) { seed_map = vf3_map; seed_count = vf3_map_count; }
+	// (no map: nothing to walk from, and the interpreter runs everything. There used to be a default of Revision
+	// D's here, from when one program was the only one; a program's map is its profile's now, and a wrong one is
+	// worse than none.)
 	std::vector<uint32_t> seeds(seed_map, seed_map + seed_count);
 	std::vector<uint32_t> addrs = analyse(image, 0, hi, seeds);
 	map.assign(hi / 4, 0);
@@ -1151,8 +1145,17 @@ bool Rec::run(Cpu &c)
 	const uintptr_t l = label[npc >> 2];
 	if (!l) {
 		interp_unmapped++;
-		if (unmapped.size() < 512 && std::find(unmapped.begin(), unmapped.end(), npc) == unmapped.end())
-			unmapped.push_back(npc);
+		if (unmapped.size() < unmapped_max) {   // (each once: a bit a word, kept once the list outgrows a search)
+			if (unmapped.size() >= 512 && unmapped_seen.empty()) {
+				unmapped_seen.assign(code_limit / 4, 0);
+				for (uint32_t a : unmapped) unmapped_seen[a >> 2] = 1;
+			}
+			const bool seen = unmapped_seen.empty() ? std::find(unmapped.begin(), unmapped.end(), npc) != unmapped.end() : unmapped_seen[npc >> 2];
+			if (!seen) {
+				unmapped.push_back(npc);
+				if (!unmapped_seen.empty()) unmapped_seen[npc >> 2] = 1;
+			}
+		}
 		return false;
 	}
 	entries++;

@@ -9,12 +9,18 @@ CXXFLAGS += -DSLJIT_CONFIG_AUTO=1 -Isrc/core/shim_include -Iscsp/src/sound $(EXT
 # The PowerPC's floating point must round each operation on its own, on every platform (no fused multiply-adds)
 PPC_FLAGS = -ffp-contract=off
 LDLIBS ?= -lz
+# Netplay (src/net) talks to a socket, and on Windows that is Winsock: the sockets themselves (ws2_32) and the
+# machine's own addresses, which a room link offers the other side (iphlpapi); the lobby is spoken to over
+# HTTPS, which on Windows is WinHTTP.
+ifeq ($(OS),Windows_NT)
+LDLIBS += -lws2_32 -liphlpapi -lwinhttp
+endif
 
 OBJ ?= build/obj
 BIN ?= build/bin
 objs = $(patsubst %.cpp,$(OBJ)/%.o,$(1))
 
-all: $(BIN)/vf3run $(BIN)/vf3lock $(BIN)/vf3
+all: $(BIN)/vf3run $(BIN)/vf3lock $(BIN)/vf3soak $(BIN)/nettest $(BIN)/vf3net $(BIN)/vf3
 
 SDL_CFLAGS ?= $(shell pkg-config --cflags sdl3 2>/dev/null || echo -I/opt/homebrew/include)
 SDL_LIBS ?= $(shell pkg-config --libs sdl3 2>/dev/null || echo -L/opt/homebrew/lib -lSDL3)
@@ -25,9 +31,19 @@ FT_LIBS ?= $(shell pkg-config --libs freetype2 2>/dev/null || echo -L/opt/homebr
 # the date of the last commit. Builds without git are handed them in the environment.
 VF3_VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 VF3_DATE ?= $(shell git log -1 --format=%cd --date=format:'%b %-d %Y' 2>/dev/null)
+# (the commit too: what a GPU failure is remembered by, src/host/main.cpp's BUILD)
+VF3_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null)
+# and the lobby the room codes use (tools/lobby/README.md): its https address, this one if unset or empty (the Deck's
+# container is handed it empty), "none" for none (Online then offers only the by-address matches)
+ifeq ($(strip $(VF_LOBBY_URL)),)
+VF_LOBBY_URL = https://vf-lobby.throbbing-lab-db6e.workers.dev
+endif
+ifeq ($(VF_LOBBY_URL),none)
+VF_LOBBY_URL :=
+endif
 $(OBJ)/version.h: FORCE
 	@mkdir -p $(OBJ)
-	@printf '#define VF3_VERSION "%s"\n#define VF3_DATE "%s"\n' "$(VF3_VERSION)" "$(VF3_DATE)" > $@.tmp
+	@printf '#define VF3_VERSION "%s"\n#define VF3_DATE "%s"\n#define VF3_COMMIT "%s"\n#define VF_LOBBY_URL "%s"\n' "$(VF3_VERSION)" "$(VF3_DATE)" "$(VF3_COMMIT)" "$(VF_LOBBY_URL)" > $@.tmp
 	@cmp -s $@.tmp $@ && rm -f $@.tmp || mv $@.tmp $@
 FORCE:
 
@@ -36,13 +52,20 @@ RML_SRC = $(wildcard third_party/rmlui/Source/Core/*.cpp third_party/rmlui/Sourc
 	third_party/rmlui/Backends/RmlUi_Platform_SDL.cpp third_party/rmlui/Backends/RmlUi_Renderer_SDL.cpp
 RML_CFLAGS = -DRMLUI_STATIC_LIB -DRMLUI_FONT_ENGINE_FREETYPE -DRMLUI_SDL_VERSION_MAJOR=3 -Ithird_party/rmlui/Include -Ithird_party/rmlui/Backends
 $(OBJ)/third_party/rmlui/%.o: CXXFLAGS += $(RML_CFLAGS) $(FT_CFLAGS) $(SDL_CFLAGS) -w
-$(OBJ)/src/host/main.o $(OBJ)/src/host/menu.o $(OBJ)/src/host/sysinfo.o $(OBJ)/src/host/d3d11_map.o $(OBJ)/src/gpu/r3d_gpu.o: CXXFLAGS += $(SDL_CFLAGS) $(RML_CFLAGS)
+$(OBJ)/src/host/main.o $(OBJ)/src/host/menu.o $(OBJ)/src/host/online.o $(OBJ)/src/host/sysinfo.o $(OBJ)/src/host/d3d11_map.o $(OBJ)/src/gpu/r3d_gpu.o $(OBJ)/tools/menutest.o: CXXFLAGS += $(SDL_CFLAGS) $(RML_CFLAGS)
 $(OBJ)/src/host/main.o: $(OBJ)/version.h
 $(OBJ)/src/host/main.o: CXXFLAGS += -I$(OBJ)
-HOST = src/host/main.cpp src/host/menu.cpp src/host/sysinfo.cpp src/host/d3d11_map.cpp src/gpu/r3d_gpu.cpp
+$(OBJ)/src/host/online.o: $(OBJ)/version.h
+$(OBJ)/src/host/online.o: CXXFLAGS += -I$(OBJ)
+# Netplay (src/net): rollback sessions and their links, nothing of the game's (shared with VF1 and VF2 Recomp)
+NET = src/net/session.cpp src/net/link.cpp src/net/room_link.cpp src/net/stun.cpp src/net/http.cpp
 
-CORE = src/ppc/ppc.cpp src/machine/model3.cpp src/machine/romset.cpp src/machine/fv2_portraits.cpp src/host/input_script.cpp \
-	src/rec/ppc_rec.cpp src/rec/vf3_map.cpp src/rec/fv2_map.cpp src/video/tilegen.cpp src/video/r3d_scene.cpp src/video/r3d_raster.cpp \
+HOST = src/host/main.cpp src/host/menu.cpp src/host/online.cpp src/host/vf3_netplay.cpp src/host/sysinfo.cpp src/host/d3d11_map.cpp src/gpu/r3d_gpu.cpp $(NET)
+
+CORE = src/ppc/ppc.cpp src/machine/model3.cpp src/machine/dural.cpp src/machine/romset.cpp src/machine/profile.cpp \
+	src/machine/fv2_portraits.cpp src/host/input_script.cpp \
+	src/rec/ppc_rec.cpp src/rec/vf3_map.cpp src/rec/vf3tb_map.cpp src/rec/fv2_map.cpp \
+	src/video/tilegen.cpp src/video/hud_names.cpp src/video/dural_cell.cpp src/video/r3d_scene.cpp src/video/r3d_raster.cpp \
 	src/video/tex3d_hd.cpp src/video/tilehd.cpp \
 	src/sound/soundboard.cpp src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp \
 	scsp/src/sound/scsp_trace.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_own.cpp scsp/src/sound/dsp_own.cpp src/core/mame_shim.cpp \
@@ -70,6 +93,41 @@ $(BIN)/vf3run: $(call objs,$(CORE) tools/vf3run.cpp) $(SLJIT_OBJ)
 $(BIN)/vf3lock: $(call objs,$(CORE) tools/vf3lock.cpp) $(SLJIT_OBJ)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
+
+$(BIN)/vf3soak: $(call objs,$(CORE) tools/vf3soak.cpp) $(SLJIT_OBJ)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
+
+$(BIN)/vf3detect: $(call objs,$(CORE) $(NET) src/host/vf3_netplay.cpp tools/vf3detect.cpp) $(SLJIT_OBJ)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
+
+$(BIN)/roomtest: $(call objs,$(NET) tools/roomtest.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
+
+$(BIN)/nettest: $(call objs,$(NET) tools/nettest.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+# delaytest: Auto's input delay against simulated pings (full speed at any; raised and lowered as it should)
+$(BIN)/delaytest: $(call objs,$(NET) tools/delaytest.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+$(BIN)/vf3net: $(call objs,$(CORE) $(NET) src/host/vf3_netplay.cpp tools/vf3net.cpp) $(SLJIT_OBJ)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
+
+# netfuzz: the session against a peer who sends anything, with AddressSanitizer and UBSan (its own objects)
+$(BIN)/netfuzz: $(NET) tools/netfuzz.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) -std=c++20 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer $^ -o $@
+
+# menutest: the Online pages drawn offscreen to pictures (SDL_VIDEO_DRIVER=offscreen)
+$(BIN)/menutest: $(call objs,src/host/menu.cpp src/host/online.cpp src/host/vf3_netplay.cpp src/machine/model3.cpp src/machine/dural.cpp src/machine/romset.cpp src/machine/profile.cpp src/rec/vf3_map.cpp src/rec/vf3tb_map.cpp src/ppc/ppc.cpp $(NET) tools/menutest.cpp $(RML_SRC))
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(SDL_LIBS) $(FT_LIBS) $(LDLIBS)
 
 $(BIN)/vf3: $(call objs,$(CORE) $(HOST) $(RML_SRC)) $(SLJIT_OBJ)
 	@mkdir -p $(dir $@)

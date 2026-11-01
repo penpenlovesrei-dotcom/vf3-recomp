@@ -21,7 +21,9 @@ struct zip
 	std::vector<uint8_t> data;
 	std::vector<entry> entries;
 
-	bool open(const std::string &path)
+	// listing: only the directory (the names and CRCs), not the ROMs: the zip's last 1 MB read, where the directory is
+	// (39 names: a few KB); a zip whose directory starts before that is read whole
+	bool open(const std::string &path, bool listing = false)
 	{
 		// vf3.zip is about 112 MB and fvipers2.zip about 96 MB: anything over 512 MB isn't a set, and isn't read
 		std::error_code ec;
@@ -29,12 +31,20 @@ struct zip
 		if (ec || size < 22 || size > (512u << 20)) return false;
 		FILE *f = fopen(path.c_str(), "rb");
 		if (!f) return false;
+		size_t from = listing && size > (1u << 20) ? size_t(size) - (1u << 20) : 0;
+		data.assign(size_t(size), 0);
+		const bool got = fseek(f, long(from), SEEK_SET) == 0 && fread(data.data() + from, 1, data.size() - from, f) == data.size() - from;
+		if (!got) { fclose(f); return false; }
 		const long n = long(size);
-		data.resize(size_t(n));
-		const bool got = fread(data.data(), 1, data.size(), f) == data.size();
-		fclose(f);
-		if (!got) return false;
 		long eocd = -1;
+		for (long i = n - 22; i >= long(from) && i >= n - 22 - 65535; i--)
+			if (le32(&data[i]) == 0x06054b50) { eocd = i; break; }
+		if (eocd >= 0 && from > 0 && le32(&data[eocd + 16]) < from) {   // (the directory further back: the rest read too)
+			const bool rest = fseek(f, 0, SEEK_SET) == 0 && fread(data.data(), 1, from, f) == from;
+			if (!rest) { fclose(f); return false; }
+		}
+		fclose(f);
+		eocd = -1;
 		for (long i = n - 22; i >= 0 && i >= n - 22 - 65535; i--)
 			if (le32(&data[i]) == 0x06054b50) { eocd = i; break; }
 		if (eocd < 0) return false;
@@ -86,193 +96,13 @@ struct zip
 	}
 };
 
-// ---- the sets: each ROM goes into its region in 2-byte chunks every `stride` bytes, byte-swapped or not ----
+// The sets, their ROM tables and what board each is: all of it is the programs' profiles now
+// (src/machine/profile.h). This file lays out whatever profile it is handed.
 
-enum region_id { CROM, BANKED, VROM, SOUND, SAMPLES, N_REGIONS };
+enum region_id { CROM = m3::ROM_CROM, BANKED = m3::ROM_BANKED, VROM = m3::ROM_VROM, SOUND = m3::ROM_SOUND,
+	SAMPLES = m3::ROM_SAMPLES, N_REGIONS = m3::ROM_REGIONS };
 
-struct rom { const char *name; uint32_t crc; region_id region; uint32_t offset; uint32_t stride; uint32_t chunk; bool swap; };
-
-// Each set names its own program ROMs -- which is what tells one revision of a game from another -- and then the
-// data ROMs, which revisions of the same game share.
-
-// Virtua Fighter 3, Revision D (Step 1.0). The program ROMs are 512 KB each: the fixed CROM's top 2 MB, with the
-// start of banked CROM 0 below them.
-const rom VF3_PROGRAM[] = {
-	{ "epr-19230d.20", 0x43C08240, CROM, 0, 8, 2, true },
-	{ "epr-19229d.19", 0x6773F715, CROM, 2, 8, 2, true },
-	{ "epr-19228d.18", 0xA2470C78, CROM, 4, 8, 2, true },
-	{ "epr-19227d.17", 0x8B650966, CROM, 6, 8, 2, true },
-};
-
-const rom VF3_DATA[] = {
-	{ "mpr-19196.4", 0xF386B850, BANKED, 0x0000000, 8, 2, true },
-	{ "mpr-19195.3", 0xBD5E27A3, BANKED, 0x0000002, 8, 2, true },
-	{ "mpr-19194.2", 0x66254702, BANKED, 0x0000004, 8, 2, true },
-	{ "mpr-19193.1", 0x7BAB33D2, BANKED, 0x0000006, 8, 2, true },
-	{ "mpr-19200.8", 0x74941091, BANKED, 0x1000000, 8, 2, true },
-	{ "mpr-19199.7", 0x9F80D6FE, BANKED, 0x1000002, 8, 2, true },
-	{ "mpr-19198.6", 0xD8EE5032, BANKED, 0x1000004, 8, 2, true },
-	{ "mpr-19197.5", 0xA22D76C9, BANKED, 0x1000006, 8, 2, true },
-	{ "mpr-19204.12", 0x2F93310A, BANKED, 0x2000000, 8, 2, true },
-	{ "mpr-19203.11", 0x0AFA6334, BANKED, 0x2000002, 8, 2, true },
-	{ "mpr-19202.10", 0xAAA086C6, BANKED, 0x2000004, 8, 2, true },
-	{ "mpr-19201.9", 0x7C4A8C31, BANKED, 0x2000006, 8, 2, true },
-	{ "mpr-19208.16", 0x08F30F71, BANKED, 0x3000000, 8, 2, true },
-	{ "mpr-19207.15", 0x2CE1612D, BANKED, 0x3000002, 8, 2, true },
-	{ "mpr-19206.14", 0x71A98D73, BANKED, 0x3000004, 8, 2, true },
-	{ "mpr-19205.13", 0x199C328E, BANKED, 0x3000006, 8, 2, true },
-	{ "mpr-19211.26", 0x9C8F5DF1, VROM, 0, 32, 2, false },
-	{ "mpr-19212.27", 0x75036234, VROM, 2, 32, 2, false },
-	{ "mpr-19213.28", 0x67B123CF, VROM, 4, 32, 2, false },
-	{ "mpr-19214.29", 0xA6F5576B, VROM, 6, 32, 2, false },
-	{ "mpr-19215.30", 0xC6FD9F0D, VROM, 8, 32, 2, false },
-	{ "mpr-19216.31", 0x201BB1ED, VROM, 10, 32, 2, false },
-	{ "mpr-19217.32", 0x4DADD41A, VROM, 12, 32, 2, false },
-	{ "mpr-19218.33", 0xCFF91953, VROM, 14, 32, 2, false },
-	{ "mpr-19219.34", 0xC610D521, VROM, 16, 32, 2, false },
-	{ "mpr-19220.35", 0xE62924D0, VROM, 18, 32, 2, false },
-	{ "mpr-19221.36", 0x24F83E3C, VROM, 20, 32, 2, false },
-	{ "mpr-19222.37", 0x61A6AA7D, VROM, 22, 32, 2, false },
-	{ "mpr-19223.38", 0x1A8C1980, VROM, 24, 32, 2, false },
-	{ "mpr-19224.39", 0x0A79A1BD, VROM, 26, 32, 2, false },
-	{ "mpr-19225.40", 0x91A985EB, VROM, 28, 32, 2, false },
-	{ "mpr-19226.41", 0x00091722, VROM, 30, 32, 2, false },
-	{ "epr-19231.21", 0xB416FE96, SOUND, 0, 2, 2, false },
-	{ "mpr-19209.22", 0x3715E38C, SAMPLES, 0x000000, 2, 2, false },
-	{ "mpr-19210.24", 0xC03D6502, SAMPLES, 0x400000, 2, 2, false },
-};
-
-// Fighting Vipers 2, Japan Revision A (Step 2.0). The program ROMs are 2 MB each: the fixed CROM's whole 8 MB,
-// with no banked CROM below them. Its 16 texture ROMs fill the Real3D's 64 MB on their own, and its four sample
-// ROMs the SCSPs' 16 MB; neither is mirrored. (Layout: Supermodel's Config/Games.xml, read as documentation.)
-const rom FV2_PROGRAM[] = {
-	{ "epr-20599a.20", 0x9DF02AB9, CROM, 0, 8, 2, true },
-	{ "epr-20598a.19", 0x87BD070F, CROM, 2, 8, 2, true },
-	{ "epr-20597a.18", 0x6FCEE322, CROM, 4, 8, 2, true },
-	{ "epr-20596a.17", 0x969AB801, CROM, 6, 8, 2, true },
-};
-
-// Fighting Vipers 2, Japan, the first release ("fvipers2o"): the same board and the same data ROMs, four other
-// program ROMs. Its program is a gzip in the CROM like Revision A's, and the loader reads whichever one is there,
-// so nothing else about it is special. Not run here: no dump of this revision on hand to try it with.
-const rom FV2O_PROGRAM[] = {
-	{ "epr-20599.20", 0x69A0009D, CROM, 0, 8, 2, true },
-	{ "epr-20598.19", 0x71EC5183, CROM, 2, 8, 2, true },
-	{ "epr-20597.18", 0x4279DE19, CROM, 4, 8, 2, true },
-	{ "epr-20596.17", 0xA311B4AF, CROM, 6, 8, 2, true },
-};
-
-const rom FV2_DATA[] = {
-	{ "mpr-20563.4", 0x999848AC, BANKED, 0x0000000, 8, 2, true },
-	{ "mpr-20562.3", 0x96E4942E, BANKED, 0x0000002, 8, 2, true },
-	{ "mpr-20561.2", 0x38A0F112, BANKED, 0x0000004, 8, 2, true },
-	{ "mpr-20560.1", 0xB0F6584D, BANKED, 0x0000006, 8, 2, true },
-	{ "mpr-20567.8", 0x80F4EBA7, BANKED, 0x1000000, 8, 2, true },
-	{ "mpr-20566.7", 0x2901883B, BANKED, 0x1000002, 8, 2, true },
-	{ "mpr-20565.6", 0xD6BBE638, BANKED, 0x1000004, 8, 2, true },
-	{ "mpr-20564.5", 0xBE69FCA0, BANKED, 0x1000006, 8, 2, true },
-	{ "mpr-20571.12", 0x40B459AF, BANKED, 0x2000000, 8, 2, true },
-	{ "mpr-20570.11", 0x2C0D91FC, BANKED, 0x2000002, 8, 2, true },
-	{ "mpr-20569.10", 0x136C014F, BANKED, 0x2000004, 8, 2, true },
-	{ "mpr-20568.9", 0xFF23CF1C, BANKED, 0x2000006, 8, 2, true },
-	{ "mpr-20575.16", 0xEBC99D8A, BANKED, 0x3000000, 8, 2, true },
-	{ "mpr-20574.15", 0x68567771, BANKED, 0x3000002, 8, 2, true },
-	{ "mpr-20573.14", 0xE0DEE793, BANKED, 0x3000004, 8, 2, true },
-	{ "mpr-20572.13", 0xD4A41A0B, BANKED, 0x3000006, 8, 2, true },
-	{ "mpr-20580.26", 0x6D42775E, VROM, 0, 32, 2, false },
-	{ "mpr-20581.27", 0xAC9EEC04, VROM, 2, 32, 2, false },
-	{ "mpr-20582.28", 0xB202F7BD, VROM, 4, 32, 2, false },
-	{ "mpr-20583.29", 0x0D6D508A, VROM, 6, 32, 2, false },
-	{ "mpr-20584.30", 0xECCF4DE6, VROM, 8, 32, 2, false },
-	{ "mpr-20585.31", 0xB383F4E5, VROM, 10, 32, 2, false },
-	{ "mpr-20586.32", 0xE7CD5DFB, VROM, 12, 32, 2, false },
-	{ "mpr-20587.33", 0xE2B2ABE1, VROM, 14, 32, 2, false },
-	{ "mpr-20588.34", 0x84F4162D, VROM, 16, 32, 2, false },
-	{ "mpr-20589.35", 0x4E653D02, VROM, 18, 32, 2, false },
-	{ "mpr-20590.36", 0x527049BE, VROM, 20, 32, 2, false },
-	{ "mpr-20591.37", 0x3BE20243, VROM, 22, 32, 2, false },
-	{ "mpr-20592.38", 0xD7985B28, VROM, 24, 32, 2, false },
-	{ "mpr-20593.39", 0xE670C4D3, VROM, 26, 32, 2, false },
-	{ "mpr-20594.40", 0x35578240, VROM, 28, 32, 2, false },
-	{ "mpr-20595.41", 0x1D4A2CAD, VROM, 30, 32, 2, false },
-	{ "epr-20600a.21", 0xF0E7DB7E, SOUND, 0, 1, 1, false },
-	// the four sample ROMs are not in the order of their numbers
-	{ "mpr-20576", 0x1EEB540B, SAMPLES, 0x000000, 1, 1, false },
-	{ "mpr-20578", 0xD222F2D4, SAMPLES, 0x400000, 1, 1, false },
-	{ "mpr-20577", 0x3B236187, SAMPLES, 0x800000, 1, 1, false },
-	{ "mpr-20579", 0x08788436, SAMPLES, 0xC00000, 1, 1, false },
-};
-
-// Sega Rally 2 (Export, Step 2.0). The same board as Fighting Vipers 2 and no security chip, but only
-// three groups of banked CROM (48 MB, mirrored to fill the 128), 8 MB of samples mirrored to 16 as
-// Virtua Fighter 3's are, and two regions this port has nowhere to put: the MPEG music board's program
-// and music (the DSB, which this port does not have, so the game plays without its music) and the
-// drive board's. Its program is read like any other: whether it is a gzip is found in the CROM.
-// (Layout: Supermodel's Config/Games.xml, read as documentation.)
-const rom SR2_PROGRAM[] = {
-	{ "epr-20635.20", 0x7937473F, CROM, 0x0000000, 8, 2, true },
-	{ "epr-20634.19", 0x45A09245, CROM, 0x0000002, 8, 2, true },
-	{ "epr-20633.18", 0xF5A24F24, CROM, 0x0000004, 8, 2, true },
-	{ "epr-20632.17", 0x6829A801, CROM, 0x0000006, 8, 2, true },
-};
-
-const rom SR2_DATA[] = {
-	{ "mpr-20605.4", 0x00513401, BANKED, 0x0000000, 8, 2, true },
-	{ "mpr-20604.3", 0x99C5F396, BANKED, 0x0000002, 8, 2, true },
-	{ "mpr-20603.2", 0xAD0D8EB8, BANKED, 0x0000004, 8, 2, true },
-	{ "mpr-20602.1", 0x60CFA72A, BANKED, 0x0000006, 8, 2, true },
-	{ "mpr-20609.8", 0xC03CC0E5, BANKED, 0x1000000, 8, 2, true },
-	{ "mpr-20608.7", 0x0C9B0571, BANKED, 0x1000002, 8, 2, true },
-	{ "mpr-20607.6", 0x6DA85AA3, BANKED, 0x1000004, 8, 2, true },
-	{ "mpr-20606.5", 0x072498FD, BANKED, 0x1000006, 8, 2, true },
-	{ "mpr-20613.12", 0x2938C0D9, BANKED, 0x2000000, 8, 2, true },
-	{ "mpr-20612.11", 0x721A44B6, BANKED, 0x2000002, 8, 2, true },
-	{ "mpr-20611.10", 0x5D9F8BA2, BANKED, 0x2000004, 8, 2, true },
-	{ "mpr-20621.31", 0x3A99148F, VROM, 0x000000A, 32, 2, false },
-	{ "mpr-20622.32", 0x0618F056, VROM, 0x000000C, 32, 2, false },
-	{ "mpr-20623.33", 0xCCF31B85, VROM, 0x000000E, 32, 2, false },
-	{ "mpr-20624.34", 0x90F30936, VROM, 0x0000010, 32, 2, false },
-	{ "mpr-20625.35", 0x04F804FA, VROM, 0x0000012, 32, 2, false },
-	{ "mpr-20626.36", 0x2D6C97D6, VROM, 0x0000014, 32, 2, false },
-	{ "mpr-20627.37", 0xA14EE871, VROM, 0x0000016, 32, 2, false },
-	{ "mpr-20628.38", 0xBBA829A3, VROM, 0x0000018, 32, 2, false },
-	{ "mpr-20629.39", 0xEAD2EB31, VROM, 0x000001A, 32, 2, false },
-	{ "mpr-20630.40", 0xCC5881B8, VROM, 0x000001C, 32, 2, false },
-	{ "mpr-20631.41", 0x5CB69FFD, VROM, 0x000001E, 32, 2, false },
-	{ "epr-20636.21", 0x7139EBF8, SOUND, 0x0000000, 1, 1, false },
-	{ "mpr-20614.22", 0xA3930E4A, SAMPLES, 0x0000000, 1, 1, false },
-	{ "mpr-20615.24", 0x62E8A94A, SAMPLES, 0x0400000, 1, 1, false },
-};
-
-struct set
-{
-	const char *name;             // MAME's name for it
-	const char *title;            // for the player
-	int stepping;                 // 0x10 Step 1.0, 0x20 Step 2.0
-	uint32_t crypto_key;          // the 315-5881 security chip's key (0: the set has no security board)
-	bool gzip_program;            // the program is a gzip at the fixed CROM's offset 0, which the boot unpacks
-	size_t size[N_REGIONS];       // how much of each region the set's ROMs fill
-	const rom *program;           // the program ROMs, this revision's own
-	size_t n_program;
-	const rom *data;              // the data ROMs, shared by the revisions of the game
-	size_t n_data;
-
-	size_t count() const { return n_program + n_data; }
-	const rom &at(size_t i) const { return i < n_program ? program[i] : data[i - n_program]; }
-};
-
-#define LIST(a) a, sizeof(a) / sizeof(rom)
-const set SETS[] = {
-	{ "vf3", "Virtua Fighter 3 (Revision D)", 0x10, 0, false,
-	  { 0x200000, 0x4000000, 0x2000000, 0x80000, 0x800000 }, LIST(VF3_PROGRAM), LIST(VF3_DATA) },
-	{ "fvipers2", "Fighting Vipers 2 (Japan, Revision A)", 0x20, 0x29260E96, true,
-	  { 0x800000, 0x4000000, 0x4000000, 0x80000, 0x1000000 }, LIST(FV2_PROGRAM), LIST(FV2_DATA) },
-	{ "fvipers2o", "Fighting Vipers 2 (Japan)", 0x20, 0x29260E96, true,
-	  { 0x800000, 0x4000000, 0x4000000, 0x80000, 0x1000000 }, LIST(FV2O_PROGRAM), LIST(FV2_DATA) },
-	{ "srally2", "Sega Rally 2 (Export)", 0x20, 0, false,
-	  { 0x800000, 0x3000000, 0x4000000, 0x80000, 0x800000 }, LIST(SR2_PROGRAM), LIST(SR2_DATA) },
-};
-#undef LIST
+using rom = m3::RomFile;
 
 // Each region as the board holds it: the ROMs, then mirrored over and over to fill it (every set leaves at least
 // its banked CROM half empty, and the board mirrors it)
@@ -360,51 +190,74 @@ std::vector<uint32_t> unpack_program(const std::vector<uint8_t> &crom_region, st
 	return out;
 }
 
+// A clone's other ROMs, from its parent's zip beside it (a split set: vf3tb.zip with only Team Battle's own ROMs,
+// vf3.zip in the same folder)
+std::string parent_zip(const std::string &path, const m3::Profile &profile)
+{
+	if (!profile.parent) return {};
+	const std::filesystem::path p = std::filesystem::path(path).parent_path() / (std::string(profile.parent) + ".zip");
+	std::error_code ec;
+	return std::filesystem::is_regular_file(p, ec) && !std::filesystem::equivalent(p, path, ec) ? p.string() : std::string();
+}
+
 } // namespace
 
+// The zip names this build knows, for the chooser that asks the player for a ROM: one per program, the clones'
+// parents among them, since a split set needs both zips beside each other.
 std::vector<std::string> known_zip_names()
 {
 	std::vector<std::string> names;
-	for (const set &s : SETS) names.push_back(std::string(s.name) + ".zip");
+	for (const m3::Profile *const *p = m3::PROFILES; *p; p++) names.push_back(std::string((*p)->set) + ".zip");
 	return names;
 }
 
-result load(const std::string &path)
+std::vector<const m3::Profile *> sets_in(const std::string &path)
+{
+	std::vector<const m3::Profile *> out;
+	zip z;
+	if (!z.open(path, true)) return out;
+	for (const m3::Profile *const *p = m3::PROFILES; *p; p++) {
+		zip parent;
+		const std::string pz = parent_zip(path, **p);
+		const bool has_parent = !pz.empty() && parent.open(pz, true);
+		// AND AT LEAST ONE OF THEM IN THIS ZIP. A clone is looked for in its parent's zip beside it, which is
+		// what a split set needs; but crediting the parent for EVERY rom makes a clone match any zip at all that
+		// happens to sit beside its parent. With two games in one ROM folder -- vf3.zip and fvipers2.zip -- Team
+		// Battle was found in Fighting Vipers 2's zip, and the wrong program was loaded. A set has to bring
+		// something of its own.
+		bool all = true, own = false;
+		for (size_t i = 0; i < (*p)->rom_count && all; i++) {
+			bool here = false, there = false;
+			for (const entry &x : z.entries) here |= x.crc == (*p)->roms[i].crc;
+			if (has_parent) for (const entry &x : parent.entries) there |= x.crc == (*p)->roms[i].crc;
+			own |= here;
+			all = here || there;
+		}
+		if (all && own) out.push_back(*p);
+	}
+	return out;
+}
+
+result load(const std::string &path, const m3::Profile &profile)
 {
 	result res;
-	zip z;
+	zip z, parent;
 	if (!z.open(path)) { res.error = "Couldn't read " + path + " as a zip file."; return res; }
-
-	// Which set the zip holds: the one most of whose ROMs are in it by CRC, counting a program ROM for much more
-	// than a data ROM, because the program ROMs are what tell one revision of a game from another (two revisions
-	// share their data ROMs, and a zip holding both revisions' programs is read as the later one)
-	const set *s = nullptr;
-	size_t best = 0;
-	for (const set &candidate : SETS) {
-		size_t found = 0;
-		for (size_t i = 0; i < candidate.count(); i++)
-			for (const entry &x : z.entries)
-				if (x.crc == candidate.at(i).crc) { found += i < candidate.n_program ? 100 : 1; break; }
-		if (found > best) { best = found; s = &candidate; }
-	}
-	if (!s) {
-		res.error = "This zip holds none of the sets this port knows: Virtua Fighter 3 (Revision D), \"vf3\", "
-		            "or Fighting Vipers 2 (Japan), \"fvipers2\" and \"fvipers2o\".";
-		return res;
-	}
-
+	const std::string pz = parent_zip(path, profile);
+	const bool has_parent = !pz.empty() && parent.open(pz);
 	std::vector<uint8_t> region[N_REGIONS];
-	for (int r = 0; r < N_REGIONS; r++) region[r].assign(s->size[r], 0);
+	for (int r = 0; r < N_REGIONS; r++) region[r].assign(profile.board.region[r], 0);
 	int bad = 0;
 	std::vector<uint8_t> d;
-	for (size_t i = 0; i < s->count(); i++) {
-		const rom &ro = s->at(i);
+	for (size_t i = 0; i < profile.rom_count; i++) {
+		const rom &ro = profile.roms[i];
 		const entry *e = nullptr;
+		const zip *from = &z;
 		for (const entry &x : z.entries) if (x.crc == ro.crc && x.name == ro.name) { e = &x; break; }
 		if (!e) for (const entry &x : z.entries) if (x.crc == ro.crc) { e = &x; break; }
-		if (!e || !z.read(*e, d)) {
-			if (!bad++)
-				res.error = std::string("This isn't a complete ") + s->title + " set, \"" + s->name + "\". Not usable:";
+		if (!e && has_parent) for (const entry &x : parent.entries) if (x.crc == ro.crc) { e = &x; from = &parent; break; }
+		if (!e || !from->read(*e, d)) {
+			if (!bad++) res.error = std::string("This isn't a complete ") + profile.title + " set, \"" + profile.set + "\". Not usable:";
 			res.error += std::string(" ") + ro.name;
 			continue;
 		}
@@ -412,42 +265,42 @@ result load(const std::string &path)
 	}
 	if (bad) return res;
 
-	res.set = s->name;
-	res.title = s->title;
-	res.stepping = s->stepping;
-	res.crypto_key = s->crypto_key;
+	res.set = profile.set;
+	res.title = profile.title;
+	res.stepping = profile.board.stepping;
+	res.crypto_key = profile.board.crypto_key;
 
 	// The program the boot unpacks, read before the CROM becomes host-order words
-	if (s->gzip_program) {
+	if (profile.board.gzip_program) {
 		std::string why;
 		res.program = unpack_program(region[CROM], why);
 		if (res.program.empty()) {
-			res.error = std::string("This ") + s->title + " set loaded, but " + why;
+			res.error = std::string("This ") + profile.title + " set loaded, but " + why;
 			return res;
 		}
 	}
 
 	// The fixed CROM: the program ROMs in its top, the start of banked CROM below them where they don't fill it
 	res.crom.assign(HELD[CROM], 0);
-	memcpy(&res.crom[HELD[CROM] - s->size[CROM]], region[CROM].data(), s->size[CROM]);
-	if (s->size[CROM] < HELD[CROM])
-		memcpy(&res.crom[0], region[BANKED].data(), HELD[CROM] - s->size[CROM]);
+	memcpy(&res.crom[HELD[CROM] - profile.board.region[CROM]], region[CROM].data(), profile.board.region[CROM]);
+	if (profile.board.region[CROM] < HELD[CROM])
+		memcpy(&res.crom[0], region[BANKED].data(), HELD[CROM] - profile.board.region[CROM]);
 	// The banked CROM, as the reference build lays it out: a set of 64 MB or less goes into a 64 MB window with
 	// the rest of that window left at zero, and the whole window -- zeros included -- is repeated to fill the
 	// 128 MB the banking reaches; only a set bigger than 64 MB fills all 128 on its own. It matters for a set
 	// that fills neither: Sega Rally 2's 48 MB leaves 16 MB of zeros that the game reads, and repeating its
 	// 48 MB instead would put ROM where the board has none.
 	{
-		const size_t window = s->size[BANKED] <= 0x4000000 ? 0x4000000 : HELD[BANKED];
+		const size_t window = profile.board.region[BANKED] <= 0x4000000 ? 0x4000000 : HELD[BANKED];
 		std::vector<uint8_t> win(window, 0);
-		memcpy(win.data(), region[BANKED].data(), std::min(window, s->size[BANKED]));
+		memcpy(win.data(), region[BANKED].data(), std::min(window, profile.board.region[BANKED]));
 		mirror(res.banked, HELD[BANKED], win, window);
 	}
 	to_host_words(res.crom);
 	to_host_words(res.banked);
-	mirror(res.vrom, HELD[VROM], region[VROM], s->size[VROM]);
+	mirror(res.vrom, HELD[VROM], region[VROM], profile.board.region[VROM]);
 	res.sound = std::move(region[SOUND]);
-	mirror(res.samples, HELD[SAMPLES], region[SAMPLES], s->size[SAMPLES]);
+	mirror(res.samples, HELD[SAMPLES], region[SAMPLES], profile.board.region[SAMPLES]);
 	res.ok = true;
 	return res;
 }

@@ -9,6 +9,8 @@
 #pragma once
 #include "../../third_party/mame/315-5881/crypt_315_5881.h"
 #include "../ppc/ppc.h"
+#include "profile.h"
+#include "state_io.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -36,6 +38,7 @@ public:
 	void assert_(unsigned bits);
 	void deassert(unsigned bits);
 	void reset() { enable = 0; state = 0; }
+	template <class IO> void save_state(IO &io) { io.pod(enable); io.pod(state); }
 };
 
 // The 93C46 serial EEPROM (64 words) behind input register 0
@@ -47,6 +50,11 @@ public:
 	void write(unsigned cs, unsigned clk, unsigned di);
 	unsigned read();
 	void reset();
+	template <class IO> void save_state(IO &io)
+	{
+		io.pod(regs); io.pod(CS); io.pod(CLK); io.pod(DI); io.pod(DO); io.pod(out); io.pod(in);
+		io.pod(bits_out); io.pod(receiving); io.pod(addr); io.pod(busy); io.pod(locked);
+	}
 private:
 	unsigned CS = 0, CLK = 0, DI = 0, DO = 0;
 	uint32_t out = 0, in = 0;
@@ -67,6 +75,13 @@ public:
 	void reset();
 	void configure(int stepping);   // which chain: 0x10 Step 1.0, 0x15 Step 1.5, 0x20 Step 2.0, 0x21 Step 2.1
 	uint32_t modeword[5] = {};  // per ASIC kind, for the renderer
+	template <class IO> void save_state(IO &io)
+	{
+		for (Device &d : dev) {
+			io.pod(d.asic); io.pod(d.kind); io.pod(d.id); io.pod(d.shift); io.pod(d.size); io.pod(d.ir); io.pod(d.mode);
+		}
+		io.pod(state); io.pod(last_tck); io.pod(tdo); io.pod(modeword);
+	}
 private:
 	struct Device
 	{
@@ -103,6 +118,11 @@ public:
 	bool halt = false;
 	uint8_t base = 0;
 	void reset();
+	template <class IO> void save_state(IO &io)
+	{
+		io.pod(regs); io.pod(temp); io.pod(dsp); io.pod(dsps); io.pod(dbc);
+		io.pod(dcmd); io.pod(dcntl); io.pod(dmode); io.pod(dstat); io.pod(dien); io.pod(istat); io.pod(halt); io.pod(base);
+	}
 	uint8_t read(unsigned reg);
 	void write(unsigned reg, uint8_t data);
 private:
@@ -120,6 +140,7 @@ public:
 	Jtag jtag;
 	Scsi scsi;
 	Controls controls;
+	const Profile *profile = &VF3_REV_D;   // the program's (profile.h): set before load
 
 	// Which board and which game the loaded set is. Step 1.0 (Virtua Fighter 3) and Step 2.0 (Fighting Vipers 2)
 	// differ in the CPU's clock, the PCI bridge (MPC105 or MPC106, at different addresses), the SCSI controller
@@ -141,11 +162,12 @@ public:
 	std::vector<uint8_t> backup;     // 128 KB backup RAM, host-order words
 
 	// The test menu's COIN ASSIGNMENTS > COIN/CREDIT SETTING, in backup RAM (found by setting each in the test menu,
-	// leaving it, and comparing): the setting's number (1-27) at 0x1E033; for #1-#26 the same at 0x1E037 and 0 at
-	// 0x1E03B; #27, FREE PLAY, sets 0x1E03B to 1 and leaves 0x1E037. No checksum. A board that has never run has 0
-	// there until the game writes its settings (by frame 120): -1, not written yet.
-	// (the addresses are Virtua Fighter 3's own, found in its test menu, so the coin settings and the FREE PLAY
-	// notices below are only touched for that set: another game keeps its settings where this port doesn't know)
+	// leaving it, and comparing; Revision D's at 0x1E033, 0x1E037 and 0x1E03B, Fighting Vipers 2's one byte at
+	// 0x17: the profile's coin): the setting's number (1-27) at `setting`; where a program has the other two,
+	// #1-#26 put the same at `credits` and 0 at `free_play`, and #27, FREE PLAY, sets `free_play` to 1 and leaves
+	// `credits`. A program whose `credits` and `free_play` are 0 keeps the whole of it in the one byte. No
+	// checksum. A board that has never run has 0 there until the game writes its settings (by frame 120): -1,
+	// not written yet.
 	static constexpr int COIN_FACTORY = 1, COIN_FREE_PLAY = 27;
 	// Where a game keeps its test menu's COIN ASSIGNMENTS > COIN/CREDIT SETTING in the backup RAM, or -1 for one
 	// this port has not been shown. Both games number that setting the same way, 1 to 27, 27 being FREE PLAY.
@@ -159,33 +181,31 @@ public:
 	// out by putting the other six back and leaving only 0x17 at 27: the game still came up in FREE PLAY, and
 	// its picture was byte-identical to the run with all seven changed. So there is no checksum to keep and no
 	// neighbour to agree with.
-	int coin_offset() const { return set == "vf3" ? 0x1E033 : set == "fvipers2" ? 0x17 : -1; }
 	int coin_setting() const
 	{
-		const int at = coin_offset();
-		if (at < 0 || backup.size() <= size_t(at) + 8) return -1;
-		const int v = backup[at];
+		const Profile::Coin &k = profile->coin;
+		const int v = k.setting && backup.size() > k.setting ? backup[k.setting] : 0;   // (0: not known for this program)
 		return v >= 1 && v <= COIN_FREE_PLAY ? v : -1;
 	}
 	bool set_coin_setting(int v)   // (true if it changed)
 	{
-		const int at = coin_offset();
 		if (coin_setting() < 0 || v < 1 || v > COIN_FREE_PLAY) return false;
-		if (at != 0x1E033) {   // Fighting Vipers 2: the one byte, and that is all of it
-			const uint8_t was = backup[at];
-			backup[at] = uint8_t(v);
-			return was != backup[at];
+		const Profile::Coin &k = profile->coin;
+		if (!k.credits && !k.free_play) {   // Fighting Vipers 2: the one byte, and that is all of it
+			const uint8_t was = backup[k.setting];
+			backup[k.setting] = uint8_t(v);
+			return was != backup[k.setting];
 		}
-		const uint8_t was[3] = { backup[0x1E033], backup[0x1E037], backup[0x1E03B] };
-		backup[0x1E033] = uint8_t(v);
-		if (v == COIN_FREE_PLAY) backup[0x1E03B] = 1;
-		else backup[0x1E037] = uint8_t(v), backup[0x1E03B] = 0;
-		return was[0] != backup[0x1E033] || was[1] != backup[0x1E037] || was[2] != backup[0x1E03B];
+		const uint8_t was[3] = { backup[k.setting], backup[k.credits], backup[k.free_play] };
+		backup[k.setting] = uint8_t(v);
+		if (v == COIN_FREE_PLAY) backup[k.free_play] = 1;
+		else backup[k.credits] = uint8_t(v), backup[k.free_play] = 0;
+		return was[0] != backup[k.setting] || was[1] != backup[k.credits] || was[2] != backup[k.free_play];
 	}
 	bool free_play() const
 	{
 		if (coin_setting() != COIN_FREE_PLAY) return false;
-		return coin_offset() != 0x1E033 || backup[0x1E03B] == 1;
+		return !profile->coin.free_play || backup[profile->coin.free_play] == 1;
 	}
 	// Fighting Vipers 2's GAME ASSIGNMENTS -- its operator settings -- WHERE THEY LAST, which is the backup RAM.
 	//
@@ -482,6 +502,16 @@ public:
 	// Asks the attract loop to start over (DONT_RECYCLE_INT), which is how the game itself leaves a replay --
 	// and the restart is where it clears the tasks that draw. model3.cpp says how that was watched.
 	void fv2_restart_attract();
+	// Play as Dural (Game > Play as Dural, offline only; issue #12): the patches she needs to the program
+	// (src/machine/dural.cpp, the profile's DuralPatch), in the fixed CROM the boot copies from (so from the next boot),
+	// each checked against the known words first: the dojo's extra model (stage 14) checks its share of the model pool
+	// (with Dural in the fight the pool is full, and the allocator's -1 was copied to: over RAM 0, the program, the
+	// arcade's freeze); her select portrait loads her own head, made chrome as a fight makes it; and either player's
+	// cursor can move onto her, a seventh column of the grid. On: returns how many words changed (0: not the program
+	// known, nothing changed). Off: puts them back.
+	int set_dural(bool on);
+	bool dural_on() const { return !dural_words.empty(); }
+	std::vector<std::pair<size_t, uint32_t>> dural_words;   // what set_dural replaced (the program's word addresses)
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 
@@ -524,6 +554,10 @@ public:
 
 	bool load(const std::string &zip, std::string &error);
 	void reset();
+	// A reset as from cold, as the board is just loaded: also what reset() leaves as it was (the security RAM, the
+	// Real3D's flush count and VROM FIFO, the outputs, the MIDI bytes not taken). Netplay's start, so both sides
+	// begin alike whatever each ran before.
+	void power_on();
 	void run_frame();
 	// a frame in two halves (the host's smooth motion: each half in its own picture's time): the vertical blank and
 	// lines 0-191, then lines 192-383
@@ -541,6 +575,21 @@ public:
 	void write16(uint32_t addr, uint16_t data) override;
 	void write32(uint32_t addr, uint32_t data) override;
 	void write64(uint32_t addr, uint64_t data) override;
+
+	// Save states (state_io.h): everything the game's run depends on, the PowerPC's state, the board's registers and
+	// all its memories but the ROMs (about 27 MB; the sound board is apart: it only hears the MIDI bytes, and nothing
+	// it does reaches this board). save_state reuses the buffer's memory; sections, if given, are filled with where
+	// each part starts. load_state restores one this build saved, and false (the board then half restored: reset
+	// it) if it isn't one. The renderers are told which textures changed, and the recompiled code rechecks RAM.
+	void save_state(std::vector<uint8_t> &out, std::vector<StateSection> *sections = nullptr);
+	bool load_state(const uint8_t *p, size_t n);
+	static constexpr uint32_t STATE_MAGIC = 0x53334656, STATE_VERSION = 2;   // "VF3S"
+	// The state's first bytes are for this board's saves alone (which board, since which reset, which save): two
+	// boards in the same state have the same bytes after them, and only those are compared or hashed
+	static constexpr size_t STATE_HEADER = 24;
+	// The real-time clock: the host's local time, or (rtc_time >= 0: netplay, tests) this time, seconds since 1970,
+	// as UTC, the same on every machine
+	int64_t rtc_time = -1;
 
 	uint64_t ram_hash() const;
 	// RAM or CROM as the CPU reads it, without its side effects (0 elsewhere)
@@ -592,6 +641,19 @@ private:
 	void write_security(unsigned reg, uint32_t data);
 	uint16_t read_security_ram(uint32_t addr) const;   // what the 315-5881 reads: the security board's RAM
 	bool scsi_mapped(uint32_t addr) const;
+
+	template <class IO> void state(IO &io);
+	bool textures_loaded = false;
+	// Save states copy the device memories by the 4 KB pages written since (save_state): each page's save number
+	// when last written. The RAM is copied whole (the recompiled code writes it directly).
+	static constexpr int PAGED = 5;   // the tile RAM, the culling RAMs, the polygon RAM, the texture RAM
+	static constexpr size_t PAGE = 4096;
+	struct Paged { uint8_t *base = nullptr; size_t bytes = 0; std::vector<uint32_t> gen; };
+	Paged paged[PAGED];
+	uint32_t snap_id = 0, snap_epoch = 0, snap_gen = 1;
+	void touch(int r, size_t byte) { paged[r].gen[byte / PAGE] = snap_gen; }
+	void setup_pages();
+	size_t fixed_state_size() const;
 
 	uint32_t r3d_register(unsigned reg) const;
 	void r3d_flush();

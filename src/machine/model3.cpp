@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <random>
 
 namespace m3 {
 
@@ -385,7 +386,16 @@ uint8_t Scsi::read(unsigned reg)
 
 bool Model3::load(const std::string &zip, std::string &error)
 {
-	romset::result r = romset::load(zip);
+	// WHICH PROGRAM THE ZIP HOLDS. This port runs more than one, and a zip says which by the CRCs in it
+	// (romset::sets_in). A caller that has already chosen -- vf3run --set, the host's own picker -- keeps its
+	// choice as long as the zip really holds it; otherwise the zip decides, which is how the same binary runs
+	// Virtua Fighter 3 or Fighting Vipers 2 with nothing to say on the command line.
+	if (const std::vector<const Profile *> sets = romset::sets_in(zip); !sets.empty()) {
+		bool mine = false;
+		for (const Profile *p : sets) mine |= p == profile;
+		if (!mine) profile = sets[0];
+	}
+	romset::result r = romset::load(zip, *profile);
 	if (!r.ok) {
 		error = r.error;
 		return false;
@@ -416,6 +426,7 @@ bool Model3::load(const std::string &zip, std::string &error)
 	poly_ram.assign(0x400000 / 4, 0);
 	tex_fifo.reserve(0x100000 / 4);
 	tex_ram.assign(2048 * 2048, 0);
+	setup_pages();
 	cpu.attach(this, ram.data(), crom.data());
 	// The CPU, as the reference build configures it for each stepping. Both are a 603R (the same PVR); what
 	// differs is the bus multiplier, and from it the core's clock and the PLL configuration HID1 reports:
@@ -463,6 +474,7 @@ void Model3::reset()
 	std::fill(poly_ram.begin(), poly_ram.end(), 0);
 	tex_fifo.clear();
 	std::fill(tex_ram.begin(), tex_ram.end(), 0);
+	snap_epoch++;   // (the memories filled: states saved before copy whole)
 	tex_serial++;
 	tex_uploads.clear();
 	tex_uploads.push_back({ 0, 0, 2048, 2048 });
@@ -477,6 +489,34 @@ void Model3::reset()
 	jtag.reset();
 	gpus_ready = false;
 	frame = 0;
+}
+
+void Model3::power_on()
+{
+	// the PowerPC's registers (a reset leaves them: a board that had run kept its own), but what configure set
+	const uint32_t pvr = cpu.s.pvr, hid1 = cpu.s.hid1;
+	const int timer_ratio = cpu.s.timer_ratio;
+	cpu.s = ppc::State{};
+	cpu.s.pvr = pvr;
+	cpu.s.hid1 = hid1;
+	cpu.s.timer_ratio = timer_ratio;
+	// the devices as made (the EEPROM keeping what it holds; the 53C810 its board)
+	uint16_t words[64];
+	memcpy(words, eeprom.regs, sizeof words);
+	eeprom = Eeprom();
+	memcpy(eeprom.regs, words, sizeof words);
+	jtag = Jtag();
+	scsi = Scsi{};
+	scsi.board = this;
+	std::fill(security.begin(), security.end(), 0);
+	flushes = 0;
+	vrom_fifo[0] = vrom_fifo[1] = 0;
+	gun_reg = 0;
+	outputs[0] = outputs[1] = 0;
+	flip_line_ = 0;
+	midi.clear();
+	controls = Controls{};
+	reset();
 }
 
 void Model3::set_crom_bank(uint8_t v)
@@ -532,8 +572,8 @@ void Model3::run_frame_start()
 
 	if (gpus_ready) {
 		ping_pong_copy = ping_pong;
-		for (auto &w : pending_hi) cull_hi[w.first] = w.second;
-		for (auto &w : pending_poly) poly_ram[w.first] = w.second;
+		for (auto &w : pending_hi) { cull_hi[w.first] = w.second; touch(2, size_t(w.first) * 4); }
+		for (auto &w : pending_poly) { poly_ram[w.first] = w.second; touch(3, size_t(w.first) * 4); }
 		pending_hi.clear();
 		pending_poly.clear();
 		if (command_written)
@@ -566,6 +606,171 @@ void Model3::run_frame_end()
 	frame++;
 }
 
+// ---- save states ----
+
+namespace {
+
+template <class IO> void pairs(IO &io, std::vector<std::pair<uint32_t, uint32_t>> &v)
+{
+	uint64_t n = v.size();
+	io.pod(n);
+	if constexpr (IO::loading) {
+		if (!io.ok || n > 0x1000000) { io.ok = false; return; }
+		v.resize(size_t(n));
+	}
+	for (auto &w : v) { io.pod(w.first); io.pod(w.second); }
+}
+
+} // namespace
+
+// The state's small parts, after the memories: the CPU, the board's registers, the Real3D's and the tile
+// generator's, the writes and bytes waiting
+template <class IO> void Model3::state(IO &io)
+{
+	io.section("cpu");
+	cpu.s.state(io);
+	io.section("board");
+	irq.save_state(io);
+	eeprom.save_state(io);
+	jtag.save_state(io);
+	scsi.save_state(io);
+	for (int p = 0; p < 2; p++) {
+		Controls &c = controls;
+		io.pod(c.coin[p]); io.pod(c.start[p]); io.pod(c.test[p]); io.pod(c.service[p]);
+		io.pod(c.up[p]); io.pod(c.down[p]); io.pod(c.left[p]); io.pod(c.right[p]);
+		io.pod(c.punch[p]); io.pod(c.kick[p]); io.pod(c.guard[p]); io.pod(c.escape[p]);
+	}
+	io.pod(crom_bank_reg); io.pod(input_bank); io.pod(serial1); io.pod(serial2); io.pod(adc_channel); io.pod(gun_reg);
+	io.pod(outputs); io.pod(gpus_ready);
+	io.pod(pci_regs); io.pod(pci_bus); io.pod(pci_device); io.pod(pci_function); io.pod(pci_reg);
+	io.pod(frame); io.pod(flip_line_);
+	io.deq(midi);
+	io.pod(midi_ctrl);
+	io.section("tile generator");
+	io.pod(tile_regs);
+	io.pod(tilegen_draw);
+	io.section("real3d");
+	io.pod(r3d_config); io.pod(vrom_fifo); io.pod(vrom_fifo_n);
+	io.pod(ping_pong); io.pod(ping_pong_copy); io.pod(flushes); io.pod(command_written);
+	io.pod(dma_src); io.pod(dma_dst); io.pod(dma_len); io.pod(dma_data); io.pod(dma_status); io.pod(dma_config);
+	pairs(io, pending_hi);
+	pairs(io, pending_poly);
+	io.vec(tex_fifo);
+	io.section("end");
+}
+
+namespace {
+
+struct StateHeader { uint32_t magic, version, id, epoch, gen, zero; };
+static_assert(sizeof(StateHeader) == Model3::STATE_HEADER);
+
+const char *const PAGED_NAMES[] = { "tile ram", "culling ram", "culling ram (high)", "polygon ram", "texture ram" };
+
+} // namespace
+
+void Model3::setup_pages()
+{
+	uint8_t *base[PAGED] = { tile_ram.data(), reinterpret_cast<uint8_t *>(cull_lo.data()), reinterpret_cast<uint8_t *>(cull_hi.data()),
+		reinterpret_cast<uint8_t *>(poly_ram.data()), reinterpret_cast<uint8_t *>(tex_ram.data()) };
+	const size_t bytes[PAGED] = { tile_ram.size(), cull_lo.size() * 4, cull_hi.size() * 4, poly_ram.size() * 4, tex_ram.size() * 2 };
+	for (int r = 0; r < PAGED; r++) {
+		paged[r].base = base[r];
+		paged[r].bytes = bytes[r];
+		paged[r].gen.assign((bytes[r] + PAGE - 1) / PAGE, 0);
+	}
+	std::random_device rd;
+	snap_id = rd() ^ uint32_t(uintptr_t(this));
+	snap_epoch++;
+}
+
+size_t Model3::fixed_state_size() const
+{
+	size_t n = STATE_HEADER + ram.size() + backup.size() + security.size();
+	for (const Paged &r : paged) n += r.bytes;
+	return n;
+}
+
+// The state: the header (for this board's saves only: which board, since which reset, which save), the memories at
+// fixed places, then the rest. A save into a buffer this board saved before, since its last reset, copies only the
+// device memories' pages written since (the RAM, which the recompiled code writes directly, always whole).
+void Model3::save_state(std::vector<uint8_t> &out, std::vector<StateSection> *sections)
+{
+	if (sections) sections->clear();
+	const size_t fixed = fixed_state_size();
+	StateHeader h{};
+	if (out.size() >= fixed) memcpy(&h, out.data(), sizeof h);
+	const bool since = out.size() >= fixed && h.magic == STATE_MAGIC && h.version == STATE_VERSION && h.id == snap_id && h.epoch == snap_epoch;
+	const uint32_t prev = since ? h.gen : 0;
+	out.resize(fixed);   // (no allocation once the buffer has had a state)
+	h = { STATE_MAGIC, STATE_VERSION, snap_id, snap_epoch, snap_gen, 0 };
+	memcpy(out.data(), &h, sizeof h);
+	size_t at = STATE_HEADER;
+	auto whole = [&](const char *name, const void *src, size_t n) {
+		if (sections) sections->push_back({ name, at });
+		memcpy(out.data() + at, src, n);
+		at += n;
+	};
+	whole("ram", ram.data(), ram.size());
+	whole("backup", backup.data(), backup.size());
+	whole("security", security.data(), security.size());
+	for (int r = 0; r < PAGED; r++) {
+		const Paged &g = paged[r];
+		if (sections) sections->push_back({ PAGED_NAMES[r], at });
+		if (!since) memcpy(out.data() + at, g.base, g.bytes);
+		else
+			for (size_t q = 0; q < g.gen.size(); q++)
+				if (g.gen[q] > prev) memcpy(out.data() + at + q * PAGE, g.base + q * PAGE, std::min(PAGE, g.bytes - q * PAGE));
+		at += g.bytes;
+	}
+	StateWriter w(out, sections, true);
+	state(w);
+	snap_gen++;   // (writes from now on are after this save)
+}
+
+bool Model3::load_state(const uint8_t *p, size_t n)
+{
+	const size_t fixed = fixed_state_size();
+	StateHeader h{};
+	if (n < fixed) return false;
+	memcpy(&h, p, sizeof h);
+	if (h.magic != STATE_MAGIC || h.version != STATE_VERSION) return false;
+	// a state this board saved since its last reset: only the pages written since it was saved differ
+	const bool since = h.id == snap_id && h.epoch == snap_epoch;
+	size_t at = STATE_HEADER;
+	auto whole = [&](void *dst, size_t m) { memcpy(dst, p + at, m); at += m; };
+	whole(ram.data(), ram.size());
+	whole(backup.data(), backup.size());
+	whole(security.data(), security.size());
+	textures_loaded = false;
+	for (int r = 0; r < PAGED; r++) {
+		Paged &g = paged[r];
+		for (size_t q = 0; q < g.gen.size(); q++) {
+			const size_t len = std::min(PAGE, g.bytes - q * PAGE);
+			uint8_t *dst = g.base + q * PAGE;
+			const uint8_t *src = p + at + q * PAGE;
+			if (since ? g.gen[q] <= h.gen : !memcmp(dst, src, len)) continue;
+			memcpy(dst, src, len);
+			g.gen[q] = snap_gen;   // (changed now: the next save into any buffer copies it)
+			if (r == PAGED - 1) {   // the texture RAM: a page a row, given to the renderers as changed
+				const unsigned y = unsigned(q);
+				if (!tex_uploads.empty() && tex_uploads.back().x == 0 && tex_uploads.back().w == 2048 && tex_uploads.back().y + tex_uploads.back().h == y)
+					tex_uploads.back().h++;   // (joined to the row above)
+				else tex_uploads.push_back({ 0, y, 2048, 1 });
+				textures_loaded = true;
+			}
+		}
+		at += g.bytes;
+	}
+	StateReader rd(p + fixed, n - fixed);
+	state(rd);
+	// what isn't kept but follows from what is
+	set_crom_bank(crom_bank_reg);
+	if (cpu.rec)
+		cpu.rec->recount();
+	if (textures_loaded) tex_serial++;   // (the renderers: what changed is in tex_uploads)
+	return rd.done();
+}
+
 std::vector<uint32_t> Model3::program_image() const
 {
 	// Where the set carries its program compressed, the image is what the loader unpacked (Fighting Vipers 2: a
@@ -574,10 +779,10 @@ std::vector<uint32_t> Model3::program_image() const
 	// the work -- only for the recompiler to know what code to build.
 	if (!unpacked_program.empty())
 		return unpacked_program;
-	// Virtua Fighter 3: the boot copies 0xA0000 bytes from the fixed CROM's offset 0x710000 to RAM 0
-	// (docs/step1-measure.md)
-	std::vector<uint32_t> img(0xA0000 / 4);
-	memcpy(img.data(), &crom[0x710000], 0xA0000);
+	// Otherwise the boot copies the program from the fixed CROM to RAM 0 (Revision D's: 0xA0000 bytes from
+	// 0x710000, docs/step1-measure.md), and where from and how much is the profile's
+	std::vector<uint32_t> img(profile->program_size / 4);
+	memcpy(img.data(), &crom[profile->program_at], profile->program_size);
 	return img;
 }
 
@@ -765,12 +970,14 @@ void Model3::write_sysreg(unsigned reg, uint8_t data)
 uint8_t Model3::read_rtc(unsigned reg)
 {
 	// The host's local time, as the reference gives it (VF3 reads only registers 13 and 15, which read 0)
-	time_t now = time(nullptr);
+	time_t now = rtc_time >= 0 ? time_t(rtc_time) : time(nullptr);
 	struct tm t;
 #ifdef _WIN32
-	localtime_s(&t, &now);
+	if (rtc_time >= 0) gmtime_s(&t, &now);
+	else localtime_s(&t, &now);
 #else
-	localtime_r(&now, &t);
+	if (rtc_time >= 0) gmtime_r(&now, &t);
+	else localtime_r(&now, &t);
 #endif
 	switch (reg & 0xF) {
 	case 0: return (t.tm_sec % 10) & 0xF;
@@ -942,6 +1149,7 @@ void Model3::r3d_store(unsigned x0, unsigned y0, unsigned w, unsigned h, const u
 				data += step;
 			}
 	}
+	for (unsigned y = y0; y < y0 + h + ty; y++) touch(4, size_t(y & 2047) * 4096);   // (its rows, a page each)
 	tex_uploads.push_back({ x0, y0, w, h });
 	tex_serial++;
 }
@@ -1057,6 +1265,7 @@ uint32_t Model3::peek32(uint32_t a) const
 void Model3::tile_ram_write32(unsigned addr, uint32_t data)
 {
 	word(tile_ram, addr) = data;   // the palette (addresses from 0x100000) is decoded by the renderer
+	touch(0, addr);
 }
 
 void Model3::tile_reg_write(unsigned reg, uint32_t data)
@@ -1287,6 +1496,7 @@ void Model3::write16(uint32_t a, uint16_t d)
 			uint32_t at = a & 0x1FFFFF;
 			tile_ram[at] = uint8_t(d >> 8);
 			tile_ram[at + 1] = uint8_t(d);
+			touch(0, at);
 		}
 		break;
 	case 0xF8:
@@ -1313,16 +1523,16 @@ void Model3::write32(uint32_t a, uint32_t d)
 	}
 	switch (a >> 24) {
 	case 0x88: r3d_flush(); break;
-	case 0x8C: cull_lo[(a & 0x3FFFFF) / 4] = bswap32(d); break;
+	case 0x8C: cull_lo[(a & 0x3FFFFF) / 4] = bswap32(d); touch(1, a & 0x3FFFFC); break;
 	case 0x8E:
 		if (ping_pong != ping_pong_copy) pending_hi.push_back({ (a & 0xFFFFF) / 4, bswap32(d) });
-		else cull_hi[(a & 0xFFFFF) / 4] = bswap32(d);
+		else { cull_hi[(a & 0xFFFFF) / 4] = bswap32(d); touch(2, a & 0xFFFFC); }
 		break;
 	case 0x90: r3d_texture_port(a & 0xFF, bswap32(d)); break;
 	case 0x94: if (tex_fifo.size() < 0x100000 / 4) tex_fifo.push_back(bswap32(d)); break;
 	case 0x98:
 		if (ping_pong != ping_pong_copy) pending_poly.push_back({ (a & 0x3FFFFF) / 4, bswap32(d) });
-		else poly_ram[(a & 0x3FFFFF) / 4] = bswap32(d);
+		else { poly_ram[(a & 0x3FFFFF) / 4] = bswap32(d); touch(3, a & 0x3FFFFC); }
 		break;
 	case 0x9C: r3d_config[(a & 0xF) / 4] = bswap32(d); break;
 	case 0xC2: r3d_dma_write32(a & 0xFF, bswap32(d)); break;
@@ -1382,8 +1592,9 @@ void Model3::write64(uint32_t a, uint64_t d)
 	write32(a + 4, uint32_t(d));
 }
 
-// The FREE PLAY notices, in the fixed CROM the boot copies the program from (the program image's address + 0x710000;
-// the CROM holds the PowerPC's 32-bit words, so byte a of the image is crom[(a + 0x710000) ^ 3]):
+// The FREE PLAY notices, in the fixed CROM the boot copies the program from (the program image's address + the
+// profile's program_at; the CROM holds the PowerPC's 32-bit words, so byte a of the image is crom[(a + at) ^ 3]).
+// Revision D's (the profile's free_play_text):
 // - the fight's top line (alternating with PRESS START BUTTON): "     FREE PLAY       " (21 characters) at the
 //   image's 0x7CAE0, between "PRESS START BUTTON   " and "CREDIT": spaces;
 // - the attract's, bottom left: picture 0x4018 (its number from a table at 0x7CB50), drawn by the call at 0x4E9C0
@@ -1392,7 +1603,9 @@ int Model3::hide_free_play_text()
 {
 	if (set != "vf3") return 0;   // the addresses below are Virtua Fighter 3's own
 	if (!free_play_text.empty()) return int(free_play_text.size());   // (hidden already)
-	constexpr size_t CROM_AT = 0x710000;
+	const size_t CROM_AT = profile->program_at;
+	const Profile::FreePlayText &t = profile->free_play_text;
+	if (!t.free_play) return 0;   // (not known for this program)
 	auto at = [&](size_t a) -> uint8_t & { return crom[(a + CROM_AT) ^ 3]; };
 	auto is = [&](size_t a, const char *t) {
 		for (size_t k = 0; t[k]; k++)
@@ -1405,20 +1618,46 @@ int Model3::hide_free_play_text()
 		for (size_t k = 0; k < n; k++) { was.push_back(at(a + k)); at(a + k) = to[k]; }
 		free_play_text.push_back({ a, was });
 	};
-	if (!is(0x7CACA, "PRESS START BUTTON   ") || !is(0x7CAE0, "     FREE PLAY       ") || !is(0x7CAF6, "CREDIT") ||
-		word(0x7CB50) != 0x4018 || word(0x4E9C0) != 0x4BFE4941)
+	if (!is(t.press_start, "PRESS START BUTTON   ") || !is(t.free_play, "     FREE PLAY       ") || !is(t.credit, "CREDIT") ||
+		word(t.picture_table) != t.picture || word(t.draw_call) != t.draw_word)
 		return 0;
 	const uint8_t spaces[21] = { ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' };
 	const uint8_t nop[4] = { 0x60, 0x00, 0x00, 0x00 };
-	patch(0x7CAE0, spaces, sizeof spaces);
-	patch(0x4E9C0, nop, sizeof nop);
+	patch(t.free_play, spaces, sizeof spaces);
+	patch(t.draw_call, nop, sizeof nop);
 	return int(free_play_text.size());
+}
+
+int Model3::set_dural(bool on)
+{
+	const size_t CROM_AT = profile->program_at;
+	auto at = [&](size_t a) -> uint8_t & { return crom[(a + CROM_AT) ^ 3]; };
+	auto word = [&](size_t a) { return uint32_t(at(a)) << 24 | uint32_t(at(a + 1)) << 16 | uint32_t(at(a + 2)) << 8 | at(a + 3); };
+	auto put = [&](size_t a, uint32_t v) { for (int k = 0; k < 4; k++) at(a + k) = uint8_t(v >> (24 - 8 * k)); };
+	const DuralPatch *d = profile->dural;
+	if (!on) {
+		for (auto it = dural_words.rbegin(); it != dural_words.rend(); ++it) put(it->first, it->second);
+		if (!dural_words.empty() && d && ram.size() >= d->ram_to) std::fill(ram.begin() + d->ram_from, ram.begin() + d->ram_to, 0);   // (her heads' copies: as the game leaves that RAM)
+		dural_words.clear();
+		return 0;
+	}
+	if (!dural_words.empty()) return int(dural_words.size());   // (on already)
+	if (!d || crom.size() < CROM_AT + profile->program_size) return 0;
+	for (size_t i = 0; i < d->known_count; i++)
+		if (word(d->known[i][0]) != d->known[i][1]) return 0;
+	for (size_t i = 0; i < d->patch_count; i++)
+		if (word(d->patch[i][0]) != d->patch[i][1]) return 0;
+	for (size_t i = 0; i < d->patch_count; i++) {
+		dural_words.push_back({ d->patch[i][0], d->patch[i][1] });
+		put(d->patch[i][0], d->patch[i][2]);
+	}
+	return int(dural_words.size());
 }
 
 void Model3::show_free_play_text()
 {
 	for (auto &[a, bytes] : free_play_text)
-		for (size_t k = 0; k < bytes.size(); k++) crom[(a + 0x710000 + k) ^ 3] = bytes[k];
+		for (size_t k = 0; k < bytes.size(); k++) crom[(a + profile->program_at + k) ^ 3] = bytes[k];
 	free_play_text.clear();
 }
 

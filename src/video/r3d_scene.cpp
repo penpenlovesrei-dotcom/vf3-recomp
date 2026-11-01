@@ -562,9 +562,67 @@ void mesh_state(Mesh &m, const uint32_t *h)
 	}
 }
 
+// VF3's beach stage (Jeffry's, and Team Battle's at night) has a texture animation for a model the game's model table
+// gives no words (model 0x1488: 0 in the table at 0xFFA1A440), but its routine (Revision D 0x49A0C, its loop at
+// 0x49B48) rewrites the texture's place in the model's first polygon before it looks at the count. So every few
+// frames it rewrites the first polygon of whatever model the game's allocator put at the same RAM address (the empty
+// model takes no room): a fighter's head (which one the matchup decides; every fighter's in the runs checked), whose
+// first polygon (by the mouth) then shows another corner of texture sheet 1 (black, or someone's clothes) whenever
+// the head is sent to the Real3D again (the win pose, the faces they pull). The arcade drew the same, a pixel or so at
+// its 384 lines; at 4K it is a dark triangle. The place the model had is in none of the game's memories any more, and
+// the game's state is left alone: the picture takes it back from the polygons around it.
+// A polygon RAM model's first polygon is taken to have had its place rewritten so when it is textured at a place no
+// other polygon of the model (on that sheet) uses, and polygons of the model on a texture of the same size, sheet and
+// format give one of its corners again with the same texture coordinates (the same corner of the same picture); first
+// is then its header with the place most of those have. (false: not so)
+bool stray_texture_place(const uint32_t *h, const uint32_t *limit, uint32_t first[7])
+{
+	auto size_of = [](const uint32_t *q) { return 7 + (((q[0] & 0x40) ? 4 : 3) - shared_count[q[0] & 0xF]) * 4; };
+	if (h + 7 > limit || h[6] == 0 || (h[1] & 4) || !(h[6] & 0x400) || h + size_of(h) > limit)
+		return false;
+	const uint32_t place_4 = 0x3F, place_5 = 0xFF;   // (the bits the animation writes: X in 4's 0-5 and 5's 7, Y in 5's 0-4)
+	auto place = [&](const uint32_t *q) { return (q[4] & place_4) << 8 | (q[5] & place_5); };
+	auto vertex_is = [](const uint32_t *a, const uint32_t *b) {   // (the same place, normals aside, and texture coordinates)
+		return !((a[0] ^ b[0]) & 0xFFFFFF00) && !((a[1] ^ b[1]) & 0xFFFFFF00) && !((a[2] ^ b[2]) & 0xFFFFFF00) && a[3] == b[3];
+	};
+	const int own = size_of(h) / 4 - 1;   // (its corners given here, not taken from the model before)
+	if (own < 1)
+		return false;
+	struct Count { uint32_t place; int n; const uint32_t *by; };
+	Count counts[8];
+	int kinds = 0;
+	for (const uint32_t *q = h + size_of(h); q + 7 <= limit && q[6] != 0 && q + size_of(q) <= limit; q += size_of(q)) {
+		if ((q[6] & 0x400) && !((q[4] ^ h[4]) & 0x40) && place(q) == place(h))
+			return false;   // (its place is one the model has: not rewritten, or rewritten to one of its own)
+		if ((q[6] & 0x400) && !((q[4] ^ h[4]) & 0x40) && !((q[3] ^ h[3]) & 0x3F) && !((q[6] ^ h[6]) & 0x380)) {
+			bool beside = false;
+			for (int i = 0; i < size_of(q) / 4 - 1 && !beside; i++)
+				for (int k = 0; k < own && !beside; k++)
+					beside = vertex_is(q + 7 + i * 4, h + 7 + k * 4);
+			if (beside) {
+				int c = 0;
+				while (c < kinds && counts[c].place != place(q)) c++;
+				if (c == kinds && kinds < 8) counts[kinds++] = { place(q), 0, q };
+				if (c < kinds) counts[c].n++;
+			}
+		}
+		if (q[1] & 4)
+			break;
+	}
+	const Count *most = nullptr;
+	for (int c = 0; c < kinds; c++)
+		if (!most || counts[c].n > most->n) most = &counts[c];
+	if (!most)
+		return false;
+	memcpy(first, h, 7 * sizeof(uint32_t));
+	first[4] = (h[4] & ~place_4) | (most->by[4] & place_4);
+	first[5] = (h[5] & ~place_5) | (most->by[5] & place_5);
+	return true;
+}
+
 } // namespace
 
-Meshes SceneBuilder::parse(const uint32_t *h, bool dynamic)
+Meshes SceneBuilder::parse(const uint32_t *src, bool dynamic)
 {
 	(void)dynamic;
 	auto out = std::make_shared<std::vector<Mesh>>();
@@ -573,10 +631,14 @@ Meshes SceneBuilder::parse(const uint32_t *h, bool dynamic)
 	uint32_t last_rgba = 0;
 	Mesh *mesh = nullptr;
 	const uint32_t *end_lo = poly + 0x100000, *end_rom = vrom + 0x1000000;
-	const uint32_t *limit = (h >= poly && h < end_lo) ? end_lo : end_rom;
+	const bool in_poly_ram = src >= poly && src < end_lo;
+	const uint32_t *limit = in_poly_ram ? end_lo : end_rom;
+	uint32_t first[7];
+	const bool stray = in_poly_ram && stray_texture_place(src, limit, first);
 	for (int guard = 0; guard < 200000; guard++) {
-		if (h + 7 > limit || h[6] == 0)
+		if (src + 7 > limit || src[6] == 0)
 			break;
+		const uint32_t *h = (guard == 0 && stray) ? first : src;   // the polygon's header
 		uint8_t colour[4];
 		if (!(h[1] & 2)) {
 			const uint32_t ci = (colour_table + ((h[4] >> 8) & 0xFFF)) & 0xFFFFF;
@@ -628,8 +690,11 @@ Meshes SceneBuilder::parse(const uint32_t *h, bool dynamic)
 		const bool smooth = (h[1] & 8) != 0, fixed = (h[1] & 0x20) != 0, spec = (h[0] & 0x80) != 0;
 		if (!smooth)
 			for (int i = 0; i < count; i++) memcpy(v[i].normal, face, sizeof(face));
+		// np_scale, not 1/4096: Step 1.5 and later hold the texture NP with more fraction bits (r3d_scene.h), and
+		// Fighting Vipers 2 is Step 2.0. And the vertices come from `src`, never from `h`: the first polygon's
+		// header may be a patched copy (the stray texture place), its vertices never are.
 		const float np = float(h[5] >> 8) * np_scale;
-		const uint32_t *d = h + 7;
+		const uint32_t *d = src + 7;
 		for (; j < count; j++, d += 4) {
 			if (d + 4 > limit) break;
 			v[j].pos[0] = float(int32_t(d[0]) >> 8) * vertex_scale;
@@ -681,7 +746,7 @@ Meshes SceneBuilder::parse(const uint32_t *h, bool dynamic)
 		}
 		if (h[1] & 4)
 			break;
-		h += 7 + (count - shared_count[h[0] & 0xF]) * 4;
+		src += 7 + (count - shared_count[h[0] & 0xF]) * 4;
 	}
 	// meshes with no triangles are dropped
 	out->erase(std::remove_if(out->begin(), out->end(), [](const Mesh &m) { return m.verts.empty(); }), out->end());
@@ -754,6 +819,19 @@ uint64_t shape_of(const Model &m)
 	if (m.meshes)
 		for (auto &mesh : *m.meshes) verts += mesh.verts.size();
 	return (n << 32) ^ verts;
+}
+
+// its shape and the kind of picture on each mesh (its size, format and sheet, not its place): a flipbook's steps
+// alike, the sand grains around them not
+uint64_t look_of(const Model &m, uint64_t shape)
+{
+	uint64_t h = shape * 0x9E3779B97F4A7C15ull;
+	if (m.meshes)
+		for (auto &mesh : *m.meshes) {
+			const uint64_t k = mesh.textured ? (uint64_t(mesh.width) | uint64_t(mesh.height) << 12 | uint64_t(mesh.format) << 24 | uint64_t(mesh.page ^ m.page) << 28 | 1ull << 31) : 0;
+			h = (h ^ k) * 0x100000001B3ull;
+		}
+	return h;
 }
 
 } // namespace
@@ -1172,6 +1250,15 @@ bool interpolate(const Scene &a, const Scene &b, float t, Scene &out, InterpStat
 			}
 		};
 		pair_by([](const Model &m) { return uint64_t(m.addr); }, true);
+		// then by shape and the pictures' kind: a flipbook's next step (Wolf's desert's dust puffs, a quad each, their
+		// picture stepping through a sheet every 2 frames, a new model each step) with the step before. By shape alone
+		// they were among hundreds of sand grains of their shape, each paired in turn with the nearest left: a puff
+		// new that frame took another's step before, and that one another's, the puffs faded from each other's
+		// pictures (a puff changing for a frame, flickering at 120 a second) and some from none (a jump)
+		std::vector<uint64_t> was_look(was.size()), now_look(now.size());
+		for (size_t i = 0; i < was.size(); i++) was_look[i] = look_of(was[i], was_shape[i]);
+		for (size_t j = 0; j < now.size(); j++) now_look[j] = look_of(now[j], now_shape[j]);
+		pair_by([&](const Model &m) { return (&m >= now.data() && &m < now.data() + now.size()) ? now_look[size_t(&m - now.data())] : was_look[size_t(&m - was.data())]; }, false);
 		// then by shape: an animation's next model (the birds' wings, a splash: the game steps through models in
 		// ROM), a model the game builds each frame (in polygon RAM, wherever there was room)
 		pair_by([&](const Model &m) { return (&m >= now.data() && &m < now.data() + now.size()) ? now_shape[size_t(&m - now.data())] : was_shape[size_t(&m - was.data())]; }, false);
@@ -1415,7 +1502,9 @@ bool interpolate(const Scene &a, const Scene &b, float t, Scene &out, InterpStat
 			np.flips[v].resize(np.paired[v].size());
 			for (size_t j = 0; j < np.paired[v].size(); j++) {
 				const int i = np.paired[v][j];
-				if (i < 0) continue;
+				// (only a model blended from its partner: one too far from it, or a swarm's grain, is another thing,
+				// and its picture isn't this one's step before)
+				if (i < 0 || np.from[v][j] < 0) continue;
 				const size_t u = size_t(av[v]);   // (paired: in a viewport of a's)
 				const Flip *pr = chain && size_t(i) < plan.flips[u].size() && plan.flips[u][size_t(i)].age >= 0 ? &plan.flips[u][size_t(i)] : nullptr;
 				Flip &f = np.flips[v][j];

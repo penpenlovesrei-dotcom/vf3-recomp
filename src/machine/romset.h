@@ -1,8 +1,9 @@
 // The player's own ROM set, read straight from the zip: every ROM checked by CRC and laid out as the Model 3
-// sees it. Two sets are known: Virtua Fighter 3 (Revision D, MAME's and Supermodel's "vf3", Step 1.0) and
-// Fighting Vipers 2 (Japan Revision A, "fvipers2", Step 2.0). Which one a zip holds is found from the CRCs in
-// it, so the same binary runs either.
+// sees it. Which programs this build knows is the profiles' business (src/machine/profile.h) -- Virtua Fighter 3
+// Revision D ("vf3", Step 1.0), Team Battle ("vf3tb") and Fighting Vipers 2 ("fvipers2", Step 2.0) -- and which
+// one a zip holds is found from the CRCs in it, so the same binary runs any of them.
 #pragma once
+#include "profile.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -38,6 +39,9 @@ std::vector<std::string> known_zip_names();
 
 // The CROM regions come back as host-order 32-bit words (as the CPU core reads them); the others as the bytes
 // of the big-endian words.
-result load(const std::string &zip);
+result load(const std::string &zip, const m3::Profile &profile = m3::VF3_REV_D);
+// The programs a zip holds whole (every ROM's CRC in its directory, or a clone's in its parent's zip beside it),
+// from the zips' directories only: load() still checks each ROM's data
+std::vector<const m3::Profile *> sets_in(const std::string &zip);
 
 } // namespace romset

@@ -31,15 +31,12 @@ struct Stats
 	double ms = 0;
 };
 
-// The address maps this build ships with, one per game: Virtua Fighter 3's (src/rec/vf3_map.cpp) and Fighting
-// Vipers 2's (src/rec/fv2_map.cpp). Each was made from coverage runs of its own game, and holds only addresses.
-extern const uint32_t vf3_map[];
-extern const size_t vf3_map_count;
-extern const uint32_t fv2_map[];
-extern const size_t fv2_map_count;
-// The map for a ROM set ("vf3", "fvipers2"), or nullptr with count 0 if this build ships none for it (the
-// recompiler then has nothing to walk from, and the interpreter runs everything)
-const uint32_t *map_for(const std::string &set, size_t &count);
+// The address maps this build ships with, one per program: Revision D's (src/rec/vf3_map.cpp, from coverage runs),
+// Team Battle's (src/rec/vf3tb_map.cpp, learnt: tools/recomp/mklearnt.py) and Fighting Vipers 2's
+// (src/rec/fv2_map.cpp, from coverage runs of its own game). Each holds only addresses. Which one a program uses
+// is its profile's (src/machine/profile.h): there is no looking a map up by set name any more.
+extern const uint32_t vf3_map[], vf3tb_map[], fv2_map[];
+extern const size_t vf3_map_count, vf3tb_map_count, fv2_map_count;
 
 // Which instructions to compile: walked from the seeds through the direct flow, within [lo, hi)
 std::vector<uint32_t> analyse(const std::vector<uint32_t> &image, uint32_t lo, uint32_t hi, const std::vector<uint32_t> &seeds);
@@ -49,11 +46,11 @@ class Rec : public ppc::Recompiler
 public:
 	Rec();
 	~Rec() override;
-	// image: the program as RAM holds it after the boot copy, words from 0 (host order). False if no code
-	// could be made (the interpreter then runs everything).
-	// seeds: the game's address map (map_for); the default is Virtua Fighter 3's, as it was before there were two
-	bool build(ppc::Cpu &cpu, const std::vector<uint32_t> &image, Stats *stats = nullptr,
-	           const uint32_t *seeds = nullptr, size_t seed_count = 0);
+	// image: the program as RAM holds it after the boot copy, words from 0 (host order); map: its address map
+	// (the board's profile's: vf3_map for Revision D, fv2_map for Fighting Vipers 2). A null map with count 0 is
+	// allowed and leaves the recompiler nothing to walk from, so the interpreter runs everything. False if no code
+	// could be made.
+	bool build(ppc::Cpu &cpu, const std::vector<uint32_t> &image, const uint32_t *map, size_t map_count, Stats *stats = nullptr);
 	bool run(ppc::Cpu &cpu) override;
 	void code_written(uint32_t addr) override;
 	void recount() override;
@@ -77,7 +74,9 @@ public:
 	// what the interpreter ran instead: while the code in RAM wasn't the program (the boot, before its copy),
 	// outside the program (the boot code in CROM), or where no code was made (an address the map didn't have)
 	uint64_t interp_disabled = 0, interp_outside = 0, interp_unmapped = 0;
-	std::vector<uint32_t> unmapped;   // the addresses of the last kind (first few hundred)
+	std::vector<uint32_t> unmapped;   // the addresses of the last kind (the first unmapped_max)
+	size_t unmapped_max = 512;
+	std::vector<uint8_t> unmapped_seen;   // (past 512: which are in it, a byte a word)
 
 private:
 	bool built = false;
