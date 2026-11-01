@@ -83,12 +83,15 @@ if [ "${FV2:-0}" = 1 ]; then
 	mkdir -p "$P/texture_replacement/CHARACTERS"
 	cp -R texture_remplacement/CHARACTERS/Kuhn "$P/texture_replacement/CHARACTERS/"
 	cp tools/win/README-fv2.txt "$P/README.txt"
+	# The hidden fighters ON from the very first start, before the player has any settings of his own.
+	# They are what this package is for; the port's own default is off, and a player who does not know
+	# the menu row is there finds the select screen exactly as the cabinet left it.
+	printf 'settings_version = 3\nfull_roster = 1\n' > "$P/settings.ini"
 	if [ "${CONSOLE:-0}" = 1 ]; then
 		[ -d assets/menu-console ] || { echo "CONSOLE=1 needs assets/menu-console in the working tree (it is not in the repository)"; exit 1; }
 		cp -R assets/menu-console "$P/assets/"
 		cat tools/win/README-fv2-console.txt >> "$P/README.txt"
-		# on from the very first start, before the player has any settings of his own
-		printf 'settings_version = 3\nconsole_mode = 1\n' > "$P/settings.ini"
+		printf 'console_mode = 1\n' >> "$P/settings.ini"
 	fi
 else
 	cp tools/win/README-msys.txt "$P/README.txt"

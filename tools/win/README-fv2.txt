@@ -33,10 +33,10 @@ You do not need a coin: the game's own COIN setting is on FREE PLAY. Press Start
 What this version adds
 ----------------------
 
-  The hidden fighters.  Del Sol, Kuhn, BM and Dural on the character select, under
-                        Game > Hidden fighters in the port's menu. Past the tenth cell the
-                        game's own names and portraits are wrong or missing: that is the game,
-                        not the port.
+  The hidden fighters.  Del Sol, Kuhn, BM and Dural on the character select, ON from the first
+                        start: push the cursor past the tenth face. Game > Hidden fighters in
+                        the port's menu turns them off again. Past the tenth cell the game's own
+                        names and portraits are wrong or missing: that is the game, not the port.
 
   Kuhn's four colours.  Silver and gold are SEGA's; blue and black are the Dreamcast version's
                         third and fourth, and they are in this folder under
