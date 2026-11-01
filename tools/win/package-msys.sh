@@ -5,12 +5,17 @@
 #
 #   tools/win/package-msys.sh            -> build/win-msys/Model3Recomp/ and Model3Recomp-windows.zip
 #   FV2=1 NAME=FightingVipers2 EXE=FightingVipers2.exe tools/win/package-msys.sh
+#   FV2=1 CONSOLE=1 ...                  -> the same, with the console menu
 #
-# FV2=1 makes the Fighting Vipers 2 package instead of the one that serves both games: its own README, the
-# console menu on from the first start, and the two folders that are NOT in the repository but that the
-# player cannot make for himself -- assets/menu-console (the console menu's art and the ending's) and
-# texture_replacement/CHARACTERS/Kuhn (his blue and black). They must be in the working tree to go in; the
-# script says so and stops if they are not, rather than shipping a package that half works.
+# FV2=1 makes the Fighting Vipers 2 package instead of the one that serves both games: its own README, and
+# texture_replacement/CHARACTERS/Kuhn -- his blue and black, which are not in the repository and which the
+# player cannot make for himself. The game starts on the arcade's own road.
+#
+# CONSOLE=1 adds the console menu on top: assets/menu-console (its art and the ending's, 193 MB, also not in
+# the repository) and a settings.ini that has it on from the first start. Without it the folder is about
+# 11 MB and the console menu, though still in the program, is off and has no art to draw.
+#
+# A folder asked for and missing stops the script, rather than shipping a package that half works.
 #
 # No ROMs and nothing made from them: the player chooses their own vf3.zip or fvipers2.zip at the first
 # launch, and it is copied into the package's own roms folder.
@@ -74,15 +79,17 @@ copy_deps
 cp -R assets/ui assets/fonts "$P/assets/"
 cp assets/icon/icon.png "$P/assets/icon/"
 if [ "${FV2:-0}" = 1 ]; then
-	for d in assets/menu-console texture_remplacement/CHARACTERS/Kuhn; do
-		[ -d "$d" ] || { echo "FV2=1 needs $d in the working tree (it is not in the repository)"; exit 1; }
-	done
-	cp -R assets/menu-console "$P/assets/"
+	[ -d texture_remplacement/CHARACTERS/Kuhn ] || { echo "FV2=1 needs texture_remplacement/CHARACTERS/Kuhn in the working tree (it is not in the repository)"; exit 1; }
 	mkdir -p "$P/texture_replacement/CHARACTERS"
 	cp -R texture_remplacement/CHARACTERS/Kuhn "$P/texture_replacement/CHARACTERS/"
 	cp tools/win/README-fv2.txt "$P/README.txt"
-	# the console menu on from the very first start, before the player has any settings of his own
-	printf 'settings_version = 3\nconsole_mode = 1\n' > "$P/settings.ini"
+	if [ "${CONSOLE:-0}" = 1 ]; then
+		[ -d assets/menu-console ] || { echo "CONSOLE=1 needs assets/menu-console in the working tree (it is not in the repository)"; exit 1; }
+		cp -R assets/menu-console "$P/assets/"
+		cat tools/win/README-fv2-console.txt >> "$P/README.txt"
+		# on from the very first start, before the player has any settings of his own
+		printf 'settings_version = 3\nconsole_mode = 1\n' > "$P/settings.ini"
+	fi
 else
 	cp tools/win/README-msys.txt "$P/README.txt"
 fi

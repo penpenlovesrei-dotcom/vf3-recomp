@@ -9,6 +9,8 @@ program, recompiled to native code when it starts, with the rest of the board em
 No game files are included: no ROMs and nothing made from them. You need your own dump.
 An unofficial fan project, not made, approved or supported by SEGA, and not affiliated with it.
 
+The game plays the arcade's own road, as the cabinet does.
+
 
 Starting it
 -----------
@@ -25,28 +27,16 @@ The same program runs Virtua Fighter 3 (MAME's "vf3", Revision D) if you put tha
 instead. With both in the folder it starts Virtua Fighter 3, so keep only the one you want, or
 pass the zip you mean on the command line.
 
-
-The console menu
-----------------
-
-This version starts the way the Dreamcast one does, not the way the cabinet does: Start on the
-title screen opens the list of seven modes -- ARCADE, V.S., RANDOM, SURVIVAL, TRAINING, OPTIONS,
-NETWORK -- instead of dropping you straight onto the arcade's fixed road. Up and down move, Start
-chooses, B leaves. No coin is needed: the game's own COIN setting is on FREE PLAY.
-
-OPTIONS is the cabinet's thirteen operator settings, the ones from its test menu, changed with
-left and right. Nothing restarts; a setting takes effect when the game next reads it, generally
-at the start of the next match.
-
-To play the arcade's road instead, turn Console mode off in the port's own menu (Escape).
+You do not need a coin: the game's own COIN setting is on FREE PLAY. Press Start.
 
 
-What this version has
----------------------
+What this version adds
+----------------------
 
   The hidden fighters.  Del Sol, Kuhn, BM and Dural on the character select, under
-                        Game > Hidden fighters. Past the tenth cell the game's own names and
-                        portraits are wrong or missing: that is the game, not the port.
+                        Game > Hidden fighters in the port's menu. Past the tenth cell the
+                        game's own names and portraits are wrong or missing: that is the game,
+                        not the port.
 
   Kuhn's four colours.  Silver and gold are SEGA's; blue and black are the Dreamcast version's
                         third and fourth, and they are in this folder under
@@ -55,9 +45,9 @@ What this version has
   Honey's four costumes. The game's own two, and the two without the skirt, on the same wheel of
                         Up presses on the character select.
 
-  Online play.          Rollback netplay: the port's main menu has an Online page with room
-                        codes, or you can play by address. Both players need the same version
-                        and the same settings for the two above -- the game will say so if not.
+  Online play.          Rollback netplay: the port's menu has an Online page with room codes, or
+                        you can play by address. Both players need the same version and the same
+                        setting for the hidden fighters -- the game says so if they differ.
 
   The victory screen is quiet. The sound board's DSP had its delay lines reading and writing one
                         buffer, and on that screen the loop fed itself and swelled about 24 dB.
@@ -77,8 +67,7 @@ The port's own menu
 -------------------
 
 Press Escape, or View + Start on a pad, or L3 + R3. It has the picture size and shape, the
-renderer, the sound volumes, the arcade settings, the controls, the Online page and the
-Fighting Vipers 2 page.
+renderer, the sound volumes, the arcade settings, the controls and the Online page.
 
 The picture can be enlarged well past the arcade's 496x384, and widened to 16:9 or 21:9, which
 shows more of the stage to the sides rather than stretching it.
