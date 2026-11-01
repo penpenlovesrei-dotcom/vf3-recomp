@@ -286,6 +286,10 @@ public:
 	// which is why this reads before it writes and the caller keeps calling. Returns 1 if it wrote the patch just
 	// now, 0 if there was nothing to do (already there, or the program isn't unpacked yet), -1 for a game this
 	// isn't known for.
+	// Fighting Vipers 2's hidden fighters: the gate of the wider select row, and the two bounds that say how
+	// wide. Del Sol, Kuhn and BM come in; the row stops at cursor 13, so the second Kuhn -- cursor 14, id 12,
+	// wearing Bahn's name plate -- does not. Read before every write, and the caller keeps calling. 1 if it
+	// wrote just now, 0 if there was nothing to do, -1 for a game this isn't known for.
 	int unlock_roster();
 	// WHICH ARENA THE GAME FIGHTS IN: the draw at 0x0007111C picks a random index and takes the first FREE
 	// entry of a table of twenty-seven bytes at 0x004836FF. So leaving one entry free is the whole lever,

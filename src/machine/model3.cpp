@@ -1566,13 +1566,39 @@ int Model3::unlock_roster()
 	// address was never looked for, so it is left alone rather than patched at an address that means nothing
 	// there.
 	if (set != "fvipers2") return -1;
-	constexpr uint32_t SITE = 0x0005F3BC;
-	constexpr uint32_t AS_SEGA_WROTE_IT = 0x2C8000C0;   // cmpwi r0,192
-	constexpr uint32_t ALWAYS = 0x2C800000;             // cmpwi r0,0
-	if (word(ram, SITE) != AS_SEGA_WROTE_IT) return 0;
-	word(ram, SITE) = ALWAYS;
-	cpu.ram_written(SITE);   // (the recompiler's native code was made from the instruction that was there)
-	return 1;
+	// THE GATE, and the two BOUNDS of the row it opens.
+	//
+	// The gate alone gives a row of fifteen cells, 0 to 14, and the last of them is a SECOND KUHN: cursor 12 is
+	// id 13 (KUHN) and cursor 14 is id 12 (DURAL), the same character under his old development name, with
+	// three times the armour (docs/fv2-two-kuhn.md). On the select screen he wears BAHN's name plate, the
+	// drawing routine stopping before his cell -- photographed here at cursors 12, 13 and 14: KUHN, nothing,
+	// BAHN. Frederic, the 2026-11-01: that cell goes.
+	//
+	// It is not the gate that says how wide the row is. The gate's 192 is the operator input port, both buttons
+	// held at once; the width is two numbers in the handler the gate opens, found by watching who writes the
+	// cursor (vf3run --watch 279668 names PC 0005F484) and reading around it:
+	//
+	//   0005F444   li r0,14            left from cell 0 lands on 14
+	//   0005F4B8   cmpwi cr1,r0,14     and at 0005FA28, ble, else the cursor goes back to 0
+	//
+	// Both carry 14, both become 13, and the row is then 0 to 13: the game's ten, Del Sol, Kuhn and BM.
+	struct Site { uint32_t at, sega, ours; };
+	static const Site SITES[] = {
+		{ 0x0005F3BC, 0x2C8000C0, 0x2C800000 },   // cmpwi r0,192  -> cmpwi r0,0     the gate
+		{ 0x0005F444, 0x3800000E, 0x3800000D },   // li r0,14      -> li r0,13       the left wrap
+		{ 0x0005F4B8, 0x2C80000E, 0x2C80000D },   // cmpwi r0,14   -> cmpwi r0,13    the right bound
+	};
+	// Read before each write, as everywhere here: the program is a gzip the boot stub inflates into RAM, so
+	// anything but the instruction Sega wrote means this is not the moment, and nothing is written. Each site
+	// stands on its own -- the gate may already be in from an earlier call while a bound is not.
+	int wrote = 0;
+	for (const Site &s : SITES) {
+		if (ram.size() <= s.at + 4 || word(ram, s.at) != s.sega) continue;
+		word(ram, s.at) = s.ours;
+		cpu.ram_written(s.at);   // (the recompiler's native code was made from the instruction that was there)
+		wrote = 1;
+	}
+	return wrote;
 }
 
 // Honey's other costume: the one players have passed around for twenty years, and which turns out to be in
