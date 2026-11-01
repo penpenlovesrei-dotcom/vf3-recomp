@@ -4,6 +4,13 @@
 # a folder with the program, the DLLs it needs, the assets, a README and LICENSES, zipped.
 #
 #   tools/win/package-msys.sh            -> build/win-msys/Model3Recomp/ and Model3Recomp-windows.zip
+#   FV2=1 NAME=FightingVipers2 EXE=FightingVipers2.exe tools/win/package-msys.sh
+#
+# FV2=1 makes the Fighting Vipers 2 package instead of the one that serves both games: its own README, the
+# console menu on from the first start, and the two folders that are NOT in the repository but that the
+# player cannot make for himself -- assets/menu-console (the console menu's art and the ending's) and
+# texture_replacement/CHARACTERS/Kuhn (his blue and black). They must be in the working tree to go in; the
+# script says so and stops if they are not, rather than shipping a package that half works.
 #
 # No ROMs and nothing made from them: the player chooses their own vf3.zip or fvipers2.zip at the first
 # launch, and it is copied into the package's own roms folder.
@@ -31,7 +38,7 @@ echo "---- building ----"
 mkdir -p "$D"
 make CXX=g++ TMP="$SCRATCH" TEMP="$SCRATCH" TMPDIR="$SCRATCH" \
 	OBJ=build/win-msys/obj BIN=build/win-msys/bin \
-	LDLIBS="-lz -mwindows -Wl,--stack,16777216" \
+	LDLIBS="-lz -lws2_32 -liphlpapi -lwinhttp -mwindows -Wl,--stack,16777216" \
 	build/win-msys/bin/vf3 -j"$(nproc 2>/dev/null || echo 8)"
 
 echo "---- assembling ----"
@@ -66,7 +73,19 @@ copy_deps
 
 cp -R assets/ui assets/fonts "$P/assets/"
 cp assets/icon/icon.png "$P/assets/icon/"
-cp tools/win/README-msys.txt "$P/README.txt"
+if [ "${FV2:-0}" = 1 ]; then
+	for d in assets/menu-console texture_remplacement/CHARACTERS/Kuhn; do
+		[ -d "$d" ] || { echo "FV2=1 needs $d in the working tree (it is not in the repository)"; exit 1; }
+	done
+	cp -R assets/menu-console "$P/assets/"
+	mkdir -p "$P/texture_replacement/CHARACTERS"
+	cp -R texture_remplacement/CHARACTERS/Kuhn "$P/texture_replacement/CHARACTERS/"
+	cp tools/win/README-fv2.txt "$P/README.txt"
+	# the console menu on from the very first start, before the player has any settings of his own
+	printf 'settings_version = 3\nconsole_mode = 1\n' > "$P/settings.ini"
+else
+	cp tools/win/README-msys.txt "$P/README.txt"
+fi
 tools/release/licenses.sh "$P/LICENSES.txt" --windows 2>/dev/null || \
 	echo "(LICENSES.txt needs tools/release/licenses.sh and its dependency tarballs; see tools/release/README.txt)" > "$P/LICENSES.txt"
 : > "$P/portable.txt"   # the saves and settings stay in this folder
