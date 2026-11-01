@@ -5,33 +5,6 @@
 // quits), playing an input script, and writes the CPU state and a RAM hash after every frame in the reference
 // build's format, for tools/statecmp.py.
 //   vf3run <vf3.zip> [--frames N] [--script FILE] [--state FILE] [--ram-at FRAME] [--watch ADDR] [--rec] [--quiet]
-// --full-roster makes Fighting Vipers 2's hidden fighters selectable (src/machine/model3.cpp, unlock_roster).
-// --portraits DIR replaces Fighting Vipers 2's select-screen portraits from a folder of PNG files, in the VROM
-// this run holds in memory (src/machine/fv2_portraits.cpp, docs/fv2-portraits.md). Nothing is written to the zip.
-// --hd-dump DIR writes every 3D texture the game samples there as a PNG; --hd-pack DIR draws those PNGs in their
-// place (src/video/tex3d_hd.h). Both are off unless asked for.
-// --wav FILE runs the sound board and writes what it plays. --shots DIR writes the script's screenshots there as PNG. --rec runs the recompiled code (src/rec) with the interpreter for the rest. --ram-at writes RAM after that frame to ram_<frame>.bin in the current folder; --watch ADDR (hex) reports
-// the CPU's stores to that word (--trace-pc ADDR: r3-r8 and LR each time that instruction runs; both on the interpreter). VF3_VOLUMES=music,effects (percent) sets the sound board's two volumes for --wav. VF3_POKE=addr=value
-// (hex address into --ram-at's dump, a byte; "b" first: the backup RAM's) writes RAM before every frame.
-// VF3_STAGE=n holds Fighting Vipers 2's arena to scene n (1-12), for measuring what an arena changes from a
-// headless run -- it holds BOTH of the game's levers, the versus draw and the first match's route byte, and
-// says on frame 600 how often each had to write. Measured the 2026-10-25 with it, over all twelve arenas:
-// three of them (6, 9, 11) load an extra DSP program on chip 0 around frame 2730, and the coefficients come
-// in five distinct sets -- so the effect DOES vary with the arena. Two arenas alone had said the opposite,
-// because 2 and 7 are both in the group of nine that loads nothing more: the lesson of
-// docs/fv2-sound-program.md §4 sexies, which keeps that mistake with the measurement that corrected it.
-// VF3_FICHES=file prints, every frame, each live voice record with its flags, its channel object's index,
-// its MIDI channel and its serial. It settled by correlation which of the driver's two voice categories is
-// the music -- B is, A is the effects -- over 1807 allocations, with no counter-example (§5 quinquies). The
-// consequence: the voice stealer looks for the smallest serial and A's has bit 7 forced, so THE MUSIC IS
-// STOLEN BEFORE THE EFFECTS
-// (VF3_POKE_FRAMES=from-to: only those). VF3_POLY_COPY=dst=src:words copies a model inside polygon RAM before
-// every frame, to try one where the game never put any (docs/fv2-parts.md section 7).
-// VF3_FREE_PLAY=1: the coin setting FREE PLAY before the boot, as the PC way.
-// HD 2D (docs/fv2-hd-2d.md): --tile-dump DIR writes every tile and every layer layout the game draws, once each,
-// with the hash in the name; --tile-scale N draws the tile plane N times its size (1, the default, is the
-// hardware's and changes nothing); --tile-pack DIR puts that folder's images in the place of the tiles and layers
-// whose names they carry. With --shots the pictures then come out at the HD size.
 // --sets ZIP lists the programs the zip holds. --wav FILE runs the sound board and writes what it plays. --shots DIR writes the script's screenshots there as PNG. --rec runs the recompiled code (src/rec) with the interpreter for the rest. --ram-at writes RAM after that frame to ram_<frame>.bin in the current folder (backup RAM to backup_<frame>.bin) (the tile generator's RAM and registers to tiles_<frame>.bin); --watch ADDR (hex) reports
 // the CPU's stores to that word (--trace-pc ADDR: r3-r8 and LR each time that instruction runs; both on the interpreter). VF3_VOLUMES=music,effects (percent) sets the sound board's two volumes for --wav. VF3_POKE=addr=value
 // (hex address into --ram-at's dump, a byte; "b" first: the backup RAM's) writes RAM before every frame
@@ -45,84 +18,28 @@
 // from for want of one (--rec; a map's learning: run again with them in until none are new).
 #include <map>
 #include "../src/host/input_script.h"
-#include "../src/host/console_play.h"
 #include "../src/machine/model3.h"
-#include "../src/machine/fv2_portraits.h"
 #include "../src/machine/romset.h"
 #include "../src/rec/ppc_rec.h"
 #include "../src/host/png.h"
 #include "../src/video/tilegen.h"
 #include "../src/video/sky_lead.h"
 #include "../src/video/r3d_raster.h"
-#include "../src/video/tex3d_hd.h"
 #include "../src/video/hud_names.h"
 #include "../src/video/dural_cell.h"
 #include "../src/sound/soundboard.h"
-#include "sound_prof.h"
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 
-
-// Fighting Vipers 2's own state machine, printed on every change -- the instrument the ROM work called
-// -menu-mode-log, which is what every timing measurement here should be hung on instead of counting frames
-// from an approximate event. Sega left these names in RAM, eighty strings in one run at 0x00024494, and the
-// slices below were settled by freezing the game one sub-state at a time and looking at the screen: a
-// contiguous table does not say where its slices begin, and taking them from the names was wrong three times.
-// See docs/fv2-states.md.
-static const char *FV2_MODES[24] = {
-	"WARNING_INT", "WARNING_DSP", "ADV_INT", "ADV_DSP", "SEL_INT", "SEL_DSP", "GAME_INT", "GAME_DSP",
-	"CONTINUE_INT", "CONTINUE_DSP", "INTRUDE_INT", "INTRUDE_DSP", "ENDING_INT", "ENDING_DSP", "NAME_INT",
-	"NAME_DSP", "RANKING_INT", "RANKING_DSP", "OVER_INT", "OVER_DSP", "TEST_INT", "TEST_DSP", "RESULT_INT",
-	"RESULT_DSP"
-};
-static const char *FV2_SUB_GAME[20] = {
-	"ROUND_MASK_INT", "ROUND_MASK_IN", "ROUND_MASK_DSP", "ROUND_MASK_OUT", "ROUND_INT", "ROUND_DSP",
-	"SET_INT", "SET_INT_POSE", "SET_DSP", "READY_INT", "READY_DSP", "FIGHT_INT", "FIGHT_DSP", "JUDGE",
-	"JUDGE_DSP", "REPLAY_INT", "REPLAY_DSP", "VIC_INT", "VIC_DSP", "NEXT_PROG_SEL"
-};
-static const char *FV2_SUB_ADV[12] = {
-	"DONT_RECYCLE_INT", "DONT_RECYCLE_DSP", "ADV_SEGA_INT", "ADV_SEGA_DSP", "FV2_TITLE_INT", "FV2_TITLE_DSP",
-	"ADV_RATING_INT", "ADV_RATING_DSP", "ADV_REPLAY_WAIT", "ADV_REPLAY_INT", "ADV_REPLAY_DSP", "ADV_DEMO_DSP"
-};
-
-// Only GAME, SEL and ADV give the sub-state byte a meaning; every other mode leaves there whatever the
-// previous one put, so naming it would be inventing something.
-static const char *fv2_sub_name(int mode, int sub)
-{
-	if ((mode == 6 || mode == 7) && sub >= 0 && sub < 20) return FV2_SUB_GAME[sub];
-	if ((mode == 2 || mode == 3) && sub >= 0 && sub < 12) return FV2_SUB_ADV[sub];
-	return "";
-}
 int main(int argc, char **argv)
 {
-	std::string rom, script_path, state_path, shots, wav_path, coverage_path, portraits;
-	long frames = -1, ram_at = -1, poly_at = -1, cull_at = -1;
-	bool modes_log = false;
+	std::string rom, script_path, state_path, shots, wav_path;
+	long frames = -1, ram_at = -1;
 	uint32_t watch = 0xFFFFFFFF, trace_pc = 0xFFFFFFFF;
-	bool quiet = false, rec = false, full_roster = false;
-	// --console-mode arcade|survival|random|versus at --console-at N: the console way's mode machinery
-	// (src/host/console_play.h)
-	// without a menu or a window, so what it does to the game can be measured. It injects Start exactly as the
-	// menu does; the credit is still the game's business, so the script has to put a coin in first.
-	std::string console_mode;
-	long console_at = -1;
-	console_play cplay;
-	// --console-start N: one press of Start at frame N, put through the same two-way decision the windowed host
-	// makes (console_play::take_start) -- the list of modes on the game's own title screen, a request for that
-	// title screen anywhere else. It is here so that decision can be MEASURED with --modes instead of being
-	// argued about: the log says which way it went, and the game's own mode says what came of it.
-	// Several are allowed. Nothing is drawn (there is no window): where the host would put the list up over a
-	// frozen title screen, this says so and lets the game run on. With this on, a script's own Start is taken
-	// the same way the host takes the player's; the injections of --console-mode are not, which is how a mode
-	// chosen from the list hands the game a Start of its own.
-	std::vector<long> console_start;
-	std::string hd_dump, hd_pack, vrom_out, tex_out, crom_out;
-	bool hd_flats = false;
-	int tile_scale = 1;   // HD 2D: 1 is the hardware's own, and then nothing of it runs (src/video/tilehd.h)
-	std::string tile_pack_dir, tile_dump_dir;
+	bool quiet = false, rec = false;
 	for (int i = 1; i < argc; i++) {
 		std::string a = argv[i];
 		if (a == "--frames" && i + 1 < argc) frames = strtol(argv[++i], nullptr, 10);
@@ -130,35 +47,15 @@ int main(int argc, char **argv)
 		else if (a == "--state" && i + 1 < argc) state_path = argv[++i];
 		else if (a == "--shots" && i + 1 < argc) shots = argv[++i];
 		else if (a == "--wav" && i + 1 < argc) wav_path = argv[++i];
-		else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
 		else if (a == "--quiet") quiet = true;
 		else if (a == "--sets" && i + 1 < argc) {   // which programs a zip holds (romset::sets_in), and nothing else
 			for (const m3::Profile *p : romset::sets_in(argv[++i])) printf("%s (%s)\n", p->set, p->title);
 			return 0;
 		}
 		else if (a == "--rec") rec = true;
-		else if (a == "--full-roster") full_roster = true;
-		else if (a == "--console-mode" && i + 1 < argc) console_mode = argv[++i];
-		else if (a == "--console-at" && i + 1 < argc) console_at = strtol(argv[++i], nullptr, 10);
-		else if (a == "--console-start" && i + 1 < argc) console_start.push_back(strtol(argv[++i], nullptr, 10));
-		else if (a == "--portraits" && i + 1 < argc) portraits = argv[++i];
-		else if (a == "--hd-dump" && i + 1 < argc) hd_dump = argv[++i];
-		else if (a == "--hd-flats") hd_flats = true;
-		else if (a == "--hd-pack" && i + 1 < argc) hd_pack = argv[++i];
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
-		else if (a == "--poly-at" && i + 1 < argc) poly_at = strtol(argv[++i], nullptr, 10);
-		else if (a == "--cull-at" && i + 1 < argc) cull_at = strtol(argv[++i], nullptr, 10);
-		else if (a == "--vrom-out" && i + 1 < argc) vrom_out = argv[++i];
-		else if (a == "--tex-out" && i + 1 < argc) tex_out = argv[++i];
-		else if (a == "--crom-out" && i + 1 < argc) crom_out = argv[++i];
-		else if (a == "--modes") modes_log = true;
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
 		else if (a == "--trace-pc" && i + 1 < argc) trace_pc = uint32_t(strtoul(argv[++i], nullptr, 16));
-		// HD 2D (docs/fv2-hd-2d.md): the tile plane at a multiple of its size, a pack of images, a dump of what
-		// the game draws. All three off by default, and off the picture is what it was.
-		else if (a == "--tile-scale" && i + 1 < argc) tile_scale = int(strtol(argv[++i], nullptr, 10));
-		else if (a == "--tile-pack" && i + 1 < argc) tile_pack_dir = argv[++i];
-		else if (a == "--tile-dump" && i + 1 < argc) tile_dump_dir = argv[++i];
 		else if (a[0] != '-' && rom.empty()) rom = a;
 		else {
 			fprintf(stderr, "vf3run: unknown argument %s\nusage: vf3run <vf3.zip> [--frames N] [--script FILE] [--state FILE] [--quiet]\n", a.c_str());
@@ -194,34 +91,6 @@ int main(int argc, char **argv)
 		fprintf(stderr, "vf3run: %s\n", error.c_str());
 		return 1;
 	}
-	if (!quiet)
-		printf("%s (\"%s\"): Model 3 Step %d.%d, the PowerPC paced at %d MHz\n", board.title.c_str(),
-		       board.set.c_str(), board.stepping >> 4, board.stepping & 0xF, board.ppc_hz / 1000000);
-	// --portraits: the select-screen portraits, replaced in the VROM image before the board runs. The VROM is a
-	// ROM -- the game never writes a word of it -- so this is done once, here, and never again; unlike the roster
-	// patch below, which lives in RAM and has to wait for the boot to unpack the program.
-	if (!portraits.empty())
-		fv2::replace_portraits_and_report(board.set, board.vrom, portraits, quiet ? nullptr : stdout);
-	// --hd-pack / --hd-dump: the 3D texture pack (src/video/tex3d_hd.h). Set up before the first picture is
-	// drawn; asking for neither leaves both rasterisers' texture paths exactly as they were.
-	if (!hd_pack.empty()) {
-		std::string report;
-		video::hd3d().load(hd_pack, report);
-		if (!quiet) printf("%s\n", report.c_str());
-	}
-	// --hd-flats: lifts the refusal of flat textures, for this run alone (src/video/tex3d_hd.cpp).
-	if (hd_flats) {
-		video::hd3d().allow_flat_textures(true);
-		if (!quiet) printf("3D texture dump: the flat textures are accepted (--hd-flats)\n");
-	}
-	if (!hd_dump.empty()) {
-		std::string why;
-		if (!video::hd3d().dump_to(hd_dump, why)) {
-			fprintf(stderr, "vf3run: %s\n", why.c_str());
-			return 1;
-		}
-		if (!quiet) printf("3D texture dump: every texture a polygon samples, into %s\n", hd_dump.c_str());
-	}
 	// tests: Play as Dural as the game has it (main.cpp): her patches, and these players' select cursors held on her
 	const bool dural = getenv("VF3_DURAL") && atoi(getenv("VF3_DURAL"));
 	if (dural && board.set_dural(true) == 0) fprintf(stderr, "not the program known: no Dural on the select\n");
@@ -235,30 +104,12 @@ int main(int argc, char **argv)
 		fprintf(stderr, "vf3run: can't write %s\n", state_path.c_str());
 		return 1;
 	}
-	// --coverage: collect the addresses the program is entered at, for tools/recomp/mkmap_run.py. The
-	// recompiler would hide most of them behind its native code, so it stays off for a coverage run.
-	if (!coverage_path.empty()) {
-		if (rec) {
-			fprintf(stderr, "vf3run: --coverage needs the interpreter, not --rec\n");
-			return 2;
-		}
-		board.cpu.cover_limit = uint32_t(board.program_image().size() * 4);
-		board.cpu.cover_seeds.assign(board.cpu.cover_limit / 4, 0);
-	}
 	static ppcrec::Rec recompiler;
-	static const uint32_t *seed_map_used = nullptr;
-	static size_t seed_count_used = 0;
-	bool rebuilt_after_boot = false;
 	if (rec) {
 		if (watch != 0xFFFFFFFF || trace_pc != 0xFFFFFFFF) {
 			fprintf(stderr, "vf3run: --watch needs the interpreter\n");
 			return 2;
 		}
-		const uint32_t *seed_map = board.profile->map;
-		const size_t seed_count = board.profile->map_count;
-		seed_map_used = seed_map; seed_count_used = seed_count;
-		if (!seed_count && !quiet)
-			fprintf(stderr, "vf3run: no address map for \"%s\": the interpreter runs everything\n", board.set.c_str());
 		ppcrec::Stats st;
 		const m3::Profile *map_of = getenv("VF3_MAP_OF") ? m3::find_profile(getenv("VF3_MAP_OF")) : board.profile;
 		if (!map_of) map_of = board.profile;
@@ -285,20 +136,6 @@ int main(int argc, char **argv)
 	static video::Scene scene;
 	static video::Raster raster;
 	raster.resize(video::W, video::H);
-	// HD 2D: the pack is read once the scale is known, because every image in it must be at that scale
-	static video::TilePack tile_pack;
-	static video::TileDump tile_dump;
-	if (!tile_dump_dir.empty()) {
-		std::string why;
-		if (!tile_dump.open(tile_dump_dir, why)) fprintf(stderr, "vf3run: can't write the tile dump in %s (%s)\n", tile_dump_dir.c_str(), why.c_str());
-		else if (!quiet) printf("tile dump: %s/tiles and /layers, everything the game draws, once each\n", tile_dump_dir.c_str());
-	}
-	if (!tile_pack_dir.empty()) {
-		std::string report;
-		tile_pack.load(tile_pack_dir, std::clamp(tile_scale, 1, 8), report);
-		if (!quiet) printf("%s\n", report.c_str());
-	}
-	tiles.hd_set(tile_scale, &tile_pack, &tile_dump);
 	// VF3_TILE_LAG=1 (tests): the lines drawn as the host's tile worker can draw them at the latest, each from its
 	// registers as the line began but the tile RAM and the game's RAM as the frame ends (video/tile_worker.h)
 	static const bool tile_lag = getenv("VF3_TILE_LAG") != nullptr;
@@ -307,8 +144,7 @@ int main(int argc, char **argv)
 	static const long tile_every = getenv("VF3_TILE_EVERY") ? std::max(1L, atol(getenv("VF3_TILE_EVERY"))) : 1;
 	static uint32_t lag_regs[video::H][64];
 	static bool lag_line[video::H];
-	// (the HD tiles and the tile dump want the lines too, not only the shots)
-	if (!shots.empty() || tiles.hd() || tile_dump.on())
+	if (!shots.empty())
 		board.on_line = [&](unsigned y) {
 			if (board.frame % uint64_t(tile_every)) return;
 			if (tile_lag) {
@@ -333,16 +169,8 @@ int main(int argc, char **argv)
 	int flicker_saved = 0;
 	static SoundBoard sound;
 	static std::vector<int16_t> audio;
-	// The sound board only runs when --wav asked for the sound (every site below is behind that test),
-	// so VF3_SND_PROF=1 without --wav counts nothing at all. Said here, before the run, rather than left
-	// to be guessed from a report full of zeros.
-	if (sndprof::on && wav_path.empty())
-		fprintf(stderr, "vf3run: VF3_SND_PROF=1 but no --wav: the sound board does not run, so the probe"
-		                " will have nothing to count\n");
 	if (!wav_path.empty()) {
 		sound.attach(&board.sound_rom, &board.samples);
-		// the music/effects split reads Virtua Fighter 3's sound driver (soundboard.h)
-		sound.driver_known = board.set == "vf3";
 		sound.reset();
 		if (const char *v = getenv("VF3_VOLUMES")) {
 			int m = 100, e = 100;
@@ -366,61 +194,10 @@ int main(int argc, char **argv)
 	board.cpu.trace_pc = trace_pc;
 	auto t0 = std::chrono::steady_clock::now();
 	uint64_t f = 0;
-	// A picture only reaches a file when --shots named a folder. With only --hd-dump, the scene is still
-	// built and drawn -- a texture is not sampled until something is drawn with it -- and nothing is written.
-	auto shot_png = [&](const std::string &p, const uint32_t *px, int pw, int ph) {
-		if (!shots.empty()) write_png((shots + p).c_str(), px, pw, ph);
-	};
 	for (;; f++) {
 		if (frames >= 0 && f >= uint64_t(frames))
 			break;
 		InputScript::Actions act = script.step(board.controls, f);
-		// --console-start: the player's Start, taken by the console way before the game ever sees it. A press
-		// lasts 6 frames here, as the host's own does, so the release is seen too -- the decision works on the
-		// edge, and the next press is not read until this one has been let go.
-		if (!console_start.empty()) {
-			cplay.on = true;
-			bool pressed = board.controls.start[0] || board.controls.start[1];
-			for (long n : console_start) if (long(f) >= n && long(f) < n + 6) pressed = true;
-			switch (cplay.take_start(board, pressed, false)) {
-			case console_play::start_for::list:
-				if (!quiet) printf("frame %llu: Start on the title screen -> the list of modes (mode %d, sub-state %d); nothing is drawn here\n",
-								   (unsigned long long)f, board.fv2_mode(), board.fv2_submode());
-				break;
-			case console_play::start_for::title:
-				if (!quiet) printf("frame %llu: Start off the title screen (mode %d, sub-state %d) -> the game asked for its title screen\n",
-								   (unsigned long long)f, board.fv2_mode(), board.fv2_submode());
-				break;
-			// the pause menu is the host's surface; there is none to open here, and the layer has already
-			// swallowed the press
-			case console_play::start_for::pause:
-				if (!quiet) printf("frame %llu: Start during a fight (mode %d, sub-state %d) -> the host would open its pause menu\n",
-								   (unsigned long long)f, board.fv2_mode(), board.fv2_submode());
-				break;
-			case console_play::start_for::cut:
-				if (!quiet) printf("frame %llu: Start in the presentation or the replay (mode %d, sub-state %d) -> the state is cut short\n",
-								   (unsigned long long)f, board.fv2_mode(), board.fv2_submode());
-				break;
-			case console_play::start_for::none: break;
-			}
-			if (cplay.swallow_start) board.controls.start[0] = board.controls.start[1] = false;
-		}
-		// --console-mode: the console way's mode machinery, driven straight instead of from a menu. The choice
-		// is made once, at --console-at, and after that it is stepped every frame like the host does it.
-		if (!console_mode.empty()) {
-			cplay.on = true;
-			if (long(f) == console_at) {
-				if (console_mode == "survival") cplay.choose_survival(board);
-				else if (console_mode == "random") cplay.choose_random();
-				else if (console_mode == "versus") cplay.choose_versus();
-				else if (console_mode == "training") cplay.choose_training();
-				else cplay.choose_arcade();
-				if (!quiet) printf("frame %llu: console mode %s chosen\n", (unsigned long long)f, console_mode.c_str());
-			}
-			m3::Controls cc;
-			cplay.step(board, cc);
-			for (int q = 0; q < 2; q++) board.controls.start[q] = board.controls.start[q] || cc.start[q];
-		}
 		for (auto &m : act.marks)
 			if (!quiet) printf("frame %llu: mark %s\n", (unsigned long long)f, m.c_str());
 		static double t_board = 0, t_sound = 0, t_scene = 0;
@@ -438,228 +215,13 @@ int main(int argc, char **argv)
 					if (pa < mem.size()) mem[pa] = uint8_t(pv);
 				}
 		}
-		// VF3_POLY_COPY=dst=src:words (hex, 32-bit words of polygon RAM) copies a model inside the Real3D's
-		// own memory before every frame. It exists to try a model where the game never put one: the bank the
-		// game copies from the CROM ends at word 0x58FC6 and the 2.6 MB above it is never written
-		// (docs/fv2-parts.md section 5), so a model placed there is reached only through a directory entry
-		// poked by VF3_POKE. Held every frame rather than written once, as VF3_STAGE is: a copy that has to
-		// survive whatever the game does to that memory should not depend on a single moment.
-		if (static const char *pc = getenv("VF3_POLY_COPY"); pc) {
-			unsigned long dst = 0, src = 0, n = 0;
-			if (sscanf(pc, "%lx=%lx:%lx", &dst, &src, &n) == 3 &&
-			    dst + n <= board.poly_ram.size() && src + n <= board.poly_ram.size())
-				std::copy(board.poly_ram.begin() + src, board.poly_ram.begin() + src + n,
-				          board.poly_ram.begin() + dst);
-		}
-		// VF3_POLY_LOAD=word@file puts a file of 32-bit words into polygon RAM at that word, before every frame.
-		// A model read out of ANOTHER game's VROM has to be put where this one's renderer can reach it, and
-		// polygon RAM is that place: an address below 0x100000 is read from it (src/video/r3d_scene.cpp,
-		// model_at). The file is read once.
-		if (static const char *pl = getenv("VF3_POLY_LOAD"); pl) {
-			static std::vector<uint32_t> loaded;
-			static unsigned long at = 0;
-			static bool tried = false;
-			if (!tried) {
-				tried = true;
-				char path[512] = { 0 };
-				if (sscanf(pl, "%lx@%511[^\n]", &at, path) == 2)
-					if (FILE *lf = fopen(path, "rb")) {
-						uint32_t v;
-						while (fread(&v, 4, 1, lf) == 1) loaded.push_back(v);
-						fclose(lf);
-						if (!quiet) printf("VF3_POLY_LOAD: %zu words at polygon RAM %lX, from %s\n",
-						                   loaded.size(), at, path);
-					}
-			}
-			if (!loaded.empty() && at + loaded.size() <= board.poly_ram.size())
-				std::copy(loaded.begin(), loaded.end(), board.poly_ram.begin() + at);
-		}
-		// VF3_TEX_LOAD=page,x,y,w,h@file lays a rectangle of 16-bit texels into the board's texture sheet before
-		// every frame, in the board's own formats. A model carries the place it reads from in its polygons
-		// (docs/fv2-parts.md section 8); giving a foreign one its own colours means putting them at that place.
-		// (several squares at once: the entries separated by ';', since a whole character names ten of them)
-		if (static const char *tl = getenv("VF3_TEX_LOAD"); tl) {
-			struct Square { unsigned long pg, x, y, w, h; std::vector<uint16_t> tex; };
-			static std::vector<Square> squares;
-			static bool tried = false;
-			if (!tried) {
-				tried = true;
-				for (const char *q = tl; q; q = strchr(q, ';'), q = q ? q + 1 : nullptr) {
-					Square s{};
-					char path[512] = { 0 };
-					if (sscanf(q, "%lu,%lu,%lu,%lu,%lu@%511[^;\n]", &s.pg, &s.x, &s.y, &s.w, &s.h, path) != 6)
-						break;
-					if (FILE *tf = fopen(path, "rb")) {
-						uint16_t v;
-						while (fread(&v, 2, 1, tf) == 1) s.tex.push_back(v);
-						fclose(tf);
-						if (s.tex.size() >= size_t(s.w) * s.h) squares.push_back(std::move(s));
-					}
-				}
-				if (!quiet) printf("VF3_TEX_LOAD: %zu squares laid in the sheet\n", squares.size());
-			}
-			for (const Square &s : squares)
-				for (unsigned long j = 0; j < s.h; j++)
-					for (unsigned long i = 0; i < s.w; i++)
-						board.tex_ram[((s.pg * 1024 + s.y + j) & 2047) * 2048 + ((s.x + i) & 2047)] = s.tex[j * s.w + i];
-		}
-		// VF3_CULL_LOAD=word@file puts a file of 32-bit words into the culling RAM, before every frame: a whole
-		// character's nodes do not fit in VF3_CULL_SET's list.
-		if (static const char *cl = getenv("VF3_CULL_LOAD"); cl) {
-			static std::vector<uint32_t> blob;
-			static unsigned long at = 0;
-			static bool tried = false;
-			if (!tried) {
-				tried = true;
-				char path[512] = { 0 };
-				if (sscanf(cl, "%lx@%511[^\n]", &at, path) == 2)
-					if (FILE *cf = fopen(path, "rb")) {
-						uint32_t v;
-						while (fread(&v, 4, 1, cf) == 1) blob.push_back(v);
-						fclose(cf);
-						if (!quiet) printf("VF3_CULL_LOAD: %zu words at culling RAM %lX, from %s\n",
-						                   blob.size(), at, path);
-					}
-			}
-			if (!blob.empty() && at + blob.size() <= board.cull_lo.size())
-				std::copy(blob.begin(), blob.end(), board.cull_lo.begin() + at);
-		}
-		// VF3_CULL_SET=addr=value,... writes whole words into the culling RAM (hex, both of them), before every
-		// frame: a node built by hand, rather than copied, is what a part that is not the game's own needs.
-		if (static const char *cs = getenv("VF3_CULL_SET"); cs) {
-			unsigned long ca = 0, cv = 0;
-			for (const char *q = cs; q; q = strchr(q, ','), q = q ? q + 1 : nullptr) {
-				if (sscanf(q, "%lx=%lx", &ca, &cv) != 2) break;
-				if (ca < board.cull_lo.size()) board.cull_lo[ca] = uint32_t(cv);
-			}
-		}
-		// VF3_CULL_COPY=dst=src:words, the same for the culling RAM, which is where a part's own nodes live and
-		// where the directory of docs/fv2-parts.md section 5 points. The game fills words 0x40000 to 0x79797 of
-		// it and leaves everything above free.
-		if (static const char *cc = getenv("VF3_CULL_COPY"); cc) {
-			unsigned long dst = 0, src = 0, n = 0;
-			if (sscanf(cc, "%lx=%lx:%lx", &dst, &src, &n) == 3 &&
-			    dst + n <= board.cull_lo.size() && src + n <= board.cull_lo.size())
-				std::copy(board.cull_lo.begin() + src, board.cull_lo.begin() + src + n,
-				          board.cull_lo.begin() + dst);
-		}
-		// VF3_STAGE=n holds Fighting Vipers 2's arena to scene n, for measuring what changes with the arena
-		// from a headless run. HELD every frame, not written once, because the draw marks its own choice used
-		// as it takes it (model3.cpp, fv2_hold_stage) -- the same reason the console holds it.
-		//
-		// It is here rather than in src/host/console_play.h because that file is another session's, and
-		// because a measurement wants a lever it can read from the command line. With --console-mode versus
-		// and no stage asked for, the console holds nothing, so the two do not fight.
-		{
-			// BOTH LEVERS, because they do not command the same thing (model3.cpp): the route byte
-			// commands the arena of a game's FIRST match, and the draw commands a versus match's. Holding
-			// both makes VF3_STAGE work in either case, and each one says whether it wrote.
-			static const char *stage = getenv("VF3_STAGE");
-			static int n_tirage = 0, n_route = 0, refus = 0;
-			if (stage) {
-				const int n = atoi(stage);
-				const int a = board.fv2_hold_stage(n);
-				const int b = board.fv2_hold_training_stage(n);
-				if (a > 0) ++n_tirage;
-				if (b > 0) ++n_route;
-				if (a < 0 && b < 0) ++refus;
-				if (f == 600)
-					fprintf(stderr, "VF3_STAGE=%s sur 600 images : tirage %d ecritures, route %d, refus %d\n",
-					        stage, n_tirage, n_route, refus);
-			}
-		}
-		// VF3_FICHES=file: every frame, each of the 32 voice records of each sound RAM whose +4 is not
-		// zero, with the four bytes that matter. Written to settle ONE question the program's code cannot
-		// answer (docs/fv2-sound-program.md §5 ter): the driver sorts a voice into one of two categories
-		// at note-on -- counter 0xEE1 with +0xB bit 7 forced and +4 bit 3 set, or counter 0xEE0 with
-		// neither -- and three stop commands act on one category each, but NOTHING says which category is
-		// the music. The MIDI channel does: +6 carries it, and group_of() knows the music plays on 0x00 to
-		// 0x0E. Putting the category and the channel of the same record on one line answers it by
-		// correlation, which is a measurement and not a reading.
-		if (!wav_path.empty()) {
-			static FILE *fq = getenv("VF3_FICHES") ? fopen(getenv("VF3_FICHES"), "w") : nullptr;
-			if (fq)
-				for (int n = 0; n < 2; n++)
-					for (int sl = 0; sl < 32; sl++) {
-						const uint32_t r = (0x400 + uint32_t(sl) * 0x20) >> 1;
-						const uint16_t w2 = sound.ram_word(n, r + 2);   // octets +4 et +5
-						const uint16_t w3 = sound.ram_word(n, r + 3);   // octets +6 et +7
-						const uint16_t w5 = sound.ram_word(n, r + 5);   // octets +0x0A et +0x0B
-						const uint8_t f4 = uint8_t(w2 >> 8), f5 = uint8_t(w2 & 0xFF);
-						const uint8_t f6 = uint8_t(w3 >> 8), fb = uint8_t(w5 & 0xFF);
-						if (f4)
-							fprintf(fq, "%d chip%d slot %2d +4 %02x +5 %02x +6 %02x +B %02x cat %c\n",
-							        int(f), n, sl, f4, f5, f6, fb,
-							        (f4 & 0x08) ? 'A' : ((fb & 0x80) ? '?' : 'B'));
-					}
-		}
-		auto tp0 = std::chrono::steady_clock::now();
-		board.run_frame();
-		// --full-roster: Fighting Vipers 2's hidden fighters, put in as soon as the boot has unpacked the code
-		// that gates them and held after that (model3.cpp, unlock_roster). It goes in before the rebuild below,
-		// so --rec makes its native code from the program as it will run.
-		if (full_roster && board.unlock_roster() > 0 && !quiet)
-			printf("frame %llu: the hidden fighters are selectable\n", (unsigned long long)board.frame);
-		// Once the boot is over: a game that patched its own program (Fighting Vipers 2 writes its own handlers
-		// into three exception vectors) no longer agrees with what the native code was made from, and one word
-		// of that turns the recompiler off. Built again from RAM as it stands, it agrees. The host does the same
-		// (src/host/main.cpp, rebuild_from_ram_if_stale).
-		if (rec && !rebuilt_after_boot && board.frame >= 960) {
-			rebuilt_after_boot = true;
-			if (const size_t n = recompiler.mismatch_count()) {
-				ppcrec::Stats st2;
-				std::vector<uint32_t> img = board.ram_program_image(board.program_image().size());
-				if (recompiler.build(board.cpu, img, seed_map_used, seed_count_used, &st2) && recompiler.mismatch_count() == 0) {
-					if (!quiet) printf("recompiled from RAM after the boot (%zu words the game had patched): %zu instructions in %.0f ms\n",
-					                   n, st2.instructions, st2.ms);
-				} else if (!quiet) {
-					printf("the game patched %zu words of its own program and the rebuild didn't settle it\n", n);
-				}
-			}
-		}
-		// (tests: VF3_RAMLOG=addr[:n],... prints a frame-stamped line whenever any of the
-		// watched bytes changes. --watch names the instruction that writes a word but not
-		// the frame it happened on, and --ram-at gives one frame per run; reading the mode
-		// machine's progress through a whole match needs the frame numbers of the changes,
-		// which is what this gives in one run. Guest byte A is at index A^3.)
-		if (const char *rl = getenv("VF3_RAMLOG")) {
-			struct Slot { uint32_t at; int n; };
-			static std::vector<Slot> slots;
-			static std::vector<uint8_t> last;
-			static bool parsed = false;
-			if (!parsed) {
-				parsed = true;
-				for (const char *q = rl; q && *q;) {
-					unsigned long at = 0; int n = 1;
-					if (sscanf(q, "%lx:%d", &at, &n) < 1) break;
-					slots.push_back({uint32_t(at), n < 1 ? 1 : n});
-					q = strchr(q, ','); q = q ? q + 1 : nullptr;
-				}
-				for (const Slot &s : slots) last.insert(last.end(), size_t(s.n), 0);
-			}
-			std::vector<uint8_t> now;
-			for (const Slot &s : slots)
-				for (int k = 0; k < s.n; k++) {
-					const uint32_t a = s.at + uint32_t(k);
-					now.push_back((a ^ 3) < board.ram.size() ? board.ram[a ^ 3] : 0);
-				}
-			if (now != last) {
-				last = now;
-				fprintf(stderr, "ramlog %llu", (unsigned long long)board.frame);
-				size_t i = 0;
-				for (const Slot &s : slots) {
-					fprintf(stderr, " %08X=", s.at);
-					for (int k = 0; k < s.n; k++) fprintf(stderr, "%02X", now[i++]);
-				}
-				fprintf(stderr, "\n");
-			}
-		}
 		if (const char *lb = getenv("VF3_LOG_BYTES")) {   // tests: "addr,addr,...": those RAM bytes (the game's addresses) each frame
 			printf("bytes %llu", (unsigned long long)board.frame);
 			for (const char *q = lb; q && *q; q = strchr(q, ','), q = q ? q + 1 : nullptr) printf(" %u", board.ram[(strtoul(q, nullptr, 16)) ^ 3]);
 			printf("\n");
 		}
-		// (the frame has already been run above, with its clock started there: one frame, one run)
+		auto tp0 = std::chrono::steady_clock::now();
+		board.run_frame();
 		if (tile_lag && !shots.empty()) {
 			auto a = std::chrono::steady_clock::now();
 			for (int y = 0; y < video::H; y++) {
@@ -677,40 +239,10 @@ int main(int argc, char **argv)
 			auto a = std::chrono::steady_clock::now();
 			scene_builder.build(board, ps);
 			t_scene += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - a).count();
-			if (f % 500 == 499) {
-				printf("prof %llu: board %.2f ms (tile layers %.2f of it), sound %.2f, scene build %.2f a frame\n", (unsigned long long)f + 1, t_board / 500, tile_ms / 500, t_sound / 500, t_scene / 500);
-				t_board = t_sound = t_scene = tile_ms = 0;
-			}
+			if (f % 500 == 499) printf("prof %llu: board %.2f ms (tile layers %.2f of it), sound %.2f, scene build %.2f a frame\n", (unsigned long long)f + 1, t_board / 500, tile_ms / 500, t_sound / 500, t_scene / 500), t_board = t_sound = t_scene = tile_ms = 0;
 		}
-		// Where the sound's share goes, when VF3_SND_PROF=1 asked for it (src/sound/sound_prof.h). OUTSIDE
-		// `prof`: this call used to sit inside it, so a run with VF3_SND_PROF=1 alone printed nothing at all
-		// and said nothing about why -- the probe looked broken. It is its own switch now, and it writes on
-		// the same stream as the `prof` line above, so one redirection cannot keep one and lose the other.
-		if (sndprof::on && f % 500 == 499)
-			sndprof::report((std::string("frames ") + std::to_string(f + 1 - 500) + "-" + std::to_string(f + 1)).c_str(), 500, stdout);
 		auto ts0 = std::chrono::steady_clock::now();
 		struct SoundTime { std::chrono::steady_clock::time_point t; double &acc; ~SoundTime() { acc += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count(); } } sound_time{ ts0, t_sound };
-		// VF3_MIDI_SEND=BYTES@FRAME,...: bytes handed to the sound board as if the game had written them,
-		// the same switch the windowed host has. Here it is what lets a single effect be RECORDED on its
-		// own -- A00001 to silence the music, then A02E23 -- so its length can be listened to rather than
-		// inferred from an energy trace (the stage page's hold, fv2_stage_list.h).
-		if (static const char *ms = getenv("VF3_MIDI_SEND"); ms) {
-			static const std::vector<std::pair<uint64_t, std::vector<uint8_t>>> sends = [ms] {
-				std::vector<std::pair<uint64_t, std::vector<uint8_t>>> v;
-				for (std::string all = std::string(ms) + ","; !all.empty(); all.erase(0, all.find(',') + 1)) {
-					const std::string t = all.substr(0, all.find(','));
-					const size_t at = t.find('@');
-					if (t.empty() || at == std::string::npos || at % 2) continue;
-					std::vector<uint8_t> b;
-					for (size_t i = 0; i + 1 < at; i += 2) b.push_back(uint8_t(strtoul(t.substr(i, 2).c_str(), nullptr, 16)));
-					if (!b.empty()) v.push_back({ strtoull(t.c_str() + at + 1, nullptr, 10), b });
-				}
-				return v;
-			}();
-			for (const auto &s : sends)
-				if (s.first == board.frame)
-					for (uint8_t b : s.second) board.midi.push_back(b);
-		}
 		if (!wav_path.empty()) {
 			while (!board.midi.empty()) {
 				if (getenv("VF3_MIDI_LOG")) {
@@ -1346,7 +878,7 @@ int main(int argc, char **argv)
 			s[116] = uint32_t(board.frame);
 			fwrite(s, 4, 128, state);
 		}
-		if (!shots.empty() || !hd_dump.empty())
+		if (!shots.empty())
 			for (auto &name : act.shots) {
 				scene_builder.build(board, scene);
 				if (getenv("VF3_VP"))
@@ -1356,7 +888,6 @@ int main(int argc, char **argv)
 						printf("  spot colour %.3f %.3f %.3f ellipse %.1f %.1f %.1f %.1f range %g %g\n", v.spot_colour[0], v.spot_colour[1], v.spot_colour[2],
 							v.spot_ellipse[0], v.spot_ellipse[1], v.spot_ellipse[2], v.spot_ellipse[3], v.spot_range[0], v.spot_range[1]);
 					}
-				raster.tex_version = 1 + board.tex_serial;
 				raster.render(scene, board.tex_ram.data());
 				static std::vector<uint32_t> below, above;
 				tiles.aligned(below, above);
@@ -1391,28 +922,11 @@ int main(int argc, char **argv)
 				for (int i = 0; i < video::W * video::H; i++)
 					picture[i] = (below[i] >> 24) ? below[i] : 0xFF000000u;
 				raster.compose(picture.data(), picture.data());
-				char p[64];
-				snprintf(p, sizeof(p), "/shot_%06llu_%s.png", (unsigned long long)board.frame, name.c_str());
-				if (tiles.hd()) {
-					// HD 2D: the HD layers with the 3D between them. The 3D is the hardware's own size and is
-					// repeated, as the host's renderer repeats it; its alpha is where it drew anything at all,
-					// which is what the float layers say (r3d_raster.h), so a translucent polygon still mixes
-					// with the native layer under it before the HD layer shows round it.
-					static std::vector<uint32_t> hd_below, hd_above, hd_pic;
-					for (int i = 0; i < video::W * video::H; i++)
-						if (!(raster.base[i].a > 0 || raster.t1[i].a > 0 || raster.t2[i].a > 0)) picture[i] = 0;
-					const int S = tiles.hd_scale();
-					tiles.aligned_hd(hd_below, hd_above);
-					hd_pic.assign(size_t(video::W) * S * size_t(video::H) * S, 0);
-					video::compose_hd(S, hd_below, hd_above, picture.data(), hd_pic.data());
-					shot_png(p, hd_pic.data(), video::W * S, video::H * S);
-					if (!quiet)
-						printf("shot %s at %dx%d (tile scale %d)\n", p + 1, video::W * S, video::H * S, S);
-					continue;
-				}
 				for (int i = 0; i < video::W * video::H; i++)
 					if (above[i] >> 24) picture[i] = above[i];
-				shot_png(p, picture.data(), video::W, video::H);
+				char p[64];
+				snprintf(p, sizeof(p), "/shot_%06llu_%s.png", (unsigned long long)board.frame, name.c_str());
+				write_png((shots + p).c_str(), picture.data(), video::W, video::H);
 				if (getenv("VF3_VP")) {
 					const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
 					for (int L = 0; L < 4; L++) {
@@ -1431,7 +945,7 @@ int main(int argc, char **argv)
 					snprintf(p, sizeof(p), "/below_%06llu_%s.png", (unsigned long long)board.frame, name.c_str());
 					std::vector<uint32_t> bl(below);
 					for (auto &v : bl) v |= 0xFF000000u;
-					shot_png(p, bl.data(), video::W, video::H);
+					write_png((shots + p).c_str(), bl.data(), video::W, video::H);
 				}
 				if (const char *bs = getenv("VF3_BIGSHOT")) {   // the 3D alone at that scale, over grey (holes show), big_<frame>.png
 					static video::Raster big;
@@ -1442,7 +956,7 @@ int main(int argc, char **argv)
 					big.compose(o.data(), o.data());
 					char p[64];
 					snprintf(p, sizeof(p), "/big_%06llu_%s.png", (unsigned long long)board.frame, name.c_str());
-					shot_png(p, o.data(), big.width(), big.height());
+					write_png((shots + p).c_str(), o.data(), big.width(), big.height());
 				}
 				if (getenv("VF3_WIDESHOT")) {   // the layer below the 3D widened (as widescreen's sides show it), the screen's edges marked
 					char p[64];
@@ -1451,7 +965,7 @@ int main(int argc, char **argv)
 					tiles.aligned_wide(wd);
 					for (auto &v : wd) v |= 0xFF000000u;
 					for (int y = 0; y < video::H; y += 4) wd[size_t(y) * video::WW + video::EXT] = wd[size_t(y) * video::WW + video::EXT + video::W - 1] = 0xFF0000FFu;
-					shot_png(p, wd.data(), video::WW, video::H);
+					write_png((shots + p).c_str(), wd.data(), video::WW, video::H);
 				}
 			}
 		if (getenv("VF3_NVDUMP") && strstr((std::string(",") + getenv("VF3_NVDUMP") + ",").c_str(), ("," + std::to_string(board.frame) + ",").c_str())) {
@@ -1479,17 +993,6 @@ int main(int argc, char **argv)
 			}
 			write_png("texram.png", px.data(), 2048, 1024);
 		}
-		if (modes_log) {
-			static int was_mode = -1, was_sub = -1;
-			const int mode = board.fv2_mode(), sub = board.fv2_submode();
-			if (mode >= 0 && (mode != was_mode || sub != was_sub)) {
-				printf("%6llu  %-13s %2d %-16s %s\n", (unsigned long long)board.frame,
-					   mode < 24 ? FV2_MODES[mode] : "?", sub, fv2_sub_name(mode, sub),
-					   board.fv2_on_title() ? "<- ECRAN TITRE" : "");
-				fflush(stdout);
-				was_mode = mode; was_sub = sub;
-			}
-		}
 		if (long(board.frame) == ram_at) {
 			std::string p = "ram_" + std::to_string(board.frame) + ".bin";
 			if (FILE *rf = fopen(p.c_str(), "wb")) { fwrite(board.ram.data(), 1, board.ram.size(), rf); fclose(rf); }
@@ -1503,63 +1006,6 @@ int main(int argc, char **argv)
 				fclose(tf);
 			}
 		}
-		// --poly-at: the polygon RAM, where the colour table of the untextured
-		// polygons lives (src/video/r3d_scene.cpp).
-		// --cull-at FRAME writes the culling RAM, both halves, beside --poly-at's dump: the models' addresses
-		// are reached through nodes that live there, and nothing else in this port shows them
-		// (docs/fv2-parts.md section 7).
-		// --tex-out FILE writes the board's texture sheet once (2048x2048 16-bit texels, two pages), beside
-		// --vrom-out: a foreign model's colours have to be read out of its own game's sheet first.
-		if (!tex_out.empty() && long(board.frame) == (cull_at >= 0 ? cull_at : 3300)) {
-			if (FILE *tf = fopen(tex_out.c_str(), "wb")) {
-				fwrite(board.tex_ram.data(), 2, board.tex_ram.size(), tf);
-				fclose(tf);
-				if (!quiet) printf("--tex-out: %zu texels written to %s\n", board.tex_ram.size(), tex_out.c_str());
-			}
-			tex_out.clear();
-		}
-		// --crom-out FILE writes the program ROMs, fixed then banked, in one file at their own addresses:
-		// 0xFF000000 is the banked one's start and 0xFF800000 the fixed one's, which is how the game's own
-		// code reaches them.
-		if (!crom_out.empty()) {
-			if (FILE *cf = fopen(crom_out.c_str(), "wb")) {
-				fwrite(board.banked.data(), 1, board.banked.size(), cf);
-				fwrite(board.crom.data(), 1, board.crom.size(), cf);
-				fclose(cf);
-				if (!quiet) printf("--crom-out: banked %zu + fixed %zu bytes written to %s\n",
-				                   board.banked.size(), board.crom.size(), crom_out.c_str());
-			}
-			crom_out.clear();
-		}
-		// --vrom-out FILE writes the Real3D's model ROM once, so a model of one game can be read and tried in
-		// another (docs/fv2-parts.md section 7).
-		if (!vrom_out.empty()) {
-			if (FILE *vf = fopen(vrom_out.c_str(), "wb")) {
-				fwrite(board.vrom.data(), 1, board.vrom.size(), vf);
-				fclose(vf);
-				if (!quiet) printf("--vrom-out: %zu bytes written to %s\n", board.vrom.size(), vrom_out.c_str());
-			}
-			vrom_out.clear();
-		}
-		if (long(board.frame) == cull_at) {
-			std::string p = "cull_lo_" + std::to_string(board.frame) + ".bin";
-			if (FILE *cf = fopen(p.c_str(), "wb")) {
-				fwrite(board.cull_lo.data(), 4, board.cull_lo.size(), cf);
-				fclose(cf);
-			}
-			p = "cull_hi_" + std::to_string(board.frame) + ".bin";
-			if (FILE *cf = fopen(p.c_str(), "wb")) {
-				fwrite(board.cull_hi.data(), 4, board.cull_hi.size(), cf);
-				fclose(cf);
-			}
-		}
-		if (long(board.frame) == poly_at) {
-			std::string p = "poly_" + std::to_string(board.frame) + ".bin";
-			if (FILE *pf = fopen(p.c_str(), "wb")) {
-				fwrite(board.poly_ram.data(), 4, board.poly_ram.size(), pf);
-				fclose(pf);
-			}
-		}
 		if (board.cpu.s.fatal) {
 			fprintf(stderr, "vf3run: frame %llu: CPU stopped: %s\n", (unsigned long long)board.frame, board.cpu.fatal_message);
 			break;
@@ -1569,10 +1015,6 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
-	// The frames left over: a run that is not a multiple of 500 used to lose its tail, and a run shorter
-	// than 500 frames reported nothing whatever -- the two ways a measurement comes back empty.
-	if (sndprof::on && f % 500)
-		sndprof::report((std::string("frames ") + std::to_string(f - f % 500) + "-" + std::to_string(f)).c_str(), int(f % 500), stdout);
 	if (state)
 		fclose(state);
 	if (!wav_path.empty()) {
@@ -1587,48 +1029,15 @@ int main(int argc, char **argv)
 			fclose(wf);
 		}
 	}
-	if (!coverage_path.empty()) {
-		FILE *cf = fopen(coverage_path.c_str(), "w");
-		if (!cf) {
-			fprintf(stderr, "vf3run: can't write %s\n", coverage_path.c_str());
-			return 1;
-		}
-		size_t n = 0;
-		fprintf(cf, "# %s: the words the program was entered at, from %llu frames\n", board.set.c_str(),
-		        (unsigned long long)board.frame);
-		for (size_t i = 0; i < board.cpu.cover_seeds.size(); i++)
-			if (board.cpu.cover_seeds[i]) { fprintf(cf, "%X\n", unsigned(i * 4)); n++; }
-		fclose(cf);
-		if (!quiet)
-			printf("coverage: %zu entry points of %zu words, to %s\n", n, board.cpu.cover_seeds.size(), coverage_path.c_str());
-	}
-	if (tile_dump.on()) {
-		const size_t nt = tile_dump.tiles(), nl = tile_dump.layouts();
-		tile_dump.close();   // (tiles.csv and layers/index.csv, which are written at the end)
-		if (!quiet) printf("tile dump: %zu distinct tiles and %zu layer layouts in %s\n", nt, nl, tile_dump_dir.c_str());
-	}
-	if (tiles.hd() && !quiet) printf("HD 2D: %ld tile slices drawn from the pack\n", tiles.hd_tiles_drawn);
 	double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-	if (!quiet) {
+	if (!quiet)
 		printf("%llu frames in %.1f s (%.0f frames a second)\n", (unsigned long long)board.frame, secs, board.frame / secs);
-		printf("PC %08X, last RAM hash %016llX\n", board.cpu.pc(), (unsigned long long)board.ram_hash());
-		// the 315-5881 isn't written yet: a keyed set that asks it for data needs it before that data is right
-		if (board.crypto_key)
-			printf("security board (key %08X): %llu data reads, %llu register writes\n", board.crypto_key,
-			       (unsigned long long)board.security_reads, (unsigned long long)board.security_writes);
-	}
 	if (rec && !quiet) {
 		printf("interpreter instead: %llu before the boot copy, %llu outside the program, %llu without code",
 		       (unsigned long long)recompiler.interp_disabled, (unsigned long long)recompiler.interp_outside,
 		       (unsigned long long)recompiler.interp_unmapped);
 		for (size_t i = 0; i < recompiler.unmapped.size() && i < 8; i++) printf(i ? " %05X" : " (%05X", recompiler.unmapped[i]);
 		printf(recompiler.unmapped.empty() ? "\n" : ")\n");
-		// One compiled word RAM disagrees with turns the whole recompiler off, so say how many and where
-		if (const size_t n = recompiler.mismatch_count()) {
-			printf("the recompiler is OFF: %zu compiled words differ from RAM, at", n);
-			for (uint32_t a : recompiler.mismatch_addresses(10)) printf(" %06X", a);
-			printf("%s\n", n > 10 ? " ..." : "");
-		}
 	}
 	if (const char *out = getenv("VF3_MAP_OUT"); rec && out) {   // (tests: where the interpreter ran for want of a map entry, added)
 		if (FILE *f = fopen(out, "a")) { for (uint32_t a : recompiler.unmapped) fprintf(f, "%05X\n", a); fclose(f); }

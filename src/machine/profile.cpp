@@ -322,7 +322,7 @@ const Profile FV2_REV_A = {
 	0, 0,
 	{ 0, 0, 0, 0 },                    // the backdrops: this port draws Fighting Vipers 2's its own way
 	ppcrec::fv2_map, ppcrec::fv2_map_count,
-	"",                                // the player's data beside Virtua Fighter 3's, told apart by name (main.cpp)
+	"fvipers2",                        // its own folder under the data folder: it must not read or write Virtua Fighter 3's
 	nullptr,                           // no Dural to play as here (two Kuhns is another matter)
 	0,
 };

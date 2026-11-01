@@ -3,7 +3,7 @@
 // motion (a picture for each refresh of the screen, up to 120 a second), the in-game menu (as VF1's and VF2's),
 // and the board's NVRAM (backup RAM and EEPROM) and the menu's settings kept in a data folder.
 //
-//   vf3 [vf3.zip] [--arcade | --console | --pc] [--full-roster] [--fullscreen | --window] [--no-sound] [--volume N] [--music N] [--effects N]
+//   vf3 [vf3.zip] [--arcade] [--fullscreen | --window] [--no-sound] [--volume N] [--music N] [--effects N]
 //       [--scale N] [--aspect fit|4:3|16:10|16:9|21:9] [--show-boot] [--interp] [--roms <folder>]
 //       [--host [--port N] | --join ADDRESS[:PORT]]   (online by address: a LAN or a VPN, as Online > Play by address)
 //
@@ -25,8 +25,7 @@
 //
 // The menu (Esc, or on a pad View tapped, L3 + R3 or the touchpad click) pauses the game and its sound: Display
 // (render scale, antialiasing, picture shape, 3D renderer, smooth motion, background and screen filters, FPS,
-// fullscreen), Sound (volume, music, effects and voices), Game (the play style -- PC, arcade, or console for the
-// game that has one -- and reset), Arcade settings
+// fullscreen), Sound (volume, music, effects and voices), Game (PC or arcade play style, reset), Arcade settings
 // (the arcade's own, and its service menu), Controls (each player's pad, keys and pad buttons) and Quit. Its
 // choices are kept in settings.ini in the data folder ("key = value"), written when the menu closes (and within
 // 3 s of a hotkey's change); the command line wins over them.
@@ -35,11 +34,6 @@
 // (the game's own coin setting FREE PLAY, the arcade's kept in settings.ini's arcade_coins and given back for the
 // arcade way; its FREE PLAY notices hidden), so Start starts. --arcade (or Game > Play style: Arcade) shows the
 // boot and takes coins (the 5 and 6 keys, or the Coin bindings).
-//
-// --console (Game > Play style: Console, Fighting Vipers 2 only) is the PC way plus a console's own menu over
-// the game: Start during the attract loop picks a mode, as the Dreamcast version does. It never touches the
-// credit -- choosing a mode hands the game a real Start -- so a coin is still needed for that game, whose free
-// play this port does not know. See docs/fv2-console.md.
 //
 // --scale N (1-6) draws the 3D at N times the arcade's 384 lines; the 2D (text, the HUD) is the arcade's,
 // enlarged. Until one is chosen, the scale fits the window as it first opens. F5 steps through them.
@@ -63,43 +57,16 @@
 //        (give_stick_layout); Controls > Player > Set up buttons makes one from its own presses (settings.ini's
 //        pad_mapping); a gamecontrollerdb.txt in the data folder or beside the program is read too.
 //
-// --hd-3d draws a texture pack over the game's own 3D textures: PNGs of any size in texture_replacement in the
-// data folder, each named by the hash of the texture it stands in for, which is the name the dump writes
-// (--hd-3d-dump, into texture_replacement/DUMP). --no-hd-3d turns it off again, --hd-3d-pack <folder> and
-// --hd-3d-dump <folder> use folders of their own. docs/fv2-hd-3d.md says how it works and what it costs; without
-// --hd-3d nothing of it runs and every picture is the one it was.
-//
 // Testing without a display:
 //   VF3_HIDDEN=1         no window on screen, no sound out (the board still runs); never a dialog
 //   VF3_INTERP=1         the PowerPC on the interpreter (as --interp)
 //   VF3_QUIT_AFTER=N     quit after N game frames, writing build/host_last.png (the frame) and
 //                        build/host_window.png (the window as drawn); such runs save nothing
-//   VF3_QUIT_AFTER_S=N   quit after N seconds of real time, writing the same two pictures. The clock runs while
-//                        the game is frozen, so this arrives where VF3_QUIT_AFTER cannot: anything that freezes
-//                        the game (the menu, the console's list of modes) stops its frames. Use it with a
-//                        VF3_QUIT_AFTER out of reach, which is what marks a run as a test run.
 //   VF3_SCRIPT=file      inputs from an input script (src/host/input_script.h), frame by frame from the boot;
 //                        its shots go to build/host_<name>.png
 //   VF3_WINDOW=WxH       the window's size in points
-//   VF3_MENU_BEEP=s      the menu's own move sound, played by itself every s seconds while a
-//                        surface is up: the one way to reproduce the menu's sound without a hand
-//   VF3_SOUND_WAV=file   everything handed to the sound device, in order, as a WAV -- the menus' own
-//                        sound included, which VF3_RECORD's sound.wav misses (see where it is opened)
 //   VF3_DATA=dir         the data folder
 //   VF3_PACE_LOG=1       the pacing and the pictures' times every 2 s
-//   VF3_SCSP_CORE=n      which SCSP core the board uses: `mame` (the default) or `own`, the project's
-//                        own (src/sound/scsp_own.h). The per-group gains, the energy probe and the
-//                        key-on log apply to the first only, and the board says so at start-up
-//   VF3_SND_OFF=1        (measurement) the sound board is not run at all, the MIDI dropped. Valid as a
-//                        control BECAUSE the traffic is one-way -- the game writes MIDI and reads nothing
-//                        back -- so its execution is bit-identical. The gap against a normal run is the
-//                        sound thread's CONTENTION cost, which a blocking wait cannot show
-//   VF3_SND_SYNC=1       (measurement) the sound is done IN the frame instead of on its own thread. Same
-//                        work, different moment: says whether the thread earns its keep on two cores
-//   VF3_SND_HOST=N       every N frames, what the sound costs THE HOST: the sound thread's own work in
-//                        ms, and -- the figure that matters -- how long the game blocks waiting for it.
-//                        Not the same thing as vf3run's number, where the board is inside the frame
-//                        loop. Use with VF3_SND_PROF=1 for the split inside the board
 //   VF3_KEYS=k@F,...     presses key k (an SDL key name) when game frame F is reached; the window 3 frames later
 //                        goes to build/host_window_F.png
 //   VF3_HOST_ROOM=1      hosts a room code's match at pass 60 (the code in log.txt), as Online > Host a match
@@ -107,26 +74,11 @@
 //   VF3_RANDOM=1         looks for a random opponent at pass 60, as Online > Random
 //   VF3_MENU_KEYS=k,...  presses these keys (esc, up, down, left, right, enter, or SDL key names) 6 passes of the
 //                        loop apart from pass 30
-//   VF3_MIDI_LOG=N       every block of bytes the GAME sends its sound board, with the mode it was in and the
-//                        loudest sample of the frame before; and every Nth frame besides, so silence is on the
-//                        record too (N=1: every frame)
-//   VF3_MIDI_SEND=h@F,.. hands the sound board those bytes (hex, no spaces) at game frame F, as if the game had
-//                        written them: a way to ask the board a question and hear the answer in VF3_MIDI_LOG's
-//                        peaks, without a line of menu code resting on the guess
-//   VF3_KEYS_S=k@sec,... presses key k at that many seconds of real time. The one hook that can drive something
-//                        drawn over a FROZEN game: VF3_KEYS goes by the game's frames, which stop there, and
-//                        VF3_MENU_KEYS goes off in the first second. Seconds, because the clock is the only
-//                        thing still moving. Use with VF3_QUIT_AFTER_S.
 //   VF3_TEST_VJOY=...    a virtual stick SDL doesn't know (10 buttons, a hat, 2 axes), pressed at these passes of
 //                        the loop: b3@200 its button 3, h1@260 its hat (1 up, 2 right, 4 down, 8 left), +0@300 or
 //                        -1@300 an axis to one end (each 8 passes), q@900 quit (a run that saves), p@100 plugged
 //                        in then (not at the start); "1": no presses
 //   VF3_SHOT_AT=n,...    the window as drawn at these passes of the loop, to build/host_window_at_N.png
-//   VF3_LIVE=n           the console CONTROLLER page lit as if those bits were held (1 up, 2 down, 4 left,
-//                        8 right, 16 punch, 32 guard, 64 kick): pushed key events cannot reach it
-//   VF3_OPTION_LOG=1     what the console OPTIONS page writes: the setting, and the cooked copy it keeps in step
-//   VF3_TIMER_LOG=1      the match's own clock: the cooked word a round starts from, and the seconds left
-//                        (model3.h, fv2_recook_option). The one way to see the page write rather than trust it.
 //   VF3_ROMS=folder      the player's ROM folder (as --roms)
 //   VF3_3D=cpu|gpu|auto  the 3D renderer for this run (as Display > 3D renderer)
 //   VF3_GPU3D_NO_PROBE=1 no start-up probe of Direct3D 12 (a quad drawn and read back) before the GPU's check
@@ -144,7 +96,6 @@
 //   VF3_TEST_LOAD=ms:s   each picture ms longer (by the scale's square, from 1x) for the first s seconds after the
 //                        start's grace (the governor's tests)
 #include "version.h"      // VF3_VERSION, VF3_DATE (made by the Makefile from git)
-#include "../machine/fv2_portraits.h"
 #include "online.h"
 #include "chime.h"
 #include "../video/hud_names.h"
@@ -154,27 +105,16 @@
 #include "../machine/romset.h"
 #include "../rec/ppc_rec.h"
 #include "../sound/soundboard.h"
-#include "sound_prof.h"
 #include "../video/tilegen.h"
 #include "../video/tile_worker.h"
 #include "../video/sky_lead.h"
 #include "../video/r3d_scene.h"
 #include "../video/r3d_raster.h"
+#include "../video/tex3d_hd.h"
 #include "../video/parallel.h"
 #include "png.h"
-#include "input_script.h"
-#include "console_play.h"
-#include "fv2_mode_list.h"
-#include "fv2_options.h"
-#include "fv2_pause.h"
-#include "fv2_stage_list.h"
-#include "fv2_training.h"
-#include "fv2_cpu_label.h"
 #include "folder_name.h"
-#include "fv2_curtain.h"
-#include "fv2_ending.h"
-#include "fv2_roll.h"
-#include "fv2_text.h"
+#include "input_script.h"
 #include "menu.h"
 #include "crt_colours.h"
 #include "controls.h"
@@ -462,48 +402,6 @@ hotkey read_inputs(m3::Controls &c, SDL_Gamepad *pads[2], pad_state ps[2], const
 	return hk;
 }
 
-// What the console's CONTROLLER page lights: the eight directions and the three buttons as they are held,
-// right now. It is a MIRROR and not an input, so it reads and nothing else -- no edges, no coin timer, no
-// hotkeys, none of the state read_inputs owns, which is called once a frame and must stay that way. The
-// pairs light both of their buttons, as they hand the game both.
-uint8_t live_controls(int p, SDL_Gamepad *gp, const player_controls ctl[2])
-{
-	const bool *ks = SDL_GetKeyboardState(nullptr);
-	uint8_t v = 0;
-	auto hit = [&](int action, uint8_t bits) {
-		const SDL_Scancode sc = ctl[p].key[action];
-		if (sc != SDL_SCANCODE_UNKNOWN && ks[sc]) v |= bits;
-		if (gp && player_controls::pad_down(gp, ctl[p].pad[action])) v |= bits;
-	};
-	hit(C_UP, fv2_options::L_UP);
-	hit(C_DOWN, fv2_options::L_DOWN);
-	hit(C_LEFT, fv2_options::L_LEFT);
-	hit(C_RIGHT, fv2_options::L_RIGHT);
-	hit(C_GUARD, fv2_options::L_GUARD);
-	hit(C_PUNCH, fv2_options::L_PUNCH);
-	hit(C_KICK, fv2_options::L_KICK);
-	hit(C_GUARD_PUNCH, fv2_options::L_GUARD | fv2_options::L_PUNCH);
-	hit(C_PUNCH_KICK, fv2_options::L_PUNCH | fv2_options::L_KICK);
-	hit(C_GUARD_KICK, fv2_options::L_GUARD | fv2_options::L_KICK);
-	hit(C_ALL_THREE, fv2_options::L_GUARD | fv2_options::L_PUNCH | fv2_options::L_KICK);
-	// The d-pad and the left stick always move, whatever the bindings say -- the same rule read_inputs follows.
-	if (gp) {
-		auto btn = [&](SDL_GamepadButton x) { return SDL_GetGamepadButton(gp, x); };
-		if (btn(SDL_GAMEPAD_BUTTON_DPAD_UP)) v |= fv2_options::L_UP;
-		if (btn(SDL_GAMEPAD_BUTTON_DPAD_DOWN)) v |= fv2_options::L_DOWN;
-		if (btn(SDL_GAMEPAD_BUTTON_DPAD_LEFT)) v |= fv2_options::L_LEFT;
-		if (btn(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) v |= fv2_options::L_RIGHT;
-		const int lx = SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_LEFTX);
-		const int ly = SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_LEFTY);
-		const int dead = 12000;
-		if (lx < -dead) v |= fv2_options::L_LEFT;
-		if (lx > dead) v |= fv2_options::L_RIGHT;
-		if (ly < -dead) v |= fv2_options::L_UP;
-		if (ly > dead) v |= fv2_options::L_DOWN;
-	}
-	return v;
-}
-
 // ---- sticks SDL doesn't know ----
 // A joystick SDL has no gamepad mapping for (a DirectInput arcade stick: HORI's Virtua Stick, the Astro City Mini's)
 // isn't a gamepad to SDL, and the game reads only gamepads (Supermodel reads the joystick's own buttons). Each is
@@ -733,42 +631,11 @@ struct settings
 	std::string game;   // the program played, its set's name ("vf3", "vf3tb"): Game > Version, when the zips hold both
 	static constexpr const char *BUILD = VF3_VERSION " " VF3_DATE " " VF3_COMMIT;   // (what gpu3d_failed was learnt by)
 	std::string gpu3d_failed;   // SDL_GPU's drivers whose 3D failed here ("direct3d12 vulkan"): the next start tries the next
-	// THE CHECK THAT COSTS A FIFTH OF A SECOND, REMEMBERED. The GPU's first scene is drawn on the CPU too and
-	// the two pictures compared before the GPU is trusted; at a render scale of 4 the CPU's own picture takes
-	// 174 ms of the 184 the check costs, and it lands on the first thing with a 3D model in it -- the fighter
-	// on the select screen. Frederic, the 2026-10-29: "un leger freeze a l'ecran de selection des personnages
-	// [...] quand le modele 3D du personnage apparait". So the driver and the card that passed are written
-	// down here, and a start that finds the same pair again does not check a second time. Anything else --
-	// another card, another driver, a settings file from another machine -- does not match, and is checked.
-	std::string gpu3d_ok;
 	bool fullscreen = false, arcade = false, show_fps = false, smooth = true;
 	bool fs_window = false;  // fullscreen as a borderless window a line taller than the screen, never the driver's own
 	                         // (settings.ini's fullscreen_window = 1: a test for AMD's Vulkan on Windows, issue #7)
 	bool timings = false;    // F9: the timings in the title bar
 	bool full_roster = false;   // Fighting Vipers 2's hidden fighters, selectable (Model3::unlock_roster)
-	// Which ending the staff roll shows: the arcade's replays of the matches just won, or the Dreamcast's
-	// illustrations in their place (src/host/fv2_ending.h). The arcade's is what the board does, so it is what
-	// this starts at.
-	bool ending_dc = false;
-	// ENERGY MAX 1P's step above the game's own highest: player one's life held full while a round runs.
-	// Not a value of the game's -- its setting keeps whatever it had -- so it lives here. Frederic asked
-	// for it the 2026-10-29, to finish the arcade ladder.
-	bool endless_1p = false;
-	// The console way: the PC way's boot and free play, plus a console's own menu over the game (Start in the
-	// attract loop). A third play style rather than a fourth flag on the other two, because that is how the
-	// player thinks of it; `arcade` keeps meaning exactly what it did, so nothing that reads it changes.
-	bool console = false;
-	// Fighting Vipers 2's select-screen portraits. Empty means the folder this port keeps for them beside its own
-	// settings and NVRAM (data/portraits-fvipers2); a folder named with --portraits overrides that. portraits_off
-	// is the player saying "Sega's, whatever is in the folder".
-	std::string portraits;
-	bool portraits_off = false;
-	bool hd_3d = false;         // the 3D texture pack, from texture_replacement in the data folder (src/video/tex3d_hd.h)
-	// HD 2D (src/video/tilehd.h, docs/fv2-hd-2d.md): the tile plane drawn tile_scale times its size each way,
-	// with tile_pack's images in the place of the tiles and layers whose names they carry. 1 and empty are the
-	// hardware's own, and then none of it runs at all.
-	int tile_scale = 1;
-	std::string tile_pack;
 	bool smooth_bg = true;   // the 2D backgrounds (the layers below the 3D) scaled smoothly, not as blocks
 	bool sharp_textures = true;   // the 3D's textures' mipmap levels for the picture's size (false: the arcade's, video::Raster::arcade_lod)
 	int filter = 0;          // the screen filter: 0 off, 1 scanlines, 2 CRT
@@ -818,28 +685,14 @@ struct settings
 		num("online_max_ping", online.max_ping, 0, 1000);
 		flag("online_chime", online.chime);
 		if (auto it = kv.find("gpu_3d_failed"); it != kv.end()) gpu3d_failed = it->second;
-		if (auto it = kv.find("gpu_3d_checked"); it != kv.end()) gpu3d_ok = it->second;
 		std::string failed_build;
 		if (auto it = kv.find("gpu_3d_failed_build"); it != kv.end()) failed_build = it->second;
 		flag("fullscreen", fullscreen);
 		flag("arcade_mode", arcade);
-		flag("console_mode", console);
-		if (arcade && console) console = false;   // (a file edited by hand: the arcade way wins, as the older key)
 		flag("frame_timings", timings);
+		flag("full_roster", full_roster);
 		flag("show_fps", show_fps);
 		flag("smooth_motion", smooth);
-		flag("full_roster", full_roster);
-		// (no longer read, either of them: Honey's four costumes and Kuhn's four colours are not a setting any
-		// more but the wheel the select screen always turns, so a file that still carries one of those lines is
-		// ignored and the line goes away at the next save)
-		// (no longer read: the Dreamcast roll is shut, so a file that still carries the line is ignored and
-		// the line goes away at the next save -- see where the setting's row is drawn grey)
-		if (auto it = kv.find("portraits_folder"); it != kv.end()) portraits = it->second;
-		flag("portraits_off", portraits_off);
-		flag("endless_life_1p", endless_1p);
-		flag("hd_3d", hd_3d);
-		num("tile_scale", tile_scale, 1, 8);
-		if (auto it = kv.find("tile_pack"); it != kv.end()) tile_pack = it->second;
 		flag("smooth_backgrounds", smooth_bg);
 		flag("background_filter", smooth_bg);   // (VF1's and VF2's name)
 		flag("sharp_textures", sharp_textures);
@@ -906,21 +759,8 @@ struct settings
 				"smooth_motion = %d\nrenderer_3d = %d\nbackground_filter = %d\n", scale, aspect, int(fullscreen), volume, int(arcade), int(show_fps),
 				int(smooth), renderer3d, int(smooth_bg));
 		if (!roms_folder.empty()) fprintf(f, "roms_folder = %s\n", roms_folder.c_str());
-		if (!gpu3d_failed.empty()) fprintf(f, "gpu_3d_failed = %s\n", gpu3d_failed.c_str());
-		if (!gpu3d_ok.empty()) fprintf(f, "gpu_3d_checked = %s\n", gpu3d_ok.c_str());
-		fprintf(f, "crt_colours = %d\nsharp_textures = %d\n", crt_colours, int(sharp_textures));
-		if (graphics) fprintf(f, "graphics = %d\n", graphics);
-		fprintf(f, "screen_filter = %d\nantialiasing = %d\nmusic_volume = %d\neffects_volume = %d\narcade_coins = %d\nframe_timings = %d\n", filter, aa, music, effects, arcade_coin, int(timings));
-		if (full_roster) fprintf(f, "full_roster = %d\n", int(full_roster));   // (one game's: written only once asked for)
-		if (ending_dc) fprintf(f, "ending_dreamcast = %d\n", int(ending_dc));   // (one game's, likewise)
-		if (console) fprintf(f, "console_mode = %d\n", int(console));         // (likewise: an older build reads the file as the PC way)
-		if (!portraits.empty()) fprintf(f, "portraits_folder = %s\n", portraits.c_str());   // (one game's, likewise)
-		if (portraits_off) fprintf(f, "portraits_off = %d\n", int(portraits_off));
-		if (endless_1p) fprintf(f, "endless_life_1p = %d\n", int(endless_1p));
-		if (hd_3d) fprintf(f, "hd_3d = %d\n", int(hd_3d));   // (a texture pack is one game's too: written only once asked for)
-		if (tile_scale > 1) fprintf(f, "tile_scale = %d\n", tile_scale);      // (as full_roster: written only once asked for)
-		if (!tile_pack.empty()) fprintf(f, "tile_pack = %s\n", tile_pack.c_str());
 		if (!game.empty()) fprintf(f, "game = %s\n", game.c_str());
+		if (full_roster) fprintf(f, "full_roster = %d\n", int(full_roster));   // (one game's: written only once asked for)
 		if (dural) fprintf(f, "cheat_dural = %d\n", dural);
 		fprintf(f, "team_battle_1v1 = %d\n", int(tb_one));
 		if (!log) fprintf(f, "log = 0\n");
@@ -990,23 +830,13 @@ bool first_launch(const std::string &data, const std::string &keep, const std::s
 {
 	namespace fs = std::filesystem;
 	const fs::path own = fs::path(data) / "roms";
-	std::error_code ec;
-	// The sets this build knows, tried in the order romset.h gives them, Virtua Fighter 3's first: a folder with
-	// vf3.zip in it is found exactly as it always was, and a package for the other game finds its set too. A
-	// folder with none of them gives the first name back, so every message below still has something to say.
-	const std::vector<std::string> set_names = romset::known_zip_names();
-	auto first_set_in = [&](const fs::path &dir) {
-		for (const std::string &n : set_names)
-			if (fs::is_regular_file(dir / n, ec)) return dir / n;
-		return dir / set_names.front();
-	};
-	const fs::path roms = folder.empty() ? own : fs::path(folder), zip = first_set_in(roms);
+	const fs::path roms = folder.empty() ? own : fs::path(folder), zip = set_zip(roms);
 	const fs::path kept = !folder.empty() || keep.empty() ? own : fs::path(keep) / "roms";
-	// Every known set's zip is kept, not just the one being played: a split set (vf3tb.zip) needs its parent's
-	// zip beside it, so keeping one of the two would leave the pair unusable after an update.
+	std::error_code ec;
 	auto keep_copy = [&] {   // (each set's zip, when it isn't there already)
 		if (kept == roms || !folder.empty()) return;
-		for (const std::string &name : set_names) {
+		for (const m3::Profile *const *p = m3::PROFILES; *p; p++) {
+			const std::string name = std::string((*p)->set) + ".zip";
 			if (!fs::is_regular_file(roms / name, ec)) continue;
 			if (fs::is_regular_file(kept / name, ec) && fs::file_size(kept / name, ec) == fs::file_size(roms / name, ec)) continue;
 			fs::create_directories(kept, ec);
@@ -1026,10 +856,9 @@ bool first_launch(const std::string &data, const std::string &keep, const std::s
 	if (!folder.empty()) {
 		if (fs::is_regular_file(zip, ec)) fprintf(stderr, "the game from the ROM folder %s\n", roms.string().c_str());
 		else {
-			fprintf(stderr, "ROM folder: no set this build knows in %s%s: looking in %s next\n", roms.string().c_str(),
+			fprintf(stderr, "ROM folder: no vf3.zip or vf3tb.zip in %s%s: looking in %s next\n", roms.string().c_str(),
 					fs::is_directory(roms, ec) ? "" : " (no such folder)", own.string().c_str());
-			const fs::path in_own = first_set_in(own);
-			if (fs::is_regular_file(in_own, ec) && check(in_own)) {
+			if (fs::is_regular_file(set_zip(own), ec) && check(set_zip(own))) {
 				fprintf(stderr, "the game from %s\n", own.string().c_str());
 				return true;
 			}
@@ -1039,26 +868,23 @@ bool first_launch(const std::string &data, const std::string &keep, const std::s
 		keep_copy();
 		return true;
 	}
-	// an update in a new folder: the sets kept from before (copied back beside each other, since a split set --
-	// vf3tb.zip -- needs its parent's zip, vf3.zip, in the same folder)
-	if (const fs::path in_kept = first_set_in(kept); kept != roms && fs::is_regular_file(in_kept, ec) && check(in_kept)) {
+	// an update in a new folder: the sets kept from before (copied back beside each other: a split vf3tb.zip needs vf3.zip)
+	if (kept != roms && fs::is_regular_file(set_zip(kept), ec) && check(set_zip(kept))) {
 		fprintf(stderr, "the game from %s\n", kept.string().c_str());
 		return true;
 	}
 	if (getenv("VF3_HIDDEN")) {
-		fprintf(stderr, "%sno set this build knows in %s\n", problem.c_str(), roms.string().c_str());
+		fprintf(stderr, "%sno vf3.zip in %s\n", problem.c_str(), roms.string().c_str());
 		return false;
 	}
 	SDL_Init(SDL_INIT_VIDEO);
 	const char *title = "Virtua Fighter 3";
-	// (the player's ROM folder holds a vf3.zip that isn't the set: the one chosen goes in the data folder's roms,
-	// not over the player's own file)
+	// (the player's ROM folder holds a zip that isn't a set: the one chosen goes in the data folder's roms, not over
+	// the player's own file)
 	const fs::path into = !folder.empty() && fs::exists(zip, ec) ? own : roms;
 	const std::string where = "It's copied into " + into.string() + ", so you only do this once.";
-	const std::string which = "Choose your copy of one of the games this build runs: MAME's \"vf3\" set (vf3.zip,\n"
-	                          "Virtua Fighter 3, Revision D), its Team Battle \"vf3tb\" (vf3tb.zip), or \"fvipers2\"\n"
-	                          "(fvipers2.zip, Fighting Vipers 2).";
-	std::string note = problem + which + "\n\n" + where;
+	std::string note = problem + "Choose your copy of Virtua Fighter 3: MAME's \"vf3\" set (vf3.zip, Revision D), or its Team Battle, "
+	                   "\"vf3tb\" (vf3tb.zip).\n\n" + where;
 	for (;;) {
 		if (!message_box(SDL_MESSAGEBOX_INFORMATION, title, note)) return false;
 		// (the callback may run on another thread: what it writes is read only after done, set last)
@@ -1074,7 +900,7 @@ bool first_launch(const std::string &data, const std::string &keep, const std::s
 		if (chosen.failed) {
 			fs::create_directories(roms, ec);
 			message_box(SDL_MESSAGEBOX_INFORMATION, title,
-				"There's no file picker here. Put your vf3.zip, vf3tb.zip or fvipers2.zip in this folder,\nthen start the game again:\n\n" + roms.string());
+				"There's no file picker here. Put your vf3.zip (or vf3tb.zip) in this folder, then start the game again:\n\n" + roms.string());
 			return false;
 		}
 		if (chosen.files.empty()) return false;
@@ -1082,15 +908,17 @@ bool first_launch(const std::string &data, const std::string &keep, const std::s
 		const std::vector<const m3::Profile *> sets = romset::sets_in(f);
 		romset::result r = romset::load(f, sets.empty() ? m3::VF3_REV_D : *sets[0]);
 		if (!r.ok) {
-			note = fs::path(f).filename().string() + ": " + r.error + "\n\n" + which + "\n\n" + where;
+			note = fs::path(f).filename().string() + ": " + r.error + "\n\nChoose MAME's \"vf3\" set (vf3.zip) or \"vf3tb\" (vf3tb.zip).\n\n" + where;
 			continue;
 		}
+		// (named for what it holds: Team Battle's whole set vf3tb.zip, a set of both, or Revision D's, vf3.zip)
+		bool tb = false;
+		for (const m3::Profile *p : sets) tb |= p == &m3::VF3_TB;
+		const fs::path into_zip = into / (tb ? "vf3tb.zip" : "vf3.zip");
 		fs::create_directories(into, ec);
 		std::string why;
-		// kept under its set's own name, whichever game was picked
-		const fs::path into_zip = into / (r.set + ".zip");
 		if (!fs::equivalent(f, into_zip, ec) && !copy_whole(f, into_zip, why)) {
-			note = "Couldn't copy it into " + into.string() + ": " + why + "\n\n" + which;
+			note = "Couldn't copy it into " + into.string() + ": " + why + "\n\nChoose your vf3.zip.";
 			continue;
 		}
 		if (into == roms) keep_copy();
@@ -1201,8 +1029,6 @@ struct Game
 	bool have_prev = false;
 	std::vector<uint32_t> below = std::vector<uint32_t>(video::W * video::H), above = std::vector<uint32_t>(video::W * video::H);
 	std::vector<uint32_t> below_wide = std::vector<uint32_t>(video::WW * video::H);   // (widescreen's: tilegen.h)
-	// the same three at the HD size, empty unless tiles.hd() (src/video/tilehd.h)
-	std::vector<uint32_t> below_hd, above_hd, below_wide_hd;
 	bool full_3d = false;
 	bool no_stage_screen = false;   // (the newest frame's: the character select's or the ranking's, never a stage)
 	video::TileGen::Scroll prev_scroll;   // the frame before's (for bg_dx, bg_dy)
@@ -1210,13 +1036,6 @@ struct Game
 	bool bg_moved = false;                // the layer below the 3D scrolled this frame by bg_dx, bg_dy
 	float bg_dx = 0, bg_dy = 0;   // the newest frame's 3D drawn full width (a stage)
 	video::SkyLead sky;           // how far the stage's sky is behind the 3D camera (sky_lead.h)
-	bool sky_lead_known = true;   // whether that was measured for the loaded game (Virtua Fighter 3's was)
-	// How many rows may carry 2D at the 4:3 edges and still be a stage: fewer than video::H / this. The tight 20
-	// is Virtua Fighter 3's, whose HUD never reaches the edges, and it keeps that game's close-ups and its
-	// full-screen pictures out. Fighting Vipers 2 puts a player's icon hard against each edge above the health
-	// bars: 26 such rows, measured right through a round, against the 19 that limit allows. What really tells a
-	// stage from a picture is the other two tests -- the 3D drawn full width, and the 2D covering under half.
-	int stage_edge_divisor = 20;
 	std::vector<int16_t> audio;
 	uint64_t frame = 0;
 	bool tiles_on = true;   // (off for the boot run unseen: the 2D layers drawn a line at a time for nothing)
@@ -1224,8 +1043,6 @@ struct Game
 	bool load(const std::string &zip, std::string &error, bool interp)
 	{
 		if (!board.load(zip, error)) return false;
-		sky_lead_known = board.set == "vf3";   // (sky_lead.h was measured on that game's stages)
-		stage_edge_divisor = board.set == "vf3" ? 20 : 8;
 		if (!interp) {
 			ppcrec::Stats st;
 			built_image = board.program_image();
@@ -1237,8 +1054,6 @@ struct Game
 			} else fprintf(stderr, "couldn't recompile the game (no executable memory?): running it on the slower interpreter instead\n");
 		}
 		sound.attach(&board.sound_rom, &board.samples);
-		// the music/effects split reads Virtua Fighter 3's sound driver (soundboard.h)
-		sound.driver_known = board.set == "vf3";
 		board.on_line = [this](unsigned y) {
 			if (!tiles_on) return;
 			tile_worker.line(y);
@@ -1249,9 +1064,6 @@ struct Game
 	// CROM the boot copies from): made again, or the copied program wouldn't match it and the interpreter would run
 	// everything
 	std::vector<uint32_t> built_image;
-	// the loaded game's address map (src/rec), kept for a rebuild
-	const uint32_t *seed_map = nullptr;
-	size_t seed_count = 0;
 	void program_changed()
 	{
 		if (!recompiled) return;
@@ -1437,10 +1249,6 @@ struct Game
 	bool sound_busy = false, sound_quit = false, sound_job_on = false;
 	std::vector<uint8_t> sound_midi;
 	std::vector<int16_t> sound_out;
-	// The sound thread's own wall time, for VF3_SND_HOST. In milliseconds and not in rdtsc cycles, so it
-	// compares directly with what vf3run reports -- answering "what does the sound cost" in cycles and then
-	// converting with a guessed clock would be a weaker answer than measuring the thing asked about.
-	std::atomic<double> sound_ms{ 0.0 };
 	// A netplay match's sound: the sound board run to the real clock instead, on its thread, the queue kept topped up
 	// (free_target bytes) whatever the frames do. Its frames come when the session lets them: one held back for the
 	// other side, a slow frame on a Steam Deck (a character select's 2D), and the sound made a frame at a time ran
@@ -1452,49 +1260,9 @@ struct Game
 	std::atomic<int> sound_dry{ 0 };   // (the queue found empty: a drop heard; the log's pace line)
 	void sound_wait()
 	{
-		if (!sound_thread.joinable()) return;   // (measurement: VF3_SND_OFF or VF3_SND_SYNC, no thread)
 		std::unique_lock<std::mutex> lk(sound_m);
 		sound_cv.wait(lk, [this] { return !sound_busy; });
 	}
-	// THE TWO SWITCHES OF THE CONCURRENCY MEASUREMENT, and what makes them worth anything.
-	//
-	// The question §4 quater of scsp/docs/scsp_audit.md leaves open: on a two-core machine the game never
-	// waits for the sound (0.00 % of the frame, measured) -- but the sound's thread still takes 17 % of a
-	// core, and what it costs the MAIN thread through the cache, the scheduler and the clock frequency does
-	// not show in a blocking wait. So whole runs have to be compared.
-	//
-	// WHAT MAKES A CLEAN CONTROL POSSIBLE: the traffic towards the sound board is ONE-WAY. The game pushes
-	// MIDI into it (board.midi -> sound.midi_in) and READS NOTHING back -- checked on 2026-10-27. Taking
-	// the sound's work away therefore does not change the game's execution by one bit, and the two runs are
-	// comparable. If the game read a state of the board, neither of these switches would be worth anything,
-	// and that is why this paragraph exists: the measurement's validity rests on that fact.
-	//
-	//   VF3_SND_OFF=1    the sound board is not run at all (the MIDI is thrown away). The game and the
-	//                    picture do exactly the same work with nothing beside them: that is the ceiling.
-	//                    The gap against a normal run IS the cost of concurrency.
-	//   VF3_SND_SYNC=1   the sound is made INSIDE the frame, on the main thread, instead of on its own. The
-	//                    work is identical and only the moment changes: the gap says what the overlap buys,
-	//                    which is to say whether the thread is worth its price on two cores.
-	//
-	// Both are there to measure and nothing else: without them nothing changes, and neither is read anywhere
-	// but here.
-	const bool snd_off = [] { const char *e = getenv("VF3_SND_OFF"); return e && *e == '1'; }();
-	const bool snd_sync = [] { const char *e = getenv("VF3_SND_SYNC"); return e && *e == '1'; }();
-
-	// The sound's work, where it gets done: on the thread, or inside the frame when VF3_SND_SYNC asks.
-	void sound_job()
-	{
-		const auto t0 = std::chrono::steady_clock::now();
-		for (uint8_t b : sound_midi) sound.midi_in(b);
-		sound_out.clear();
-		sound.run(1.0 / FRAME_HZ, sound_out);
-		sound_ms.store(sound_ms.load(std::memory_order_relaxed)
-		               + std::chrono::duration<double, std::milli>(
-		                     std::chrono::steady_clock::now() - t0).count(),
-		               std::memory_order_relaxed);
-		if (!sound_job_on) sound_out.clear();
-	}
-
 	// A change to the sound board, between its runs (a match's sound thread makes none meanwhile)
 	template <class F> void sound_do(F f)
 	{
@@ -1522,7 +1290,6 @@ struct Game
 	}
 	void sound_start()
 	{
-		if (snd_off || snd_sync) return;   // (measurement: no thread at all)
 		sound_thread = std::thread([this] {
 			fast_thread();
 			std::unique_lock<std::mutex> lk(sound_m);
@@ -1558,7 +1325,10 @@ struct Game
 				if (sound_quit) return;
 				if (free_stream) continue;
 				lk.unlock();
-				sound_job();
+				for (uint8_t b : sound_midi) sound.midi_in(b);
+				sound_out.clear();
+				sound.run(1.0 / FRAME_HZ, sound_out);
+				if (!sound_job_on) sound_out.clear();
 				lk.lock();
 				sound_busy = false;
 				sound_cv.notify_all();
@@ -1615,83 +1385,6 @@ struct Game
 		finish_frame(sound_on, picture);
 		sysinfo::note_frame();   // (on the thread that ran it: the game's own, when it has one)
 	}
-	// ONE SOUND FRAME WITHOUT A GAME FRAME, for the console's own surfaces: they freeze the PowerPC, and a
-	// frozen PowerPC runs no sound frames, so a menu that beeps has to turn the board over itself. This is
-	// exactly finish_frame's sound half, with nothing touching the board's state.
-	//
-	// Safe only where the game says nothing to its sound board, which is where these surfaces open: between
-	// frames 1247 and 1385 -- the whole title screen -- the game sends not one byte (docs/fv2-console-sound.md
-	// step 2). It is not an interrupted conversation, it is a prolonged silence. During a FIGHT it would be
-	// another matter, 55 blocks in 1700 frames, and that is noted there for the day a pause menu is written.
-	void sound_only_frame()
-	{
-		if (!sound_thread.joinable()) sound_start();
-		sound_wait();
-		audio.insert(audio.end(), sound_out.begin(), sound_out.end());
-		sound_out.clear();
-		note_music();
-		{
-			std::lock_guard<std::mutex> lk(sound_m);
-			sound_midi.assign(board.midi.begin(), board.midi.end());
-			board.midi.clear();
-			sound_job_on = true;
-			sound_busy = true;
-		}
-		if (snd_off) { sound_busy = false; sound_midi.clear(); }   // (measurement: the MIDI is thrown away)
-		else if (snd_sync) { sound_busy = false; sound_job(); }    // (measurement: inside the frame)
-		else sound_cv.notify_all();
-	}
-	// A note handed to the sound board as if the game had written it: A0 <bank> <index>, the shape established
-	// by the owner by sending them and listening. Bank 0x2E is the effects', bank 0x10 the music's.
-	void play_effect(uint8_t index) { for (uint8_t b : { uint8_t(0xA0), uint8_t(0x2E), index }) board.midi.push_back(b); }
-	void play_music(uint8_t index) { for (uint8_t b : { uint8_t(0xA0), uint8_t(0x10), index }) board.midi.push_back(b); }
-	// The game's own silence, measured: it never sends FF except once at boot, and A0 00 01 is what it puts at
-	// the head of its own blocks. Both were measured to take the music to a peak of 0.
-	void stop_music() { for (uint8_t b : { uint8_t(0xA0), uint8_t(0x00), uint8_t(0x01) }) board.midi.push_back(b); }
-
-	// WHICH MUSIC IS PLAYING, which is the whole of what "put back what was playing" needs. Read off the bytes
-	// as they go past, never guessed: a music command sets it, the game's own silence clears it. -1 means
-	// nothing is playing, and then there is nothing to stop and nothing to put back -- which is the case on a
-	// title screen reached straight from the SEGA logo, where the first measurement of this job went wrong by
-	// proving silence where there had been nothing to cut.
-	int music_now = -1;
-	// Set by the host on the road where the SEGA logo is skipped: its voice is dropped before the board hears
-	// it, so the skip is whole rather than half (see where it is set).
-	bool mute_voices = false;
-	// TRAINING: the two lines the announcer says before a fight, dropped the same way. The states that
-	// say them are cut to one frame each (console_play.h), which takes their pictures and not their
-	// sound; bank 0x2B is the one whose index changes with the state, 0x0E at READY and 0x0F at FIGHT.
-	// Held only across those frames, never during the fight.
-	bool mute_fight_voice = false;
-	void note_music()
-	{
-		if (mute_voices) {
-			for (size_t i = 0; i + 2 < board.midi.size();) {
-				if (board.midi[i] == 0xA0 && board.midi[i + 1] == 0x30)
-					board.midi.erase(board.midi.begin() + long(i), board.midi.begin() + long(i) + 3);
-				else
-					i++;
-			}
-		}
-		if (mute_fight_voice) {
-			for (size_t i = 0; i + 2 < board.midi.size();) {
-				if (board.midi[i] == 0xA0 && board.midi[i + 1] == 0x2B) {
-					// IT SAYS WHAT IT DROPPED. A sound that was never going to be heard looks exactly like a
-					// sound that was dropped, so the probe has to speak for itself.
-					fprintf(stderr, "training: the announcer dropped -- A0 2B %02X\n", board.midi[i + 2]);
-					board.midi.erase(board.midi.begin() + long(i), board.midi.begin() + long(i) + 3);
-				} else
-					i++;
-			}
-		}
-		for (size_t i = 0; i + 2 < board.midi.size(); i++) {
-			if (board.midi[i] != 0xA0) continue;
-			if (board.midi[i + 1] == 0x10) music_now = board.midi[i + 2];
-			else if (board.midi[i + 1] == 0x00 && board.midi[i + 2] == 0x01) music_now = -1;
-		}
-		for (uint8_t b : board.midi) if (b == 0xFF) music_now = -1;
-	}
-
 	// what a frame's parts cost, ms in all (the pace line's: where a slow machine's time goes), and how many frames
 	double part_ms[5] = {};   // the board, waiting for the sound, the scene, the 2D layers, the sky
 	uint64_t part_n = 0;
@@ -1713,90 +1406,6 @@ struct Game
 		part_ms[0] += ms_since(t);
 		t = SDL_GetTicksNS();
 		if (!sound_thread.joinable()) sound_start();
-		// VF3_SND_HOST=N: what the sound costs THE HOST, every N frames, and it is not the number vf3run
-		// gives. In the runner the board is inside the frame loop, so its time is the frame's; here it is on
-		// a thread of its own, a frame behind, so its cost splits in two and only one half is the frame's:
-		//
-		//   the CPU cost      -- the thread's own work, which VF3_SND_PROF already counts (sound_prof.h);
-		//   the FRAME cost    -- how long the game thread blocks right here waiting for the frame before's
-		//                        sound. If that is zero the sound costs the picture NOTHING, however much
-		//                        CPU it burns; if it is not, this is the real figure.
-		//
-		// Measured with the wall clock and not with rdtsc, because what is wanted is the delay the player
-		// would feel, not cycles.
-		static const unsigned long snd_host = getenv("VF3_SND_HOST")
-		                                    ? strtoul(getenv("VF3_SND_HOST"), nullptr, 10) : 0;
-		static double wait_ms = 0.0, wait_max = 0.0, period_ms = 0.0;
-		static auto period_t0 = std::chrono::steady_clock::now();
-		static unsigned long snd_n = 0;
-		if (snd_host) {
-			const auto a = std::chrono::steady_clock::now();
-			sound_wait();
-			const double d = std::chrono::duration<double, std::milli>(
-			                     std::chrono::steady_clock::now() - a).count();
-			wait_ms += d;
-			if (d > wait_max) wait_max = d;
-			period_ms += std::chrono::duration<double, std::milli>(a - period_t0).count();
-			period_t0 = a;
-			if (++snd_n % snd_host == 0) {
-				const double work = sound_ms.exchange(0.0, std::memory_order_relaxed);
-				fprintf(stderr, "sndhost frame %llu: the sound thread works %.3f ms a frame,"
-				                " the game waits %.3f ms (max %.3f); period %.2f ms,"
-				                " so %.1f %% of CPU and %.2f %% of the frame\n",
-				        (unsigned long long)frame, work / snd_host, wait_ms / snd_host, wait_max,
-				        period_ms / snd_host, 100.0 * work / std::max(1e-9, period_ms),
-				        100.0 * wait_ms / std::max(1e-9, period_ms));
-				sndprof::report("host", int(snd_host));
-				wait_ms = wait_max = period_ms = 0.0;
-			}
-		} else {
-			sound_wait();   // (the frame before's sound, made meanwhile)
-		}
-		audio.insert(audio.end(), sound_out.begin(), sound_out.end());
-		sound_out.clear();
-		// (tests: what the GAME itself says to the sound board, frame by frame, with the state it was in when
-		// it said it -- VF3_MIDI_LOG. Read-only: nothing here changes a byte or when it goes.)
-		if (static const bool say = getenv("VF3_MIDI_LOG") != nullptr; say) {
-			// the loudest sample the board made for the frame before, so the log says what a byte did as well
-			// as that it went
-			int peak = 0;
-			for (int16_t s : audio) peak = std::max(peak, std::abs(int(s)));
-			if (!board.midi.empty()) {
-				std::string hex;
-				for (uint8_t b : board.midi) { char t[8]; snprintf(t, sizeof t, "%02X ", b); hex += t; }
-				fprintf(stderr, "midi: frame %llu, mode %d sub %d: %-20s (peak before %d)\n",
-						(unsigned long long)frame, board.fv2_mode(), board.fv2_submode(), hex.c_str(), peak);
-			} else if (static const uint64_t every = std::max(1ull, strtoull(getenv("VF3_MIDI_LOG"), nullptr, 10)); frame % every == 0) {
-				fprintf(stderr, "midi: frame %llu, mode %d sub %d: %-20s (peak before %d)\n",
-						(unsigned long long)frame, board.fv2_mode(), board.fv2_submode(), "-", peak);
-			}
-		}
-		// VF3_ENERGY_LOG=N: every N frames, WHICH SLOTS made the sound (soundboard.h: energy_on, energy_take),
-		// the loudest first as a share of the whole, with the state the game was in. The total says a sound is
-		// there; only this says where it comes from -- written for the victory screen's swell, which four
-		// measured hypotheses failed to account for (2026-10-24).
-		if (static const char *ev = getenv("VF3_ENERGY_LOG"); ev) {
-			static const uint64_t every = std::max<uint64_t>(1, strtoull(ev, nullptr, 10));
-			static const bool armed = (sound.energy_on(true), true);
-			(void)armed;
-			if (frame % every == 0) {
-				double e[2][32];
-				sound.energy_take(e);
-				std::vector<std::pair<double, int>> top;
-				double all = 0;
-				for (int n = 0; n < 2; n++)
-					for (int sl = 0; sl < 32; sl++)
-						if (e[n][sl] > 0) { top.push_back({ e[n][sl], n * 32 + sl }); all += e[n][sl]; }
-				std::sort(top.rbegin(), top.rend());
-				fprintf(stderr, "energy: frame %llu, mode %d sub %d, %zu voix, total %.4g:",
-				        (unsigned long long)frame, board.fv2_mode(), board.fv2_submode(), top.size(), all);
-				for (size_t i = 0; i < top.size() && i < 6; i++)
-					fprintf(stderr, " chip%d/slot%d %.0f%%", top[i].second / 32, top[i].second % 32,
-					        all > 0 ? 100.0 * top[i].first / all : 0.0);
-				fprintf(stderr, "\n");
-			}
-		}
-		note_music();
 		if (free_stream) {   // (a match's: the frame's bytes queued for the sound board, which runs on its own)
 			free_midi.clear();
 			if (take_midi) take_midi(free_midi);
@@ -1825,9 +1434,6 @@ struct Game
 			}
 			sound_cv.notify_all();
 		}
-		if (snd_off) { sound_busy = false; sound_midi.clear(); }   // (measurement: the MIDI is thrown away)
-		else if (snd_sync) { sound_busy = false; sound_job(); }    // (measurement: inside the frame)
-		else sound_cv.notify_all();
 		frame++;
 		if (!picture) { tile_worker.finish(); have_prev = false; sky.reset(); return; }
 		newest ^= 1;
@@ -1850,12 +1456,6 @@ struct Game
 		builder.build(board, scene[newest]);
 		part_ms[2] += ms_since(t);
 		have_prev = frame > 1;
-		tiles.aligned(below, above);
-		tiles.aligned_wide(below_wide);
-		// HD 2D: the same two planes at the HD size, beside the native ones. Everything that reads the layers to
-		// decide something -- the scroll below, the stage test, the sides' colours -- goes on reading the native
-		// ones, so none of those measurements change with the scale.
-		if (tiles.hd()) { tiles.aligned_hd(below_hd, above_hd); tiles.aligned_wide_hd(below_wide_hd); }
 		t = SDL_GetTicksNS();
 		tile_worker.finish();   // (the frame's layers its own, put together)
 		part_ms[3] += ms_since(t);
@@ -1864,10 +1464,7 @@ struct Game
 		prev_scroll = tiles.scroll;
 		prev_below = below;
 		static const bool sky_lag = getenv("VF3_SKY_LAG") != nullptr;   // (tests: the game's own backdrop, 3 frames behind)
-		// The lead is how far Virtua Fighter 3's backdrop trails its camera, measured on that game's stages
-		// (sky_lead.h: 3 frames, 1.11 across and 1.08 up). Another game scrolls its own way, so it is left alone
-		// until the same thing has been measured for it -- its backdrop then simply moves as the game moves it.
-		if (have_prev && !sky_lag && sky_lead_known) sky.frame(prev(), cur(), bg_moved, bg_dx, bg_dy);
+		if (have_prev && !sky_lag) sky.frame(prev(), cur(), bg_moved, bg_dx, bg_dy);
 		else sky.reset();
 		part_ms[4] += ms_since(t);
 		bool full = false;   // (the 3D drawn full width: a stage; a close-up's or a title's 3D isn't)
@@ -1894,13 +1491,11 @@ struct Game
 		float bg_dx = 0, bg_dy = 0;
 		std::vector<uint32_t> below = std::vector<uint32_t>(video::W * video::H), above = std::vector<uint32_t>(video::W * video::H);
 		std::vector<uint32_t> below_wide = std::vector<uint32_t>(video::WW * video::H);
-		std::vector<uint32_t> below_hd, above_hd, below_wide_hd;   // (HD 2D: empty unless tiles.hd())
 		int hud_flag_at[2][2] = { { -1, -1 }, { -1, -1 } };
 		video::DuralWide dural_wide;
 		video::SkyLead sky;
 		std::vector<uint16_t> tex;
 		std::vector<m3::Model3::TexUpload> uploads;   // (the areas changed since a renderer last took them)
-		uint32_t tex_serial = 0;   // (the board's count of uploads to it when this copy was taken)
 		const video::Scene &cur() const { return scene[newest]; }
 		const video::Scene &prev() const { return scene[newest ^ 1]; }
 	} view;
@@ -1919,9 +1514,6 @@ struct Game
 		memcpy(view.hud_flag_at, hud_flag_at, sizeof hud_flag_at);
 		view.dural_wide = dural_wide;
 		view.below_wide = below_wide;
-		view.below_hd = below_hd;
-		view.above_hd = above_hd;
-		view.below_wide_hd = below_wide_hd;
 		view.sky = sky;
 		// the texture RAM: the rows written since the last (all of it the first time, or after many)
 		auto &ups = board.tex_uploads;
@@ -1936,24 +1528,15 @@ struct Game
 			}
 			if (view.uploads.size() > 512) view.uploads.assign(1, m3::Model3::TexUpload{ 0, 0, 2048, 2048 });
 		}
-		view.tex_serial = board.tex_serial;
 		ups.clear();
 	}
 	std::thread emu_thread;
 	std::mutex emu_m;
 	std::condition_variable emu_cv;
-	bool emu_busy = false, emu_quit = false, emu_sound_on = true, emu_picture = true;
-	// WHAT A FRAME COSTS ON THE GAME'S OWN THREAD. The pace line's "a frame" counts only what the loop's own
-	// thread spends, and with smooth motion the frame is run over here: during the roll it read 0.4 ms while
-	// this thread was building a fight's picture. Measured where the work is, or it is not measured.
-	std::atomic<uint64_t> emu_ns{ 0 };
-	std::atomic<uint32_t> emu_frames{ 0 };
-	// THE SAME DOOR AS run_frame's. Smooth motion starts nearly every frame here, on the game's own thread,
-	// and this is where `picture` was nailed to true: the skip written into the frame loop was reached only on
-	// the passes that start no half, which is why the roll still cost a fight's frame. One flag, both roads.
+	bool emu_busy = false, emu_quit = false, emu_sound_on = true;
 	std::function<void()> emu_job;   // (instead of a frame: a netplay match's step, its rollback with it)
 	std::thread::id emu_id;
-	void job_start(bool sound_on, bool picture)
+	void job_start(bool sound_on)
 	{
 		if (!emu_thread.joinable())
 			emu_thread = std::thread([this] {
@@ -1963,15 +1546,12 @@ struct Game
 				for (;;) {
 					emu_cv.wait(lk, [this] { return emu_busy || emu_quit; });
 					if (emu_quit) return;
-					const bool snd = emu_sound_on, pic = emu_picture;
+					const bool snd = emu_sound_on;
 					std::function<void()> job = std::move(emu_job);
 					emu_job = nullptr;
 					lk.unlock();
-					const uint64_t t0 = SDL_GetTicksNS();
-					if (job) job();            // (a match's step: the session's saves, loads and frames run again)
-					else run_frame(snd, pic);
-					emu_ns += SDL_GetTicksNS() - t0;
-					emu_frames++;
+					if (job) job();
+					else run_frame(snd, true);
 					lk.lock();
 					emu_busy = false;
 					emu_cv.notify_all();
@@ -1980,7 +1560,6 @@ struct Game
 		{
 			std::lock_guard<std::mutex> lk(emu_m);
 			emu_sound_on = sound_on;
-			emu_picture = picture;
 			emu_busy = true;
 		}
 		emu_cv.notify_all();
@@ -1992,7 +1571,7 @@ struct Game
 			std::lock_guard<std::mutex> lk(emu_m);
 			emu_job = std::move(f);
 		}
-		job_start(true, true);   // (a job always draws: the picture flag is the frame road's)
+		job_start(true);
 	}
 	void job_wait()
 	{
@@ -2004,25 +1583,14 @@ struct Game
 
 } // namespace
 
-
 int main(int argc, char **argv)
 {
 	if (getenv("VF3_HIDDEN")) SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
 	const bool pace_log = getenv("VF3_PACE_LOG") != nullptr;
 	std::string zip;
 	bool arg_arcade = false, sound = true, show_boot = false, arg_interp = getenv("VF3_INTERP") != nullptr;
-	int arg_full_roster = -1;   // Fighting Vipers 2's hidden fighters (--full-roster / --no-full-roster)
-	int arg_style = -1;         // the play style asked for on the command line: 0 the PC way, 2 the console way
-	                            // (the arcade way is --arcade, which came first and is kept as it was)
-	std::string arg_portraits;      // Fighting Vipers 2's select-screen portraits, from a folder of PNGs (--portraits DIR)
-	bool arg_no_portraits = false;  // --no-portraits: back to Sega's, and the setting forgotten
-	int arg_hd_3d = -1;         // the 3D texture pack (--hd-3d / --no-hd-3d)
-	std::string arg_hd_pack, arg_hd_dump;   // folders of their own, instead of the data folder's (--hd-3d-pack / --hd-3d-dump)
-	bool arg_hd_dump_on = false;
-	int arg_tile_scale = -1;    // HD 2D (--tile-scale / --tile-pack / --no-tile-pack / --tile-dump)
-	std::string arg_tile_pack, arg_tile_dump;
-	bool arg_no_tile_pack = false, arg_tile_dump_on = false;
 	int arg_volume = -1, arg_music = -1, arg_effects = -1, arg_scale = 0, arg_aspect = -1, arg_full = -1;
+	int arg_full_roster = -1;   // Fighting Vipers 2's hidden fighters (--full-roster / --no-full-roster)
 	std::string arg_roms;
 	// Playing by address from the command line (a LAN, a VPN): --host waits for a player, --join ADDRESS joins one;
 	// --port N the host's UDP port (7700); as Online > Play by address, started as the game is up
@@ -2037,6 +1605,8 @@ int main(int argc, char **argv)
 		else if (a == "--interp") arg_interp = true;
 		else if (a == "--fullscreen") arg_full = 1;
 		else if (a == "--window") arg_full = 0;
+		else if (a == "--full-roster") arg_full_roster = 1;
+		else if (a == "--no-full-roster") arg_full_roster = 0;
 		else if (a == "--no-sound") sound = false;
 		else if (a == "--volume" && i + 1 < argc) arg_volume = std::clamp(atoi(argv[++i]), 0, 100);
 		else if (a == "--music" && i + 1 < argc) arg_music = std::clamp(atoi(argv[++i]), 0, 100);
@@ -2046,27 +1616,6 @@ int main(int argc, char **argv)
 			const std::string v = argv[++i];
 			for (int k = 0; k < N_ASPECTS; k++) if (v == ASPECT_NAMES[k] || (k == 0 && v == "auto")) arg_aspect = k;
 			if (arg_aspect < 0) { fprintf(stderr, "--aspect: fit, 4:3, 16:10, 16:9 or 21:9\n"); return 2; }
-		}
-		else if (a == "--console") arg_style = 2;
-		else if (a == "--pc") arg_style = 0;
-		else if (a == "--full-roster") arg_full_roster = 1;
-		else if (a == "--no-full-roster") arg_full_roster = 0;
-		else if (a == "--portraits" && i + 1 < argc) arg_portraits = argv[++i];
-		else if (a.rfind("--portraits=", 0) == 0) arg_portraits = a.substr(12);
-		else if (a == "--no-portraits") arg_no_portraits = true;
-		else if (a == "--hd-3d") arg_hd_3d = 1;
-		else if (a == "--no-hd-3d") arg_hd_3d = 0;
-		else if (a == "--hd-3d-pack" && i + 1 < argc) { arg_hd_pack = argv[++i]; arg_hd_3d = 1; }
-		else if (a == "--hd-3d-dump") {
-			arg_hd_dump_on = true;
-			if (i + 1 < argc && std::string(argv[i + 1]).rfind("--", 0) != 0) arg_hd_dump = argv[++i];
-		}
-		else if (a == "--tile-scale" && i + 1 < argc) arg_tile_scale = std::clamp(atoi(argv[++i]), 1, 8);
-		else if (a == "--tile-pack" && i + 1 < argc) arg_tile_pack = argv[++i];
-		else if (a == "--no-tile-pack") arg_no_tile_pack = true;
-		else if (a == "--tile-dump") {
-			arg_tile_dump_on = true;
-			if (i + 1 < argc && std::string(argv[i + 1]).rfind("--", 0) != 0) arg_tile_dump = argv[++i];
 		}
 		else if (a == "--show-boot") show_boot = true;
 		else if (a == "--host") arg_host = true;
@@ -2084,13 +1633,6 @@ int main(int argc, char **argv)
 	}
 	const bool hidden = getenv("VF3_HIDDEN") != nullptr;
 	const int64_t quit_after = getenv("VF3_QUIT_AFTER") ? atoll(getenv("VF3_QUIT_AFTER")) : -1;
-	// A limit in SECONDS of real time, not in the game's frames, and it exists for one reason: anything that
-	// freezes the game stops its frames, so VF3_QUIT_AFTER never comes. A run that opened the console's list of
-	// modes sat for nine minutes that way once and had to be killed from outside. The clock keeps running while
-	// the game is frozen, so this always arrives -- and what is frozen does not change, so a picture taken at
-	// the limit is the same picture whenever the limit falls. Use it with VF3_QUIT_AFTER (a number out of
-	// reach), which is what marks a run as a test run everywhere else.
-	const double quit_seconds = getenv("VF3_QUIT_AFTER_S") ? atof(getenv("VF3_QUIT_AFTER_S")) : -1;
 	InputScript script;
 	bool scripted = false;
 	if (const char *sp = getenv("VF3_SCRIPT")) {
@@ -2188,28 +1730,11 @@ int main(int argc, char **argv)
 	if (arg_scale) cfg.scale = arg_scale;
 	if (arg_aspect >= 0) cfg.aspect = arg_aspect;
 	if (arg_full >= 0) cfg.fullscreen = arg_full;
+	if (arg_full_roster >= 0) cfg.full_roster = arg_full_roster;
 	if (arg_arcade) cfg.arcade = true;
 	if (arg_volume >= 0) cfg.volume = arg_volume;
 	if (arg_music >= 0) cfg.music = arg_music;
 	if (arg_effects >= 0) cfg.effects = arg_effects;
-	if (arg_full_roster >= 0) cfg.full_roster = arg_full_roster;
-	if (arg_style >= 0) { cfg.console = arg_style == 2; cfg.arcade = false; }
-	// --portraits names a folder other than the one this port keeps for them, and is remembered, so it is named
-	// once. --no-portraits goes back to Sega's and is remembered too -- otherwise a folder still full of PNGs
-	// would quietly bring them back on the next launch.
-	if (!arg_portraits.empty() && (cfg.portraits != arg_portraits || cfg.portraits_off)) {
-		cfg.portraits = arg_portraits;
-		cfg.portraits_off = false;
-		cfg_dirty = true;
-	}
-	if (arg_no_portraits && !cfg.portraits_off) { cfg.portraits_off = true; cfg_dirty = true; }
-	// The console way takes the PC way's boot and free play: it only adds a menu of its own over the game, and
-	// it never touches the credit -- choosing a mode there hands the game a real Start, and the game decides
-	// what that costs (docs/fv2-console.md).
-	if (arg_hd_3d >= 0) cfg.hd_3d = arg_hd_3d;
-	if (arg_tile_scale >= 0) cfg.tile_scale = arg_tile_scale;
-	if (!arg_tile_pack.empty()) cfg.tile_pack = arg_tile_pack;
-	if (arg_no_tile_pack) cfg.tile_pack.clear();   // (--no-tile-pack: the settings' pack ignored, for comparing)
 	g_pc_mode = !cfg.arcade;
 	int aspect_i = cfg.aspect;
 
@@ -2222,104 +1747,8 @@ int main(int argc, char **argv)
 		else fprintf(stderr, "ROM folder: %s\n", (std::filesystem::path(data) / "roms").string().c_str());
 		if (!first_launch(data, keep_data, roms_folder, zip)) return hidden ? 1 : 0;
 	}
-	// ---- THE WINDOW COMES FIRST, so the forty seconds of loading have something to show ----
-	//
-	// Frederic, the 2026-10-29: "I would like not to see that black screen at the game's launch any more
-	// [...] we can show something other than what comes from the game, it would be wholly independent".
-	//
-	// It used to open after game.load AND after boot() -- the game run unseen until it is past its own
-	// start-up -- so nothing at all was on screen for the whole of it. Now SDL's video and the window are
-	// started here, before either, and what fills them is the port's own picture, which owes the game
-	// nothing.
-	//
-	// Only the WINDOW is hoisted. The renderer stays where it was, because choosing it probes the GPU with
-	// the game's own texture memory -- it cannot run before the game is loaded. The loading screen
-	// therefore uses the window's own SURFACE, which needs no renderer at all.
-#ifdef _WIN32
-	SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
-#endif
-	if (!SDL_Init(SDL_INIT_VIDEO)) return fail(std::string("Couldn't start the video: ") + SDL_GetError());
-	if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) fprintf(stderr, "no gamepads: %s\n", SDL_GetError());
-	if (sound && !SDL_InitSubSystem(SDL_INIT_AUDIO)) fprintf(stderr, "no sound: %s\n", SDL_GetError());
-	int win_w = 1366, win_h = 768;
-	const bool fixed_window = getenv("VF3_WINDOW") && sscanf(getenv("VF3_WINDOW"), "%dx%d", &win_w, &win_h) == 2;
-	if (!fixed_window) {
-		SDL_Rect usable;
-		if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable) && usable.w > 0 && usable.h > 0) {
-			const float k = std::min({ 1.0f, usable.w * 0.9f / win_w, usable.h * 0.9f / win_h });
-			win_w = int(win_w * k); win_h = int(win_h * k);
-		}
-	}
-	// The window's name is the game's, but the game is not loaded yet: it is put on at the end of
-	// the loading screen below, so a second game does not say it is the first.
-	std::string game_name = "Fighting Vipers 2";   // (the game's own, set once it is loaded)
-	SDL_Window *win = SDL_CreateWindow(game_name.c_str(), win_w, win_h,
-		SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | (cfg.fullscreen ? SDL_WINDOW_FULLSCREEN : 0) | SDL_WINDOW_HIDDEN);
-	if (!win) return fail(std::string("Couldn't open the window: ") + SDL_GetError());
-	SDL_HideCursor();
-	// the window's icon (the Mac app and the Windows exe carry their own)
-	if (SDL_Surface *icon = SDL_LoadPNG((find_assets() + "/icon/icon.png").c_str())) {
-		SDL_SetWindowIcon(win, icon);
-		SDL_DestroySurface(icon);
-	}
-
-
-	// ---- THE LOADING SCREEN, which is the port's own and owes the game nothing ----
-	//
-	// Drawn on the WINDOW'S SURFACE, not through a renderer: the renderer cannot exist yet, choosing it
-	// probing the GPU with the game's own texture memory. A surface needs none. The picture is the
-	// Dreamcast's loading art the curtain already uses, scaled to fit with black around it.
-	//
-	// `splash` is called again from the boot below, which runs the game unseen for hundreds of frames: a
-	// window that neither draws nor reads its events for forty seconds is one Windows paints over with
-	// "not responding". Each call pumps the events and puts the picture back.
-	SDL_Surface *splash_art = hidden ? nullptr : SDL_LoadPNG((find_assets() + "/menu-console/loading.png").c_str());
-	// CLOSING THE WINDOW WHILE IT LOADS CLOSES THE GAME. It has to: the loading screen is the first window
-	// this port ever showed before the game was ready, and a window that swallows the cross is one the player
-	// ends through the task manager -- which, landing in the second where the GPU renderer is starting, leaves
-	// gpu-start.crashed behind and costs them the GPU for every run after that (ten pictures a second instead
-	// of three hundred). Frederic, the 2026-10-29: "le jeu tourne a 12fps".
-	bool quit_while_loading = false;
-	auto splash = [&] {
-		if (!splash_art) return;
-		SDL_Event e;
-		while (SDL_PollEvent(&e))
-			if (e.type == SDL_EVENT_QUIT || e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) quit_while_loading = true;
-		SDL_Surface *face = SDL_GetWindowSurface(win);
-		if (!face) return;
-		// IT SAYS WHAT IT IS DRAWING ON, and again whenever that changes. The picture is 3630 by 2048 and
-		// the window is asked for in 16:9, so it should cover all but a hair of it; bars of any width mean
-		// the surface is not the shape the window is showing, and a surface that changes size under us
-		// means the first one was taken before the window had settled.
-		static int said_w = -1, said_h = -1;
-		if (face->w != said_w || face->h != said_h) {
-			said_w = face->w; said_h = face->h;
-			int pw = 0, ph = 0;
-			SDL_GetWindowSizeInPixels(win, &pw, &ph);
-			fprintf(stderr, "the loading screen draws on a %d by %d surface (the window is %d by %d in pixels)\n",
-				face->w, face->h, pw, ph);
-		}
-		SDL_FillSurfaceRect(face, nullptr, SDL_MapSurfaceRGB(face, 0, 0, 0));
-		const float k = std::min(float(face->w) / float(splash_art->w), float(face->h) / float(splash_art->h));
-		SDL_Rect to = { int((face->w - splash_art->w * k) * 0.5f), int((face->h - splash_art->h * k) * 0.5f),
-			int(splash_art->w * k), int(splash_art->h * k) };
-		SDL_BlitSurfaceScaled(splash_art, nullptr, face, &to, SDL_SCALEMODE_LINEAR);
-		SDL_UpdateWindowSurface(win);
-	};
-	if (splash_art) {
-		SDL_ShowWindow(win);
-		SDL_RaiseWindow(win);
-		// THE WINDOW IS WAITED FOR BEFORE THE FIRST STROKE. Showing a window is a request to the system,
-		// not a fact: the size and the shape it ends up with -- a screen with its own scale, a title bar,
-		// a desktop that snaps it -- are known a moment later. A surface taken before that is the wrong
-		// size, and what is drawn on it is stretched into the real window with whatever was behind it
-		// showing where it falls short.
-		SDL_SyncWindow(win);
-		splash();
-		fprintf(stderr, "the loading screen is up, the picture %d by %d\n", splash_art->w, splash_art->h);
-	}
-
 	static Game game;   // (large: not on the stack)
+	game.full_roster = cfg.full_roster;
 	// The program: the one last played (Game > Version) if the zips hold it, else the first they hold (Revision D's
 	// before Team Battle's)
 	const std::vector<std::pair<const m3::Profile *, std::string>> programs = game_zips(zip);
@@ -2335,133 +1764,7 @@ int main(int argc, char **argv)
 		std::string err;
 		if (!game.load(zip, err, arg_interp)) return fail(err);
 	}
-	// the window's name is the game's, now that there is one
-	game_name = game.board.title.empty() ? std::string("Virtua Fighter 3") : game.board.title;
-	SDL_SetWindowTitle(win, game_name.c_str());
-	splash();   // (the load is the long silence: the picture back, and the cross answered)
-	{
-	}
 	m3::Model3 &board = game.board;
-	// HD 2D (docs/fv2-hd-2d.md). The pack is read once the scale is known, because every image in it has to be
-	// at that scale: one drawn for another is refused by name rather than shown at the wrong size. With no pack
-	// and a scale of 1 -- the default -- hd() stays false and the rasteriser is the one it has always been.
-	static video::TilePack tile_pack;
-	static video::TileDump tile_dump;
-	// Where the 2D's folders are, when the player names none: beside the 3D's, laid out the same way --
-	// texture_replacement_2d for the images that replace tiles and layers, and DUMP under it for what the dump
-	// writes (texture_remplacement_2d is still accepted: folder_name.h says why). A folder of its own, not the
-	// 3D's, because the two name their files differently: a 3D replacement
-	// is <hash>_<w>x<h>_f<format>.png and a tile is <hash>_p<palette>_<bpp>bpp.png, and the 3D loader reads the
-	// root of its own folder, so one heap would have each refusing the other's files by the dozen.
-	{
-		const std::string root = either_name(data + "/texture_replacement_2d", data + "/texture_remplacement_2d");
-		if (arg_tile_dump_on || !arg_tile_dump.empty()) {
-			const std::string into = arg_tile_dump.empty() ? root + "/DUMP" : player_folder(arg_tile_dump, data);
-			std::string why;
-			std::error_code tec;
-			std::filesystem::create_directories(into, tec);
-			if (!tile_dump.open(into, why))
-				fprintf(stderr, "the tile dump can't be written in %s (%s)\n", into.c_str(), why.c_str());
-			else fprintf(stderr, "tile dump: %s, with tiles/ and layers/ -- everything the game draws, once each\n", into.c_str());
-		}
-		const std::string pack = !cfg.tile_pack.empty() ? player_folder(cfg.tile_pack, data) : root;
-		// An empty folder says nothing: a player who never puts anything there should not read a report about it
-		// at every launch. TilePack::load reads <folder>/tiles and <folder>/layers, so those are what is looked
-		// in -- not the root, which holds only those two and would always look empty.
-		bool any = false;
-		std::error_code pec;
-		for (const char *sub : { "/tiles", "/layers" })
-			for (std::filesystem::directory_iterator it(pack + sub, pec), end; it != end && !any; it.increment(pec))
-				if (it->path().extension() == ".png") any = true;
-		if (any) {
-			std::string report;
-			tile_pack.load(pack, cfg.tile_scale, report);
-			fprintf(stderr, "%s\n", report.c_str());
-		}
-	}
-	game.tiles.hd_set(cfg.tile_scale, &tile_pack, &tile_dump);
-	if (game.tiles.hd())
-		fprintf(stderr, "HD 2D: the tile plane drawn at %d x %d (%d times the hardware's)\n",
-		        video::W * game.tiles.hd_scale(), video::H * game.tiles.hd_scale(), game.tiles.hd_scale());
-	game.full_roster = cfg.full_roster;
-	if (cfg.full_roster && board.unlock_roster() < 0)
-		fprintf(stderr, "the hidden fighters: that was measured on Fighting Vipers 2 (Japan, Revision A), not on this game\n");
-	// Per-game names for what this port keeps of its own: Virtua Fighter 3 keeps the names it has always had, so
-	// saves made before this port took a second game still load, and another game gets its own -- otherwise
-	// Fighting Vipers 2 would read Virtua Fighter 3's settings at the start and write over them at the end. The
-	// NVRAM below and the portraits folder just under are both named this way.
-	//
-	// The 3D texture pack (src/video/tex3d_hd.h) is not, and on purpose: it sits in one folder,
-	// texture_replacement, because a replacement is recognised by the content of the texture it stands in for,
-	// so one game's images cannot match another's and there is nothing to keep apart. texture_replacement/DUMP
-	// is where the dump writes, and the folder's old name texture_remplacement is still accepted
-	// (folder_name.h). Both take a folder of their own on the command line. Both are set up before the
-	// first picture, and asking for neither leaves both rasterisers' texture paths exactly as they were -- which
-	// is why Virtua Fighter 3 is untouched by any of it.
-	const std::string hd_3d_dir = either_name(data + "/texture_replacement", data + "/texture_remplacement");
-	const std::string hd_pack_dir = arg_hd_pack.empty() ? hd_3d_dir : player_folder(arg_hd_pack, data);
-	{
-		const std::string &pack = hd_pack_dir;
-		// Kuhn's two extra colours are two folders of the pack, and load() reads no subfolder it was not asked
-		// for (src/video/tex3d_hd.h): a pack folder also holds DUMP and whatever the player keeps beside his
-		// images, and the sixteen pages of texture memory are not to be spent on folders nobody asked for.
-		//
-		// Asked for in HIS GAME ONLY. settings.ini is one file for both games, and a pack loaded is resolve_hd
-		// installed, which is exactly what Virtua Fighter 3 is promised never to feel (docs/fv2-hd-3d.md).
-		const bool kuhn_sets = board.set == "fvipers2";
-		if (kuhn_sets)
-			for (const char *skin : Game::KUHN_SKIN) video::hd3d().want_variant(skin);
-		// And read whether or not a texture pack was asked for: his four colours are not a setting (Game's
-		// kuhn_tick), so the two folders are read because they are there, and the sets are named so only those
-		// two are read. The cost when they are not there is nothing at all: no page, and resolve_hd not
-		// installed, exactly as before.
-		if (cfg.hd_3d || kuhn_sets) {
-			std::string report;
-			if (!video::hd3d().load(pack, report, cfg.hd_3d))
-				fprintf(stderr, "the 3D texture pack: nothing loaded from %s: the game's own textures are drawn\n", pack.c_str());
-			else
-				fprintf(stderr, "%s\n", report.c_str());
-			// Kuhn's armour IS a flat square of texture, and a flat one is refused by default because its
-			// content names every flat square of that size and colour anywhere on the screen (tex3d_hd.cpp).
-			// With a set of his loaded the refusal is lifted, which is the trade: the pack holds his two
-			// squares and nothing else flat, so what else could be caught is another 64 x 64 of exactly his
-			// grey or his gold.
-			if (video::hd3d().variant_found(Game::KUHN_SKIN[0]) || video::hd3d().variant_found(Game::KUHN_SKIN[1])) {
-				video::hd3d().allow_flat_textures(true);
-				fprintf(stderr, "Kuhn's colours: the flat textures are accepted, his armour being one\n");
-			}
-		}
-		if (arg_hd_dump_on) {
-			const std::string into = arg_hd_dump.empty() ? hd_3d_dir + "/DUMP" : player_folder(arg_hd_dump, data);
-			std::string why;
-			if (!video::hd3d().dump_to(into, why)) fprintf(stderr, "%s\n", why.c_str());
-			else fprintf(stderr, "the 3D texture dump: every texture a polygon samples, into %s\n", into.c_str());
-		}
-	}
-	const std::string nv_suffix = board.set == "vf3" ? std::string() : "-" + board.set;
-	// The select-screen portraits, read from a folder of PNGs. Unlike the roster patch above, nothing here has
-	// to wait: the sheets are in the VROM, which is a ROM the game never writes, so they are replaced once in
-	// the image this process holds and that is the end of it. Nothing is written to the player's zip. See
-	// src/machine/fv2_portraits.cpp and docs/fv2-portraits.md.
-	//
-	// Where that folder is: beside this port's own settings and NVRAM, named the way they are --
-	// data/portraits-fvipers2. The first version of this had no folder of its own and asked the player to point
-	// the option at one in another project's tree, which is how two projects quietly start sharing files and
-	// then diverge. --portraits still names another folder for anyone who wants one.
-	//
-	// It is made if it is not there, so there is somewhere plain to drop the PNGs, and an empty one says
-	// nothing: a player who never touches it should not read two lines about it at every launch.
-	const std::string portraits_dir = cfg.portraits.empty() ? data + "/portraits" + nv_suffix
-	                                                        : player_folder(cfg.portraits, data);
-	if (board.set == "fvipers2" && !cfg.portraits_off) {
-		std::error_code pec;
-		std::filesystem::create_directories(portraits_dir, pec);
-		bool any = false;
-		for (std::filesystem::directory_iterator it(portraits_dir, pec), end; it != end && !any; it.increment(pec))
-			any = true;
-		if (any) fv2::replace_portraits_and_report(board.set, board.vrom, portraits_dir, stderr);
-		else fprintf(stderr, "portraits: none to read in %s (drop light/00.png and the rest there)\n", portraits_dir.c_str());
-	}
 	const uint64_t BOOT_FRAMES = uint64_t(board.profile->boot_frames);   // the boot, up to the SEGA logo (the PC way: unseen)
 	// Online play (online.h): in a match the board holds the host's NVRAM, and this player's own is kept here
 	static Online online(board);
@@ -2470,8 +1773,29 @@ int main(int argc, char **argv)
 	bool nvram_away = false;
 	// (the program's own folder under the data folder, if its profile has one: Revision D's is the data folder itself)
 	const std::string nvram_dir = *board.profile->data_folder ? data + "/" + board.profile->data_folder : data;
+	// Kuhn's two extra colours, the Dreamcast's blue and black, are two folders of images beside the player's
+	// own data: texture_replacement/CHARACTERS/Kuhn/blue and .../black (the folder's old French name is still
+	// accepted, folder_name.h). They are not a setting -- Game's kuhn_tick turns the wheel whether or not
+	// anything was asked for -- so the two sets are named and read because they are there, and no other
+	// subfolder of that place is looked at. In HIS GAME ONLY: Virtua Fighter 3 never feels any of it.
+	if (board.set == "fvipers2") {
+		const std::string pack = either_name(data + "/texture_replacement", data + "/texture_remplacement");
+		for (const char *skin : Game::KUHN_SKIN) video::hd3d().want_variant(skin);
+		std::string report;
+		if (!video::hd3d().load(pack, report, false))
+			fprintf(stderr, "Kuhn's colours: nothing read from %s: his own two are all he has\n", pack.c_str());
+		else
+			fprintf(stderr, "%s\n", report.c_str());
+		// His armour IS a flat square of texture, and a flat one is refused by default because its content names
+		// every flat square of that size and colour anywhere on the screen (tex3d_hd.cpp). With a set of his read
+		// the refusal is lifted, which is the trade: these folders hold his two squares and nothing else flat.
+		if (video::hd3d().variant_found(Game::KUHN_SKIN[0]) || video::hd3d().variant_found(Game::KUHN_SKIN[1])) {
+			video::hd3d().allow_flat_textures(true);
+			fprintf(stderr, "Kuhn's colours: the flat textures are accepted, his armour being one\n");
+		}
+	}
 	if (nvram_dir != data) { std::error_code ec; std::filesystem::create_directories(nvram_dir, ec); }
-	const std::string backup_path = nvram_dir + "/backup" + nv_suffix, eeprom_path = nvram_dir + "/eeprom" + nv_suffix;
+	const std::string backup_path = nvram_dir + "/backup", eeprom_path = nvram_dir + "/eeprom";
 	load_blob(backup_path, board.backup.data(), board.backup.size());
 	load_blob(eeprom_path, board.eeprom.regs, sizeof(board.eeprom.regs));
 	auto nvram_hash = [&] { return fnv(board.eeprom.regs, sizeof(board.eeprom.regs), fnv(board.backup.data(), board.backup.size())); };
@@ -2498,21 +1822,8 @@ int main(int argc, char **argv)
 	// Boot: the PC way runs it unseen up to the SEGA logo
 	auto skip_boot = [&] { return g_pc_mode && !show_boot && !scripted; };
 	uint64_t game_frame = 0;   // frames since the boot (the script's frame numbers)
-	// The PC way: the FREE PLAY notices hidden (always free play: nothing to say); the arcade way: shown. Both
-	// the notices and the coin settings are at addresses found in Virtua Fighter 3's own test menu, so for
-	// another game there is nothing to hide and nothing to say about it (model3.h).
-	// Whether this port knows where the game keeps its coin settings (Model3::coin_offset). Both games now, so
-	// the PC way -- and the console way, which is the PC way plus a menu -- comes up on FREE PLAY for either.
-	const bool play_style_known = board.profile->coin.setting != 0;
-	// The console way is one game's: its menu is built on addresses measured in Fighting Vipers 2 (Japan,
-	// Revision A) and means nothing anywhere else, so the menu doesn't offer it there (docs/fv2-console.md).
-	const bool console_known = board.set == "fvipers2";
-	// the console way's own menu and its injections, mixed in with the script's and the player's (frame_inputs)
-	console_play cplay;
-	cplay.on = cfg.console && console_known;
-	m3::Controls console_ctl;
+	// The PC way: the FREE PLAY notices hidden (always free play: nothing to say); the arcade way: shown
 	auto apply_play_style = [&] {
-		if (!play_style_known) return;
 		if (game.emu_thread.joinable()) game.job_wait();   // (not while a frame runs alongside)
 		if (!g_pc_mode) board.show_free_play_text();
 		else if (board.hide_free_play_text() != 2) fprintf(stderr, "not the data known: the FREE PLAY notices stay\n");
@@ -2530,10 +1841,7 @@ int main(int argc, char **argv)
 		// replaces it, and the arcade way gives it back (as VF1's and VF2's). A board that has never run writes its
 		// settings in its first frames, so those run first. FREE PLAY the player chose in the test menu, with none
 		// kept, stays.
-		// (a game whose coin settings this port doesn't know has nothing to look for here, and its board is left
-		// where it is rather than run 300 frames for nothing)
-		if (play_style_known)
-			for (int i = 0; i < 300 && board.coin_setting() < 0; i++) board.run_frame();
+		for (int i = 0; i < 300 && board.coin_setting() < 0; i++) board.run_frame();
 		if (const int coin = board.coin_setting(); coin >= 0) {
 			int keep = cfg.arcade_coin;
 			if (g_pc_mode) {
@@ -2547,9 +1855,6 @@ int main(int argc, char **argv)
 			if (keep != cfg.arcade_coin) { cfg.arcade_coin = keep; cfg_dirty = true; }
 			if (g_pc_mode && !board.free_play()) fprintf(stderr, "the PC way: couldn't set FREE PLAY in the game's settings (coin setting %d)\n", board.coin_setting());
 			game.reset();
-		} else if (!play_style_known && g_pc_mode) {
-			static bool said = false;
-			if (!said) { said = true; fprintf(stderr, "the PC way: where this game keeps its coin settings isn't known, so it takes coins as the arcade does\n"); }
 		}
 		game_frame = 0;
 		if (!skip_boot()) return;
@@ -2559,12 +1864,10 @@ int main(int argc, char **argv)
 			game.run_frame(false, false);
 			game.audio.clear();
 			game_frame++;
-			// the loading screen stays up and stays answering: this loop is most of the wait
-			if (game_frame % 60 == 0) { splash(); if (quit_while_loading) return; }
 		}
 		game.tiles_on = true;
+		game.hold_roster();   // (nothing to do unless the player asked for the hidden fighters)
 		game.rebuilt_after_boot = true;
-		game.hold_roster();   // (before the rebuild: the native code is then made from the program as it will run)
 		game.rebuild_from_ram_if_stale();
 		if (!scripted) vf3net::set_versus_count(board, vf3net::random_versus_count());   // (the profile's versus_count: the first match between two players' stage)
 		else if (const char *vc = getenv("VF3_VERSUS_COUNT")) vf3net::set_versus_count(board, uint32_t(atoi(vc)));   // (tests: that stage)
@@ -2574,10 +1877,6 @@ int main(int argc, char **argv)
 				std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
 	};
 	boot();
-	if (quit_while_loading) {
-		fprintf(stderr, "closed while it was loading: nothing was started\n");
-		return 0;
-	}
 
 #ifdef _WIN32
 	SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
@@ -2605,13 +1904,27 @@ int main(int argc, char **argv)
 	load_pad_mappings(data, program_folder(), cfg.pad_mappings);
 	give_unknown_sticks();
 	if (sound && !SDL_InitSubSystem(SDL_INIT_AUDIO)) fprintf(stderr, "no sound: %s\n", SDL_GetError());
-	// (the window is already made, before the game is loaded, so the loading screen has something to draw
-	//  on: see where SDL's video is started above)
+	int win_w = 1366, win_h = 768;
+	const bool fixed_window = getenv("VF3_WINDOW") && sscanf(getenv("VF3_WINDOW"), "%dx%d", &win_w, &win_h) == 2;
+	if (!fixed_window) {
+		SDL_Rect usable;
+		if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable) && usable.w > 0 && usable.h > 0) {
+			const float k = std::min({ 1.0f, usable.w * 0.9f / win_w, usable.h * 0.9f / win_h });
+			win_w = int(win_w * k); win_h = int(win_h * k);
+		}
+	}
+	SDL_Window *win = SDL_CreateWindow(board.profile->name, win_w, win_h,
+		SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | (cfg.fullscreen && !cfg.fs_window ? SDL_WINDOW_FULLSCREEN : 0) | SDL_WINDOW_HIDDEN);
+	if (!win) return fail(std::string("Couldn't open the window: ") + SDL_GetError());
+	SDL_HideCursor();
+	// the window's icon (the Mac app and the Windows exe carry their own)
+	if (SDL_Surface *icon = SDL_LoadPNG((find_assets() + "/icon/icon.png").c_str())) {
+		SDL_SetWindowIcon(win, icon);
+		SDL_DestroySurface(icon);
+	}
 	// The 3D on the GPU (Display > 3D renderer: Auto or GPU, or VF3_3D=cpu|gpu|auto): SDL's "gpu" renderer
 	// (Vulkan, Direct3D 12 or Metal), whose device the 3D shares, its pictures the renderer's textures. Else, or if
 	// it can't start here, SDL's usual one and the CPU's 3D.
-	// the driver and device the GPU check was passed on, as settings.ini keeps it (gpu_3d_checked)
-	std::string gpu3d_key;
 	enum { R3D_CPU, R3D_GPU, R3D_AUTO };
 	static const char *R3D_NAMES[] = { "CPU", "GPU", "Auto" };
 	int r3d_mode = cfg.renderer3d;
@@ -2634,8 +1947,6 @@ int main(int argc, char **argv)
 		if (cpu_why.empty() && !getenv("SDL_RENDER_DRIVER")) { cpu_why = why + "." + (*what_to_do ? std::string(" ") + what_to_do : ""); cpu_why_new = true; }
 	};
 	if (const char *e = getenv("VF3_3D")) r3d_mode = !strcmp(e, "gpu") ? R3D_GPU : !strcmp(e, "auto") ? R3D_AUTO : R3D_CPU;
-	// THE SURFACE IS GIVEN BACK before the renderer takes the window: the two cannot both own it.
-	if (splash_art) { SDL_DestroyWindowSurface(win); SDL_DestroySurface(splash_art); splash_art = nullptr; }
 	SDL_Renderer *ren = nullptr;
 	auto failed_before = [&](const char *d) { return (" " + cfg.gpu3d_failed + " ").find(std::string(" ") + d + " ") != std::string::npos; };
 	// (the GPU start's marker kept through the first 15 s of play, its shaders, first pictures and checks too, a driver
@@ -2830,7 +2141,6 @@ int main(int argc, char **argv)
 		if (gd) {
 			const char *name = SDL_GetStringProperty(SDL_GetGPUDeviceProperties(gd), SDL_PROP_GPU_DEVICE_NAME_STRING, nullptr);
 			fprintf(stderr, "SDL_GPU: %s, %s\n", SDL_GetGPUDeviceDriver(gd), name ? name : "?");
-			gpu3d_key = std::string(SDL_GetGPUDeviceDriver(gd)) + " " + (name ? name : "?");
 			// (as VF1's: a "GPU" that is itself drawn by the CPU, a machine with no graphics driver, draws the 3D about 5
 			// times slower than the CPU's own renderer, so Auto keeps the CPU there; the GPU chosen by hand still uses it)
 			std::string lower = name ? name : "";
@@ -2842,16 +2152,8 @@ int main(int argc, char **argv)
 				{ fprintf(stderr, "the 3D on the GPU: %s draws on the CPU, so Auto uses the CPU's 3D (faster here)\n", name); on_cpu_because("this computer has no graphics driver for its GPU, so the CPU's own 3D is faster here", "Installing the graphics card's driver puts it on the GPU."); }
 			else if (gpu3d.init(gd)) {
 				g3.on = true;
-				// THE CHECK IS DONE ONCE PER CARD, NOT ONCE PER START. What it costs is not the comparison but
-				// the CPU drawing the same scene at the player's own render scale -- 174 ms of 184 at 4x,
-				// measured the 2026-10-29 -- and it falls on the first picture with a model in it, which is the
-				// fighter arriving on the select screen. The verdict belongs to the card and its driver, not to
-				// this run, so it is written down (settings.ini, gpu_3d_checked) and read back here.
-				if (!gpu3d_key.empty() && cfg.gpu3d_ok == gpu3d_key) g3.checked = true;
-				fprintf(stderr, "the 3D on the GPU: started in %.0f ms (%s)\n",
-						std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(),
-						g3.checked ? "its pictures were checked against the CPU's here before"
-								   : "checked against the CPU's picture before it's trusted");
+				fprintf(stderr, "the 3D on the GPU: started in %.0f ms (checked against the CPU's picture before it's trusted)\n",
+						std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
 			} else {
 				g3.failed = true;
 				fprintf(stderr, "the 3D on the GPU: %s (the CPU's 3D)\n", gpu3d.error().c_str());
@@ -2889,83 +2191,6 @@ int main(int argc, char **argv)
 	static video::Scene between;
 	SDL_Texture *tex3d = nullptr, *tex_below = nullptr, *tex_above = nullptr;
 	bool g3_shown = false;   // the picture on show is the GPU's
-	// ---- THE HUD PUSHED OUT TO THE SCREEN'S EDGES IN WIDESCREEN ----
-	//
-	// Frédéric asked for it the 2026-10-25, with a picture he had cut and pasted by hand: in widescreen the
-	// life bars, the names, the armour icons, the round marks and the texts along the foot should sit at the
-	// EDGES of the window, where they sit at the edges of a 4:3 screen -- and the timer should stay where it
-	// is, in the middle. Symmetrically.
-	//
-	// AND THE CUTS ARE MEASURED IN THE LAYER, not written down as rectangles. A rectangle is right for one
-	// game, one screen and one revision; what is true of all of them is that the HUD HANGS OFF THE EDGES --
-	// this port's own note says so, "Fighting Vipers 2 puts a player's icon hard against each edge above the
-	// health" -- and that something centred (the timer, ROUND 1, SUPER K.O.) does not. So each band is read:
-	// the block that reaches the left edge ends at the first gap after it, and that gap is where the picture
-	// is cut; the same on the right. Nothing reaching an edge means nothing moves, which is what happens on
-	// the select screen, a fade, or a replay whose only text is centred.
-	//
-	// Measured on a versus, frame 2000 (VF3_HUD_AUDIT): the top band reads 0..28, 35..216, 222..269,
-	// 275..456, 463..491 -- the two player icons hard against the edges, the two bars, and the timer at
-	// 222..269, whose middle is 245.5 against the picture's 248. The gaps at 217..221 and 270..274 are the
-	// two cuts, and they are 29 and 26 from the middle: symmetric to within a pixel and a half.
-	// The two cuts, in the layer's own columns (0 and 0 means "do not move"), and what each of the three
-	// pieces ACTUALLY covers -- its first and last column with something on it. The cut is a gap and the ink
-	// is not in the middle of it, so a block placed by its slice would not be placed by what is seen.
-	struct HudCut {
-		int left = 0, right = 0;
-		int l0 = -1, l1 = -1, c0 = -1, c1 = -1, r0 = -1, r1 = -1;
-	};
-	HudCut hud_top, hud_foot;
-	bool hud_hide_mid = false;   // training: the stopped clock is left undrawn (see where it is set)
-	// THE ROUND'S ANNOUNCEMENT BELONGS TO THE PICTURE, NOT TO THE 4:3 FRAME. Frederic, the 2026-10-28, on
-	// a photograph of his own: the HUD is spread to the window's edges and ROUND 1 is still the size it is
-	// on a 4:3 screen, sitting in the middle of a picture half as wide again -- "the Round X text is not
-	// re-placed for widescreen mode", and when asked what widescreen meant here: "widescreen = 16/9".
-	// So it is drawn across the picture the player is looking at, at the picture's own scale, on its own
-	// middle. Only in the states that announce a round (GAME's 4 to 10), which is where that art lives.
-	bool hud_wide_mid = false;
-	// AND THE SAME FOR THE FOOT WHEN THE MATCH IS THE BONUS STAGE. Frederic, the 2026-10-30: "le mot BONUS
-	// STAGE en bas a gauche de l'ecran n'est pas recale pour le 16/9 [...] tu dois recaler BONUS STAGE de la
-	// meme facon que tu as fait pour ROUND X". ROUND X is drawn across the whole picture at the picture's
-	// own scale, growing about its middle, rather than cut in three and pushed out; the foot's BONUS STAGE
-	// wants the same, because it is an announcement and not a block hanging off an edge. The game says when
-	// it is the bonus stage in a byte of its own, MODE_INFO's BONUS_STG_FLAG (model3.cpp).
-	bool hud_wide_foot = false;
-	// HOW DEEP THE TOP BAND GOES, and it is measured, not rounded. At 100 it cut a drawing in half:
-	// under the right-hand bar there is a mark that comes and goes during a fight -- Frederic calls it
-	// the joystick's animation -- and the audit of a training fight has it at rows 93..108, columns
-	// 423..452. Its top half was spread out to the window's edge with the band and its bottom half stayed
-	// where 4:3 had it. 120 takes the whole of it and still stops well short of the ROUND X announcement,
-	// which the same audit puts at rows 125..254.
-	static constexpr int HUD_TOP_ROWS = 120;      // the band the bars, the names and that mark live in
-	static constexpr int HUD_FOOT_ROWS = 60;      // the band the stage and the time live in
-	// How near an edge a block has to begin to count as hanging off it. Twenty-four columns, about a
-	// twentieth of the picture, and the number is measured: the player icons begin at column 0, but the
-	// foot's STAGE 1 begins at 16 and its time ends at 476, so at eight the foot never moved at all.
-	static constexpr int HUD_EDGE = 24;
-	// THE TIMER'S FIELD, measured and FIXED, and that is the whole correction of the 2026-10-25. The cut
-	// used to be a gap looked for in the picture frame by frame, and the timer's own two digits have a gap
-	// between them exactly as wide as the gaps that frame the field -- five columns. At "0 1" the cut fell
-	// BETWEEN THE DIGITS: the 0 went out to the left and the 1 to the right, and the clock read as two
-	// numbers on opposite sides of the screen. Frederic photographed it.
-	//
-	// Geometry cannot tell those two gaps apart, because they are the same width. What tells them apart is
-	// that the field does not move: over ninety frames of a fight the band reads 0..28, 35..216, 222..269,
-	// 275..456, 463..491 and the middle run never budges, whatever the clock says. So the field is written
-	// down once -- the two gaps 217..221 and 270..274 are the cuts -- and what the timer draws inside it is
-	// no longer anyone's business.
-	static constexpr int HUD_MID_L = 217, HUD_MID_R = 275;
-	// The Dreamcast's ending, its pictures standing in for the roll's replays (fv2_ending.h). Declared here
-	// with the renderer's own state because the picture is composed where the 3D and the 2D are.
-	fv2_ending ending;
-	// and the roll the port draws itself, which owns the screen for the whole of the ending (fv2_roll.h)
-	static fv2_roll roll;
-	// THE ROLL LIVES INSIDE THE GAME'S ENDING AND NOT A FRAME LONGER. It was latched once, so that it could
-	// outlive an ending shortened by cutting the replays -- and it then ran on over the states that follow,
-	// which Frederic saw at once the 2026-10-30: "il est plus long que la version arcade et deborde sur les
-	// sous etats suivants". The latch is gone: the roll is drawn while the game is in mode 12 or 13, paced
-	// by that ending's own frames, and it ends with it. What makes it fit is the other half of the
-	// correction -- the replays are left in, so the ending keeps the arcade's own length.
 	uint32_t side_colour[2] = { 0xFF000000u, 0xFF000000u };   // widescreen's bars beside the 2D (left, right)
 	bool sky_wide = false;
 	float bg_shift_x = 0, bg_shift_y = 0;   // the layers below the 3D moved back towards the frame before (draw_below)
@@ -2980,12 +2205,8 @@ int main(int argc, char **argv)
 	struct { uint64_t t0 = 0; int pictures = 0, frames = 0; double draw_ms = 0, emu_ms = 0, upload_ms = 0, gpu_ms = 0, stopped_s = 0; int slow[4] = {}; double slow_work_ms = 0, prep_ms = 0, g3_wall_ms = 0, interp_ms = 0; } pace;   // (slow: passes over 1.5 refreshes, by what they ran: nothing but a picture, a frame's first half, its second, a whole frame)
 	uint64_t between_n = 0, cut_n = 0;   // smooth motion's pictures between frames, and those shown as the frame (a cut)
 	int tex_w = 0, tex_h = 0;
-	// HD 2D: the tile plane's two textures are the scale times the hardware's size, and the layers sent into
-	// them are the HD ones. Everything else about them -- blending, filtering, where they are drawn -- is as
-	// before, and at scale 1 these are the old sizes to the pixel.
-	const int tile_s = game.tiles.hd() ? game.tiles.hd_scale() : 1;
 	auto make_2d = [&](SDL_Texture *&t, int w) {
-		t = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w * tile_s, video::H * tile_s);
+		t = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, video::H);
 		SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
 		SDL_SetTextureScaleMode(t, SDL_SCALEMODE_NEAREST);
 	};
@@ -3002,10 +2223,8 @@ int main(int argc, char **argv)
 		else if (SDL_LockTexture(t, nullptr, &p, &pitch)) { write(static_cast<uint8_t *>(p), size_t(pitch)); SDL_UnlockTexture(t); }
 	};
 	auto send_2d = [&](SDL_Texture *t, const std::vector<uint32_t> &src, int w) {
-		const size_t rw = size_t(w) * tile_s, rows = size_t(video::H) * tile_s;
-		if (src.size() < rw * rows) return;   // (a frame before the game's first: the layers not made yet)
 		send(t, [&](uint8_t *p, size_t pitch) {
-			for (size_t y = 0; y < rows; y++) memcpy(p + y * pitch, src.data() + y * rw, rw * 4);
+			for (int y = 0; y < video::H; y++) memcpy(p + size_t(y) * pitch, src.data() + size_t(y) * w, size_t(w) * 4);
 		});
 	};
 	// the 3D's size: 384 lines a scale, as wide as the picture's shape
@@ -3078,15 +2297,12 @@ int main(int argc, char **argv)
 	constexpr int GPU_ROUNDING_COLOUR = 8;
 	constexpr double GPU_WRONG_COLOUR = 0.01, GPU_WRONG_COVER = 0.05, GPU_WRONG_COLOUR_CHOSEN = 0.10, GPU_WRONG_COVER_CHOSEN = 0.25;
 	auto g3_check = [&](const video::Scene &s) -> bool {
-		const uint64_t t_read = SDL_GetTicksNS();
 		std::vector<uint32_t> gp;
 		if (!gpu3d.read_output(gp)) { g3_fail("its picture couldn't be read back"); return false; }
-		const uint64_t t_cpu = SDL_GetTicksNS();
 		raster.render(s, game.view.tex.data());
 		const int k = aa_now(), cw = raster.width() / k, ch = raster.height() / k;
 		std::vector<uint32_t> cp(size_t(cw) * ch);
 		raster.to_premultiplied(reinterpret_cast<uint8_t *>(cp.data()), size_t(cw) * 4, k);
-		const uint64_t t_cmp = SDL_GetTicksNS();
 		long long n = 0, drawn = 0, cover = 0, big = 0;
 		int most = 0;
 		for (size_t i = 0; i < cp.size(); i++) {
@@ -3106,9 +2322,6 @@ int main(int argc, char **argv)
 		const bool keep = big <= ok && cover <= ok_cover;
 		fprintf(stderr, "the 3D on the GPU: its picture (%d x %d, %lld pixels of 3D) against the CPU's: %lld pixels differ (%lld drawn on one only, %lld by more than %d, colours by %d at most; up to %lld and %lld kept): %s\n",
 				cw, ch, drawn, n, cover, big, GPU_ROUNDING_COLOUR, most, ok_cover, ok, keep ? "the GPU's" : "the CPU's");
-		fprintf(stderr, "  the check cost %.1f ms: read back %.1f, the CPU's own picture %.1f, compared %.1f\n",
-				double(SDL_GetTicksNS() - t_read) / 1e6, double(t_cpu - t_read) / 1e6,
-				double(t_cmp - t_cpu) / 1e6, double(SDL_GetTicksNS() - t_cmp) / 1e6);
 		if (getenv("VF3_GPU_CHECK_DIR")) {
 			const std::string d = getenv("VF3_GPU_CHECK_DIR");
 			write_png((d + "/gpu.png").c_str(), gp.data(), cw, ch);
@@ -3125,22 +2338,12 @@ int main(int argc, char **argv)
 			return false;   // (this picture the CPU's)
 		}
 		if (!keep) { g3_fail("its pictures aren't the CPU's"); return false; }
-		// IT PASSED, AND THAT IS WORTH REMEMBERING: this is the only picture of the run that takes a fifth of
-		// a second, and the card it was done on is the same card at the next start. Any other card or driver
-		// writes a different key and is checked in its turn.
-		if (!gpu3d_key.empty() && cfg.gpu3d_ok != gpu3d_key) { cfg.gpu3d_ok = gpu3d_key; cfg_dirty = true; }
 		return true;
 	};
 	double picture_fixed_ms = 0;   // the last picture's in-between and triangles prepared (the governor's)
 	double picture_avg_ms = 0;     // the pictures' time, averaged: a slow machine's passes run the frames it takes (below)
 	auto draw_picture = [&](double t, bool new_2d) {
 		ensure_3d();
-		// WHEN THE PORT'S OWN ROLL OWNS THE SCREEN, THE GAME'S PICTURE IS NOT MADE AT ALL. It was still
-		// being made and thrown away: the ending's replays are real matches, drawn at the player's render
-		// scale with his antialiasing, and Frederic found the roll running at twenty pictures a second --
-		// "le ending est a 20fps, c'est n'importe quoi !!!". Nothing of it is shown (fv2_roll.h draws over
-		// the whole window), so nothing of it is drawn: no 3D on the GPU, no 3D on the CPU.
-		const bool roll_owns = ending.want && cplay.in_ending && roll.ready();
 		const double fixed_before = pace.interp_ms + pace.prep_ms;
 		picture_fixed_ms = 0;
 		// the stage's sky where the 3D camera is now, not where it was 3 frames before (sky_lead.h)
@@ -3166,16 +2369,11 @@ int main(int argc, char **argv)
 		bool on_gpu = false;
 		// (not before the first frame's copy: with no sound to wait on, the first picture can come before any frame,
 		// and the GPU's first upload is the whole texture memory, read from that copy)
-		// (a check missed: the CPU's pictures until the next, not the GPU's unchecked ones; and the console's
-		// roll owns the screen on its own, with no 3D of the game under it)
+		// (a check missed: the CPU's pictures until the next, not the GPU's unchecked ones)
 		const bool g3_waiting = g3.misses > 0 && !g3.checked && game_frame < g3.check_from;
-		if (g3.on && !roll_owns && !g3_waiting && g3_texture() && !game.view.tex.empty()) {
+		if (g3.on && !g3_waiting && g3_texture() && !game.view.tex.empty()) {
 			const auto tg = std::chrono::steady_clock::now();
 			raster.prepare(*s);
-			// the texture pack's place for each polygon, which the GPU renderer reads out of `raster` as the CPU
-			// rasteriser does (tex3d_hd.h); nothing at all when no pack and no dump were asked for
-			raster.tex_version = 1 + game.view.tex_serial;
-			raster.resolve_hd(game.view.tex.data());
 			const auto tp = std::chrono::steady_clock::now();
 			pace.prep_ms += std::chrono::duration<double, std::milli>(tp - tg).count();
 			picture_fixed_ms = pace.interp_ms + pace.prep_ms - fixed_before;
@@ -3196,56 +2394,17 @@ int main(int argc, char **argv)
 		if (!on_gpu) {
 			if (g3.on) gpu3d.retexture();   // (the texture memory's changes dropped here: the GPU's sent whole when it draws again)
 			game.view.uploads.clear();
-			raster.tex_version = 1 + game.view.tex_serial;
 			raster.render(*s, game.view.tex.data());
 			const uint64_t tu = SDL_GetTicksNS();
 			send(tex3d, [&](uint8_t *p, size_t pitch) { raster.to_premultiplied(p, pitch, aa_now()); });
 			pace.upload_ms += double(SDL_GetTicksNS() - tu) / 1e6;
 		} else pace.gpu_ms += gpu3d.last_cpu_ms;
 		g3_shown = on_gpu;
-		// (tests: VF3_VIEW_LOG=frame,frame,... prints every viewport of those pictures with the light the game
-		// put on it -- its ambient, its sun and how strong, and how many models are in it. For telling a scene
-		// that is lit differently from one that is drawn differently, which a count of models cannot.)
-		if (const char *vl = getenv("VF3_VIEW_LOG");
-			vl && strstr((std::string(",") + vl + ",").c_str(), ("," + std::to_string(game_frame) + ",").c_str())) {
-			fprintf(stderr, "views at frame %llu: %zu, mode %d sub %d\n", (unsigned long long)game_frame,
-					s->viewports.size(), board.fv2_mode(), board.fv2_submode());
-			for (size_t i = 0; i < s->viewports.size(); i++) {
-				const auto &v = s->viewports[i];
-				// The models' addresses as well, because a count cannot say WHAT is in a viewport and the
-				// fighters and the scenery do not come from the same place. Four is enough to tell a family.
-				std::string addrs;
-				for (size_t k = 0; k < v.models.size() && k < 4; k++) {
-					char t[16];
-					snprintf(t, sizeof t, " %06X", v.models[k].addr);
-					addrs += t;
-				}
-				fprintf(stderr, "  view %2zu  node %06X  ambient %.3f  sun %.3f (%.2f %.2f %.2f)  models %zu%s\n",
-						i, v.node, v.ambient, v.sun_intensity, v.sun[0], v.sun[1], v.sun[2],
-						v.models.size(), addrs.c_str());
-			}
-		}
 		if (static const bool pic_log = getenv("VF3_PIC_LOG") != nullptr; pic_log) {   // (tests: each picture's makings)
 			size_t models = 0;
 			for (auto &v : s->viewports) models += v.models.size();
-			fprintf(stderr, "pic f %llu t %.2f blended %d models %zu vps %zu full %d sky %d side %08x blank %d mode %d sub %d\n",
-			        (unsigned long long)game_frame, t,
-			        int(s == &between), models, s->viewports.size(), int(game.view.full_3d), int(sky_wide), side_colour[0], int(s->blank),
-			        board.fv2_mode(), board.fv2_submode());
-		}
-		// (tests: VF3_TIMER_LOG=1 follows the match's own clock -- the cooked word the round starts from
-		// (0x00581418 for one player, 0x0058141C for two) and what is left of it (0x00581404) -- so that a
-		// ROUND TIME set on the OPTIONS page can be seen arriving in a fight rather than taken on trust.
-		// It reads the board and writes nothing; docs/fv2-console-options.md keeps the measurement.)
-		if (static const bool timer_log = getenv("VF3_TIMER_LOG") != nullptr; timer_log) {
-			static int was = -1;
-			const int left = board.fv2_option(0x00581404, 4);
-			if (left != was) {
-				fprintf(stderr, "timer f %llu: %d left (%.1f s), the round starts from %d (1P) / %d (2P)\n",
-						(unsigned long long)game_frame, left, double(left) / 64.0, board.fv2_option(0x00581418, 4) / 64,
-						board.fv2_option(0x0058141C, 4) / 64);
-				was = left;
-			}
+			fprintf(stderr, "pic f %llu t %.2f blended %d models %zu vps %zu full %d sky %d side %08x blank %d\n", (unsigned long long)game_frame, t,
+			        int(s == &between), models, s->viewports.size(), int(game.view.full_3d), int(sky_wide), side_colour[0], int(s->blank));
 		}
 		if (new_2d) {
 			// A stage: the 3D full width and the 2D over it clear of the 4:3 edges (a fight's HUD never reaches them)
@@ -3265,197 +2424,6 @@ int main(int argc, char **argv)
 				covered += c;
 				edge_rows += (row[0] >> 24) != 0 || (row[video::W - 1] >> 24) != 0;
 			}
-			// The two cuts, read in the layer, band by band (see HudCut above for what they are for).
-			{
-				auto cuts = [&](int y0, int y1) {
-					HudCut c;
-					bool on[video::W];
-					for (int x = 0; x < video::W; x++) {
-						bool any = false;
-						for (int y = y0; y < y1 && !any; y++) any = (game.view.above[size_t(y) * video::W + x] >> 24) != 0;
-						on[x] = any;
-					}
-					// Something has to hang off each edge, or there is nothing to push out: that is what
-					// leaves the select screen, a fade and the STAGE / VS banner exactly where they are.
-					bool at_edge = false, at_far = false;
-					for (int x = 0; x < HUD_EDGE; x++) at_edge = at_edge || on[x];
-					for (int x = video::W - HUD_EDGE; x < video::W; x++) at_far = at_far || on[x];
-					if (!at_edge || !at_far) return HudCut();
-					// AND THE TWO CUTS HAVE TO BE EMPTY. Anything crossing them is one drawing spanning the
-					// field, and cutting a drawing in three is exactly the fault this is here to prevent.
-					for (int x = HUD_MID_L; x < HUD_MID_L + 5; x++) if (on[x]) return HudCut();
-					for (int x = HUD_MID_R - 5; x < HUD_MID_R; x++) if (on[x]) return HudCut();
-					c.left = HUD_MID_L;
-					c.right = HUD_MID_R;
-					// What each piece covers, which is what gets placed
-					auto ink = [&](int x0, int x1, int &a, int &b) {
-						a = b = -1;
-						for (int x = x0; x < x1; x++) if (on[x]) { if (a < 0) a = x; b = x; }
-					};
-					ink(0, c.left, c.l0, c.l1);
-					ink(c.left, c.right, c.c0, c.c1);
-					ink(c.right, video::W, c.r0, c.r1);
-					if (c.l0 < 0 || c.r0 < 0) return HudCut();   // nothing to move on one side
-					return c;
-				};
-				// FIGHTING VIPERS 2 ONLY, for now, and not because the rule is particular to it: nothing
-				// above names a game, and Virtua Fighter 3 hangs its HUD off the edges too. It is that VF3
-				// is this port's reference and its picture is not changed unasked. Frédéric asked for this
-				// one; the other has only to be asked for.
-				// AND ONLY DURING A FIGHT. The select screen reaches both edges too, and its top band is
-				// empty exactly where the timer's field is, so it was being cut and spread as well -- its
-				// row of portraits came out with a piece of itself repeated against the right edge,
-				// photographed the 2026-10-25. The HUD belongs to GAME, Sega's modes 6 and 7, and to no
-				// other screen.
-				const int gmode = board.fv2_mode();
-				const bool mine = board.set == "fvipers2" && (gmode == 6 || gmode == 7);
-				hud_top = mine ? cuts(0, HUD_TOP_ROWS) : HudCut();
-				hud_foot = mine ? cuts(video::H - HUD_FOOT_ROWS, video::H) : HudCut();
-				// THE CLOCK BLINKS AT TEN SECONDS, AND THE BAND MUST NOT BLINK WITH IT. The top band is
-				// spread by standing the two blocks evenly between the window's edge and WHAT IS DRAWN in
-				// the timer's field; with nothing drawn there, the band below falls back to hard against
-				// the edges. Under ten seconds the game flashes the digits, so the two blocks jumped
-				// between the two placements several times a second -- Frederic, the 2026-10-29: "quand le
-				// timer arrive a 10, le bloc du HUD du haut clignote: il alterne entre les positionnements
-				// 4/3 et 16/9".
-				//
-				// MEASURED, with VF3_HUD_AUDIT=1 over a versus played out to the clock: the field's run
-				// 222..269 is there every frame of the fight from 3108 to 5351, and from 5352 it comes and
-				// goes -- six frames on, six off, then four and four as the clock speeds up. Nothing else
-				// in the band moves at all.
-				//
-				// So the field's ink is REMEMBERED while the band is up: a flash takes the digits away, not
-				// the place they stand in. It is forgotten as soon as there is no band to spread, which is
-				// the end of the fight, so nothing is carried from one match into the next.
-				static int kept_c0 = -1, kept_c1 = -1;
-				if (!mine || !hud_top.left) kept_c0 = kept_c1 = -1;
-				else if (hud_top.c0 >= 0) { kept_c0 = hud_top.c0; kept_c1 = hud_top.c1; }
-				else if (kept_c0 >= 0) { hud_top.c0 = kept_c0; hud_top.c1 = kept_c1; }
-				// THE CLOCK IS NOT SHOWN IN TRAINING. It is stopped there, so what it shows is a number that
-				// never changes; Frederic asked for it gone the 2026-10-25. Nothing of the game is touched --
-				// the middle slice of the top band, which is the timer's own field and nothing else, is simply
-				// not drawn. Only during a fight, or the select screen would lose a strip of itself.
-				const int gsub = board.fv2_submode();
-				// AND ONLY WHERE THERE IS A CLOCK TO HIDE. It was every frame of GAME, which includes the four
-				// ROUND_MASK sub-states -- the screen that says STAGE n while the arena loads. The HUD is not
-				// drawn there; the top band carries the banner. So the slice went undrawn over a picture that
-				// had something else in it, and what showed through was a grey rectangle the shape of the
-				// timer's field, which Frederic photographed the 2026-10-29. The HUD begins at ROUND (4).
-				hud_hide_mid = mine && cplay.training_on && gsub >= 4;
-				hud_wide_mid = mine && gsub >= 4 && gsub <= 10;
-				// VF3_HUD_WIDE_FOOT=1 draws it on any stage, which is how the drawing was checked without
-				// playing the ladder as far as the bonus stage (a run with no hands takes it slowly).
-				static const bool foot_always = getenv("VF3_HUD_WIDE_FOOT") != nullptr;
-				const bool bonus_now = mine && (foot_always || board.fv2_bonus_stage() == 1);
-				hud_wide_foot = bonus_now;
-				// AND THE BAND BETWEEN THE TWO AS WELL. BONUS STAGE is a blinking text, and a blink is not
-				// where it is: Frederic says it is still in its 4:3 place, so the word is not in the foot's
-				// sixty rows but in the band above them -- the one ROUND X lives in, which is drawn wide
-				// only while a round is announced. On the bonus stage that band is drawn wide throughout,
-				// so the word is placed the same way ROUND X is wherever in it it sits.
-				if (bonus_now) hud_wide_mid = true;
-			}
-			// VF3_HUD_AUDIT=1: WHERE THE 2D ACTUALLY IS, row band by row band and column run by column run.
-			// Written to spread Fighting Vipers 2's HUD in widescreen -- the life bars and what hangs off them
-			// out to the window's edges, the timer left where it is -- because the rectangles that move have
-			// to be measured on the picture and not guessed from a screenshot's pixels.
-			// VF3_RAM_WATCH=addr:bytes -- WHAT CHANGED IN A RANGE, frame by frame, with the state it changed in.
-			// For finding the byte behind something seen on screen: drive it with a script, read which address
-			// follows it. Written the 2026-10-27 to find where the select screen keeps each cursor, which is
-			// what a CPU label in training has to follow. Addresses are the game's own (the dump's indexing is
-			// elsewhere); the range is read through Model3::fv2_option, a byte at a time.
-			// VF3_RAM_DUMP=bytes@frame -- THE GAME'S MEMORY FROM ZERO, written once to the data folder as
-			// ram.bin, in the HOST's word order, which is the order tools/fv2/disasm_ppc.py reads (the byte of
-			// address A sits at index A^3). Written the 2026-10-28, because reading thirty instructions of
-			// Sega's own code is how every door of this layer was found -- VS FINISH, the branch point, the
-			// four ROUND_MASK handlers -- and until now each of those readings needed a dump made by hand
-			// somewhere else. A frame number rather than the end of the run: what a handler decides is
-			// decided at a moment, and the code is unpacked, so the dump has to be taken while it is there.
-			if (static const char *rd = getenv("VF3_RAM_DUMP"); rd) {
-				static bool done = false;
-				static const int len = atoi(rd);
-				static const uint64_t at = strchr(rd, '@') ? strtoull(strchr(rd, '@') + 1, nullptr, 10) : 0;
-				if (!done && len > 0 && game_frame >= at) {
-					done = true;
-					std::vector<uint8_t> out(size_t(len), 0);
-					for (int i = 0; i < len; i++) {
-						const int v = board.fv2_option(i, 1);
-						out[size_t(i ^ 3)] = uint8_t(v < 0 ? 0 : v);
-					}
-					const std::string where = (data.empty() ? std::string(".") : data) + "/ram.bin";
-					if (FILE *f = fopen(where.c_str(), "wb")) {
-						fwrite(out.data(), 1, out.size(), f);
-						fclose(f);
-						fprintf(stderr, "frame %llu: %d bytes of the game's memory written to %s\n",
-							(unsigned long long)game_frame, len, where.c_str());
-					} else fprintf(stderr, "the dump could not be written to %s\n", where.c_str());
-				}
-			}
-			if (static const char *rw = getenv("VF3_RAM_WATCH"); rw) {
-				static uint32_t at = 0;
-				static int len = 0;
-				static std::vector<int> was;
-				if (!len) {
-					at = uint32_t(strtoul(rw, nullptr, 16));
-					const char *c = strchr(rw, ':');
-					len = c ? atoi(c + 1) : 64;
-					was.assign(size_t(len), -1);
-					fprintf(stderr, "ram watch: %08X, %d bytes\n", at, len);
-				}
-				std::string said;
-				for (int i = 0; i < len; i++) {
-					const int v = board.fv2_option(int(at) + i, 1);
-					if (was[size_t(i)] >= 0 && v != was[size_t(i)]) {
-						char t[48];
-						snprintf(t, sizeof t, " %08X %02X->%02X", at + uint32_t(i), was[size_t(i)], v);
-						said += t;
-					}
-					was[size_t(i)] = v;
-				}
-				if (!said.empty())
-					fprintf(stderr, "ram watch frame %llu (mode %d sub %d):%s\n",
-						(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode(), said.c_str());
-			}
-			if (static const char *ha = getenv("VF3_HUD_AUDIT"); ha && game_frame % std::max<uint64_t>(1, strtoull(ha, nullptr, 10)) == 0) {
-				fprintf(stderr, "hud frame %llu (mode %d sub %d); the top band's cut %d..%d, its middle %d..%d\n",
-						(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode(),
-						hud_top.left, hud_top.right, hud_top.c0, hud_top.c1);
-				auto runs = [&](int y0, int y1, const char *what) {
-					std::string s;
-					int from = -1;
-					for (int x = 0; x <= video::W; x++) {
-						bool any = false;
-						for (int y = y0; y < y1 && !any; y++) any = (game.view.above[size_t(y) * video::W + x % video::W] >> 24) != 0;
-						if (x == video::W) any = false;
-						if (any && from < 0) from = x;
-						else if (!any && from >= 0) { s += " " + std::to_string(from) + ".." + std::to_string(x - 1); from = -1; }
-					}
-					fprintf(stderr, "hud %s rows %d..%d:%s\n", what, y0, y1 - 1, s.empty() ? " (nothing)" : s.c_str());
-				};
-				// the row bands that carry any 2D at all, so nothing is assumed about where the HUD sits
-				{
-					std::string b;
-					int from = -1;
-					for (int y = 0; y <= video::H; y++) {
-						int c = 0;
-						if (y < video::H)
-							for (int x = 0; x < video::W; x++) c += (game.view.above[size_t(y) * video::W + x] >> 24) != 0;
-						if (c && from < 0) from = y;
-						else if (!c && from >= 0) { b += " " + std::to_string(from) + ".." + std::to_string(y - 1); from = -1; }
-					}
-					fprintf(stderr, "hud bands:%s\n", b.empty() ? " (nothing)" : b.c_str());
-				}
-				runs(0, 100, "top");
-				// and what lies BETWEEN the two bands, which is where ROUND X is announced: rows 125..254, well
-				// clear of the HUD. Added the 2026-10-25 to answer where that text sits across the picture.
-				runs(100, video::H - 60, "middle");
-				runs(video::H - 60, video::H, "bottom");
-			}
-			// VF3_STAGE_AUDIT=1: what the test above saw, for fitting it to a game whose HUD sits elsewhere
-			if (getenv("VF3_STAGE_AUDIT"))
-				fprintf(stderr, "stage %d: full_3d %d rows %d edge_rows %d (limit %d) covered %.1f%% (limit 50%%)\n",
-				        int(game.view.full_3d && !game.view.no_stage_screen && rows > 0), int(game.view.full_3d), rows, edge_rows, video::H / game.stage_edge_divisor,
-				        rows ? 100.0 * double(covered) / (double(rows) * video::W) : 0.0);
 			const bool seen = game.view.full_3d && !game.view.no_stage_screen && rows > 0 && edge_rows * 20 < video::H && covered * 100 < long(rows) * video::W * 50;
 			// a stage stays one through a round's opening wipe and the like (2D over part of it for under 20 frames);
 			// a picture over all of it (the next match's, a close-up) or the 3D gone ends it at once. In a match a
@@ -3498,8 +2466,6 @@ int main(int argc, char **argv)
 				}
 			}
 			const uint64_t tu = SDL_GetTicksNS();
-			send_2d(tex_below, game.view.below_wide_hd.empty() ? game.view.below_wide : game.view.below_wide_hd, video::WW);
-			send_2d(tex_above, game.view.above_hd.empty() ? game.view.above : game.view.above_hd, video::W);
 			// Not a stage: the layer below as the game has it, the 4:3 alone (its edge columns carried a few pixels on,
 			// for the smooth backgrounds' filter and smooth motion's fraction of a pixel to read), not the widened
 			// layer: its middle is the screen moved 2 pixels as the 3D is, so the 4:3's last 2 columns were the right
@@ -3549,8 +2515,7 @@ int main(int argc, char **argv)
 		const float sy = std::clamp(bg_shift_y, -float(video::H) + 1, float(video::H) - 1);
 		auto band = [&](float v0, float v1, float d0, float d1) {
 			if (v1 - v0 < 0.01f || d1 - d0 < 0.01f) return;
-			const float ts = float(tile_s);   // (the source is in the texture's own pixels: the scale times the layer's)
-			const SDL_FRect src = { u0 * ts, v0 * ts, (u1 - u0) * ts, (v1 - v0) * ts };
+			const SDL_FRect src = { u0, v0, u1 - u0, v1 - v0 };
 			const SDL_FRect dst = { x0, mid.y + d0 * k, x1 - x0, (d1 - d0) * k };
 			SDL_RenderTexture(ren, tex_below, &src, &dst);
 		};
@@ -3651,17 +2616,6 @@ int main(int argc, char **argv)
 		}
 		return crt_tex;
 	};
-	// WHAT GOES ON THE PICTURE BEFORE THE MONITOR DOES ITS WORK: the console's own surfaces. Frederic,
-	// the 2026-10-28: "the graphics options, like the scanlines, do not apply to the options menus".
-	// They did not, because they were drawn after compose had finished -- after the CRT colours
-	// and after the filter. The arcade's monitor does not stop at the game's picture: the menu is on the
-	// same glass. So compose calls this where the game's own picture ends, and the colours and the lines
-	// are laid over both. (This port's own menu under Escape is drawn later still and keeps its own
-	// crispness, which is right: that one is not on the arcade's screen.)
-	//
-	// A std::function and not a call, because draw_console is written below this and wants the surfaces,
-	// the fonts and the state that are written below it in turn.
-	std::function<void()> draw_over;
 	// Online play's flags on the HUD, beside each player's name (video::hud_names leaves their place): the countries'
 	// flags (assets/ui/flags.png, 48 x 36 each, as they are) drawn over the 2D there, 12 x 9 of the HUD's pixels in
 	// the middle of the letters' rows, in a black edge as the letters are, on the window's own pixels (sharp at any
@@ -3738,21 +2692,6 @@ int main(int argc, char **argv)
 		SDL_RenderClear(ren);
 		SDL_FRect all, mid;
 		picture_rect(all, mid);
-		// WHO OWNS THE PICTURE IS A PROPERTY OF THE CONSOLE'S STATE (console_state.h). Where the port owns
-		// it -- the list, the OPTIONS tree, and the list's entering half, where the game is walking home --
-		// the game's picture is NOT DRAWN AT ALL. Not covered by an opaque ground, not dimmed: not drawn.
-		// That is the difference between a surface that hides what is behind it and a state that owns the
-		// screen, and it is why nothing of the end of a game can show through any more. The window was
-		// cleared to black above; the console's own surfaces are drawn by the caller, as they always are.
-		if (cplay.ui.port_screen()) {
-			if (draw_over) draw_over();
-			if (crt) {
-				SDL_SetRenderTarget(ren, nullptr);
-				crt_paint.draw(ren, crt, nullptr, cfg.crt_colours, cfg.brightness, cfg.gamma);
-			}
-			if (filter) draw_filter(all);
-			return;
-		}
 		for (int s = 0; s < 2; s++) {
 			const uint32_t v = side_colour[s];
 			SDL_SetRenderDrawColor(ren, uint8_t(v), uint8_t(v >> 8), uint8_t(v >> 16), 255);
@@ -3770,95 +2709,6 @@ int main(int argc, char **argv)
 				                        : SDL_FRect{ all.x, y0, mid.x - all.x, y1 - y0 };
 				if (bar.w > 0) SDL_RenderFillRect(ren, &bar);
 			}
-		// THE DREAMCAST'S ENDING stands in for the replay: its picture covers the whole window, and the 2D
-		// of that moment -- the replay's own banners -- goes with it (fv2_ending.h). Not an early return: the
-		// CRT filter below owns the render target and has to be let finish.
-		bool ending_on = false;
-		// ---- THE PORT'S OWN STAFF ROLL, for the whole of the game's ending ----
-		//
-		// Frederic, the 2026-10-29, having watched the real one: "il faut completement le refaire [...] faire
-		// defiler les textes du bas vers le haut au lieu qu'ils soient fixes". So where the game would draw
-		// its pages over its inverted logo, the port draws its own ground and the credits climbing it
-		// (fv2_roll.h). It owns the screen for as long as the game is in mode 12 or 13, which is also what
-		// takes the inverted logo away -- nothing of the game's picture is drawn at all.
-		if (ending.want && cplay.in_ending && roll.ready()) {
-			roll.render(ren, all, cplay.ending_progress());
-			ending_on = true;
-		} else if (ending.want && cplay.ending_art >= 0 && ending.have()) {
-			ending.show(ren, cplay.ending_art, stderr);
-			if (ending.tex) { ending.render(ren, all); ending_on = true; }
-		} else if (ending.at >= 0) {
-			ending.drop();
-		}
-		// THE PRESENTATION IS BACK, and it stays. Frederic asked for a training that starts without the
-		// STAGE / VS screen; the four ROUND_MASK sub-states are the ARENA LOADING (console_play.h), so there
-		// is nothing to skip, and hiding what is drawn over the load left a blank screen for two seconds,
-		// which he liked less than the banner. The banner at least says what is coming.
-		if (ending_on) { /* the Dreamcast ending's picture stands in for the whole frame */ } else
-		// The 2D over the 3D. In widescreen the HUD's two bands are drawn in three slices each, the outer two
-		// pushed out to the window's edges and the middle left exactly where it was (HudCut above). Only
-		// when the picture IS wider than 4:3 and only when a cut was found: everything else is one blit, as
-		// it always was.
-		{
-			const float ks = mid.w / video::W, ts = float(tile_s);
-			const float dl = mid.x - all.x, dr = (all.x + all.w) - (mid.x + mid.w);
-			auto slice = [&](int x0, int x1, int y0, int y1, float dx) {
-				if (x1 <= x0 || y1 <= y0) return;
-				const SDL_FRect src = { x0 * ts, y0 * ts, (x1 - x0) * ts, (y1 - y0) * ts };
-				const SDL_FRect dst = { mid.x + x0 * ks + dx, mid.y + y0 * ks, (x1 - x0) * ks, (y1 - y0) * ks };
-				SDL_RenderTexture(ren, tex_above, &src, &dst);
-			};
-			// EVEN SPACE EITHER SIDE, for the band that has something standing still in the middle.
-			// Frederic, the 2026-10-25: the two blocks of the top HUD go "at an equal distance between the
-			// screen's edge and the timer". Hard against the window's edge they left the whole of the widening on
-			// one side of each block, which reads as two things that fell off. The foot has nothing in its
-			// middle to measure against, and he passed it as it was, so it still goes hard against the edges.
-			// The rows between the two bands, drawn across the WHOLE picture and at its scale rather than the
-			// 4:3 frame's: the round's announcement (hud_wide_mid above). Its middle stays where it is, so the
-			// art grows about its own centre; what is transparent in those rows stays transparent, which is
-			// everything but the announcement itself.
-			auto band_wide = [&](int y0, int y1) {
-				const float k2 = all.w / float(video::W);   // the window's own pixels to the layer's
-				const SDL_FRect src = { 0, y0 * ts, video::W * ts, (y1 - y0) * ts };
-				const float h2 = float(y1 - y0) * k2;
-				const float cy = mid.y + float(y0 + y1) * 0.5f * ks;
-				const SDL_FRect dst = { all.x, cy - h2 * 0.5f, all.w, h2 };
-				SDL_RenderTexture(ren, tex_above, &src, &dst);
-			};
-			auto band = [&](const HudCut &c, int y0, int y1, bool even, bool no_mid) {
-				if (!c.left) {
-					if (!no_mid) { slice(0, video::W, y0, y1, 0); return; }
-					// no cut to spread by, but the clock's field is a measured place and does not move
-					slice(0, HUD_MID_L, y0, y1, 0);
-					slice(HUD_MID_R, video::W, y0, y1, 0);
-					return;
-				}
-				float dxl = -dl, dxr = dr;
-				if (even && c.c0 >= 0 && c.l0 >= 0 && c.r0 >= 0) {
-					const float stand_l = mid.x + c.c0 * ks, stand_r = mid.x + (c.c1 + 1) * ks;
-					const float wl = (c.l1 + 1 - c.l0) * ks, wr = (c.r1 + 1 - c.r0) * ks;
-					dxl = all.x + (stand_l - all.x - wl) * 0.5f - (mid.x + c.l0 * ks);
-					dxr = stand_r + ((all.x + all.w) - stand_r - wr) * 0.5f - (mid.x + c.r0 * ks);
-				}
-				slice(0, c.left, y0, y1, dxl);
-				if (!no_mid) slice(c.left, c.right, y0, y1, 0);
-				slice(c.right, video::W, y0, y1, dxr);
-			};
-			if (dl > 0.5f && (hud_top.left || hud_foot.left)) {
-				band(hud_top, 0, HUD_TOP_ROWS, true, hud_hide_mid);
-				if (hud_wide_mid) band_wide(HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS);
-				else slice(0, video::W, HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS, 0);
-				if (hud_wide_foot) band_wide(video::H - HUD_FOOT_ROWS, video::H);
-				else band(hud_foot, video::H - HUD_FOOT_ROWS, video::H, false, false);
-			} else if (hud_hide_mid) {
-				// in 4:3 there is nothing to spread, but the clock still goes
-				band(HudCut(), 0, HUD_TOP_ROWS, false, true);
-				slice(0, video::W, HUD_TOP_ROWS, video::H, 0);
-			} else {
-				SDL_RenderTexture(ren, tex_above, nullptr, &mid);
-			}
-		}
-		if (draw_over) draw_over();
 		SDL_RenderTexture(ren, tex_above, nullptr, &mid);
 		draw_dural_wide(all, mid);
 		draw_hud_flags(mid);
@@ -3887,17 +2737,6 @@ int main(int argc, char **argv)
 		std::vector<uint32_t> pic(video::W * video::H);
 		for (int i = 0; i < video::W * video::H; i++) pic[i] = (game.below[i] >> 24) ? game.below[i] : 0xFF000000u;
 		one.compose(pic.data(), pic.data());
-		if (game.tiles.hd() && !game.below_hd.empty()) {
-			// HD 2D: the HD layers with the 3D between them, as tools/vf3run writes its own (video::compose_hd).
-			// The 3D keeps the hardware's size and is repeated, which is what the renderer does on screen.
-			for (int i = 0; i < video::W * video::H; i++)
-				if (!(one.base[i].a > 0 || one.t1[i].a > 0 || one.t2[i].a > 0)) pic[i] = 0;
-			const int S = game.tiles.hd_scale();
-			std::vector<uint32_t> big(size_t(video::W) * S * size_t(video::H) * S);
-			video::compose_hd(S, game.below_hd, game.above_hd, pic.data(), big.data());
-			write_png(path.c_str(), big.data(), video::W * S, video::H * S);
-			return;
-		}
 		for (int i = 0; i < video::W * video::H; i++) if (game.above[i] >> 24) pic[i] = game.above[i];
 		write_png(path.c_str(), pic.data(), video::W, video::H);
 	};
@@ -3966,99 +2805,6 @@ int main(int argc, char **argv)
 	game_menu &menu = *menu_owner;
 	if (!menu.init(win, ren, find_assets()))
 		fprintf(stderr, "no menu: its files (assets/ui) weren't found\n");
-	// ---- the console's own list of modes ----
-	// A surface of its own, drawn over the picture the game made on its own title screen: the owner's picture of
-	// the seven lines and nothing else (src/host/fv2_mode_list.h). It is NOT a page of the menu above, and that
-	// distinction is the whole point -- a page of the menu is a page of this port's settings whatever is in it.
-	fv2_mode_list modes;
-	if (cplay.on) modes.load(ren, find_assets(), stderr);
-	// And the OPTIONS page behind that list's last line, which is a surface of its own for the same reason.
-	// Unlike the six others it EDITS something: the arcade's GAME ASSIGNMENTS, in the backup RAM where they
-	// last, so a change restarts the game when the page closes -- as the Arcade settings page does for Virtua
-	// Fighter 3 (src/host/fv2_options.h, docs/fv2-console-options.md).
-	fv2_text console_font;
-	fv2_options options;
-	fv2_pause pause;   // Start during a match, over the fight
-	fv2_stage_list stages;   // VERSUS's arena, chosen before the match (fv2_stage_list.h)
-	fv2_curtain curtain;     // the Dreamcast's loading picture, over a game being taken somewhere (fv2_curtain.h)
-	// A line of the list chosen while a match was still ending, held until it is (see where it is set).
-	int mode_wanted = -1;
-	fv2_training train;      // TRAINING's column of inputs and its damage (fv2_training.h)
-	// The console's surfaces, over the picture the game made (and under this port's menu, if that is open as
-	// well): mid is the game's own 4:3 screen, which is what their placement was measured against. ONE place
-	// draws them, because F12 photographs the window by composing it again -- and a photograph that left the
-	// page out would not be a photograph of what is on screen.
-	auto draw_console = [&](m3::Model3 &b) {
-		SDL_FRect all, mid;
-		const bool column = cplay.training_on && cplay.train_fighting;
-		const bool veil = cplay.ui.at == cstate::GOING;
-		// TRAINING'S SECOND SIDE IS CPU, and it is said where the game says "2P": under its cursor on the
-		// select screen, which moves (fv2_cpu_label.h). Drawn before everything else here, because it
-		// belongs to the game's picture rather than to this port's surfaces -- a menu opened over it wins.
-		const bool cpu = cplay.training_on && (b.fv2_mode() == 4 || b.fv2_mode() == 5);
-		if (!modes.shown && !options.shown && !pause.shown && !stages.shown && !column && !veil && !cpu) return;
-		picture_rect(all, mid);
-		if (cpu)
-			fv2_cpu_label::render(ren, mid, b.fv2_option(fv2_cpu_label::CURSOR_2P, 1), game.below.data(),
-				video::W, video::H, &console_font);
-		// THE CURTAIN FIRST, and under everything: it is not a surface the player works, it is what is on
-		// screen while the game is taken from one place to another (fv2_curtain.h).
-		if (veil) curtain.render(ren, all, mid);
-		// TRAINING's column goes UNDER the surfaces and over the fight, and only while a round is being
-		// fought: a column that stayed up through the judgement and the replay would be reading itself.
-		if (column) train.render(ren, all, mid);
-		if (modes.shown) modes.render(ren, all, mid);
-		// The OPTIONS page's backdrop covers the 4:3 screen and NOTHING IS DIMMED: the Dreamcast does not dim
-		// this one, measured (docs/fv2-dreamcast-menus.md section 3bis).
-		if (options.shown) options.render(ren, mid, b);
-		// The pause menu goes over the fight, dimmed, which is why it is drawn last and takes `all` too.
-		if (pause.shown) pause.render(ren, all, mid);
-		if (stages.shown) stages.render(ren, all, mid);
-	};
-	// AND FROM HERE ON THE PICTURE CARRIES THEM: compose calls this where the game's own picture ends,
-	// so the CRT colours and the screen filter are laid over the console's surfaces as over the game.
-	draw_over = [&] { draw_console(board); };
-	// What was playing under the console's surface, and whether a mode was chosen on the way out (above).
-	int music_held = -1;
-	bool music_mode_chosen = false;
-	// The SOUNDS page's two tests: which effect and which track are under the cursor, and whether a track was
-	// started from there (it is stopped on the way out, so a test does not follow the player into the game).
-	int se_index = 0x23, bgm_track = 0;
-	// which track is actually sounding, or -1: the marker belongs to that one and not to the one under the
-	// cursor, or stepping away would leave it claiming a track that is not playing
-	int bgm_playing = -1;
-	bool bgm_testing = false;
-	// The pump's own clock, out here so that going into a surface can prime it (see there).
-	// the probe's counters, reset each time a surface opens so its rate means something (see it)
-	if (cplay.on) {
-		console_font.load(ren, find_assets(), stderr);
-		modes.font = &console_font;
-		options.load(ren, find_assets(), &console_font, stderr);
-		pause.load(ren, find_assets(), &console_font, stderr);
-		stages.load(ren, find_assets(), &console_font, stderr);
-		// VF3_CONSOLE_STAGE=none takes the carousel away, and it is worth its keep for ONE measurement:
-		// it is the only way to put a fight that went through the page beside a fight that did not, on
-		// the same build, the same script and the same machine. Taken away here rather than stepped
-		// around where the page would open, so the state machine sees exactly what a missing picture
-		// looks like (enter refuses the state and lets the select screen go).
-		if (const char *cs = getenv("VF3_CONSOLE_STAGE"); cs && !strcmp(cs, "none")) stages.ready = false;
-		train.load(ren, find_assets(), &console_font, stderr);
-		curtain.load(ren, find_assets(), stderr);
-		ending.find(find_assets(), stderr);
-		// THE DREAMCAST ENDING IS SHUT, and shut here: the roll's 25 pictures are not even read, so the
-		// player's road costs nothing at all -- no VRAM, no boot time, no frame. It would not hold 60
-		// frames a second at Frederic's over three runs (docs/fv2-dreamcast-ending.md, the 2026-10-30),
-		// and an ending that stutters is worse than the game's own, which is what the port shows again.
-		// VF3_ENDING_DC=1 is the only door left, for whoever measures the day it is taken up again.
-		cfg.ending_dc = false;
-		if (getenv("VF3_ENDING_DC")) roll.load(ren, find_assets(), stderr);
-		ending.want = cfg.ending_dc;
-		// THE REPLAYS ARE LEFT IN, and nothing of them is seen: the port owns the screen for the whole
-		// ending. Cutting them walks the game through its eight segments in 2100 frames instead of 6300,
-		// so the roll would have a third of the time it needs -- which is what made it overrun when it was
-		// latched. VF3_CUT_REPLAYS=1 cuts them again for whoever measures that road.
-		cplay.ending_no_replays = getenv("VF3_ENDING_DC") && getenv("VF3_CUT_REPLAYS");
-	}
 	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
 	bool restart = false;   // (Game > Version: started again as it quits, the other program)
@@ -4179,45 +2925,6 @@ int main(int argc, char **argv)
 	};
 	auto on_off = [](bool b) { return std::string(b ? "On" : "Off"); };
 	auto wrap = [](int v, int n) { return (v % n + n) % n; };
-	// THE PLAY STYLE, in one place because two menus offer it: this port's own under Escape, and the
-	// console's own GAME page. Three ways round, and only two where the console way is not known -- it is
-	// one game's, and offering it on another would be offering nothing.
-	auto switch_play_style = [&](int d) {
-				const int n = console_known ? 3 : 2;
-				int i = (cfg.arcade ? 1 : cfg.console ? 2 : 0) + (d < 0 ? n - 1 : 1);
-				i %= n;
-				cfg.arcade = i == 1;
-				cfg.console = i == 2;
-				// AND WHAT WAS BORROWED IS GIVEN BACK BEFORE THE BORROWER IS REPLACED: the way out of a match
-				// lends itself VS FINISH, and the line below forgets which value it was (console_play.h).
-				cplay.return_vs_finish(board);
-				cplay = console_play();   // (a style changed mid-session: nothing of the last one is carried over)
-				cplay.on = cfg.console && console_known;
-				// AND WHAT THE CONSOLE LENT THE BOARD GOES BACK WITH IT. The state is PLAY again by the line
-				// above, but the one thing it had set OUTSIDE itself is the board's own mute, which is written
-				// from the state once a frame and only while the console way is on: dropped here with the way
-				// out of a MENU_IN still set, the game would have stayed silent for the rest of the session.
-				// The two narrower mutes beside it -- the logo's voice, the announcer's -- are written the
-				// same way and are put back for the same reason.
-				board.mute_game_midi = false;
-				game.mute_voices = false;
-				game.mute_fight_voice = false;
-				modes.hide();
-				options.hide();
-				if (cplay.on) {   // (read once: the second call is free)
-		modes.load(ren, find_assets(), stderr);
-		console_font.load(ren, find_assets(), stderr);
-		modes.font = &console_font;
-		options.load(ren, find_assets(), &console_font, stderr);
-		pause.load(ren, find_assets(), &console_font, stderr);
-		stages.load(ren, find_assets(), &console_font, stderr);
-		train.load(ren, find_assets(), &console_font, stderr);
-		curtain.load(ren, find_assets(), stderr);
-				}
-				g_pc_mode = !cfg.arcade;
-				cfg_dirty = true;
-				reset_game();
-	};
 	auto back_item = [&] { return menu_item{ "Back", "Back to the previous page.", {}, {}, [&] { menu.pop(); } }; };
 	auto display_page = [&] {
 		menu_page p{ "Display", "", {} };
@@ -4384,13 +3091,9 @@ int main(int argc, char **argv)
 	auto game_page = [&] {
 		menu_page p{ "Game", "", {} };
 		p.items.push_back({ "Play style",
-			"PC skips the boot screen and is always free play. Arcade has the boot screen, coins and credits, like the real cabinet: Start needs a credit, and Coin adds one (5 and 6, or set it in Controls: a key, or a pad button such as View); its coin settings are kept for it. Console is the PC way with a console's own menu: Start during the attract loop picks a mode. Changing it restarts the game.",
-			[&] { return std::string(cfg.arcade ? "Arcade" : cfg.console ? "Console" : "PC"); },
-			// Three ways round, and only two where the console way isn't known: it is one game's, and offering
-			// it on another would be offering nothing.
-			[&](int d) {
-				switch_play_style(d);
-			} });
+			"PC skips the boot screen and is always free play. Arcade has the boot screen, coins and credits, like the real cabinet: Start needs a credit, and Coin adds one (5 and 6, or set it in Controls: a key, or a pad button such as View); its coin settings are kept for it. Changing it restarts the game.",
+			[&] { return std::string(cfg.arcade ? "Arcade" : "PC"); },
+			[&](int) { if (nvram_away) return; cfg.arcade = !cfg.arcade; g_pc_mode = !cfg.arcade; cfg_dirty = true; reset_game(); } });
 		p.items.push_back({ "Reset game", "Restarts the game, like switching the arcade off and on. Rankings and settings are kept. (F3)",
 			{}, {}, [&] { reset_game(); } });
 		if (programs.size() > 1) {   // (the zips hold both: Revision D and Team Battle)
@@ -4446,23 +3149,6 @@ int main(int argc, char **argv)
 		p.items.push_back({ "Log file",
 			"log.txt in the data folder: what the game did, a few kilobytes a session, kept for bug reports (send it with one). Off, nothing's written. From the next start.",
 			[&] { return on_off(cfg.log); }, [&](int) { cfg.log = !cfg.log; cfg_dirty = true; }, [&] { cfg.log = !cfg.log; cfg_dirty = true; } });
-		p.items.push_back(back_item());
-		return p;
-	};
-	// The console way's own page: what a console puts in front of an arcade game. Start during the attract loop
-	// opens it, and the game is paused behind it as it is behind any page of this menu. Each line hands the game
-	// a real Start when it closes -- the credit is the game's business, and this menu never touches it.
-	auto console_page = [&] {
-		menu_page p{ "Fighting Vipers 2", "Choosing a mode hands the game a real press of Start. What that costs is the game's own business, on credits as on free play.", {} };
-		p.items.push_back({ "Arcade", "The game as it comes: the fixed road of opponents.",
-			{}, {}, [&] { cplay.choose_arcade(); menu.close(); } });
-		p.items.push_back({ "Survival", "One opponent after another, with the life you have left. The flag is set once the game is running, not before -- set during the attract loop it stops the game starting at all -- and put back when the game ends.",
-			{}, {}, [&] { cplay.choose_survival(board); menu.close(); } });
-		p.items.push_back({ "Hidden fighters", "Del Sol, Kuhn, BM and Dural on the select screen, the cursor wrapping at 14 instead of 10. Past cursor 10 the game's own names and portraits are wrong or missing.",
-			[&] { return std::string(cfg.full_roster ? "On" : "Off"); },
-			[&](int) { cfg.full_roster = !cfg.full_roster; game.full_roster = cfg.full_roster; cfg_dirty = true;
-			           online_ready = false;   // (the online version carries it: "+roster")
-			           if (cfg.full_roster) game.hold_roster(); } });
 		p.items.push_back(back_item());
 		return p;
 	};
@@ -4859,7 +3545,7 @@ int main(int argc, char **argv)
 			if (game.emu_thread.joinable()) game.job_wait();
 			const bool dural = cfg.dural && board.profile->dural;
 			const bool one = board.profile == &m3::VF3_TB && cfg.tb_one;
-			const bool roster = board.profile == &m3::FV2_REV_A && cfg.full_roster;   // (the hidden fighters: the match's, not one player's)
+			const bool roster = board.set == "fvipers2" && cfg.full_roster;   // (the hidden fighters: the match's, not one player's)
 			online.identity = { board.profile->set, vf3net::online_version(VF3_VERSION) + (dural ? "+dural" : "") + (one ? "+1v1" : "") + (roster ? "+roster" : ""), vf3net::content_hash(board), "" };   // (the online version, not the release's)
 			online.adapter.dural = dural;
 			online_ready = true;
@@ -4881,15 +3567,15 @@ int main(int argc, char **argv)
 		p.items.push_back({ "Display", "Sharpness, antialiasing, screen shape, the 3D renderer, smooth motion, background and screen filters, frame rate and fullscreen.", {}, {}, [&] { menu.push(display_page()); } });
 		p.items.push_back({ "Sound", "The overall, music and effects volumes.", {}, {}, [&] { menu.push(sound_page()); } });
 		p.items.push_back({ "Game", "Play style and reset.", {}, {}, [&] { menu.push(game_page()); } });
-		// the console way's own page, where Start during the attract loop also opens it
-		if (cfg.console && console_known)
-			p.items.push_back({ "Fighting Vipers 2", "The console's menu: which mode to start, and the hidden fighters. Start during the attract loop opens it too.",
-								{}, {}, [&] { menu.push(console_page()); } });
-		p.items.push_back({ "Arcade settings", "Difficulty, rounds, energy, demo sound, country and the service menu. Changing them restarts the game.", {}, {},
-							[&] { if (arcade_before.empty()) arcade_before = arcade_bytes(); menu.push(arcade_page()); } });
 		if (board.profile->settings.at)   // (where the program keeps them known)
 			p.items.push_back({ "Arcade settings", "Difficulty, rounds, energy, demo sound, country and the service menu. Changing them restarts the game.", {}, {},
 								[&] { if (arcade_before.empty()) arcade_before = arcade_bytes(); menu.push(arcade_page()); } });
+		if (board.set == "fvipers2")
+			p.items.push_back({ "Hidden fighters", "Del Sol, Kuhn, BM and Dural on the select screen, the cursor wrapping at 13 instead of 10. Past cursor 10 the game's own names and portraits are wrong or missing.",
+				[&] { return std::string(cfg.full_roster ? "On" : "Off"); },
+				[&](int) { cfg.full_roster = !cfg.full_roster; game.full_roster = cfg.full_roster; cfg_dirty = true;
+				           online_ready = false;   // (the online version carries it: "+roster")
+				           if (cfg.full_roster) game.hold_roster(); } });
 		if (board.profile->online)
 			p.items.push_back({ "Online", "Play someone over the network: host a match, or join one.", {}, {}, [&] { menu.push(online_page()); } });
 		else
@@ -4902,582 +3588,10 @@ int main(int argc, char **argv)
 	};
 	bool sound_paused = false;
 	auto sync_menu_sound = [&] {
-		// THE CONSOLE'S SURFACES ARE NOT SILENT ANY MORE, and this rule was written when they were. The Escape
-		// menu is this port's own and has always been quiet, so the device still sleeps under it; the list and
-		// the OPTIONS tree now turn the sound board themselves and play the game's own three notes.
-		//
-		// Pausing the device under them was what Frederic heard as "sound effects out of step". Measured with
-		// the probe on a real machine: the queue grew by exactly one sound frame per frame made -- 0, 1, 2, 3,
-		// 4, 5, 6, 7 frames of backlog -- because nothing was consuming it. Every beep went in behind that
-		// backlog and only came out when the surface closed and the device woke up, which is word for word
-		// what he described: late, and only once the game started again.
-		// A netplay match goes on behind the menu, and so does its sound: the device only sleeps under the
-		// Escape menu when no match is being played (online.cpp).
-		const bool quiet_now = menu.is_open() && !online.playing();
-		if (!audio || quiet_now == sound_paused) return;
-		sound_paused = quiet_now;
+		const bool pause = menu.is_open() && !online.playing();   // (a match goes on, its sound too)
+		if (!audio || pause == sound_paused) return;
+		sound_paused = pause;
 		if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
-	};
-	// ---- ENTERING A CONSOLE STATE, and the only place any of its surfaces is opened or closed ----
-	//
-	// The state is the authority (console_state.h): the surfaces FOLLOW it. Before this, each place that
-	// wanted a page open called show() on it and hide() on whatever it was replacing, and then wrote out
-	// by hand the three lines that have to go with any such change -- hold the player's Start back, note
-	// that it has not been released, put the sound device in the right state. Fourteen places, and the
-	// ones that forgot a line were the defects. Here it is written once.
-	//
-	// Nothing else in this file calls show() or hide() on the list, the OPTIONS tree, the pause menu or
-	// the carousel. A place that wants one of them says which STATE it wants to be in.
-	auto enter = [&](cstate s, const char *why) {
-		// A STATE WHOSE SURFACE IS NOT THERE IS NOT ENTERED, and the state machine stays total rather
-		// than hanging: a picture that failed to load would otherwise leave the game held, or parked,
-		// under nothing at all. The carousel's refusal has one thing more to do -- the game was parked in
-		// Sega's empty STAGE_SEL on the tick the page was asked for, and something has to let it go.
-		const bool have = (s != cstate::MENU && s != cstate::MENU_IN ? true : modes.ready)
-			&& (s != cstate::OPTIONS ? true : options.ready)
-			&& (s != cstate::STAGE && s != cstate::STAGE_HELD ? true : stages.ready)
-			&& (s != cstate::VS_OVER ? true : pause.ready);
-		if (!have) {
-			fprintf(stderr, "the console: %s was asked for (%s) and its page is not there -- staying in play\n",
-				crules(s).name, why ? why : "");
-			if (s == cstate::STAGE || s == cstate::STAGE_HELD) cplay.ask_for(console_play::ask::stage_free);
-			s = cstate::PLAY;
-		}
-		cplay.ui.set(s, why);
-		const bool want_modes = s == cstate::MENU || s == cstate::MENU_IN;
-		const bool want_opts  = s == cstate::OPTIONS;
-		const bool want_pause = s == cstate::PAUSE || s == cstate::VS_OVER;
-		const bool want_stage = s == cstate::STAGE || s == cstate::STAGE_HELD;
-		if (want_modes && !modes.shown) modes.show();
-		else if (!want_modes && modes.shown) modes.hide();
-		if (want_opts && !options.shown) options.show();
-		else if (!want_opts && options.shown) options.hide();
-		// (the pause menu is opened by the hand that pressed Start, which says which side the panel stands
-		// on: that one call stays where it is, and this only ever closes it)
-		if (!want_pause && pause.shown) pause.hide();
-		if (want_stage && !stages.shown) stages.show();
-		else if (!want_stage && stages.shown) stages.hide();
-		// The press that worked the surface is not the game's: held back until it has been let go.
-		cplay.swallow_start = true;
-		cplay.start_was = true;
-		sync_menu_sound();
-	};
-	// A line of the console's list chosen. ARCADE and SURVIVAL are wired: their levers were measured in this
-	// port and it writes them (docs/fv2-console.md). The other five are drawn and do nothing yet -- RANDOM and
-	// V.S. want the select screen's own timing, which has not been measured here, and NETWORK, TRAINING and
-	// OPTIONS have no lever in this port at all. A line that does nothing leaves the list up: closing it would
-	// say something happened.
-	// Leaving the page. NOTHING RESTARTS, and that is deliberate: the page writes both the backup, which makes
-	// a setting last, and the working copy the running game reads, which makes it take effect. The first draft
-	// wrote only the backup and restarted the game to have it read -- which is what Virtua Fighter 3's Arcade
-	// settings page does, and which, on a console's options screen, looks exactly like a crash: the picture
-	// goes black and the window sits silent for seconds while the board boots again.
-	// ---- the console's DISPLAY and SOUNDS pages ----
-	//
-	// These two screens are August's, line for line (OptionsEntries / SoundEntries in the 2026-08-20 backup),
-	// but what they switch belongs to THIS PORT, so they are registered from here rather than built inside
-	// fv2_options.h, which has no business knowing about cfg.
-	//
-	// A LINE WITH NOTHING TO SWITCH KEEPS ITS PLACE AND IS STEPPED OVER, which is August's own rule and his
-	// reason: a page whose lines slide up and down as settings come and go is misread at a glance. That is
-	// what the lines this port cannot do yet are -- drawn, dimmed, and passed by -- rather than quietly
-	// missing. Each says below why it is one.
-	bool ending_asked = false;   // ENDING on the DISPLAY page: the page closes so the roll can be seen
-	if (cplay.on) {
-		auto fixed = [](const char *v) { return [v] { return std::string(v); }; };
-		// A pack to load: one already in, or at least one PNG sitting in the folder. The dump writes into a
-		// subfolder of its own, so the files directly in here are the pack's and nothing else.
-		bool hd_pack = video::hd3d().replacing();
-		if (!hd_pack) {
-			std::error_code hec;
-			for (const auto &e : std::filesystem::directory_iterator(hd_pack_dir, hec))
-				if (e.is_regular_file(hec) && e.path().extension() == ".png") { hd_pack = true; break; }
-		}
-		options.own[fv2_options::SCR_DISPLAY] = {
-			// August's WIDESCREEN was a switch because its fork had two shapes; this port has five, so the
-			// line steps through them and shows the one in force. Same line, more of it.
-			{ "WIDESCREEN", [&] { return std::string(aspect_i ? ASPECT_NAMES[aspect_i] : "FIT"); },
-			  [&](int d) { set_shape(wrap(aspect_i + d, N_ASPECTS)); }, {}, {}, 0, false, 0 },
-			// HD ART SWITCHES NOW. The pack used to be read once at start-up with no way to let go of it, so
-			// the line could only report. It needs no new lever: load() empties what it holds before it reads,
-			// so loading from nowhere is how a pack is put down, and the GPU renderer already checks the page
-			// count rather than assuming it -- its own comment foresaw a pack arriving later.
-			//
-			// NONE when there is no pack to load, and then the line is stepped over like any other that has
-			// nothing to switch. Whether there is one is settled here, once, as the rest of the page is: a
-			// folder that gains its first PNG while the game runs is not a case worth a check every picture.
-			// Turning it on again re-reads the folder, which is the price of having no unload.
-			{ "HD ART", [&] { return std::string(video::hd3d().replacing() ? "ON" : hd_pack ? "OFF" : "NONE"); },
-			  hd_pack ? std::function<void(int)>([&](int) {
-				  std::string report;
-				  if (video::hd3d().replacing()) {
-					  video::hd3d().load(std::string(), report);   // (empties it: see above)
-					  fprintf(stderr, "the console's DISPLAY: the 3D texture pack put down\n");
-				  } else if (video::hd3d().load(hd_pack_dir, report)) {
-					  fprintf(stderr, "the console's DISPLAY: %s\n", report.c_str());
-				  } else {
-					  fprintf(stderr, "the console's DISPLAY: %s\n", report.c_str());
-					  return;   // (nothing loaded: the setting does not claim otherwise)
-				  }
-				  cfg.hd_3d = video::hd3d().replacing();
-				  cfg_dirty = true;
-			  }) : std::function<void(int)>(), {}, {}, 0, false, 0 },
-			{ "FPS COUNTER", [&] { return std::string(cfg.show_fps ? "ON" : "OFF"); },
-			  [&](int) { cfg.show_fps = !cfg.show_fps; cfg_dirty = true; }, {}, {}, 0, false, 0 },
-			// ---- WHAT THE PORT'S OWN MENU HAD AND THIS PAGE DID NOT ----
-			//
-			// Frederic went through the two menus line by line the 2026-10-27 and chose these ten for here.
-			// They are the SAME settings the menu under Escape steps -- the same cfg fields, the same levers --
-			// said in the console's own words: short names, short values, no sentences. A line that reads
-			// differently in the two menus would be two settings as far as a player is concerned.
-			//
-			// (Picture shape is not among them because it is already here: WIDESCREEN steps the same five
-			// shapes through the same set_shape.)
-			{ "RENDER SCALE", [&] {
-				const int want = chosen_scale();
-				std::string t = std::to_string(want) + "X";
-				if (gov.scale_cut) t += " (" + std::to_string(scale) + "X NOW)";
-				return t;
-			// AND NO GAP BEFORE IT ANY MORE. It had one, to set the lines this page gained the 2026-10-27
-			// apart from the three it was born with -- a distinction that is the port's history and not the
-			// player's. Frederic read it as a fault the 2026-10-29, which is what it had become: one line
-			// standing a third of a line lower than every other, meaning nothing.
-			  }, [&](int d) { set_scale(chosen_scale() + d); }, {}, {}, 0, false, 0 },
-			{ "ANTIALIASING", [&] {
-				const int k = aa_now();
-				std::string t = cfg.aa > 1 ? std::to_string(cfg.aa) + "X" : std::string("OFF");
-				if (cfg.aa > 1 && k < cfg.aa) t += k > 1 ? " (" + std::to_string(k) + "X NOW)" : " (OFF NOW)";
-				return t;
-			  }, [&](int d) { cfg.aa = std::clamp(cfg.aa + d, 1, 3); cfg_dirty = true; gov_fresh(); }, {}, {}, 0, false, 0 },
-			{ "3D RENDERER", [&] {
-				static const char *const N[] = { "AUTO", "CPU", "GPU" };
-				if (cfg.renderer3d != r3d_mode) return std::string(N[cfg.renderer3d]) + " (NEXT START)";
-				if (r3d_mode == R3D_AUTO) return std::string("AUTO (") + (g3.on ? "GPU" : "CPU") + ")";
-				if (r3d_mode == R3D_GPU && g3.failed) return std::string("GPU (FAILED: CPU)");
-				return std::string(N[r3d_mode]);
-			  }, [&](int d) {
-				static const int ORDER[] = { R3D_AUTO, R3D_CPU, R3D_GPU };
-				int i = 0;
-				while (i < 2 && ORDER[i] != cfg.renderer3d) i++;
-				cfg.renderer3d = ORDER[wrap(i + d, 3)];
-				cfg_dirty = true;
-				cfg.gpu3d_failed.clear();   // (the player's choice: every driver tried again from the next start)
-			  }, {}, {}, 0, false, 0 },
-			{ "BACKGROUND", [&] { return std::string(cfg.smooth_bg ? "SMOOTH" : "OFF"); },
-			  [&](int) {
-				cfg.smooth_bg = !cfg.smooth_bg;
-				cfg_dirty = true;
-				SDL_SetTextureScaleMode(tex_below, cfg.smooth_bg ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
-			  }, {}, {}, 0, false, 0 },
-			{ "TEXTURES", [&] { return std::string(cfg.sharp_textures ? "SHARP" : "ARCADE"); },
-			  [&](int) {
-				cfg.sharp_textures = !cfg.sharp_textures;
-				video::Raster::arcade_lod = !cfg.sharp_textures;
-				cfg_dirty = true;
-			  }, {}, {}, 0, false, 0 },
-			// A LINE THAT IS DRAWN AND STEPPED OVER, which is this page's own idiom for something that is
-			// coming: no step and no act, so the cursor passes it by and it is painted grey, exactly as
-			// COUNTRY is. The shadows and the lighting are being worked on in another session; the line is
-			// here so the page does not move under the player's eye on the day they land.
-			{ "ENHANCED SHADOWS", [&] { return std::string("OFF"); }, {}, {}, {}, 0, false, 0 },
-			{ "SMOOTH MOTION", [&] {
-				return std::string(cfg.smooth ? "ON" : "OFF") + (cfg.smooth && gov.smooth_off ? " (60 NOW)" : "");
-			  }, [&](int) { cfg.smooth = !cfg.smooth; cfg_dirty = true; gov_fresh(); }, {}, {}, 0, false, 0 },
-			{ "SCREEN FILTER", [&] {
-				static const char *const N[] = { "OFF", "SCANLINES", "CRT" };
-				return std::string(N[cfg.filter]);
-			  }, [&](int d) { cfg.filter = wrap(cfg.filter + d, 3); cfg_dirty = true; }, {}, {}, 0, false, 0 },
-			// The five sets of colours have long names in the port's own menu, which says where each comes from.
-			// Here they are said in a word each: the page has a column's width, not a paragraph's.
-			{ "CRT COLOURS", [&] {
-				static const char *const N[] = { "OFF", "SEGA", "SONY", "NTSC-J", "NTSC-U", "PAL" };
-				const int i = cfg.crt_colours >= 0 && cfg.crt_colours < crt::N_PRESETS ? cfg.crt_colours : 0;
-				return std::string(N[i]) + (i && crt_paint.failed() ? " (NOT HERE)" : "");
-			  }, [&](int d) { cfg.crt_colours = wrap(cfg.crt_colours + d, crt::N_PRESETS); cfg_dirty = true; }, {}, {}, 0, false, 0 },
-#ifdef _WIN32
-			{ "GRAPHICS", [&] { return std::string(cfg.graphics ? "DIRECT3D 12" : "AUTO"); },
-			  [&](int) { cfg.graphics = !cfg.graphics; cfg_dirty = true; }, {}, {}, 0, false, 0 },
-#endif
-			{ "FULLSCREEN", [&] { return std::string(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN ? "ON" : "OFF"); },
-			  [&](int) { set_fullscreen(!(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN)); }, {}, {}, 0, false, 0 },
-			// PLAY STYLE LIVES HERE NOW. Frederic, the 2026-10-29: "PLAY STYLE vers DISPLAY". It is the
-			// one line of the port's own that can take this menu away -- chosen as PC or ARCADE, the console
-			// way goes out and with it the list, this tree, the pause menu and the carousel -- and the game
-			// restarts on the spot, which is the only honest way to change it.
-			{ "PLAY STYLE", [&] { return std::string(cfg.arcade ? "ARCADE" : cfg.console ? "CONSOLE" : "PC"); },
-			  [&](int d) { switch_play_style(d); }, {}, {}, 0, false, 0 },
-			// INITIALIZE, as GAME ASSIGNMENTS and SOUNDS have: the factory value of every line above it.
-			// Frederic, the 2026-10-29: "il manque la ligne initialize la page display".
-			//
-			// EVERY LINE ABOVE IT EXCEPT TWO. ENHANCED SHADOWS sets nothing yet, and PLAY STYLE is not a
-			// setting of the picture at all -- it restarts the game and takes this menu away with it, which
-			// is not what a player asking for the factory picture is asking for. It is parked on this page
-			// and it is left alone.
-			//
-			// The values are the ones Config starts at, read off its own declarations rather than written
-			// again here: FIT, no pack, no counter, the scale and the renderer on Auto, antialiasing off,
-			// the backgrounds smooth, the textures sharp, smooth motion on, no filter, no CRT colours, the
-			// driver on Auto, and the window out of fullscreen. Each is put back through the SAME lever its
-			// own line uses, so nothing that follows a setting -- the governor, the scale mode of the 2D,
-			// the rasteriser's mipmaps -- is left behind.
-			{ "INITIALIZE", {}, {}, [&] {
-				  set_shape(0);
-				  if (video::hd3d().replacing()) {
-					  std::string report;
-					  video::hd3d().load(std::string(), report);
-					  fprintf(stderr, "the console's DISPLAY: the 3D texture pack put down (INITIALIZE)\n");
-				  }
-				  cfg.show_fps = false;
-				  cfg.scale = 0;            // (0 is Auto: set_scale would clamp it to 1)
-				  cfg.aa = 1;
-				  cfg.renderer3d = 2;
-				  cfg.gpu3d_failed.clear();
-				  cfg.smooth_bg = true;
-				  SDL_SetTextureScaleMode(tex_below, SDL_SCALEMODE_LINEAR);
-				  cfg.sharp_textures = true;
-				  video::Raster::arcade_lod = false;
-				  cfg.smooth = true;
-				  cfg.filter = 0;
-				  cfg.crt_colours = 0;
-				  cfg.graphics = 0;
-				  if (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN) set_fullscreen(false);
-				  cfg_dirty = true;
-				  gov_fresh();
-			  }, {}, 0, true, 1.2f },
-		};
-
-		// ---- GAME ASSIGNMENTS carries ONE line of the port's own, under the game's thirteen ----
-		//
-		// Frederic, the 2026-10-29: "deplace le ending Dreamcast/arcade vers GAME ASSIGNEMENTS". It sat on
-		// DISPLAY, which is where the shape of the picture is set; what ending a finished ladder plays is
-		// an assignment of the game, beside FREE PLAY and the difficulty, and it reads as one there.
-		// INITIALIZE still ends the page: build_pages pushes the button after this port's own lines.
-		options.own[fv2_options::SCR_SETTINGS] = {
-			// August's ENDING switched the fork's own illustrations over the replays, and nothing of those
-			// exists here. But the GAME has an ending -- the staff roll, mode 12 -- which no one had ever
-			// seen running, because reaching it means finishing the ladder and the notes have it among the
-			// states never reached. So this line is not his switch but a way to watch it: A asks the game
-			// for it and the page gets out of the way. It ends by itself and the attract loop takes over,
-			// so there is nothing to put back (model3.cpp, fv2_request_ending).
-			//
-			// HALF OF IT COMES OUT, and the line is kept anyway because the half that comes out is the roll
-			// itself. The ending alternates: about 225 frames of credits over the viper, which draw exactly
-			// right, and about 225 of a 3D passage -- 279 models over 16 viewports, 383 later -- which draws
-			// as a bare white floor with a figure the size of a thumb on it, under 2D banners left from the
-			// demonstration ("Old Armstone Town", "v.s. GRACE"). Nothing of the scenery is there.
-			//
-			// AND THE REASON IS IN SEGA'S OWN NAMES. The ending's seven sub-states, read out of the table of
-			// pointers at 0x00024494, are ending_trans_init, ending_trans_wait, ending_replay_init,
-			// ending_replay_ctrl, ending_replay_next, ending_final_mask1, ending_final_mask2: THREE OF THE
-			// SEVEN ARE REPLAYS. The roll alternates with replays of the matches the player has just won,
-			// and the banners are the replay's own, naming its stage and its opponent as every replay does.
-			//
-			// So from the title screen there is no match to replay and no stage to load. Measured three ways
-			// at the same offset from ENDING_INT: asked from the title, a bare floor; asked from inside a
-			// fight, the two fighters of that fight, loaded and lit, on a bare floor; entered by the game's
-			// own branch -- ADV_INFO_STATUS bit 3, "the ladder is finished" -- the whole replay on its stage,
-			// cage and all. This line shows the roll, which is the ending's own content; the replays want a
-			// game played first, and that is a lever of its own (docs/fv2-console-options.md).
-			// TWO THINGS A AND LEFT/RIGHT CHOOSE BETWEEN, because the ending is two things.
-			//
-			//   ROLL NOW        the staff roll, here, over the title screen the page is sitting on. The
-			//                   credits are whole; the replay passages have no match to replay, so they come
-			//                   out on a bare floor. Costs nothing and gives the game back by itself.
-			//   AFTER A MATCH   the REAL one. The bit goes in when the game says the match is over, so the
-			//                   game's own branch point takes the ending with its replays on their stages --
-			//                   324 KB of picture against 16 for the bare one, measured.
-			//
-			// Armed, the line says so and the page stays up: there is a game to go and play. The arming
-			// keeps until a match ends, and nothing holds the bit (console_play.h, model3.cpp).
-			// AND THE LINE IS A CHOICE BETWEEN THE TWO ENDINGS, which is what Frederic asked for the
-			// 2026-10-25: "the point is not to launch the game's ending but to choose between the arcade
-			// ending and the console one when you finish arcade mode". It is August's own line again --
-			// his fork's said DREAMCAST or ARCADE -- and the difference is what stands in for the roll's
-			// REPLAYS: the arcade shows the matches just won, the Dreamcast its illustrations. Eight of
-			// them, chosen and ordered by Frederic out of a rip of the disc (fv2_ending.h).
-			//
-			// Watching the roll from here has gone with it. It was a way to see a thing nobody had seen
-			// running, and it has been seen; a settings line that STARTS something is not a setting.
-			//
-			// AND THE CHOICE IS SHUT, the 2026-10-30: the line keeps its place and says ARCADE, grey and
-			// stepped over, because it has neither a step nor an act -- the one way fv2_options.h is told
-			// a line is not to be picked (it draws MUTED and the cursor passes it by). The reason is
-			// measured and written down in docs/fv2-dreamcast-ending.md: the roll did not hold 60 frames
-			// a second on Frederic's machine, three runs over, and a stuttering ending is worse than the
-			// game's own. The roll's code stays, and VF3_ENDING_DC=1 opens it for measurement alone.
-			{ "ENDING", [&] { return std::string("ARCADE"); }, {}, {}, {}, 0, false, 0 },
-		};
-		// The twenty tracks, and the numbering, are August's measured tables (GameFV2.h): on bank 0x10 the
-		// sound test's number is the index plus ten, and on bank 0x2E the index plus 353. Confirmed here
-		// twice over in the MIDI log -- the attract's A0 10 07 is no. 17 and the replay's A0 10 11 is no. 27.
-		static const char *const MUSIC[20] = {
-			"SELECT", "BURNING BEAR", "NIGHT CALL", "RAVIN", "L.S.D.", "INSPIRE", "NAME ENTRY", "ATTRACT",
-			"INSERT COIN", "GAME OVER", "BRAIN CLEANSER", "DEEPER", "TRIPBACK", "3RD SIGNAL", "UNDER THE SUN",
-			"ENDING", "GOOD NOISE", "DEMO", "UFO DINER", "MENU",
-		};
-		options.own[fv2_options::SCR_SOUNDS] = {
-			// THE SOUND TEST WORKS NOW, and it is worth saying why it could not before: it wants a note handed
-			// to the sound board while the page is up, and that wants the board turning under a frozen game,
-			// which was only built on the 2026-10-22. The three names are the only three anyone has named;
-			// the rest show the number the game's own SOUND TEST shows.
-			{ "SE", [&] {
-				  const char *known = se_index == 0x23 ? "sd_sign_16" : se_index == 0x26 ? "sd_ketsu_00"
-								 : se_index == 0x27 ? "sd_sonic00_11" : nullptr;
-				  return known ? std::string(known) : "NO. " + std::to_string(353 + se_index);
-			  }, [&](int d) { se_index = (se_index + 256 + d) % 256; game.play_effect(uint8_t(se_index)); },
-			  {}, {}, 0, false, 0 },
-			{ "SE VOLUME", {}, [&](int d) {
-				  cfg.effects = std::clamp(cfg.effects + 5 * d, 0, 100); cfg_dirty = true;
-				  game.sound.set_volumes(cfg.music / 100.0f, cfg.effects / 100.0f);
-			  }, {}, [&] { return (cfg.effects + 4) / 5; }, 20, false, 0 },
-			// August drew this one "BGM" and dispatched on "BGM TEST", because two lines called VOLUME could
-			// not be told apart. The break before it is his too: a third of a step, read off the original.
-			// A MUSIC WAITS TO BE ASKED FOR. Frederic heard the first version, where stepping played at once:
-			// that is right for an effect, which is over in half a second, and wrong for a track, which runs
-			// until something stops it. So left and right only choose, A starts, and B stops -- and B is kept
-			// by this line while something plays, the next one leaving the page as usual.
-			{ "BGM", [&] { return std::string(MUSIC[bgm_track]) + (bgm_playing == bgm_track ? "  >" : ""); },
-			  [&](int d) { bgm_track = (bgm_track + 20 + d) % 20; },
-			  [&] { game.play_music(uint8_t(bgm_track)); bgm_testing = true; bgm_playing = bgm_track; },
-			  {}, 0, false, 0.32f,
-			  [&] {
-				  if (!bgm_testing) return false;
-				  game.stop_music();
-				  bgm_testing = false;
-				  bgm_playing = -1;
-				  return true;
-			  },
-			  true },   // silent: a track starting and a track stopping are heard; the menu need not say so
-			// The music packs -- the first Fighting Vipers' tracks in place of these -- are the fork's, and
-			// its own notes say the replacement was wired there and never once heard. Nothing of it here.
-			{ "BGM SET", fixed("-"), {}, {}, {}, 0, false, 0 },
-			{ "BGM VOLUME", {}, [&](int d) {
-				  cfg.music = std::clamp(cfg.music + 5 * d, 0, 100); cfg_dirty = true;
-				  game.sound.set_volumes(cfg.music / 100.0f, cfg.effects / 100.0f);
-			  }, {}, [&] { return (cfg.music + 4) / 5; }, 20, false, 0 },
-			// THE OVERALL VOLUME, which this page did not have: the two it had are shares OF it, so with the
-			// master at nothing both of them are at nothing and neither line says why. Twenty arrows like the
-			// other two, and the same step of five.
-			{ "MAIN VOLUME", {}, [&](int d) {
-				  cfg.volume = std::clamp(cfg.volume + 5 * d, 0, 100);
-				  cfg_dirty = true;
-				  game.sound_wait();
-				  game.sound.gain = LEVEL * cfg.volume / 100.0;
-			  }, {}, [&] { return (cfg.volume + 4) / 5; }, 20, false, 0.32f },
-			{ "INITIALIZE", {}, {}, [&] {
-				  cfg.volume = cfg.music = cfg.effects = 100; cfg_dirty = true;
-				  game.sound_wait();
-				  game.sound.gain = LEVEL;
-				  game.sound.set_volumes(1.0f, 1.0f);
-			  }, {}, 0, true, 1.2f },
-		};
-		// ---- THE GAME PAGE AND ITS THREE LINES ARE ALL GONE, the 2026-10-29 ----
-		//
-		// PLAY STYLE went to DISPLAY and ENDING to GAME ASSIGNMENTS, and the page with them ("ligne et page
-		// GAME a supprimer"). The two buttons that were left stood at the foot of OPTIONS for an hour, until
-		// QUIT went ("supprime QUIT": a console's own menu does not offer to leave the console) and RESET
-		// GAME after it ("supprime RESET GAME et remet l'image"). What stands at that foot now is the disc's
-		// own INITIALIZE, pushed there by build_pages.
-		//
-		// Both are still a key away: Escape opens the port's own menu, which resets the game and quits.
-		// ENERGY MAX 1P's one step above the game's own highest (fv2_options.h). The page shows INFINITE and
-		// switches this; what holds the life is the frame loop below, which is the only place that can.
-		options.endless_1p = [&] { return cfg.endless_1p; };
-		options.set_endless_1p = [&](bool on) {
-			cfg.endless_1p = on;
-			cfg_dirty = true;
-			fprintf(stderr, "the console's GAME ASSIGNMENTS: player one's life %s\n",
-					on ? "held full while a round runs (ENERGY MAX 1P: INFINITE)" : "left to the game again");
-		};
-		options.ctl = cfg.ctl;   // CONTROLLER reads the bindings and writes them
-		// AND THE THREE LINES OF THAT PAGE THAT ARE ABOUT THE PADS RATHER THAN THEIR BUTTONS. The page owns
-		// the grid and the capture; the host owns the pads, so it lends them (fv2_options.h). The same three
-		// levers the port's own menu offers, called rather than written again.
-		options.pad_text = [&](int p) {
-			std::string t = pad_name(p);
-			for (char &c : t) c = char(toupper((unsigned char)c));
-			// the page has a column's width: the long answers are said short
-			if (t.rfind("ANY PAD:", 0) == 0) return std::string("AUTO");
-			if (t == "ANY PAD (NONE CONNECTED)") return std::string("AUTO (NONE)");
-			if (t == "CHOSEN PAD (NOT CONNECTED)") return std::string("NOT HERE");
-			if (t.size() > 12) t = t.substr(0, 12);
-			return t;
-		};
-		options.pad_cycle = [&](int p) { cycle_pad(p, 1); };
-		options.ctl_defaults = [&](int p) {
-			cfg.ctl[p] = player_controls::defaults(p);
-			for (auto k : cfg.ctl[p].key)
-				if (k) for (auto &x : cfg.ctl[1 - p].key) if (x == k) x = SDL_SCANCODE_UNKNOWN;
-			cfg_dirty = true;
-			open_pads();
-			options.ctl = cfg.ctl;   // (the page reads its own copy: it was just written under it)
-		};
-		options.ctl_swap = [&] {
-			auto choice = [&](int p) { return pads[p] ? guid_of(SDL_GetGamepadID(pads[p])) : std::string("none"); };
-			const std::string a = choice(0), b = choice(1);
-			if (a == b) { pads_swapped = !pads_swapped; std::swap(pads[0], pads[1]); }
-			else {
-				cfg.ctl[0].pad_choice = b;
-				cfg.ctl[1].pad_choice = a;
-				cfg_dirty = true;
-				open_pads();
-			}
-			for (int q = 0; q < 2; q++) options.pad_id[q] = pads[q] ? SDL_GetGamepadID(pads[q]) : 0;
-		};
-		// And which pad is whose, so a capture on one player's column takes that player's pad and no other
-		// (fv2_options.h). Filled again whenever the pads are opened again, below.
-		for (int p = 0; p < 2; p++) options.pad_id[p] = pads[p] ? SDL_GetGamepadID(pads[p]) : 0;
-		options.build_pages();
-	}
-	auto close_options = [&] {
-		const bool changed = options.changed;
-		options.changed = false;
-		// BACK TO THE LIST, NOT TO THE GAME. OPTIONS is a door INSIDE the list -- it is reached from no
-		// other place -- so leaving it belongs one step up, not all the way out. It went to PLAY, which
-		// dropped the player on the game's title screen with the list gone: Frederic, the 2026-10-29,
-		// "sortir du menu option renvoie a l'ecran titre au lieu du menu principal". The line was written
-		// when the list had no state of its own and closed itself to let OPTIONS have the screen; the table
-		// has made that untrue (console_state.h). enter() refuses MENU if the list is not there and falls
-		// back to PLAY, which is the old behaviour kept for the one case that still wants it.
-		enter(cstate::MENU, "OPTIONS closed");
-		// AND ON THE LINE IT WAS OPENED FROM. Showing the list puts its cursor back on the first line, so
-		// coming out of OPTIONS jumped to ARCADE -- a page you left is a page you come back to.
-		if (cplay.ui.at == cstate::MENU) modes.sel = fv2_mode_list::OPTIONS;
-		fprintf(stderr, "the console's OPTIONS: closed, %s\n", changed ? "a setting changed" : "nothing changed");
-	};
-	auto choose_mode = [&](int line) {
-		fprintf(stderr, "the console's list: %s chosen\n", fv2_mode_list::name(line));
-		if (line == fv2_mode_list::ARCADE) cplay.choose_arcade();
-		else if (line == fv2_mode_list::SURVIVAL) cplay.choose_survival(board);
-		// RANDOM asks the game for its own flag, RANDOM_CHARA, rather than reproducing the hand manoeuvre
-		// that was recorded in August -- that one, Start held across the fighter's validation, was measured
-		// here to do nothing at all (console_play.h, model3.cpp).
-		else if (line == fv2_mode_list::RANDOM) cplay.choose_random();
-		// VERSUS starts as it always did. The stage is NOT asked for here: the summer's ROM put that choice
-		// AFTER the fighters are picked, and so does this port -- console_play asks for the STAGE state when
-		// the game leaves SELECT for DECIDE_INT, and the page opens there (fv2_stage_list.h).
-		else if (line == fv2_mode_list::VERSUS) cplay.choose_versus();
-		// TRAINING is not a mode this board has -- Sega's twenty-four hold none -- so it is one this port
-		// builds, and what exists of it today is its arena: MARBLE ARENA, by one byte of the game's own route
-		// table (console_play.h, model3.cpp). Everything else a training mode is -- a timer that does not run
-		// out, health that comes back, the dummy's behaviour -- is still to be read, in the owner's draft in
-		// the summer's patched ROM and in the Dreamcast version.
-		else if (line == fv2_mode_list::TRAINING) cplay.choose_training();
-		// OPTIONS starts nothing: the list gives way to a page of its own and the game stays frozen behind it,
-		// exactly where it was. Nothing is injected, so the press is swallowed below as for the others.
-		// EXIT GAME is the port's own line, written under the disc's seven (fv2_mode_list.h). It leaves the
-		// game the way the window's cross does -- the loop ends, the settings and the NVRAM are written on
-		// the way out -- so nothing of a session is lost by taking it.
-		else if (line == fv2_mode_list::EXIT) {
-			fprintf(stderr, "the console's list: EXIT GAME chosen -- leaving\n");
-			running = false;
-			return;
-		}
-		else if (line == fv2_mode_list::OPTIONS && options.ready) {
-			enter(cstate::OPTIONS, "OPTIONS chosen in the list");
-			return;
-		}
-		else {
-			fprintf(stderr, "the console's list: %s has no lever in this port yet -- nothing done\n", fv2_mode_list::name(line));
-			return;
-		}
-		music_mode_chosen = true;   // the select screen lays its own music: nothing to put back
-		// The press that chose must not reach the game as a player's Start as well: the mode's own injection
-		// is what hands the game one, and it goes on last (frame_inputs below). enter() holds it back.
-		enter(cstate::PLAY, "a mode chosen");
-	};
-
-	// A stage chosen on the versus page: the scene goes to console_play, which holds the picker once the
-	// game has left its attract loop and gives it back when the game ends (console_play.h). Entry 0 holds
-	// nothing and the game chooses as it does on the board.
-	auto chose_stage = [&](int line) {
-		const int scene = line + 1;   // the page counts from 0; the picker takes the scene
-		fprintf(stderr, "the console's stage select: stage %d chosen\n", scene);
-		// WHICH DOOR IT CAME IN BY IS THE STATE, not a flag beside it: STAGE is the carousel on the select
-		// screen, with the game parked and running; STAGE_HELD is the one the pause menu opened, with the
-		// game held still in the middle of a fight (console_state.h).
-		const bool from_pause = cplay.ui.at == cstate::STAGE_HELD;
-		enter(cstate::PLAY, "a stage chosen");
-		cplay.stage_chosen(board, scene);
-		// FROM THE PAUSE MENU THE FIGHT HAS TO BE RESTARTED, or nothing is seen to happen. Holding the
-		// draw's table decides the arena the game LOADS, and a fight already has its own loaded; the game
-		// loads one at round 1, so the stage changes by the road REMATCH takes (Model3::fv2_rematch):
-		// the same two fighters, round 1, and the arena just chosen.
-		if (from_pause) {
-			cplay.ask_for(console_play::ask::rematch);
-		}
-	};
-
-	// A line of the pause menu chosen. Two of the four have a lever and the other two are stepped over
-	// before they get here (fv2_pause.h says what each is waiting on).
-	auto chose_pause = [&](int line) {
-		// THE SAME FOUR LINES SERVE THE END OF A VERSUS, where the panel is the match's own and not a
-		// pause (console_play::step_vs_over). One thing differs and it is here: the match is ALREADY
-		// over, so the two lines that leave it do not ask for it to be ended. fv2_end_match refuses
-		// anywhere but a round being fought, which is right -- its two words mean nothing at VIC_DSP --
-		// and the rest of the way out reads the same from here: the bit held, the states cut, VS FINISH
-		// lent, the end-of-game screens shortened behind the port's own picture.
-		const bool from_over = cplay.ui.at == cstate::VS_OVER;
-		fprintf(stderr, "the console's %s: %s chosen\n", from_over ? "end of match" : "pause menu", fv2_pause::name(line));
-		if (line == fv2_pause::MAIN_MENU) {
-			// August's own lever, and this port already had it under another name: push the attract
-			// sequencer to the end of its list with its timer expired and the game walks off the end
-			// itself, which is the one road that installs the title screen the way the game does.
-			// FROM A FIGHT THAT LEVER DOES NOTHING, measured twice (fv2_pause.h): the attract sequencer is
-			// not running there, so there is no list to walk off. The road out of a fight is the match's own
-			// end -- finished off screen in about two seconds, then the end screens cut short -- and the
-			// title lever is pulled at the far side of it, where it works (console_play::arrive).
-			if (board.fv2_in_attract()) cplay.ask_for(console_play::ask::title_now);
-			else {
-				if (!from_over) cplay.ask_for(console_play::ask::end_match);
-				cplay.leave_match(console_play::L_TO_TITLE, from_over);
-				// AND THE LIST GOES UP ON THE SPOT, over its own ground (fv2_mode_list.h). It used to wait for
-				// the game to be home on its title screen, because the title screen WAS its backdrop -- so the
-				// player watched the end of the game go by, GAME OVER and all. Now the way home is walked
-				// BEHIND the menu: the game is not frozen while it runs (see where stopped is made), and a line
-				// chosen before it is home waits for it (see mode_wanted).
-				if (modes.ready) {
-					music_mode_chosen = false;
-					enter(cstate::MENU_IN, "MAIN MENU: the game walks home behind the list");
-				}
-			}
-		} else if (line == fv2_pause::CHANGE_VIPER) {
-			if (board.fv2_in_attract()) cplay.choose_versus();
-			else {
-				if (!from_over) cplay.ask_for(console_play::ask::end_match);
-				cplay.leave_match(console_play::L_TO_SELECT, from_over);
-				// AND THE CURTAIN OVER IT, for the same reason MAIN MENU has the list's ground over it: the end
-				// of a game is CONTINUE and then GAME OVER, modes of their own, and this road let the player
-				// watch them go by and hear them. GOING says the port owns the screen and the sound while the
-				// game walks to its select screen (console_state.h).
-				enter(cstate::GOING, "CHANGE YOUR VIPER: the game is taken to the select screen");
-			}
-		} else if (line == fv2_pause::REMATCH) {
-			// August's own road, and the one his notes did not expect: the game already restarts a fight
-			// without the select screen, because it does it between every round (Model3::fv2_rematch). The
-			// two task values are the ones console_play saw while the round was being fought -- the loser's
-			// register has been stopped by now, so reading it here would hand back a dead one.
-			cplay.ask_for(console_play::ask::rematch);
-		} else if (line == fv2_pause::CHANGE_STAGE) {
-			// THE CAROUSEL, the very page the V.S. line opens, instead of a scene number stepped sideways
-			// with no picture to go by. Its answer holds the draw's table (chose_stage above), and from
-			// here that means the fight is restarted in what was chosen, because a fight's arena is
-			// already loaded and the game only loads one at round 1.
-			if (stages.ready) {
-				// STAGE_HELD, not STAGE, and the state says the difference: in GAME the sub-state 2 that the
-				// park writes is ROUND_MASK_DSP, not Sega's empty STAGE_SEL, so a fight cannot be parked --
-				// which was Frederic's "change stage does not work". Held, the fight stands still under
-				// the carousel exactly as it did under the pause menu this came from.
-				enter(board.fv2_in_attract() ? cstate::STAGE : cstate::STAGE_HELD, "CHANGE STAGE");
-				return;
-			}
-		} else if (line == fv2_pause::RESUME) {
-			// Nothing to do but close, which is what B and Start already did -- the line is there so the
-			// way back is written down rather than guessed at.
-		}
-		// Every other line leaves the panel for the game, including RESUME, whose whole job this is.
-		if (cplay.ui.at == cstate::PAUSE || cplay.ui.at == cstate::VS_OVER)
-			enter(cstate::PLAY, from_over ? "the end-of-match panel closed" : "the pause menu closed");
 	};
 	auto open_menu = [&] {
 		if (game.emu_thread.joinable()) game.job_wait();
@@ -5496,36 +3610,6 @@ int main(int argc, char **argv)
 			if (t.empty() || at == std::string::npos) continue;
 			test_keys.push_back({ SDL_GetScancodeFromName(t.substr(0, at).c_str()), strtoull(t.c_str() + at + 1, nullptr, 10) });
 		}
-	// VF3_KEYS_S: keys sent at a real-time mark instead of at a game frame, which is what it takes to drive
-	// anything drawn over a frozen game (see the top). Each is sent once.
-	struct timed_key { SDL_Scancode key; double at; bool sent; };
-	std::vector<timed_key> keys_s;
-	if (const char *k = getenv("VF3_KEYS_S"))
-		for (std::string all = std::string(k) + ","; !all.empty(); all.erase(0, all.find(',') + 1)) {
-			const std::string t = all.substr(0, all.find(','));
-			const size_t at = t.find('@');
-			if (t.empty() || at == std::string::npos) continue;
-			keys_s.push_back({ SDL_GetScancodeFromName(t.substr(0, at).c_str()), atof(t.c_str() + at + 1), false });
-		}
-	// VF3_MIDI_SEND: bytes handed to the sound board at a given game frame, as if the game had written them.
-	// For asking the board a question -- does this one stop the music? -- and reading the answer in the peaks,
-	// before anything in the menu rests on the answer.
-	std::vector<std::pair<uint64_t, std::vector<uint8_t>>> midi_send;
-	if (const char *k = getenv("VF3_MIDI_SEND"))
-		for (std::string all = std::string(k) + ","; !all.empty(); all.erase(0, all.find(',') + 1)) {
-			const std::string t = all.substr(0, all.find(','));
-			const size_t at = t.find('@');
-			if (t.empty() || at == std::string::npos || at % 2) continue;
-			std::vector<uint8_t> bytes;
-			for (size_t i = 0; i + 1 < at; i += 2) bytes.push_back(uint8_t(strtoul(t.substr(i, 2).c_str(), nullptr, 16)));
-			if (!bytes.empty()) midi_send.push_back({ strtoull(t.c_str() + at + 1, nullptr, 10), bytes });
-		}
-	// The stage page answered, and the half second it is held for before the fight starts (fv2_stage_list.h)
-	int stage_wanted = -1;
-	uint64_t stage_locked_ns = 0;
-	// The pause menu answered, and the moment it was: the line blinks while its sound plays (fv2_pause.h)
-	int pause_wanted = -1;
-	uint64_t pause_locked_ns = 0;
 	std::vector<uint64_t> shot_at;   // VF3_SHOT_AT: the window at these passes, to build/host_window_at_N.png
 	if (const char *k = getenv("VF3_SHOT_AT"))
 		for (const char *q = k; *q;) { shot_at.push_back(strtoull(q, nullptr, 10)); while (*q && *q != ',') q++; if (*q) q++; }
@@ -5592,35 +3676,6 @@ int main(int argc, char **argv)
 		rec.on = false;
 	};
 
-	// VF3_SOUND_WAV=file -- EVERYTHING THE PLAYER HEARS, written as it is handed to the device.
-	//
-	// VF3_RECORD already writes a sound.wav, and it is deaf to half of this port: its only write is on the
-	// game's own frames, and the console's surfaces have none -- the game is frozen and the board is turned
-	// by the pump instead. A menu in a recording came out silent, and a fault heard under a menu could not be
-	// looked at at all. This one sits at both places audio is handed over, so what it holds is what came out
-	// of the speakers, in order, with nothing of the host's pacing left to imagine.
-	FILE *snd_wav = nullptr;
-	uint32_t snd_wav_bytes = 0;
-	if (const char *w = getenv("VF3_SOUND_WAV")) snd_wav = fopen(w, "wb");
-	auto snd_wav_head = [&] {
-		if (!snd_wav) return;
-		const uint32_t rate = SOUND_RATE, br = rate * 4, sz = 36 + snd_wav_bytes;
-		const uint16_t fmt = 1, ch = 2, align = 4, bits = 16;
-		const uint32_t sixteen = 16;
-		fseek(snd_wav, 0, SEEK_SET);
-		fwrite("RIFF", 1, 4, snd_wav); fwrite(&sz, 4, 1, snd_wav); fwrite("WAVEfmt ", 1, 8, snd_wav);
-		fwrite(&sixteen, 4, 1, snd_wav); fwrite(&fmt, 2, 1, snd_wav); fwrite(&ch, 2, 1, snd_wav);
-		fwrite(&rate, 4, 1, snd_wav); fwrite(&br, 4, 1, snd_wav); fwrite(&align, 2, 1, snd_wav); fwrite(&bits, 2, 1, snd_wav);
-		fwrite("data", 1, 4, snd_wav); fwrite(&snd_wav_bytes, 4, 1, snd_wav);
-		fseek(snd_wav, 0, SEEK_END);
-	};
-	auto snd_wav_put = [&](const std::vector<int16_t> &a) {
-		if (!snd_wav || a.empty()) return;
-		fwrite(a.data(), sizeof(int16_t), a.size(), snd_wav);
-		snd_wav_bytes += uint32_t(a.size() * sizeof(int16_t));
-	};
-	snd_wav_head();
-
 	// ---- the loop ----
 	// Pacing (as VF2's): the game's frames by the clock, one every 1/57.52 s; the sound card's clock is the one
 	// that counts: the frame clock is nudged (1% at most) to keep about QUEUED frames of sound queued, and a queue
@@ -5661,15 +3716,6 @@ int main(int argc, char **argv)
 		make_2d(tex_above, video::W);
 		if (glass) { SDL_DestroyTexture(glass); glass = nullptr; glass_w = glass_h = 0; }
 		menu.textures_lost();
-		if (cplay.on) {   // (nothing of this exists in the other styles)
-			modes.textures_lost(ren, find_assets());
-			console_font.textures_lost(ren, find_assets());
-			options.textures_lost(ren, find_assets());
-			pause.textures_lost(ren, find_assets());
-			stages.textures_lost(ren, find_assets());
-			train.textures_lost(ren, find_assets());
-			curtain.textures_lost(ren, find_assets());
-		}
 		new_frame = true;   // (the next picture sends the 2D again)
 	};
 	// Started from a terminal, the window can open behind it or without the keyboard (the keys go to the terminal):
@@ -5689,9 +3735,9 @@ int main(int argc, char **argv)
 	online.adapter.settle = [&] { if (game.emu_thread.joinable()) game.job_wait(); };
 	online.adapter.program_changed = [&] { game.program_changed(); };
 	// A match's boot is a boot of its own: the program unpacked into RAM again (Fighting Vipers 2), the hidden
-	// fighters put back if the match has them (the online version carries "+roster", as it carries "+dural": both
-	// sides patch the same thing or they never meet), and the native code made again from RAM, which is what keeps
-	// the game off the interpreter -- at a sixth of its speed, docs/step2-fvipers2.md section 19.
+	// fighters put back if the match has them (the online version carries "+roster", as it carries "+dural":
+	// both sides patch the same thing or they never meet), and the native code made again from RAM, which is
+	// what keeps the game off the interpreter -- at a sixth of its speed.
 	online.adapter.after_boot = [&] {
 		game.rebuilt_after_boot = false;
 		game.hold_roster();
@@ -5954,9 +4000,6 @@ int main(int argc, char **argv)
 
 	while (running) {
 		pass++;
-		// the test runs' limit in seconds (above): this pass still draws and still writes its pictures
-		static const uint64_t run_t0 = SDL_GetTicksNS();
-		if (quit_seconds >= 0 && double(SDL_GetTicksNS() - run_t0) / 1e9 >= quit_seconds) running = false;
 		marker_done(false);
 		// A match: the sound board runs to the real clock on its thread, keeping the queue topped up itself
 		// (Game::set_sound_free): the frames come when the session lets them, and neither their waits nor a slow
@@ -6036,13 +4079,6 @@ int main(int argc, char **argv)
 				: SDL_GetScancodeFromName(k.c_str());
 			send_key(sc);
 		}
-		// VF3_KEYS_S: the keys that go by the clock, so they arrive even with the game frozen
-		for (timed_key &k : keys_s)
-			if (!k.sent && double(SDL_GetTicksNS() - run_t0) / 1e9 >= k.at) {
-				k.sent = true;
-				send_key(k.key);
-				fprintf(stderr, "%.1f s: key %s sent\n", k.at, SDL_GetScancodeName(k.key));
-			}
 		if (!vjoy_presses.empty())   // VF3_TEST_VJOY: each press held 8 passes
 			for (const auto &t : vjoy_presses) {
 				const bool on = pass >= t.at && pass < t.at + 8;
@@ -6067,101 +4103,6 @@ int main(int argc, char **argv)
 				if (!hidden && SDL_GetKeyboardFocus() != win) SDL_RaiseWindow(win);   // (the move to a new Space can lose it)
 			}
 			if (menu.handle_event(e)) continue;
-			// Two of this port's own keys reach past the console's surfaces: Escape, so its menu is always
-			// available, and F12, so a page can be photographed like anything else on screen. Everything
-			// else belongs to the surface while it is up.
-			auto ours = [](const SDL_Event &ev) {
-				return ev.type == SDL_EVENT_KEY_DOWN
-					   && (ev.key.scancode == SDL_SCANCODE_ESCAPE || ev.key.scancode == SDL_SCANCODE_F12);
-			};
-			// The console's list of modes, while it is up: its own surface takes the keys and the pad, and
-			// Escape is left alone so this port's menu can always be reached.
-			// WHO HAS THE KEYS AND THE PAD is the state's, like the rest (console_state.h): one state is up, so
-			// one surface reads the event, and the other three cannot. They used to be asked one after another,
-			// each about its own flag, with nothing saying only one of them could answer.
-			if (cplay.ui.menu_up() && !ours(e)) {
-				const int chose = modes.handle_event(e, cfg.ctl);
-				// A LINE CHOSEN BEFORE THE GAME IS HOME WAITS FOR IT. Every mode's entry hands the game a
-				// Start on the title screen or asks the attract loop for something, and neither means
-				// anything while the end of the last match is still running underneath the menu.
-				if (chose >= 0 && cplay.leaving != console_play::L_OFF) {
-					mode_wanted = chose;
-					fprintf(stderr, "the console's list: %s chosen while the match is still ending -- held\n",
-						fv2_mode_list::name(chose));
-				} else if (chose >= 0) choose_mode(chose);
-				else if (chose == fv2_mode_list::CANCELLED) {
-					// Backed out: the list goes and the game comes back exactly where it was, on its own title
-					// screen. Nothing else is touched -- the press stays ours, as when a line is chosen.
-					enter(cstate::PLAY, "the list backed out of");
-					fprintf(stderr, "the console's list: backed out\n");
-				}
-				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
-					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
-			}
-			// The pause menu, the same way. It reads and writes nothing of the game's RAM while a frame runs,
-			// so the wait below is for the same reason as the page's: the frame in flight when it opened may
-			// not have finished.
-			if (cplay.ui.at == cstate::PAUSE && !ours(e)) {
-				if (game.emu_thread.joinable()) game.job_wait();
-				const int chose = pause.handle_event(e, cfg.ctl);
-				if (chose == fv2_pause::CANCELLED) {
-					enter(cstate::PLAY, "the pause menu backed out of");
-					fprintf(stderr, "the console's pause menu: back to the fight\n");
-				} else if (chose >= 0) {
-					// NOT ANSWERED HERE. The line is held while its sound plays, as the carousel's is: the
-					// menu used to close on the very frame A was pressed and, for the three and a half
-					// seconds a way out of a match takes, nothing visibly happened -- so Frederic pressed
-					// Start again, which paused the game, which stopped the very thing he had asked for.
-					pause_wanted = chose;
-					pause.lock();
-					pause_locked_ns = SDL_GetTicksNS();
-				}
-				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
-					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
-			}
-			// VERSUS's stage select, the same way. It touches no RAM of the game's at all -- it only hands a
-			// scene number to console_play, which holds the patch later -- but it waits for the frame in flight
-			// like the others, so a surface never acts half inside a frame.
-			if ((cplay.ui.at == cstate::STAGE || cplay.ui.at == cstate::STAGE_HELD) && !ours(e)) {
-				if (game.emu_thread.joinable()) game.job_wait();
-				const int chose = stages.handle_event(e, cfg.ctl);
-				if (chose == fv2_stage_list::CANCELLED) {
-					// backed out: nothing is held, and the game picks its own arena as it does on the board.
-					// FROM THE PAUSE MENU, BACKING OUT CHANGES NOTHING AT ALL: the fight behind the page has its
-					// arena already, and letting go of the hold there would only decide the arena of some later
-					// fight nobody asked about. The page closes and the fight carries on where it was.
-					const bool from_pause = cplay.ui.at == cstate::STAGE_HELD;
-					enter(cstate::PLAY, "the carousel backed out of");
-					if (from_pause)
-						fprintf(stderr, "the console stage select: backed out of the pause menu -- the fight is as it was\n");
-					else {
-						cplay.stage_chosen(board, 0);
-						fprintf(stderr, "the console stage select: backed out -- the game picks its own\n");
-					}
-				} else if (chose >= 0) {
-					// NOT ANSWERED HERE. The page holds half a second first, so the sound that says "chosen"
-					// is heard over the carousel and not under the next screen (fv2_stage_list.h). The arena
-					// is handed over when that half second is up, below.
-					stage_wanted = chose;
-					stages.lock();
-					stage_locked_ns = SDL_GetTicksNS();
-				}
-				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
-					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
-			}
-			// The OPTIONS page, the same way, and the same two keys left alone for the same reasons.
-			if (cplay.ui.at == cstate::OPTIONS && !ours(e)) {
-				// This page reads and writes the game's own RAM, so not while a frame runs alongside. The page
-				// freezes the game, but the frame that was in flight when it opened may not have finished.
-				if (game.emu_thread.joinable()) game.job_wait();
-				if (options.handle_event(e, cfg.ctl, board) == fv2_options::CANCELLED) close_options();
-				// CONTROLLER rebound something: kept like any other setting of this port.
-				if (options.ctl_changed) { options.ctl_changed = false; cfg_dirty = true; }
-				// ENDING was asked for: the page has nothing more to say and the roll is behind it.
-				if (ending_asked) { ending_asked = false; close_options(); }
-				if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
-					|| e.type == SDL_EVENT_GAMEPAD_BUTTON_UP || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) continue;
-			}
 			// Fullscreen also with F and Alt+Enter, as VF1's and VF2's (after the menu's own events: typing in its
 			// fields never does it; F not while a player has it as a control, nor with Ctrl, Alt or the command key)
 			auto fullscreen_key = [&](const SDL_KeyboardEvent &k) {
@@ -6182,19 +4123,6 @@ int main(int argc, char **argv)
 				case SDL_SCANCODE_F9:   // the timings in the title (and the log) every 2 s
 					cfg.timings = !cfg.timings; cfg_dirty = true; title_now.clear();
 					t9 = {}; t9.t0 = SDL_GetTicksNS();
-					break;
-				// F7: THE ENDING, ASKED FOR WHERE YOU STAND. Frederic, the 2026-10-30: "trouve une facon de
-				// lancer le ending sans que je traverse toute l'echelle". It is the game's own request --
-				// MODE_REQUEST = ENDING, the lever VF3_CONSOLE_ENDING has used in every measurement here --
-				// so the roll that follows is the real one, and the game comes back to its attract by
-				// itself. Asked from the title screen there is no match to replay, which the port's own
-				// credits cover anyway; asked from a fight it ends the fight.
-				case SDL_SCANCODE_F7:
-					if (cplay.on) {
-						cplay.ask_ending(board);
-						fprintf(stderr, "F7: the game's ending asked for (%s)\n",
-								ending.want ? "DREAMCAST" : "ARCADE");
-					}
 					break;
 				case SDL_SCANCODE_F5: set_scale(scale % MAX_SCALE + 1); break;
 				case SDL_SCANCODE_F6: set_shape((aspect_i + 1) % N_ASPECTS); break;
@@ -6239,337 +4167,16 @@ int main(int argc, char **argv)
 			gov_grace(2);
 		}
 		if (clock_reset) { clock_reset = false; frames_run = 0; restart_clock_real(); new_frame = true; }
-		// the console's list of modes freezes the game behind it as the menu does: the title screen it is drawn
-		// on lasts 192 frames of its own (measured), and a list that let the game walk on to the demo would be
-		// a list over a demonstration
-		// Escape opened this port's own menu over a console surface: the console goes back to PLAY, because
-		// two menus over one another is the overlapping this layer is built not to do.
-		if (menu.is_open() && cplay.ui.at != cstate::PLAY) {
-			if (options.shown) close_options();
-			else enter(cstate::PLAY, "this port's own menu opened over it");
-		}
-		// VF3_CONSOLE_MODE=arcade|versus|survival|random|training, at game frame VF3_CONSOLE_AT
-		// (1210 by default, a few frames after the list is up): the console's mode chosen without a
-		// hand, the way vf3run's --console-mode does it. Written because the only other way in was
-		// VF3_KEYS_S, which goes by the CLOCK while the list goes by frames -- so a fast boot or a
-		// busy machine moved the keys off the list and a measurement silently became a run that
-		// chose nothing at all. Twice, on the 2026-10-25.
-		//
-		// AND IT WAITS FOR THE LIST, not for a frame number. The first version fired at a game frame
-		// and deadlocked: the road's Start opens the list at frame 1200, the list FREEZES the game, so
-		// frame 1210 never came and the run sat on the list for seventy-five seconds. The list being
-		// up is the condition a hand would use, and it is the one used here.
-		if (static const char *cm = getenv("VF3_CONSOLE_MODE"); cm && cplay.on) {
-			static const uint64_t at = getenv("VF3_CONSOLE_AT") ? strtoull(getenv("VF3_CONSOLE_AT"), nullptr, 10) : 0;
-			static bool done = false;
-			if (!done && modes.shown && game_frame >= at) {
-				done = true;
-				if (!strcmp(cm, "versus")) cplay.choose_versus();
-				else if (!strcmp(cm, "survival")) cplay.choose_survival(board);
-				else if (!strcmp(cm, "random")) cplay.choose_random();
-				else if (!strcmp(cm, "training")) cplay.choose_training();
-				else cplay.choose_arcade();
-				music_mode_chosen = true;
-				enter(cstate::PLAY, "VF3_CONSOLE_MODE");
-				fprintf(stderr, "frame %llu: VF3_CONSOLE_MODE=%s chosen without a hand\n",
-						(unsigned long long)game_frame, cm);
-			}
-		}
-		// The pause menu's answer, held while its sound is heard and then acted on
-		if (pause.shown && pause.locked) {
-			pause.lock_t = double(SDL_GetTicksNS() - pause_locked_ns) / 1e9;
-			if (pause.lock_t >= fv2_pause::HOLD_S && pause_wanted >= 0) {
-				const int line = pause_wanted;
-				pause_wanted = -1;
-				chose_pause(line);
-			}
-		}
-		// The half second the answered page is held for: the carousel stays, its chosen picture blinks, the
-		// sound is heard over it, and only then is the arena handed to the game. The game is parked and
-		// running underneath all the while, so the music never breaks (fv2_stage_list.h).
-		if (stages.shown && stages.locked) {
-			stages.lock_t = double(SDL_GetTicksNS() - stage_locked_ns) / 1e9;
-			if (stages.lock_t >= fv2_stage_list::HOLD_S && stage_wanted >= 0) {
-				const int line = stage_wanted;
-				stage_wanted = -1;
-				chose_stage(line);
-			}
-		}
-		// VF3_CONSOLE_STATS=row: the console's OPTIONS opened straight on STATS with the cursor on that
-		// row, and row>=100 opens that character's page (row-100). The fourth of this family, and for the
-		// same reason: the page FREEZES the game, so the only other way in is VF3_KEYS_S, which goes by the
-		// clock -- six key presses timed against a boot whose length is the machine's.
-		if (static const char *cs2 = getenv("VF3_CONSOLE_STATS"); cs2 && cplay.on) {
-			static const int want = atoi(cs2);
-			static bool done = false;
-			if (!done && modes.shown && options.ready) {
-				done = true;
-				enter(cstate::OPTIONS, "VF3_CONSOLE_STATS");
-				options.at = fv2_options::SCR_STATS;
-				options.vs_row_sel = (want >= 100 ? want - 100 : want) % 14;   // (the fourteen characters)
-				options.vs_chara = want >= 100 ? options.vs_row_sel : -1;
-				fprintf(stderr, "frame %llu: VF3_CONSOLE_STATS=%d -- STATS opened without a hand\n",
-						(unsigned long long)game_frame, want);
-			}
-		}
-		// VF3_CONSOLE_ENDING=frame: the game's staff roll asked for at that frame, and VF3_ENDING_DC=1 to
-		// watch it the Dreamcast's way. Written to see the thing at all: reaching the ending for real means
-		// finishing the ladder, and this port's own notes have it among the states never reached.
-		if (static const char *ce = getenv("VF3_CONSOLE_ENDING"); ce && cplay.on) {
-			static const uint64_t at = strtoull(ce, nullptr, 10);
-			static bool done = false;
-			if (!done && game_frame >= at) {
-				done = true;
-				if (getenv("VF3_ENDING_DC")) ending.want = true;
-				cplay.ask_ending(board);
-				fprintf(stderr, "frame %llu: VF3_CONSOLE_ENDING -- the staff roll asked for (%s)\n",
-						(unsigned long long)game_frame, ending.want ? "DREAMCAST" : "ARCADE");
-			}
-		}
-		// VF3_LADDER_RUSH=1: the opponent's life emptied a second into every round, so the ladder is won
-		// match after match and THE REAL ENDING ARRIVES BY THE GAME'S OWN ROAD. There is no other way for a
-		// test to reach it: a hand has to finish the ladder, and a run with no hands draws every round.
-		// Written the 2026-10-29, to measure an ending Frederic had just played through and this port had
-		// said nothing about. Tests only, and it is the game's own K.O. that is being provoked -- the life
-		// is written where fv2_set_life writes it and the game decides what that means.
-		if (static const bool rush = getenv("VF3_LADDER_RUSH") != nullptr; rush && board.set == "fvipers2") {
-			const int m = board.fv2_mode(), su = board.fv2_submode();
-			static uint64_t in_round = 0;
-			if ((m == 6 || m == 7) && (su == 11 || su == 12)) {
-				if (++in_round > 60 && board.fv2_life(2) > 0) board.fv2_set_life(2, 0);
-			} else in_round = 0;
-		}
-		// VF3_CONSOLE_REAL_ENDING=frame: the match ended there and the GAME'S OWN ending taken, replays and
-		// all -- the road a finished ladder takes, which no test could reach before. The pair is what the
-		// removed "AFTER A MATCH" line used to do: the match ended on the spot (fv2_end_match) and the
-		// ladder marked finished (fv2_finish_ladder, laid by step_real_ending at the first frame the match
-		// is over). Written the 2026-10-29: Frederic finished the ladder with ENDING on DREAMCAST and got
-		// the arcade's replays, while the requested roll shows the pictures perfectly -- so the difference
-		// is the road, and the road has to be driveable by a test.
-		if (static const char *re = getenv("VF3_CONSOLE_REAL_ENDING"); re && cplay.on) {
-			static const uint64_t at = strtoull(re, nullptr, 10);
-			static bool done = false;
-			if (!done && game_frame >= at && board.fv2_end_match() > 0) {
-				done = true;
-				cplay.arm_real_ending();
-				fprintf(stderr, "frame %llu: VF3_CONSOLE_REAL_ENDING -- the match ended, the ladder marked finished\n",
-						(unsigned long long)game_frame);
-			}
-		}
-		// VF3_CONSOLE_PAUSE=n: the pause menu answered without a hand -- the line's own number in fv2_pause.h,
-		// which is 0 RESUME, 1 REMATCH, 2 CHANGE STAGE, 3 CHANGE YOUR VIPER, 4 MAIN MENU -- as soon as it is
-		// up, HOWEVER IT WAS OPENED, which now means the end-of-match panel of a versus as well as a pause
-		// (console_play::step_vs_over): the same surface, the same four lines. The third of this family,
-		// and for the same reason as the first two: the menu FREEZES the game, so VF3_KEYS_S goes by a clock
-		// the game no longer shares and a measurement silently becomes a run that chose nothing.
-		if (static const char *cp = getenv("VF3_CONSOLE_PAUSE"); cp) {
-			static const int want = atoi(cp);
-			static bool done = false;
-			if (!done && pause.shown) {
-				done = true;
-				fprintf(stderr, "frame %llu: VF3_CONSOLE_PAUSE=%d (%s) chosen without a hand\n",
-						(unsigned long long)game_frame, want, fv2_pause::name(want));
-				chose_pause(want);
-			}
-		}
-		// VF3_CONSOLE_STAGE=n (1-14, 0 to back out and let the game choose, "none" so the page never opens
-		// at all): the versus stage page answered without a hand, the companion of VF3_CONSOLE_MODE above
-		// and waiting on the same condition -- THE PAGE BEING UP, not a frame number. It takes the SAME road
-		// a hand takes, the half-second hold included, so what it measures is what a player gets.
-		if (static const char *cs = getenv("VF3_CONSOLE_STAGE"); cs) {
-			static const int want = atoi(cs);
-			static bool done = false;
-			if (!done && stages.shown && !stages.locked) {
-				done = true;
-				if (want <= 0) {
-					const bool from_pause = cplay.ui.at == cstate::STAGE_HELD;
-					enter(cstate::PLAY, "VF3_CONSOLE_STAGE=0");
-					if (!from_pause) cplay.stage_chosen(board, 0);
-					fprintf(stderr, "frame %llu: VF3_CONSOLE_STAGE=0 -- backed out without a hand\n",
-							(unsigned long long)game_frame);
-				} else {
-					stages.sel = (want - 1) % (stages.have > 0 ? stages.have : 1);
-					stages.want_sound = fv2_stage_list::SND_VALIDATE;
-					stage_wanted = stages.sel;
-					stages.lock();
-					stage_locked_ns = SDL_GetTicksNS();
-					fprintf(stderr, "frame %llu: VF3_CONSOLE_STAGE=%d chosen without a hand\n",
-							(unsigned long long)game_frame, want);
-				}
-			}
-		}
-		// AND THE STAGE PAGE IS NOT IN THIS LIST, alone of the four surfaces. The other three freeze the
-		// PowerPC; this one leaves the game running and parks it in Sega's own empty STAGE_SEL sub-state
-		// instead (model3.cpp). Frozen, the select screen it had made drained away -- the two fighters
-		// vanished, the music stopped, and nothing could be heard moving through the carousel. Parked, the
-		// game goes on drawing that screen and the sound board goes on playing, because the game never
-		// stopped. Its controls are silenced below instead, so the player's directions turn the carousel
-		// and not the game's own cursor.
-		// WHETHER THE GAME RUNS IS A PROPERTY OF THE STATE, read from the table and decided nowhere else
-		// (console_state.h). PLAY and MENU_IN run, the carousel on the select screen runs parked, the rest
-		// hold the game still. This port's own two -- a pause and the Escape menu -- are not console states
-		// and keep their own say.
-		// A match goes on behind anything: it never stops for the menu and never fast-forwards (online.cpp).
-		const bool stopped = !online.playing() && (paused || menu.is_open() || online.starting() || !cplay.ui.game_runs());
+		online_pass();
+		const bool stopped = !online.playing() && (paused || menu.is_open() || online.starting());
 		const bool ff = !stopped && !online.playing() && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB];
 		int due = 0;
-		// ---- the console's surfaces keep the sound board turning ----
-		//
-		// The list and the OPTIONS page freeze the PowerPC, so no game frame runs and no sound frame with it:
-		// a menu that beeps has to turn the board over itself. BY AN ACCUMULATOR, AND THAT IS THE WHOLE POINT.
-		// The version undone on the 2026-10-21 ran one sound frame per pass, gated on 17.38 ms having gone by,
-		// which on a 60 Hz screen gave thirty a second where the board wants 57.5 -- the queue starved and it
-		// rasped. Time is measured and the frames owed are made, however many passes it takes.
-		//
-		// This runs only under the console's own surfaces, never under this port's Escape menu or a pause:
-		// those two are its, and have always been silent.
-		// ---- the music under the console's surfaces ----
-		//
-		// THE WHOLE TREE IS ONE STATE, which is Frederic's own reading and what makes this writable at all.
-		// The list and the OPTIONS tree are one surface: the music stops on going in and is decided on coming
-		// out, so moving about inside -- a line, a door, a screen backed out of, a value changed -- decides
-		// nothing, because nothing has been left. Without that, every move the tree added would have wanted a
-		// case of its own in the table of docs/fv2-console-sound.md, and the table is held over.
-		//
-		// What happens on the way out is that table, and each cell was measured there:
-		//   a mode chosen      NOTHING. The select screen lays its own (A0 00 01 then A0 10 00, frame 1257),
-		//                      so putting the demo's back would be worse than leaving it -- it is what made
-		//                      August's select screen inherit the demo's music;
-		//   backed out with B  put back what was playing;
-		//   Escape over it     put back too. That was hole no. 1 of the version undone on the 2026-10-21;
-		//   a line with no lever  nothing happens and the list stays up, so there is no way out to speak of.
-		//
-		// And nothing is stopped that was not playing. On a title screen reached straight from the SEGA logo
-		// there is no music at all, and music_now says so -- which is the trap the first measurement of this
-		// job fell into, proving a silence where there had been nothing to cut.
-		// A track started by the SOUNDS page's test is stopped when that page is left, by its own silence
-		// command. Otherwise a test followed the player back into the game, which is not a test any more.
-		{
-			static int was_at = fv2_options::SCR_OPTIONS;
-			const int now_at = options.shown ? options.at : fv2_options::SCR_OPTIONS;
-			if (was_at == fv2_options::SCR_SOUNDS && now_at != fv2_options::SCR_SOUNDS && bgm_testing) {
-				game.stop_music();
-				bgm_testing = false;
-				bgm_playing = -1;
-			}
-			was_at = now_at;
-		}
-		online_pass();
 		int pass_burst = 2;   // (the frames a pass may run, this pass: more when pictures take over a frame's time, below)
 		if (stopped) {
 			pace.stopped_s += double(SDL_GetTicksNS() - clock_t) / 1e9;   // (the menu's time isn't the game's)
 			restart_clock_real();
 		}
-		{
-			// WHO TURNS THE SOUND BOARD is the state's too, and it was the last thing still asked of two
-			// surface flags. A frozen game runs no frames, so it makes no sound frames either: wherever the
-			// game is held AND the port is not silent -- the list, the OPTIONS tree, the pause menu and the
-			// carousel held over a fight -- the port has to turn the board over itself.
-			//
-			// THE PAUSE MENU AND THAT CAROUSEL WERE NOT IN THAT SET, and it shows what the table is for: they
-			// freeze the game exactly as the list does, their beeps were made exactly as promptly -- and
-			// nothing was turning the board, so nothing came out until the game started again. The fight's
-			// music goes on under them now, which is what a console does.
-			static bool was_up = false;
-			const bool up = cplay.on && !cplay.ui.game_runs() && !cplay.ui.game_sound();
-			// and the game's own music is held only where the port owns the picture as well: under the pause
-			// menu and the carousel the game's screen is still there, and its music belongs with it
-			const bool holds_music = cplay.on && cplay.ui.port_screen() && !cplay.ui.game_runs();
-			if (up && !was_up) {
-				// NOTHING IS DONE TO THE DEVICE'S QUEUE ANY MORE, and that is the refactoring of the 2026-10-29.
-				//
-				// This used to empty it, then prime it, because the pump that turned the board under a surface had
-				// a pace of its own and had to be started somewhere. There is no pump now: a frozen state's frames
-				// come out of the one loop, at the one pace, against this very queue (see where `stopped` picks the
-				// frame without the PowerPC). So there is nothing to empty, nothing to prime, and nothing to drain:
-				// the queue never notices that the game stopped.
-				music_held = holds_music ? game.music_now : -1;
-				if (music_held >= 0) {
-					game.stop_music();
-					fprintf(stderr, "the console's music: A0 10 %02X was playing, stopped\n", music_held);
-				}
-			} else if (!up && was_up) {
-				if (music_held >= 0 && !music_mode_chosen) {
-					game.play_music(uint8_t(music_held));
-					fprintf(stderr, "the console's music: A0 10 %02X put back\n", music_held);
-				} else if (music_held >= 0)
-					fprintf(stderr, "the console's music: a mode was chosen, the select screen lays its own\n");
-				music_held = -1;
-				music_mode_chosen = false;
-			}
-			was_up = up;
-		}
-		// The three menu sounds, which are the game's own. The owner found them by sending notes and listening,
-		// and the numbers are his: sd_ketsu_00 no. 391 moves, sd_sign_16 no. 388 decides (and is also the one
-		// that opens), sd_sonic00_11 no. 392 backs out. Each surface says WHAT happened and this says what that
-		// sounds like, so neither has to know the other's job.
-		//
-		// Drained here, once a pass, rather than where the events are dispatched: those blocks `continue` on
-		// every key and pad event, so a note handed over inside them would not leave until the event after.
-		//
-		// This is step 4 of docs/fv2-console-sound.md and nothing more -- the EFFECTS, with the music left
-		// exactly alone. The step before it, the table of what the music does on each of the four ways out,
-		// is deliberately skipped for now and will be filled in later.
-		{
-			auto heard = [&](int want) {
-				switch (want) {
-				case fv2_options::SND_MOVE: game.play_effect(0x26); break;
-				case fv2_options::SND_VALIDATE: game.play_effect(0x23); break;
-				case fv2_options::SND_CANCEL: game.play_effect(0x27); break;
-				default: break;
-				}
-			};
-			if (modes.want_sound) { heard(modes.want_sound); modes.want_sound = fv2_mode_list::SND_NONE; }
-			if (options.want_sound) { heard(options.want_sound); options.want_sound = fv2_options::SND_NONE; }
-			if (pause.want_sound) { heard(pause.want_sound); pause.want_sound = fv2_pause::SND_NONE; }
-			if (stages.want_sound) { heard(stages.want_sound); stages.want_sound = fv2_stage_list::SND_NONE; }
-			// VF3_MENU_BEEP=s -- THE MENU'S OWN MOVE SOUND, PLAYED BY ITSELF every s seconds while a
-			// surface is up, and nothing else.
-			//
-			// Written the 2026-10-29 because the fault being chased cannot be reproduced without it. The beep
-			// comes out of the menu with a tail that repeats every 165 ms, and the same sound sent into the
-			// game's own frame loop has no tail at all -- so it belongs to the path that turns the board while
-			// the game is frozen. Reproducing that path meant pressing a key on a surface, and a hidden run
-			// cannot: measured by subtracting two runs of the same road, one with a press and one without, the
-			// files came out IDENTICAL TO THE BIT. The press reaches the surface (the OPTIONS tree is walked
-			// this way) and the sound does not come. So the hook plays it from here instead, where `heard` is,
-			// and asks nothing of the keyboard.
-			//
-			// Hidden runs are deterministic -- the same road with the sound on its thread and in the frame gave
-			// two identical files -- so a run with this and a run without subtract to the beep alone, with the
-			// music cancelled exactly.
-			// BY THE CLOCK AND NOT BY GAME FRAMES, which the first version got wrong and the measurement said
-			// at once: these surfaces FREEZE the game, so the frame counter stands still under them and the
-			// hook fired exactly once. Seconds, then -- the same reason VF3_KEYS_S exists beside VF3_KEYS.
-			if (static const char *mb = getenv("VF3_MENU_BEEP"); mb && cplay.on && !cplay.ui.game_runs()) {
-				static const double every = std::max(0.2, atof(mb));
-				static double last = 0;
-				const double now_s = double(SDL_GetTicksNS()) / 1e9;
-				if (now_s >= last + every) {
-					last = now_s;
-					heard(fv2_mode_list::SND_MOVE);
-					fprintf(stderr, "menu beep: played by hand at %.2f s, state %s\n",
-						now_s, crules(cplay.ui.at).name);
-				}
-			}
-		}
-		// THE CLOCK RUNS WHETHER THE GAME DOES OR NOT, and this is the whole of the correction.
-		//
-		// It used to stop here: a frozen state reset the frame clock, so no frame fell due, and the sound
-		// board -- which does not freeze, the 68000 and its DSP going on without their host -- was turned by
-		// a pump of its own further up, with its own clock, its own catch-up cap and its own floor. Two
-		// pacemakers for one card, and they did not speak. Everything measured the 2026-10-29 came out of
-		// that: a queue that reached zero 795 times, fifty-six milliseconds of music thrown away at every
-		// opening, and a beep whose tail nobody could reproduce.
-		//
-		// Frederic, the 2026-10-29: "I want menus properly fitted into the game, we stop the bodging".
-		// So: ONE door. The pass works out what is due exactly as it always did -- the clock, the governor,
-		// the device's queue -- and the frame loop below runs a frame WITHOUT THE POWERPC when the state says
-		// the game does not run. The pump is gone, and with it its clock, its cap and its floor.
-		//
-		// What is kept is the accounting: the time spent in a menu is not the game's, and the pace log says so.
-		if (stopped) pace.stopped_s += double(SDL_GetTicksNS() - clock_t) / 1e9;
-		if (!stopped && !rec.dir.empty()) {
+		else if (!rec.dir.empty()) {
 			// the recording: before it starts, frames as fast as they go; then 60 pictures a second by the game's clock
 			if (!rec.on && game_frame >= rec.from) {
 				rec.on = true;
@@ -6651,192 +4258,6 @@ int main(int argc, char **argv)
 				hk = read_inputs(live, pads, pstate, cfg.ctl);
 				act = InputScript::Actions();
 				if (scripted) act = script.step(script_ctl, game_frame);
-				// The console way's Start: one button, two jobs, told apart by where the game is
-				// (console_play.h). On the game's own title screen it opens the console's list of modes over
-				// that screen; anywhere else it asks the game for its title screen. The press itself never
-				// reaches the game either way, and nothing here touches the credit -- the board is on FREE
-				// PLAY in this style, and a mode chosen from the list hands the game a Start of its own.
-				//
-				// In the PC way and the arcade way Start goes to the game untouched, as it always did.
-				//
-				// A script's Start counts as a player's here, deliberately: it arrives through script_ctl
-				// rather than the keyboard, and reading only the player's own would leave this whole path
-				// impossible to exercise without hands on a pad -- which is exactly how it went unverified
-				// the first time round.
-				if (cplay.on) {
-					const bool st = live.start[0] || live.start[1] || script_ctl.start[0] || script_ctl.start[1];
-					// AND START IS DEAD WHILE A WAY OUT OF A MATCH IS RUNNING. Choosing MAIN MENU or
-					// CHANGE YOUR VIPER finishes the match off screen over three and a half seconds; a
-					// Start pressed in that interval used to pause the game, which froze the PowerPC and
-					// stopped the exit, so the menu looked as if it had done nothing. Measured in
-					// Frederic's own log of the 2026-10-25: the pause opened at frames 2200, 2236 and
-					// 2272 and the line was chosen three times over.
-					// (a way out of a match is a state of its own now -- GOING or MENU_IN -- and both give the
-					// controls to the port, so take_start withholds the press there without being told twice)
-					const console_play::start_for what = cplay.take_start(board, st, cplay.ui.port_controls());
-					switch (what) {
-					case console_play::start_for::list:
-						enter(cstate::MENU, "Start on the title screen");
-						fprintf(stderr, "frame %llu: Start on the title screen: the console's list of modes is up\n",
-								(unsigned long long)game_frame);
-						break;
-					case console_play::start_for::title:
-						fprintf(stderr, "frame %llu: Start off the title screen (mode %d, sub-state %d): the game asked for its title screen\n",
-								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
-						break;
-					case console_play::start_for::pause: {
-						// The panel stands on the side of the player who paused.
-						// WHICH LINES THIS MODE SHOWS (fv2_pause.h). REMATCH is out of TRAINING, where the
-						// round restarts of itself and the lives are held. CHANGE STAGE is out of the
-						// modes that follow the arcade's fixed road -- the arena is drawn once a match,
-						// so there it would change the NEXT match's and not this one's.
-						// WHICH LINES THIS MODE SHOWS, and Frederic settled it the 2026-10-28, mode by mode. The rule
-						// underneath is what a line COMMANDS: a line that would change the next match rather than this
-						// one is worse than no line.
-						//
-						//   the arcade's fixed road (ARCADE, RANDOM, SURVIVAL)   RESUME and MAIN MENU, and nothing else:
-						//       its opponents and its arenas are the ladder's, so a rematch or another arena would be
-						//       the ladder's business and not the player's;
-						//   VERSUS      all of them: the two fighters and the arena are the players' own choice, so all
-						//       four lines command this match;
-						//   TRAINING    all but REMATCH -- the round restarts of itself there and the lives are held, so
-						//       the line would do nothing a player could see.
-						//
-						// And the game says how many are playing rather than this port remembering what was chosen: 3 is
-						// two players (Model3::fv2_players), which also catches a game joined by the board's INTRUDE rule.
-						uint32_t on;
-						if (cplay.training_on) on = fv2_pause::ALL & ~(1u << fv2_pause::REMATCH);
-						else if (board.fv2_players() == 3) on = fv2_pause::ALL;
-						else on = (1u << fv2_pause::RESUME) | (1u << fv2_pause::MAIN_MENU);
-						pause.on = on;
-						// The one surface enter() does not open itself, because which hand pressed Start says which side
-						// the panel stands on. It is opened here and the state entered on the same line: the state is what
-						// freezes the fight behind it (console_state.h).
-						pause.show(!(live.start[0] || script_ctl.start[0]) && (live.start[1] || script_ctl.start[1]) ? 1 : 0);
-						enter(cstate::PAUSE, "Start in a game");
-						fprintf(stderr, "frame %llu: Start in a game (mode %d, sub-state %d, %d playing): the console's pause menu is up\n",
-								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode(), board.fv2_players());
-						break;
-					}
-					case console_play::start_for::cut:
-						fprintf(stderr, "frame %llu: Start in the presentation or the replay (mode %d, sub-state %d) -> the state is cut short\n",
-								(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode());
-						break;
-					case console_play::start_for::none: break;
-					}
-					if (cplay.swallow_start) {
-						live.start[0] = live.start[1] = false;
-						script_ctl.start[0] = script_ctl.start[1] = false;
-					}
-				}
-				// THE LOGO'S VOICE GOES WITH THE LOGO. Start off the title screen restarts the attract loop and
-				// asks for the title at the SEGA logo, so the logo is never seen -- but the game says "SEGA"
-				// (A0 30 00) on the very frame it would have drawn it, and that voice was arriving over the
-				// title screen. Frederic heard it before this was measured. Skipping the picture and keeping
-				// its voice is half a skip; `skip_logo` is exactly the road where the picture is skipped, so
-				// the voice is dropped on the same road and nowhere else.
-				game.mute_voices = cplay.skip_logo > 0;
-				// AND WHO OWNS THE SOUND IS THE STATE'S, read from its table (console_state.h). In MENU_IN the game
-				// is walking home behind the list: its end-of-game screens, the SEGA logo's voice and the title's
-				// music all happen, and none of it is heard, because the state says the port owns the sound.
-				board.mute_game_midi = cplay.ui.port_sound();
-				game.mute_fight_voice = cplay.training_on && cplay.train_hush > 0;
-				cplay.step(board, console_ctl);
-				// VF3_BONUS=1 (tests): the game's own BONUS_STG_FLAG set while a round runs, so the game
-				// draws its own BONUS STAGE at the foot of an ordinary match. The placement of that word in
-				// widescreen is judged on it, the bonus stage itself being an hour of ladder away.
-				if (static const bool bonus = getenv("VF3_BONUS") != nullptr; bonus && board.set == "fvipers2") {
-					const int m2 = board.fv2_mode();
-					if (m2 == 6 || m2 == 7) board.fv2_set_bonus_stage(true);
-				}
-				// PLAYER ONE'S LIFE HELD FULL, when ENERGY MAX 1P has been stepped past the game's highest.
-				// Frederic, the 2026-10-29: "pour finir le mode arcade, je voudrais de la vie infinie".
-				//
-				// WRITTEN EVERY FRAME, and only during a round. The life is two bytes in the fighter's own
-				// block, found through the game's pointer and guarded by a plausible starting life
-				// (model3.cpp); training already holds a floor there the same way. Only FIGHT_INT and
-				// FIGHT_DSP (11 and 12) -- before them the round is being announced and the block is being
-				// filled, after them the game is deciding who won, and a life written into either is a life
-				// written into Sega's own bookkeeping.
-				//
-				// AND NOT IN A TWO-PLAYER MATCH. The setting is Sega's CONFIG *1P ENERGY (0x00120540), which
-				// the game reads only when the match is not a versus (ROUND_MASK_INT, docs/fv2-match-flow.md),
-				// so the step above it keeps the same scope: holding one side's life against a human is not
-				// a setting, it is a second player with nothing to do.
-				if (cfg.endless_1p && board.set == "fvipers2") {
-					const int m = board.fv2_mode(), su = board.fv2_submode();
-					if ((m == 6 || m == 7) && (su == 11 || su == 12) && board.fv2_players() != 3) {
-						const int max = board.fv2_life_max(1), now = board.fv2_life(1);
-						if (max > 0 && now >= 0 && now < max) board.fv2_set_life(1, max);
-					}
-				}
-				// THE CHARACTERS HAVE BEEN CHOSEN: the stage page opens here, between SELECT and DECIDE_INT,
-				// where the summer's ROM put it and where Sega's own STAGE_SEL states sit empty. The game is
-				// NOT frozen under it -- console_play parks it in that empty sub-state and it goes on running
-				// (model3.cpp) -- and the arena it holds is read ten frames later, at ROUND_MASK_INT.
-				//
-				// MAIN MENU has got the game back to its title screen: the console's list goes up over it, which
-				// is where that line said it was going.
-				// THE LINE HELD WHILE THE MATCH WAS ENDING, acted on the moment it is over.
-				if (mode_wanted >= 0 && cplay.leaving == console_play::L_OFF) {
-					const int line = mode_wanted;
-					mode_wanted = -1;
-					fprintf(stderr, "frame %llu: the console's list: %s, held while the match ended, starts now\n",
-						(unsigned long long)game_frame, fv2_mode_list::name(line));
-					choose_mode(line);
-				}
-				// A STATE THIS LAYER ASKED FOR, entered here because this is the only place that enters one. The
-				// two halves of the menu are the case it was written for: MENU_IN is the list installing itself
-				// while the game finishes what it was doing, and the way out of a match says when that is done
-				// (console_play::arrive). Nothing is waited for by counting frames.
-				if (cplay.want_why) {
-					const char *why = cplay.want_why;
-					cplay.want_why = nullptr;
-					// The end of a versus is the one state that brings a surface with it: the pause panel, in its
-					// end-of-match form (fv2_pause::show_over). enter() only ever CLOSES that panel, because which
-					// hand pressed Start is what opens the other one -- and here no hand pressed anything.
-					if (cplay.want_state == cstate::VS_OVER && pause.ready) pause.show_over();
-					enter(cplay.want_state, why);
-				}
-				// (the carousel is asked for by console_play itself, where the fighters being chosen is seen:
-				// it asks for the STAGE state like any other, and enter() above refuses it if the page is not
-				// there. VF3_CONSOLE_STAGE=none takes the page away for one measurement, which is the only
-				// way to put a fight that went through it beside a fight that did not.)
-				// TRAINING'S COLUMN, fed with the PLAYER'S own controls and not with the game's memory --
-				// which is the point of it: it has to show what was done, including what the game ignored.
-				// Player 1's, and the damage it reads is what player 2 has just had taken off him.
-				if (cplay.training_on && cplay.train_fighting && train.ready) {
-					const bool st = live.start[0] || script_ctl.start[0];
-					(void)st;
-					train.feed(live.up[0] || script_ctl.up[0], live.down[0] || script_ctl.down[0],
-							   live.left[0] || script_ctl.left[0], live.right[0] || script_ctl.right[0],
-							   live.punch[0] || script_ctl.punch[0], live.kick[0] || script_ctl.kick[0],
-							   live.guard[0] || script_ctl.guard[0]);
-					if (cplay.train_took[1] > 0) train.damage(cplay.train_took[1]);
-					cplay.train_took[0] = cplay.train_took[1] = 0;
-				} else if (!cplay.training_on && !train.lines.empty()) {
-					train.clear();
-				}
-				// TRAINING: ONE PLAYER CHOOSES BOTH FIGHTERS, and the whole of how is console_play's
-				// (route_training). What belongs here is only that the controls exist here -- this is the one
-				// place this port composes them -- and the ORDER: it comes AFTER the column, never before.
-				// Routed first, it had already emptied player 1's controls by the time the column read them, so
-				// the column showed nothing of what was being pressed, which Frederic saw as the buttons no
-				// longer matching. The column reads the hands; this moves what the hands did to the other
-				// player; the order between them is not free.
-				cplay.route_training(board, live, script_ctl);
-				// THE PAGE IS UP AND THE GAME IS STILL RUNNING: it is held in Sega's empty STAGE_SEL every
-				// frame, because a request is only read once and the point here is that it is never walked
-				// out of. Nothing of the player reaches the game meanwhile -- the carousel has the keys and
-				// the pad, as it does under the three surfaces that freeze instead.
-				// AND NOTHING OF THE PLAYER REACHES THE GAME WHERE THE PORT HAS THE CONTROLS. It matters in the two
-				// states where the game RUNS under a surface -- the carousel parked on the select screen, and the
-				// list with the game walking home behind it -- and is harmless in the others, where no frame runs
-				// at all. (The carousel's park is renewed by console_play's own step, the one place that writes.)
-				if (cplay.ui.port_controls()) {
-					live = m3::Controls();
-					script_ctl = m3::Controls();
-				}
 				m3::Controls &c = board.controls;
 				auto mix = [](bool *a, const bool *b, const bool *d) { a[0] = b[0] || d[0]; a[1] = b[1] || d[1]; };
 				mix(c.coin, script_ctl.coin, live.coin); mix(c.start, script_ctl.start, live.start);
@@ -6845,14 +4266,8 @@ int main(int argc, char **argv)
 				mix(c.left, script_ctl.left, live.left); mix(c.right, script_ctl.right, live.right);
 				mix(c.punch, script_ctl.punch, live.punch); mix(c.kick, script_ctl.kick, live.kick);
 				mix(c.guard, script_ctl.guard, live.guard); mix(c.escape, script_ctl.escape, live.escape);
-				// The console way's injections go on last, so they get through even while the menu is holding
-				// the player's own Start back: choosing a mode has to hand the game a Start on that very frame.
-				for (int q = 0; q < 2; q++) c.start[q] = c.start[q] || console_ctl.start[q];
-				// Honey's costume wheel, turned by the same presses of up the game turns its own two with
-				game.honey_tick(c.up[0] || c.up[1]);
-				// Kuhn's colour wheel, on the same presses and in the same shape (Game::kuhn_tick)
-				game.kuhn_tick(c.up[0] || c.up[1]);
-				// The arcade's test menu (RAM 0x102002 is 4 while it's up; 0 at the attract, a fight, the boot): Down
+				game.honey_tick(c.up[0] || c.up[1]);   // Honey's costume wheel
+				game.kuhn_tick(c.up[0] || c.up[1]);    // Kuhn's colour wheel, the same shape
 				team_mode_sync();
 				// The arcade's test menu (RAM 0x102002, the profile's test_menu, is 4 while it's up; 0 at the attract, a fight, the boot): Down
 				// moves (the service button) and Start selects (the test button), any pad or key, as VF1's and VF2's;
@@ -6874,25 +4289,6 @@ int main(int argc, char **argv)
 				if (test_pending && game_frame >= BOOT_FRAMES) { test_pending = false; test_frames = 10; }
 				if (test_frames > 0) { c.test[0] = true; test_frames--; }
 				game.builder.widen = std::max(1.0f, float(picture_aspect()) * 0.75f) * 1.05f;   // (a little more: smooth motion)
-		};
-		// WHILE THE CONSOLE'S ROLL OWNS THE SCREEN the game's picture is worth nothing: the roll covers every
-		// pixel of the window. Asked here, once, by whichever road starts the frame -- the half on the game's
-		// thread, or the whole frame run on this one.
-		// (exactly the test the drawing makes -- `ending.want`, not the setting: a test run turns the roll on
-		// with VF3_ENDING_DC without touching the saved option, and the two must not disagree)
-		auto roll_owns = [&] { return ending.want && cplay.in_ending && roll.ready(); };
-		// WHAT A FRAME'S SOUND DOES NEXT, and both kinds of frame go through it: the recording's file, the
-		// VF3_SOUND_WAV probe, the device. It is a lambda rather than two copies because the two copies are
-		// exactly what let the menu's sound drift away from the game's.
-		auto send_audio = [&] {
-			if (rec.wav && game_frame > rec.from) {
-				fwrite(game.audio.data(), sizeof(int16_t), game.audio.size(), rec.wav);
-				rec.wav_bytes += uint32_t(game.audio.size() * sizeof(int16_t));
-			}
-			snd_wav_put(game.audio);
-			if (audio && !game.audio.empty() && !ff && rec.dir.empty())   // (recording: to its file only, not queued for hours)
-				SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
-			game.audio.clear();
 		};
 		if (online.playing()) {
 			// A match: each frame through the session, with this player's input (whichever player's controls they
@@ -6942,31 +4338,6 @@ int main(int argc, char **argv)
 			due = 0;
 		}
 		for (int i = 0; i < due && running; i++) {
-			// A FRAME WITHOUT THE POWERPC, which is exactly what a frozen state is.
-			//
-			// The state table says the game does not run (console_state.h); it has never said that the SOUND
-			// BOARD stops, and it does not -- the 68000 and its DSP go on. So a frozen state still has frames,
-			// and they come out of this loop at this pass's pace, from this pass's clock, under this pass's
-			// governor and against the same queue. Nothing of the menu's sound has a timing of its own any more.
-			//
-			// The frame in flight is finished first, once: the emulation thread may still be holding the frame
-			// that was running when the surface opened, and turning the board from here while it does had a
-			// hidden run die of heap corruption two seconds in (measured the 2026-10-26).
-			if (stopped) {
-				if (half) { game.job_wait(); half = false; }
-				game.sound_only_frame();
-				send_audio();
-				// (tests: VF3_MENU_SOUND reports what the board made and how deep the device's queue is -- the
-				// figure that named the fault of the 2026-10-29)
-				if (static const bool say = getenv("VF3_MENU_SOUND") != nullptr; say) {
-					static int n = 0;
-					const int q = audio ? SDL_GetAudioStreamQueued(audio) : -1;
-					if (++n % 30 == 0)
-						fprintf(stderr, "menu sound: %d sound frames, queued %d bytes (%.1f frames)\n",
-							n, q, frame_bytes > 0 ? double(q) / frame_bytes : 0.0);
-				}
-				continue;
-			}
 			// A frame more than this pass's first (a slow pass let two fall due): started on the game's own thread, not
 			// run here, and taken next pass (run here it made this pass slow too, and the next, one after another)
 			// (with pictures over a frame's time (pass_burst over 2), the frames due run here but the last, as online's:
@@ -6977,7 +4348,7 @@ int main(int argc, char **argv)
 				frame_clock = std::min(frame_clock, double(frames_run) + 1.0);
 				const uint64_t th = SDL_GetTicksNS();
 				frame_inputs(half_hk, half_act, half_left);
-				game.job_start(!ff, !roll_owns());
+				game.job_start(!ff);
 				half = true;
 				half_ns = SDL_GetTicksNS() - th;
 				break;
@@ -6991,29 +4362,13 @@ int main(int argc, char **argv)
 			else frame_inputs(hk, act, left_test);
 			if (half) {
 				if (emu_threaded) game.job_wait();
-				else game.finish_frame(!ff, !roll_owns());
+				else game.finish_frame(!ff, true);
 				half = false;
 				pass_kind = std::max(pass_kind, 2);
-			} else {
-				// AND NO PICTURE IS BUILT AT ALL WHILE THE ROLL OWNS THE SCREEN. Not the 2D layers, not the
-				// 3D scene, not the copy that publishes them: finish_frame takes `picture` and returns
-				// before every one of them when it is false, which is how the boot runs its 960 frames.
-				//
-				// Taking the drawing out was not enough, and Frederic's log said so twice: with the 3D
-				// skipped at the drawing end, A FRAME still cost 8.33 then 14.30 ms where a fight's costs
-				// two or three, and one pass did 443 ms of work before its present. That is the ending's
-				// replays -- real matches, their scene built out of the display list every frame -- and the
-				// only place to stop it is here, before the frame makes a picture nobody will see.
-				game.run_frame(!ff, !roll_owns());
-				pass_kind = 3;
-			}
-			// (and nothing is published either while the roll owns the screen: publish copies the 2D layers and
-			// the scene for the drawing to read, and the drawing reads none of them -- megabytes a frame for a
-			// picture that is never shown)
-			if (!roll_owns()) game.publish();
+			} else { game.run_frame(!ff, true); pass_kind = 3; }
+			game.publish();
 			game_frame++;
 			game.hold_roster();   // (nothing to do unless the player asked for the hidden fighters)
-			// a boot the player watches: the same check, once it is over
 			if (!game.rebuilt_after_boot && game_frame >= BOOT_FRAMES) { game.rebuilt_after_boot = true; game.rebuild_from_ram_if_stale(); }
 			if (game_frame == BOOT_FRAMES && !scripted && !skip_boot()) vf3net::set_versus_count(board, vf3net::random_versus_count());   // (the boot seen: as after an unseen one)
 			if (game_frame == BOOT_FRAMES && scripted) if (const char *vc = getenv("VF3_VERSUS_COUNT")) vf3net::set_versus_count(board, uint32_t(atoi(vc)));   // (tests: that stage)
@@ -7027,14 +4382,14 @@ int main(int argc, char **argv)
 			new_frame = true;
 			for (auto &s : act.shots) write_frame("build/host_" + s + ".png");
 			if (act.quit) running = false;
-			send_audio();
+			if (rec.wav && game_frame > rec.from) {
+				fwrite(game.audio.data(), sizeof(int16_t), game.audio.size(), rec.wav);
+				rec.wav_bytes += uint32_t(game.audio.size() * sizeof(int16_t));
+			}
+			if (audio && !game.audio.empty() && !ff && rec.dir.empty())   // (recording: to its file only, not queued for hours)
+				SDL_PutAudioStreamData(audio, game.audio.data(), int(game.audio.size() * sizeof(int16_t)));
+			game.audio.clear();
 			for (auto &k : test_keys) if (k.second == game_frame) { send_key(k.first); window_shots.push_back(game_frame + 3); }
-			// VF3_MIDI_SEND: in with the game's own bytes, so the board hears it exactly as it hears the game
-			for (auto &m : midi_send)
-				if (m.first == game_frame) {
-					board.midi.insert(board.midi.end(), m.second.begin(), m.second.end());
-					fprintf(stderr, "midi sent by hand at frame %llu\n", (unsigned long long)game_frame);
-				}
 			if (quit_after >= 0 && int64_t(game_frame) >= quit_after) running = false;
 			switch (hk) {
 			case hotkey::menu: open_menu(); break;
@@ -7053,7 +4408,7 @@ int main(int argc, char **argv)
 			frame_clock - double(frames_run) >= 0.5) {
 			const uint64_t th = SDL_GetTicksNS();
 			frame_inputs(half_hk, half_act, half_left);
-			if (emu_threaded) game.job_start(!ff, !roll_owns());
+			if (emu_threaded) game.job_start(!ff);
 			else game.start_frame();
 			half = true;
 			pass_kind = std::max(pass_kind, 1);
@@ -7093,8 +4448,6 @@ int main(int argc, char **argv)
 		if (draw) {
 			smooth_budget = std::max(0.0, smooth_budget - 1);
 			t9.pictures++;
-			// (VF3_SLOW, below: the running totals as they stood before this picture, to take its own share out)
-			static double was_upload_ms = 0, was_prep_ms = 0, was_g3_ms = 0, was_gpu_ms = 0;
 			const uint64_t td = SDL_GetTicksNS();
 			double t = smooth && !stopped ? std::clamp(frame_clock - double(frames_run), 0.0, 1.0) : 1.0;
 			if (stopped) t = 1.0;
@@ -7106,19 +4459,6 @@ int main(int argc, char **argv)
 			t9.draw_ms += ms;
 			if (!stopped) picture_avg_ms += (std::min(ms, 200.0) - picture_avg_ms) * 0.1;
 			pace.pictures++;
-			// VF3_SLOW=ms -- EVERY PICTURE THAT TOOK LONGER THAN THAT, with the state it was drawn in.
-			// The pace line is an average over ten seconds and a hitch is four frames: it cannot show one.
-			// Written the 2026-10-29 for a hitch Frederic sees on the select screen "quand le modele 3D du
-			// personnage apparait a l'ecran", which is exactly the kind of thing an average hides.
-			if (static const double slow = getenv("VF3_SLOW") ? atof(getenv("VF3_SLOW")) : 0.0; slow > 0 && ms > slow)
-				fprintf(stderr, "slow picture: %.1f ms at frame %llu (mode %d sub %d), %dx -- uploads %.1f, "
-						"the triangles prepared %.1f, the GPU's renderer %.1f (its set-up %.1f)\n", ms,
-						(unsigned long long)game_frame, board.fv2_mode(), board.fv2_submode(), scale,
-						// (the totals are emptied every ten seconds: a picture that straddles that is not one to read)
-						std::max(0.0, pace.upload_ms - was_upload_ms), std::max(0.0, pace.prep_ms - was_prep_ms),
-						std::max(0.0, pace.g3_wall_ms - was_g3_ms), std::max(0.0, pace.gpu_ms - was_gpu_ms));
-			was_upload_ms = pace.upload_ms; was_prep_ms = pace.prep_ms;
-			was_g3_ms = pace.g3_wall_ms; was_gpu_ms = pace.gpu_ms;
 			new_frame = false;
 			// the governor
 			const uint64_t now = SDL_GetTicksNS();
@@ -7180,21 +4520,6 @@ int main(int argc, char **argv)
 						} else gov.calm_since = 0;
 					}
 				}
-			}
-		}
-		// The CONTROLLER page's mirror, filled while that screen is up and not otherwise: it reads the pads
-		// every pass, and there is no reason to do it behind a page that does not show it.
-		if (options.shown && options.at == fv2_options::SCR_CONTROLLER) {
-			for (int p = 0; p < 2; p++) options.live[p] = live_controls(p, pads[p], cfg.ctl);
-			// read again every pass rather than once at the start: a pad can be plugged in while the page is up
-			for (int p = 0; p < 2; p++) options.pad_id[p] = pads[p] ? SDL_GetGamepadID(pads[p]) : 0;
-			// (tests: VF3_LIVE=n lights that set of bits on the player shown. A pushed key event does not
-			// change the keyboard state SDL reports, so the test hooks cannot reach this page any other way.)
-			// (tests: VF3_LIVE=n[,m] lights those bits on 1P and 2P.)
-			if (const char *lv = getenv("VF3_LIVE")) {
-				options.live[0] = uint8_t(atoi(lv));
-				const char *c = strchr(lv, 44);
-				if (c) options.live[1] = uint8_t(atoi(c + 1));
 			}
 		}
 		compose();
@@ -7306,11 +4631,6 @@ int main(int argc, char **argv)
 					pace.frames / s, pace.pictures / all_s, stopped_note, (unsigned long long)between_n, (unsigned long long)cut_n, pace.frames ? pace.emu_ms / pace.frames : 0.0,
 					pace.draw_ms / pics, g3_shown ? "the GPU's set-up" : "the CPU's 3D", g3_shown ? pace.gpu_ms / pics : (pace.draw_ms - pace.upload_ms) / pics,
 					pace.upload_ms / pics, scale, tex_w, tex_h, aa_now() > 1 ? (", antialiasing " + std::to_string(aa_now()) + "x").c_str() : ", antialiasing off", gov.smooth_off ? ", smooth motion held to 60 a second" : "", audio ? SDL_GetAudioStreamQueued(audio) : -1);
-			if (const uint32_t ef = game.emu_frames.exchange(0)) {
-				const double ems = double(game.emu_ns.exchange(0)) / 1e6;
-				fprintf(stderr, "  on the game's own thread: %u frames, %.2f ms each\n", ef, ems / ef);
-			} else
-				game.emu_ns = 0;
 			if (game.free_stream) fprintf(stderr, "  a match's sound, to the real clock: ran dry %d times\n", game.sound_dry.exchange(0));
 			if (const std::string pl = sysinfo::placement(); !pl.empty()) fprintf(stderr, "  %s\n", pl.c_str());
 			if (g3_shown && pics > 0)
@@ -7362,11 +4682,6 @@ int main(int argc, char **argv)
 	saved_hash = ~nvram_hash();   // (the last copies written here whatever the writer did)
 	save_nvram(true);
 	rec_stop();
-	if (snd_wav) {
-		snd_wav_head();
-		fprintf(stderr, "sound: %.1f s written to VF3_SOUND_WAV\n", double(snd_wav_bytes) / (SOUND_RATE * 4.0));
-		fclose(snd_wav);
-	}
 	if (cfg_dirty && quit_after < 0) cfg.save(settings_path);
 #ifdef _WIN32
 	// (Game > Version: the new process may bring its window to the front; Windows lets a process do that only if
@@ -7376,12 +4691,6 @@ int main(int argc, char **argv)
 #endif
 	game.set_sound_free(nullptr, 0);   // (the sound thread off the stream first)
 	if (audio) SDL_DestroyAudioStream(audio);
-	if (tile_dump.on()) {
-		// (tiles.csv and layers/index.csv are written here: the dump keeps its inventory until the end)
-		fprintf(stderr, "tile dump: %zu distinct tiles and %zu layer layouts in %s\n",
-		        tile_dump.tiles(), tile_dump.layouts(), arg_tile_dump.c_str());
-		tile_dump.close();
-	}
 	if (chime_stream) SDL_DestroyAudioStream(chime_stream);
 	for (auto &p : pads) if (p) SDL_CloseGamepad(p);
 	menu_owner.reset();
