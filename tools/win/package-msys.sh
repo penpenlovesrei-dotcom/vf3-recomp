@@ -5,17 +5,11 @@
 #
 #   tools/win/package-msys.sh            -> build/win-msys/Model3Recomp/ and Model3Recomp-windows.zip
 #   FV2=1 NAME=FightingVipers2 EXE=FightingVipers2.exe tools/win/package-msys.sh
-#   FV2=1 CONSOLE=1 ...                  -> the same, with the console menu
 #
-# FV2=1 makes the Fighting Vipers 2 package instead of the one that serves both games: its own README, and
-# texture_replacement/CHARACTERS/Kuhn -- his blue and black, which are not in the repository and which the
-# player cannot make for himself. The game starts on the arcade's own road.
-#
-# CONSOLE=1 adds the console menu on top: assets/menu-console (its art and the ending's, 193 MB, also not in
-# the repository) and a settings.ini that has it on from the first start. Without it the folder is about
-# 11 MB and the console menu, though still in the program, is off and has no art to draw.
-#
-# A folder asked for and missing stops the script, rather than shipping a package that half works.
+# FV2=1 makes the Fighting Vipers 2 package instead of the one that serves both games: its own README, the
+# hidden fighters on from the first start, and texture_replacement/CHARACTERS/Kuhn -- his blue and black,
+# which are not in the repository and which the player cannot make for himself. That folder has to be in the
+# working tree; the script stops and says so rather than shipping a package that half works.
 #
 # No ROMs and nothing made from them: the player chooses their own vf3.zip or fvipers2.zip at the first
 # launch, and it is copied into the package's own roms folder.
@@ -87,12 +81,6 @@ if [ "${FV2:-0}" = 1 ]; then
 	# They are what this package is for; the port's own default is off, and a player who does not know
 	# the menu row is there finds the select screen exactly as the cabinet left it.
 	printf 'settings_version = 3\nfull_roster = 1\n' > "$P/settings.ini"
-	if [ "${CONSOLE:-0}" = 1 ]; then
-		[ -d assets/menu-console ] || { echo "CONSOLE=1 needs assets/menu-console in the working tree (it is not in the repository)"; exit 1; }
-		cp -R assets/menu-console "$P/assets/"
-		cat tools/win/README-fv2-console.txt >> "$P/README.txt"
-		printf 'console_mode = 1\n' >> "$P/settings.ini"
-	fi
 else
 	cp tools/win/README-msys.txt "$P/README.txt"
 fi
