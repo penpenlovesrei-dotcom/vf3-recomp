@@ -234,7 +234,9 @@ The whole story, with how the AI-assisted work was organised and checked: [docs/
 
 On the `fv2` branch, the same binary also runs **Fighting Vipers 2** (Model 3 Step 2.0), from your own `fvipers2`
 set: every difference between the two boards, and what has and hasn't been checked, is in
-[docs/step2-fvipers2.md](docs/step2-fvipers2.md).
+[docs/step2-fvipers2.md](docs/step2-fvipers2.md). Its hidden fighters -- the three words that open them, the one
+cell left shut, and how to check it all in a minute -- are in
+[docs/fv2-hidden-fighters.md](docs/fv2-hidden-fighters.md).
 
 ## Credits
 
