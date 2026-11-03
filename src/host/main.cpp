@@ -748,6 +748,25 @@ struct Game
 			        "the interpreter runs everything\n", n);
 		}
 	}
+	// Fighting Vipers 2's hidden fighters, held open. The patch is in RAM, so it waits for the boot to unpack the
+	// program; Model3::unlock_roster reads before it writes and says whether it wrote, so this can be called as
+	// often as one likes, and it does nothing at all for Virtua Fighter 3. The write that matters is the one just
+	// before the rebuild after the boot, which is what makes the native code from the patched program.
+	uint64_t roster_written = 0;
+	void hold_roster()
+	{
+		if (board.unlock_roster() <= 0) return;
+		roster_written++;
+		// Before the boot's own rebuild there is nothing more to do: that rebuild makes the native code from the
+		// patched program. After it, any write at all -- the game having reloaded that stretch of its code --
+		// leaves one word of RAM disagreeing with the instruction its native code was made from, and one word
+		// turns the whole recompiler off. So it is built again from RAM, where it agrees. (Getting this wrong is
+		// what made the game run at a sixth of its speed once before: docs/step2-fvipers2.md, section 19.)
+		if (!rebuilt_after_boot) return;
+		fprintf(stderr, "the hidden fighters: the patch went in after the boot (%llu), the native code made again\n",
+		        (unsigned long long)roster_written);
+		rebuild_from_ram_if_stale();
+	}
 	// The sound board runs on a thread of its own, a frame behind the game (its ~3 ms a frame alongside the next
 	// frame's work, not in a picture's time): it hears only the game's bytes, and its sound is queued a frame later
 	// (the queue kept a frame shorter for it: QUEUED)
@@ -1142,6 +1161,7 @@ int main(int argc, char **argv)
 			game_frame++;
 		}
 		game.tiles_on = true;
+		game.hold_roster();   // (the hidden fighters, before the rebuild that makes the code from the patch)
 		game.rebuilt_after_boot = true;
 		game.rebuild_from_ram_if_stale();
 		fprintf(stderr, "boot: %llu frames in %.2f s, unseen\n", (unsigned long long)game_frame,
@@ -2553,6 +2573,7 @@ int main(int argc, char **argv)
 			} else { game.run_frame(!ff, true); pass_kind = 3; }
 			game.publish();
 			game_frame++;
+			game.hold_roster();   // the hidden fighters, put in as soon as the boot has unpacked the program
 			// a boot the player watches: the same check, once it is over
 			if (!game.rebuilt_after_boot && game_frame >= BOOT_FRAMES) { game.rebuilt_after_boot = true; game.rebuild_from_ram_if_stale(); }
 			pace.frames++;

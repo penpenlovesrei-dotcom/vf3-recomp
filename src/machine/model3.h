@@ -166,6 +166,12 @@ public:
 	// it changed (2; 0: not the data known). show_free_play_text puts them back.
 	int hide_free_play_text();
 	void show_free_play_text();
+	// Fighting Vipers 2's hidden fighters, selectable: the gate on the character select opened, and the cursor's
+	// row widened to hold them -- without the fifteenth cell, which is a second Kuhn under his old development
+	// name wearing Bahn's name plate. The patch is in RAM, which the boot unpacks the program into, so it reads
+	// before it writes: 1 if it wrote, 0 if what is there is not the instruction Sega wrote (the boot not done
+	// yet, or the patch already in), -1 for any other game.
+	int unlock_roster();
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 

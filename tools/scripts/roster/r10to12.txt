@@ -1,0 +1,20 @@
+# The three cells the patch opens, one shot each: cursor 10, 11 and 12.
+1900 press p1.coin
+1930 press p1.coin
+1960 press p1.start
+2040 press p1.right
+2056 press p1.right
+2072 press p1.right
+2088 press p1.right
+2104 press p1.right
+2120 press p1.right
+2136 press p1.right
+2152 press p1.right
+2168 press p1.right
+2184 press p1.right
+2320 shot cur10
+2360 press p1.right
+2480 shot cur11
+2520 press p1.right
+2640 shot cur12
+2700 quit

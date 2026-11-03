@@ -4,6 +4,10 @@
 # a folder with the program, the DLLs it needs, the assets, a README and LICENSES, zipped.
 #
 #   tools/win/package-msys.sh            -> build/win-msys/Model3Recomp/ and Model3Recomp-windows.zip
+#   FV2=1 NAME=FightingVipers2 EXE=FightingVipers2.exe tools/win/package-msys.sh
+#
+# FV2=1 changes nothing in the program -- the same build runs both games -- only the README, which then
+# speaks of Fighting Vipers 2 alone, as a package named after it should.
 #
 # No ROMs and nothing made from them: the player chooses their own vf3.zip or fvipers2.zip at the first
 # launch, and it is copied into the package's own roms folder.
@@ -66,7 +70,7 @@ copy_deps
 
 cp -R assets/ui assets/fonts "$P/assets/"
 cp assets/icon/icon.png "$P/assets/icon/"
-cp tools/win/README-msys.txt "$P/README.txt"
+cp "tools/win/$([ "${FV2:-0}" = 1 ] && echo README-fv2.txt || echo README-msys.txt)" "$P/README.txt"
 tools/release/licenses.sh "$P/LICENSES.txt" --windows 2>/dev/null || \
 	echo "(LICENSES.txt needs tools/release/licenses.sh and its dependency tarballs; see tools/release/README.txt)" > "$P/LICENSES.txt"
 : > "$P/portable.txt"   # the saves and settings stay in this folder
