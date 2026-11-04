@@ -4,6 +4,9 @@ Fighting Vipers 2 ships with a select screen wider than the one it shows. Its cu
 where the cursor wraps at 14 instead of 10, and that mode puts Del Sol, Kuhn, BM and Dural on the row with
 everyone else. Sega left it in and gated it behind something no player can reach.
 
+The port opens that mode one cell narrower than Sega's own: the fifteenth cell is a second Kuhn, and it stays
+shut. "The two bounds" below says how, and why it is two more words rather than one.
+
 This is what the port does about it, what was measured to settle each point, and what it does not fix.
 
 Where it came from: the gate, its address and the shape of the patch were not found here. They come from the
@@ -33,6 +36,33 @@ The comparison is what gives:
 ```
 
 which is always. Four bytes: `2C 80 00 C0` becomes `2C 80 00 00`.
+
+
+## The two bounds, and the cell that stays shut
+
+The gate alone gives fifteen cells, 0 to 14, and the fifteenth is a **second Kuhn**: cursor 12 is id 13 (KUHN)
+and cursor 14 is id 12 (DURAL), the same character under his old development name, with three times the armour
+(`docs/fv2-two-kuhn.md`). On the select screen he wears BAHN's name plate. Frederic asked for that cell to go,
+on the 2026-11-01.
+
+It is not the gate that says how wide the row is. The width is two numbers in the handler the gate opens, found
+by watching who writes the cursor -- `vf3run <fvipers2.zip> --watch 279668`, the address read as hex, names PC
+`0005F484` -- and reading around it:
+
+```
+0005F444    li r0,14            left from cell 0 lands on 14
+0005F4B8    cmpwi cr1,r0,14     and at 0005FA28, ble, else the cursor goes back to 0
+```
+
+| address | as Sega wrote it | word | here | word |
+| --- | --- | --- | --- | --- |
+| `0005F3BC` | `cmpwi r0,192` | `2C8000C0` | `cmpwi r0,0` | `2C800000` |
+| `0005F444` | `li r0,14` | `3800000E` | `li r0,13` | `3800000D` |
+| `0005F4B8` | `cmpwi cr1,r0,14` | `2C80000E` | `cmpwi cr1,r0,13` | `2C80000D` |
+
+Both 14s become 13, the row runs 0 to 13 and wraps back to Emi. Each site stands on its own in the code -- the
+gate may already be in from an earlier call while a bound is not -- so all three are read before they are
+written, and the count of words written is what the rebuild below reports.
 
 
 ## The address is in RAM, which is the whole difficulty
@@ -118,7 +148,10 @@ Measured, from the select screen, one press of left from Emi (cursor 0):
 | | cursor after | the row |
 |---|---|---|
 | as the game ships | 10 | wraps at the random slot |
-| with the patch | 14 | Del Sol, Kuhn, BM and Dural are reachable |
+| with the gate alone | 14 | Del Sol, Kuhn, BM and the second Kuhn are reachable |
+| with the gate and the two bounds, as the port has it | 13 | the second Kuhn is out of reach |
+
+The first two rows are what was measured before the bounds were moved; the third is the port as it stands.
 
 This page first said Kuma, from an older note. It is Dural: the owner's own cursor-to-fighter table, measured
 later, gives cell 14 as Dural and says Kuma is reachable by no cursor at all. What was seen here agrees -- the
@@ -169,3 +202,35 @@ and the game reports it rather than doing nothing silently.
 - The windowed host's picture at the select screen, byte-identical to the headless run's.
 - `verify-vf3.cmd`: Virtua Fighter 3 untouched. It has to be -- `unlock_roster()` is never called unless the
   player asks for it, and it returns at once for any game but `fvipers2`.
+
+
+## Checking it again in a minute
+
+The cursor scripts are `tools/scripts/select-names/c10.txt` .. `c14.txt`. Headless, with the fighters on:
+
+```
+set PATH=C:\msys64\mingw64\bin;%PATH%
+set VF3_HIDDEN=1
+set VF3_3D=cpu
+set VF3_DATA=%TEMP%\fv2probe
+set VF3_WINDOW=1024x768
+set VF3_SCRIPT=tools\scripts\select-names\c13.txt
+build\bin\vf3.exe "D:\ROMs\fvipers2.zip" --full-roster
+```
+
+What a good run says and shows:
+
+- `recompiled from RAM after the boot (6 words the game had patched)` -- the three exception vectors the game
+  writes into itself, and these three. **Three** means the patch did not go in; a line about the interpreter
+  running everything means the rebuild did not settle it, and the game is then at a sixth of its speed.
+- cursor 10 CHARLIE (the game's own last), 11 DELSOL, 12 KUHN, 13 B.M.
+- `c14.txt` was written when cell 14 could still be reached. With the bounds moved it lands back on EMI, the 1P
+  marker on the first portrait, which is now the check rather than the cell.
+
+Two traps, both met while measuring:
+
+- **A ROM folder holding both sets starts Virtua Fighter 3.** Pass the zip you mean on the command line, or the
+  probe measures the wrong game and says nothing about it.
+- **The program is built `-mwindows`, so nothing comes out on the console**, and PowerShell does not wait for a
+  windowed program started with `&`: the log read straight after is the previous run's. Run it through
+  `cmd /c`, and read `log.txt` in the data folder.
