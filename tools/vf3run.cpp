@@ -57,6 +57,7 @@
 #include "../src/video/tex3d_hd.h"
 #include "../src/video/hud_names.h"
 #include "../src/video/dural_cell.h"
+#include "../src/video/fv2_bm_name.h"
 #include "../src/sound/soundboard.h"
 #include "sound_prof.h"
 #include <chrono>
@@ -1375,6 +1376,16 @@ int main(int argc, char **argv)
 				if (dural && board.dural_on()) {   // (her spot's picture, as the host draws it)
 					static video::DuralPicture dural_pic;
 					video::dural_cell(board, above, dural_pic);
+				}
+				{   // B.M.'s name on the select, as the host draws it: so a shot can be measured (fv2_bm_name.h)
+					static video::BMName bm_art;
+					static bool bm_read = false;
+					if (!bm_read) {
+						bm_read = true;
+						const char *a = getenv("VF3_ASSETS");
+						video::bm_name_load(a && *a ? a : "assets", bm_art);
+					}
+					video::bm_name(board, above, 1, bm_art);
 				}
 				if (getenv("VF3_VP")) {
 					for (int x : { 0, video::W - 3 }) {

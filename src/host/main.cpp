@@ -149,6 +149,7 @@
 #include "chime.h"
 #include "../video/hud_names.h"
 #include "../video/dural_cell.h"
+#include "../video/fv2_bm_name.h"
 #include "flags.h"
 #include "../machine/model3.h"
 #include "../machine/romset.h"
@@ -1699,6 +1700,7 @@ struct Game
 	// Play as Dural: her spot on the select is the program's (Model3::set_dural); its picture the host's (dural_cell)
 	std::atomic<int> dural_players{ 0 };
 	video::DuralPicture dural_pic;   // (decoded from the ROM when first needed)
+	video::BMName bm_art;            // B.M.'s name on the select, which Sega left blank (fv2_bm_name.h)
 	video::DuralWide dural_wide;     // (her cell whole, for widescreen's right side)
 	void start_frame()
 	{
@@ -1906,6 +1908,11 @@ struct Game
 	} view;
 	void publish()
 	{
+		// B.M.'s name, where the game draws none, in the colour that player's own toggle is on. After the
+		// layers are finished and before they are published, so the HD plane gets it too and nothing that
+		// measures the layers (the scroll, the stage test, the sides' colours) ever sees it.
+		video::bm_name(board, above, 1, bm_art);
+		if (!above_hd.empty()) video::bm_name(board, above_hd, tiles.hd_scale(), bm_art);
 		view.newest ^= 1;
 		view.scene[view.newest] = scene[newest];
 		view.have_prev = have_prev;
@@ -2430,6 +2437,9 @@ int main(int argc, char **argv)
 				video::hd3d().allow_flat_textures(true);
 				fprintf(stderr, "Kuhn's colours: the flat textures are accepted, his armour being one\n");
 			}
+			// B.M.'s name on the select screen, two pictures beside the program: the game draws none for
+			// him (docs/fv2-select-names.md), so the port draws one, in the colour his own toggle is on.
+			video::bm_name_load(find_assets(), game.bm_art);
 		}
 		if (arg_hd_dump_on) {
 			const std::string into = arg_hd_dump.empty() ? hd_3d_dir + "/DUMP" : player_folder(arg_hd_dump, data);

@@ -66,7 +66,7 @@ CORE = src/ppc/ppc.cpp src/machine/model3.cpp src/machine/dural.cpp src/machine/
 	src/machine/fv2_portraits.cpp src/host/input_script.cpp \
 	src/rec/ppc_rec.cpp src/rec/vf3_map.cpp src/rec/vf3tb_map.cpp src/rec/fv2_map.cpp \
 	src/video/tilegen.cpp src/video/hud_names.cpp src/video/dural_cell.cpp src/video/r3d_scene.cpp src/video/r3d_raster.cpp \
-	src/video/tex3d_hd.cpp src/video/tilehd.cpp \
+	src/video/tex3d_hd.cpp src/video/tilehd.cpp src/video/fv2_bm_name.cpp \
 	src/sound/soundboard.cpp src/sound/scsp.cpp src/sound/scspdsp.cpp src/sound/scsp_mame.cpp \
 	scsp/src/sound/scsp_trace.cpp scsp/src/sound/scsp_select.cpp scsp/src/sound/scsp_own.cpp scsp/src/sound/dsp_own.cpp src/core/mame_shim.cpp \
 	third_party/mame/m68000/m68000.cpp third_party/mame/m68000/m68000-decode.cpp \
