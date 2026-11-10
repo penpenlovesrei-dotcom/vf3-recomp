@@ -5,10 +5,14 @@
 // Entry points (one per -D):
 //   VS_POLY   the polygons: their clip positions and attributes worked out by the CPU (r3d_gpu.cpp)
 //   FS_POLY   their pixels: FS_LAYER 0 the opaque layer (base, the two translucent layers cleared, its depth as
-//             a colour too), 1 or 2 a translucent layer (only in front of the opaque layer's depth)
+//             a colour too), 1 or 2 a translucent layer (only in front of the opaque layer's depth); FS_QUADS
+//             too: a whole quad's pixels from its four corners (quad rendering, as the CPU's draw_tri), its depth
+//             written
 //   VS_QUAD   a rectangle in clip space (the uniforms')
 //   FS_FOG    the fog layers: a colour, with the spotlight on fog's ellipse
 //   FS_OUT    the three layers put together into one premultiplied picture
+//   FS_COLOUR the whole picture through an arcade monitor's colours (the host's CRT colours, SDL's renderer's
+//             own vertex shader in front: its colour and texture coordinate in)
 
 #ifdef __spirv__
 #define BIND(n, s) [[vk::binding(n, s)]]
@@ -56,6 +60,7 @@ struct PolyV
 	float4 misc : TEXCOORD2;    // u, v, fixed shade, back-face test
 	float lodbase : TEXCOORD3;
 	nointerpolation uint draw : TEXCOORD4;
+	nointerpolation uint quad : TEXCOORD5;   // a whole quad's in the quads buffer (FS_QUADS), or ~0
 };
 #endif
 
@@ -68,6 +73,7 @@ struct VsIn
 	float4 misc : TEXCOORD3;
 	float lodbase : TEXCOORD4;
 	uint draw : TEXCOORD5;
+	uint quad : TEXCOORD6;
 };
 PolyV main(VsIn i)
 {
@@ -78,6 +84,7 @@ PolyV main(VsIn i)
 	o.misc = i.misc;
 	o.lodbase = i.lodbase;
 	o.draw = i.draw;
+	o.quad = i.quad;
 	return o;
 }
 #endif
@@ -94,6 +101,61 @@ BIND(0, 3) cbuffer Frame : register(b0, space3)
 {
 	float gx, xscale, yscale, frame_pad;
 };
+#ifdef FS_QUADS
+// the whole quads: each 256 bytes, its corners' x, y (the target's pixels), 1/w and a pad, then each corner's 11
+// attributes over w (view position, normal, u, v, fixed shade, back-face test, LOD base) and a pad
+BIND(4, 2) ByteAddressBuffer quads : register(t4, space2);
+static const float NEAR = 1e-3;   // (r3d_gpu.cpp's: a polygon's depth is NEAR / w)
+
+// a quad's 1/w at a point as split along one diagonal (0: corners 0-2, 1: 1-3), as the CPU's split_depth
+float split_depth(float2 c[4], float iw[4], int diag, float2 p)
+{
+	const int a = diag, e = diag + 2, b1 = (diag + 1) & 3, b2 = (diag + 3) & 3;
+	const float2 ae = c[e] - c[a];
+	const float side = ae.x * (p.y - c[a].y) - ae.y * (p.x - c[a].x);
+	const float s1 = ae.x * (c[b1].y - c[a].y) - ae.y * (c[b1].x - c[a].x);
+	const int b = (side > 0) == (s1 > 0) ? b1 : b2;
+	const float2 ab = c[b] - c[a], ap = p - c[a];
+	const float ar = ab.x * ae.y - ae.x * ab.y;
+	if (!(abs(ar) > 1e-12)) return 0;
+	const float l1 = (ap.x * ae.y - ae.x * ap.y) / ar, l2 = (ab.x * ap.y - ap.x * ab.y) / ar;
+	return iw[a] + l1 * (iw[b] - iw[a]) + l2 * (iw[e] - iw[a]);
+}
+
+// a point's mean value coordinates in a quad, as the CPU's quad_weights (r3d_raster.cpp)
+void quad_weights(float2 c[4], float2 p, out float l[4])
+{
+	float2 s[4];
+	float r[4];
+	[unroll] for (int k = 0; k < 4; k++) {
+		s[k] = c[k] - p;
+		r[k] = length(s[k]);
+	}
+	[unroll] for (int k2 = 0; k2 < 4; k2++) l[k2] = 0;
+	[unroll] for (int k3 = 0; k3 < 4; k3++)
+		if (r[k3] < 1e-5) { l[k3] = 1; return; }   // on a corner
+	float th[4];
+	[unroll] for (int k4 = 0; k4 < 4; k4++) {
+		const int n = (k4 + 1) & 3;
+		const float cr = s[k4].x * s[n].y - s[k4].y * s[n].x, dt = dot(s[k4], s[n]);
+		const float den = r[k4] * r[n] + dt;
+		if (den <= 1e-6 * r[k4] * r[n]) {   // on the edge from k4 to n
+			const float t = r[k4] / (r[k4] + r[n]);
+			l[k4] = 1 - t;
+			l[n] = t;
+			return;
+		}
+		th[k4] = cr / den;
+	}
+	float sum = 0;
+	[unroll] for (int k5 = 0; k5 < 4; k5++) {
+		l[k5] = (th[(k5 + 3) & 3] + th[k5]) / r[k5];
+		sum += l[k5];
+	}
+	if (!(abs(sum) > 1e-20)) { [unroll] for (int k6 = 0; k6 < 4; k6++) l[k6] = 0.25; return; }
+	[unroll] for (int k7 = 0; k7 < 4; k7++) l[k7] /= sum;
+}
+#endif
 
 float4 decode(int type, uint v)
 {
@@ -179,17 +241,57 @@ struct FsOut
 #else
 	float4 t : SV_Target0;
 #endif
+#ifdef FS_QUADS
+	float z : SV_Depth;
+#endif
 };
 
 FsOut main(PolyV i)
 {
 	FsOut o;
+	float wi = 1.0 / i.pos.w;   // (SV_Position.w is w: the reciprocal of GLSL's gl_FragCoord.w)
+	float wd = wi;   // (the depth tested and kept: a whole quad's front, below)
+#ifdef FS_QUADS
+	o.z = i.pos.z;
+	if (i.quad != 0xFFFFFFFFu) {
+		// a whole quad: depth and attributes from its four corners by the pixel's mean value coordinates
+		const uint at = i.quad * 256;
+		float2 c[4];
+		float iw[4];
+		[unroll] for (int k = 0; k < 4; k++) {
+			const float4 q = asfloat(quads.Load4(at + k * 16));
+			c[k] = q.xy;
+			iw[k] = q.z;
+		}
+		float l[4];
+		quad_weights(c, i.pos.xy, l);
+		wi = l[0] * iw[0] + l[1] * iw[1] + l[2] * iw[2] + l[3] * iw[3];
+		if (!(wi > 0))
+			discard;
+		float4 a0 = 0, a1 = 0, a2 = 0;
+		[unroll] for (int k2 = 0; k2 < 4; k2++) {
+			const uint b = at + 64 + k2 * 48;
+			a0 += l[k2] * asfloat(quads.Load4(b));
+			a1 += l[k2] * asfloat(quads.Load4(b + 16));
+			a2 += l[k2] * asfloat(quads.Load4(b + 32));
+		}
+		const float wv = 1.0 / wi;
+		a0 *= wv; a1 *= wv; a2 *= wv;
+		i.view = a0.xyz;
+		i.normal = float3(a0.w, a1.x, a1.y);
+		i.misc = float4(a1.z, a1.w, a2.x, a2.y);
+		i.lodbase = a2.z;
+		// its depth: the nearer of its two splits' (and the mean's), as the CPU's (r3d_raster.cpp)
+		wd = max(wi, split_depth(c, iw, 0, i.pos.xy));
+		if (asfloat(quads.Load(at + 12)) > 0) wd = max(wd, split_depth(c, iw, 1, i.pos.xy));
+		o.z = NEAR * wd;
+	}
+#endif
 	if (i.misc.w > 0)
 		discard;   // facing away
-	const float wi = 1.0 / i.pos.w;   // (SV_Position.w is w: the reciprocal of GLSL's gl_FragCoord.w)
 #if FS_LAYER != 0
 	// translucent: only in front of the opaque layer
-	if (wi <= odepth.Load(int3(int2(i.pos.xy), 0)).r)
+	if (wd <= odepth.Load(int3(int2(i.pos.xy), 0)).r)
 		discard;
 #endif
 	const Draw d = draws.Load<Draw>(i.draw * sizeof(Draw));
@@ -234,7 +336,7 @@ FsOut main(PolyV i)
 		float gxp = (i.pos.x - gx) / xscale, gyp = i.pos.y / yscale;
 		float ex = (gxp - vp.spot_ellipse.x) / vp.spot_ellipse.z, ey = (gyp - vp.spot_ellipse.y) / vp.spot_ellipse.w;
 		float ell = max(0.0, 1.0 - (ex * ex + ey * ey));
-		const float sz = i.view.z * (1.0 / 2048.0);   // (as the CPU's: Step 1.0's spotlight distances / 2048)
+		const float sz = i.view.z;   // (as the CPU's: Step 1.0's spotlight distances in view space, as New3D's)
 		float enable = -sz >= vp.spot_range.x ? 1.0 : 0.0;
 		float range = 0;
 		if (vp.spot_range.y != 0) {
@@ -252,11 +354,13 @@ FsOut main(PolyV i)
 		else sun = dot(vp.sun.xyz, i.normal);
 		sun = clamp(sun, -1.0, 1.0);
 		if (vp.light.y > 0 || c.a < 0.999) sun = max(sun, 0.0);
-		// the sun and ambient light, up to full on Step 1.0 and past it on the later steppings, as the CPU
-		// rasterizer has it (r3d_raster.cpp)
+		// the sun and ambient light, and the spotlight's colour on top: up to full on Step 1.0 (the sum too, as
+		// r3d_raster's) and past it on the later steppings, which some games drive beyond 100%. The CPU
+		// rasterizer has the same (r3d_raster.cpp)
 		float li = sun * vp.sun.w + vp.light.x;
 		if (vp.light.z > 0) li = min(li, 1.0);
 		float3 l3 = li + vp.spot_colour.rgb * lobe;
+		if (vp.light.z > 0) l3 = min(l3, 1.0);
 		c.rgb *= l3;
 		if (d.flags & F_SPECULAR) {
 			float s;
@@ -284,7 +388,7 @@ FsOut main(PolyV i)
 	o.base = float4(c.rgb, 1);
 	o.t1 = 0;
 	o.t2 = 0;
-	o.depth = float4(wi, 0, 0, 0);
+	o.depth = float4(wd, 0, 0, 0);
 #else
 	o.t = float4(c.rgb, min(c.a, 1.0));
 #endif
@@ -372,5 +476,32 @@ float4 main(float4 pos : SV_Position) : SV_Target0
 	for (int j = 0; j < k; j++)
 		for (int i = 0; i < k; i++) sum += one(at + int2(i, j));
 	return sum / float(k * k);
+}
+#endif
+
+#ifdef FS_COLOUR
+// A CRT's colours on today's screen (as Supermodel's CRT colours, from Dan Mons' colour_matrix_adaptations): the
+// picture back to linear light by the monitor's gamma (or sRGB's curve), through the matrix from its phosphors and
+// white to sRGB's, and out by sRGB's curve.
+COMBINED BIND(0, 2) Texture2D<float4> pic : register(t0, space2);
+COMBINED BIND(0, 2) SamplerState pic_s : register(s0, space2);
+BIND(0, 3) cbuffer Colour : register(b0, space3)
+{
+	float4 m0, m1, m2;   // the matrix's rows (xyz); m0.w the monitor's gamma, 0 for sRGB's curve
+};
+struct ColourIn
+{
+	float4 colour : COLOR0;
+	float2 uv : TEXCOORD0;
+};
+float3 from_srgb(float3 c) { return select(c <= 0.04045, c / 12.92, pow((c + 0.055) / 1.055, 2.4)); }
+float3 to_srgb(float3 c) { return select(c <= 0.0031308, c * 12.92, 1.055 * pow(c, 1.0 / 2.4) - 0.055); }
+float4 main(ColourIn i) : SV_Target
+{
+	float4 p = pic.Sample(pic_s, i.uv);
+	float3 c = saturate(p.rgb);
+	c = m0.w > 0 ? pow(c, m0.w) : from_srgb(c);
+	c = saturate(float3(dot(m0.xyz, c), dot(m1.xyz, c), dot(m2.xyz, c)));
+	return float4(to_srgb(c), p.a) * i.colour;
 }
 #endif

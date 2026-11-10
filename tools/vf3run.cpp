@@ -1,20 +1,35 @@
 #include <algorithm>
+#include <array>
+#include <cmath>
 // vf3run: the headless runner. Runs the game on the interpreter for a number of frames (or until a script
 // quits), playing an input script, and writes the CPU state and a RAM hash after every frame in the reference
 // build's format, for tools/statecmp.py.
 //   vf3run <vf3.zip> [--frames N] [--script FILE] [--state FILE] [--ram-at FRAME] [--watch ADDR] [--rec] [--quiet]
-// --wav FILE runs the sound board and writes what it plays. --shots DIR writes the script's screenshots there as PNG. --rec runs the recompiled code (src/rec) with the interpreter for the rest. --ram-at writes RAM after that frame to ram_<frame>.bin in the current folder; --watch ADDR (hex) reports
+// --sets ZIP lists the programs the zip holds. --wav FILE runs the sound board and writes what it plays. --shots DIR writes the script's screenshots there as PNG. --rec runs the recompiled code (src/rec) with the interpreter for the rest. --ram-at writes RAM after that frame to ram_<frame>.bin in the current folder (backup RAM to backup_<frame>.bin) (the tile generator's RAM and registers to tiles_<frame>.bin); --watch ADDR (hex) reports
 // the CPU's stores to that word (--trace-pc ADDR: r3-r8 and LR each time that instruction runs; both on the interpreter). VF3_VOLUMES=music,effects (percent) sets the sound board's two volumes for --wav. VF3_POKE=addr=value
 // (hex address into --ram-at's dump, a byte; "b" first: the backup RAM's) writes RAM before every frame
 // (VF3_POKE_FRAMES=from-to: only those). VF3_FREE_PLAY=1: the coin setting FREE PLAY before the boot, as the PC way.
+// VF3_SET=vf3tb: Team Battle's profile (the zip must hold its set); VF3_MAP_OF=vf3: another profile's recompiler map (none: the interrupts' entries only);
+// VF3_TILE_LAG=1: the tile layers' lines drawn at the frame's end from the registers each line had (the host's tile
+// worker at its latest); VF3_TILE_EVERY=n: the tile layers drawn every n-th frame only (a netplay match's frames run
+// again unseen after a rollback), the sky audit then of those frames.
+// VF3_VERSUS_COUNT=n: the versus count set after the boot (the first match's stage, as the host's). VF3_QUADS=0: the quads drawn as two triangles (as the game did with the old Display > Quad rendering Off).
+// VF3_RENDER_TIME=n: with VF3_BIGSHOT, n more renders of each shot's 3D at its scale, timed.
+// VF3_LOG_BYTES=addr,...: those RAM bytes each frame ("bytes FRAME v..."). VF3_DURAL_STAGE=1 (Guard) or 2 (Start): Cheats > Dural's stage on both players' inputs (VF3_DURAL_STAGE_ONLINE=1: inputs only, as online; VF3_DURAL_STAGE_LEAD=n: n frames' input delay). VF3_DEBUG_MODE=1: Arcade settings > Debug mode (Model3::debug_mode). VF3_DURAL=1: Dural on the select (as the cheat: the program's patches, and her spot's picture in --shots). (VF3_DURAL_ONLINE=1: without the offline patches, as online) VF3_BORROW=backdrops,coin,settings,test_menu,versus_count,scene,score,free_play_text: those addresses from
+// VF3_BORROW_FROM's profile (default vf3), to try them on another program; VF3_MAP_IN=file: more entry points (hex, a line each); VF3_MAP_OUT=file: appends every address the interpreter ran
+// from for want of one (--rec; a map's learning: run again with them in until none are new).
 #include <map>
 #include "../src/host/input_script.h"
+#include "../src/host/dural_stage.h"
 #include "../src/machine/model3.h"
+#include "../src/machine/romset.h"
 #include "../src/rec/ppc_rec.h"
 #include "../src/host/png.h"
 #include "../src/video/tilegen.h"
 #include "../src/video/sky_lead.h"
 #include "../src/video/r3d_raster.h"
+#include "../src/video/hud_names.h"
+#include "../src/video/dural_cell.h"
 #include "../src/sound/soundboard.h"
 #include <chrono>
 #include <cstdio>
@@ -37,6 +52,10 @@ int main(int argc, char **argv)
 		else if (a == "--wav" && i + 1 < argc) wav_path = argv[++i];
 		else if (a == "--coverage" && i + 1 < argc) coverage_path = argv[++i];
 		else if (a == "--quiet") quiet = true;
+		else if (a == "--sets" && i + 1 < argc) {   // which programs a zip holds (romset::sets_in), and nothing else
+			for (const m3::Profile *p : romset::sets_in(argv[++i])) printf("%s (%s)\n", p->set, p->title);
+			return 0;
+		}
 		else if (a == "--rec") rec = true;
 		else if (a == "--ram-at" && i + 1 < argc) ram_at = strtol(argv[++i], nullptr, 10);
 		else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
@@ -52,6 +71,32 @@ int main(int argc, char **argv)
 		return 2;
 	}
 	static m3::Model3 board;
+	if (const char *set = getenv("VF3_SET")) {   // tests: another program's profile ("vf3tb"; profile.h)
+		if (!(board.profile = m3::find_profile(set))) { fprintf(stderr, "vf3run: no such set %s\n", set); return 2; }
+	} else if (const std::vector<const m3::Profile *> in_zip = romset::sets_in(rom); !in_zip.empty()) {
+		// the program the zip holds, when it is not the one the board starts with: a zip of both (vf3.zip
+		// with Team Battle in it) keeps Revision D, as romset.h's order has it, and fvipers2.zip plays
+		// Fighting Vipers 2
+		bool here = false;
+		for (const m3::Profile *p : in_zip) here |= p == board.profile;
+		if (!here) board.profile = in_zip.front();
+	}
+	if (const char *groups = getenv("VF3_BORROW")) {   // tests: "backdrops,coin,...": those addresses from VF3_BORROW_FROM's profile (vf3)
+		static m3::Profile mixed = *board.profile;
+		const m3::Profile *from = m3::find_profile(getenv("VF3_BORROW_FROM") ? getenv("VF3_BORROW_FROM") : "vf3");
+		if (!from) { fprintf(stderr, "vf3run: no such set to borrow from\n"); return 2; }
+		const std::string g = std::string(",") + groups + ",";
+		auto has = [&](const char *k) { return g.find(std::string(",") + k + ",") != std::string::npos; };
+		if (has("free_play_text")) mixed.free_play_text = from->free_play_text;
+		if (has("coin")) mixed.coin = from->coin;
+		if (has("settings")) mixed.settings = from->settings;
+		if (has("test_menu")) mixed.test_menu = from->test_menu;
+		if (has("versus_count")) mixed.versus_count = from->versus_count;
+		if (has("scene")) mixed.scene = from->scene;
+		if (has("score")) mixed.rounds_p1 = from->rounds_p1, mixed.rounds_p2 = from->rounds_p2, mixed.playing = from->playing;
+		if (has("backdrops")) mixed.backdrops = from->backdrops;
+		board.profile = &mixed;
+	}
 	std::string error;
 	if (!board.load(rom, error)) {
 		fprintf(stderr, "vf3run: %s\n", error.c_str());
@@ -60,6 +105,10 @@ int main(int argc, char **argv)
 	if (!quiet)
 		printf("%s (\"%s\"): Model 3 Step %d.%d, the PowerPC paced at %d MHz\n", board.title.c_str(),
 		       board.set.c_str(), board.stepping >> 4, board.stepping & 0xF, board.ppc_hz / 1000000);
+	// tests: Play as Dural as the game has it (main.cpp): her patches, and these players' select cursors held on her
+	const bool dural = getenv("VF3_DURAL") && atoi(getenv("VF3_DURAL"));
+	if (dural && board.set_dural(true, !getenv("VF3_DURAL_ONLINE")) == 0) fprintf(stderr, "not the program known: no Dural on the select\n");
+	board.debug_mode = getenv("VF3_DEBUG_MODE") && atoi(getenv("VF3_DEBUG_MODE"));   // tests: Arcade settings > Debug mode
 	InputScript script;
 	if (!script_path.empty() && !script.load(script_path, error)) {
 		fprintf(stderr, "vf3run: %s\n", error.c_str());
@@ -81,21 +130,26 @@ int main(int argc, char **argv)
 		board.cpu.cover_seeds.assign(board.cpu.cover_limit / 4, 0);
 	}
 	static ppcrec::Rec recompiler;
-	static const uint32_t *seed_map_used = nullptr;
-	static size_t seed_count_used = 0;
+	static std::vector<uint32_t> seeds_used;
 	bool rebuilt_after_boot = false;
 	if (rec) {
 		if (watch != 0xFFFFFFFF || trace_pc != 0xFFFFFFFF) {
 			fprintf(stderr, "vf3run: --watch needs the interpreter\n");
 			return 2;
 		}
-		size_t seed_count = 0;
-		const uint32_t *seed_map = ppcrec::map_for(board.set, seed_count);
-		seed_map_used = seed_map; seed_count_used = seed_count;
-		if (!seed_count && !quiet)
+		if (!board.profile->map_count && !quiet)
 			fprintf(stderr, "vf3run: no address map for \"%s\": the interpreter runs everything\n", board.set.c_str());
 		ppcrec::Stats st;
-		if (!recompiler.build(board.cpu, board.program_image(), &st, seed_map, seed_count)) {
+		const m3::Profile *map_of = getenv("VF3_MAP_OF") ? m3::find_profile(getenv("VF3_MAP_OF")) : board.profile;
+		if (!map_of) map_of = board.profile;
+		seeds_used.assign(map_of->map, map_of->map + map_of->map_count);
+		std::vector<uint32_t> &seeds = seeds_used;
+		if (getenv("VF3_MAP_OF") && strcmp(getenv("VF3_MAP_OF"), "none") == 0) seeds = { 0x100, 0x500, 0x900 };   // (the interrupts' only)
+		if (const char *in = getenv("VF3_MAP_IN")) {   // (tests: more entry points, a hex address a line)
+			if (FILE *f = fopen(in, "r")) { unsigned a; while (fscanf(f, "%x", &a) == 1) seeds.push_back(a); fclose(f); }
+		}
+		if (getenv("VF3_MAP_OUT")) recompiler.unmapped_max = size_t(1) << 20;
+		if (!recompiler.build(board.cpu, board.program_image(), seeds.data(), seeds.size(), &st)) {
 			fprintf(stderr, "vf3run: the recompile failed\n");
 			return 1;
 		}
@@ -108,12 +162,30 @@ int main(int argc, char **argv)
 	static double tile_ms = 0;
 	static std::vector<uint32_t> picture(video::W * video::H);
 	static video::SceneBuilder scene_builder;
+	if (getenv("VF3_QUADS")) video::Raster::quad_rendering = atoi(getenv("VF3_QUADS")) != 0;   // (tests: 0 the quads as two triangles)
 	if (getenv("VF3_WIDEN")) scene_builder.widen = float(atof(getenv("VF3_WIDEN")));
 	static video::Scene scene;
 	static video::Raster raster;
 	raster.resize(video::W, video::H);
+	// VF3_TILE_LAG=1 (tests): the lines drawn as the host's tile worker can draw them at the latest, each from its
+	// registers as the line began but the tile RAM and the game's RAM as the frame ends (video/tile_worker.h)
+	static const bool tile_lag = getenv("VF3_TILE_LAG") != nullptr;
+	// VF3_TILE_EVERY=n (tests): the tile layers drawn only every n-th frame, the rest run unseen, as a netplay match's
+	// frames run again after a rollback are (the board alone, main.cpp's adapter.run)
+	static const long tile_every = getenv("VF3_TILE_EVERY") ? std::max(1L, atol(getenv("VF3_TILE_EVERY"))) : 1;
+	static uint32_t lag_regs[video::H][64];
+	static bool lag_line[video::H];
 	if (!shots.empty())
 		board.on_line = [&](unsigned y) {
+			if (board.frame % uint64_t(tile_every)) return;
+			if (tile_lag) {
+				if (y < unsigned(video::H)) {
+					memcpy(lag_regs[y], board.tile_regs, sizeof lag_regs[y]);
+					if (y) lag_regs[y][0x20 / 4] = lag_regs[0][0x20 / 4];
+					lag_line[y] = true;
+				}
+				return;
+			}
 			auto a = std::chrono::steady_clock::now();
 			if (y == 0) tiles.clear();
 			tiles.line(board, y);
@@ -160,10 +232,28 @@ int main(int argc, char **argv)
 		if (frames >= 0 && f >= uint64_t(frames))
 			break;
 		InputScript::Actions act = script.step(board.controls, f);
+		if (static const char *ds = getenv("VF3_DURAL_STAGE"); ds) {   // tests: Cheats > Dural's stage (1 Guard, 2 Start), on both players' inputs
+			static dural_stage::Picker picker;
+			picker.trigger = atoi(ds);
+			static const bool no_write = getenv("VF3_DURAL_STAGE_ONLINE") != nullptr;   // (as online: inputs only)
+			static const int lead = getenv("VF3_DURAL_STAGE_LEAD") ? atoi(getenv("VF3_DURAL_STAGE_LEAD")) : 0;
+			for (int p = 0; p < 2; p++) {
+				dural_stage::Picker::Said said;
+				int wait_s;
+				const uint16_t in = dural_stage::word(board.controls, p), out = picker.filter(board, p, in, lead, !no_write, said, wait_s);
+				if (out != in) dural_stage::set(board.controls, p, out);
+				if (said) fprintf(stderr, "frame %llu: Dural's stage, player %d: %s (%d s)\n", (unsigned long long)f, p + 1,
+				                  said == dural_stage::Picker::waiting ? "waiting" : said == dural_stage::Picker::no_version ? "no Dural version" : said == dural_stage::Picker::vf3_version ? "VF3 version (the cave)" : "not this time", wait_s);
+			}
+		}
 		for (auto &m : act.marks)
 			if (!quiet) printf("frame %llu: mark %s\n", (unsigned long long)f, m.c_str());
 		static double t_board = 0, t_sound = 0, t_scene = 0;
 		static const bool prof = getenv("VF3_PROF") != nullptr;
+		if (static const char *vc = getenv("VF3_VERSUS_COUNT"); vc && board.profile->versus_count && long(f) == long(board.profile->boot_frames)) {
+			const uint32_t c = uint32_t(atoi(vc));   // tests: the versus count after the boot, as the host's VF3_VERSUS_COUNT (that stage)
+			memcpy(board.ram.data() + board.profile->versus_count, &c, 4);
+		}
 		if (static const char *pk = getenv("VF3_POKE"); pk) {   // tests: "addr=value,..." (bytes, as --ram-at's dump holds them) before every frame
 			static const char *range = getenv("VF3_POKE_FRAMES");   // "from-to": only then
 			long from = 0, to = -1;
@@ -177,6 +267,11 @@ int main(int argc, char **argv)
 					if (pa < mem.size()) mem[pa] = uint8_t(pv);
 				}
 		}
+		if (const char *lb = getenv("VF3_LOG_BYTES")) {   // tests: "addr,addr,...": those RAM bytes (the game's addresses) each frame
+			printf("bytes %llu", (unsigned long long)board.frame);
+			for (const char *q = lb; q && *q; q = strchr(q, ','), q = q ? q + 1 : nullptr) printf(" %u", board.ram[(strtoul(q, nullptr, 16)) ^ 3]);
+			printf("\n");
+		}
 		auto tp0 = std::chrono::steady_clock::now();
 		board.run_frame();
 		// Once the boot is over: a game that patched its own program (Fighting Vipers 2 writes its own handlers
@@ -188,13 +283,23 @@ int main(int argc, char **argv)
 			if (const size_t n = recompiler.mismatch_count()) {
 				ppcrec::Stats st2;
 				std::vector<uint32_t> img = board.ram_program_image(board.program_image().size());
-				if (recompiler.build(board.cpu, img, &st2, seed_map_used, seed_count_used) && recompiler.mismatch_count() == 0) {
+				if (recompiler.build(board.cpu, img, seeds_used.data(), seeds_used.size(), &st2) && recompiler.mismatch_count() == 0) {
 					if (!quiet) printf("recompiled from RAM after the boot (%zu words the game had patched): %zu instructions in %.0f ms\n",
 					                   n, st2.instructions, st2.ms);
 				} else if (!quiet) {
 					printf("the game patched %zu words of its own program and the rebuild didn't settle it\n", n);
 				}
 			}
+		}
+		if (tile_lag && !shots.empty()) {
+			auto a = std::chrono::steady_clock::now();
+			for (int y = 0; y < video::H; y++) {
+				if (!lag_line[y]) continue;
+				lag_line[y] = false;
+				if (y == 0) tiles.clear();
+				tiles.line(board, unsigned(y), lag_regs[y]);
+			}
+			tile_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - a).count();
 		}
 		auto tp1 = std::chrono::steady_clock::now();
 		t_board += std::chrono::duration<double, std::milli>(tp1 - tp0).count();
@@ -232,6 +337,293 @@ int main(int argc, char **argv)
 					for (uint32_t i = 0; i < 0x200; i++) { uint16_t v = sound.reg_word(n, i); fwrite(&v, 2, 1, df); }
 				fclose(df);
 			}
+		}
+		// VF3_MODELS=file,from,to (tests): those frames' models, a line each: "m <frame> <vp> <j> <addr> <x> <y> on screen
+		// <depth> <alpha> <vertices>" and its meshes' textures and translucency ("t x,y wxh page fmt pa ta at a"), the
+		// model's polygons' translucency (a: the first vertex's alpha, 255 opaque), "f" layered, trans_select, high priority,
+		// lighting, fixed shading, translator map, microtexture, "w" the wraps, its fog; and "u <frame> x,y wxh": the
+		// texture areas written that frame
+		if (static const char *mp = getenv("VF3_MODELS"); mp) {
+			static FILE *ml = nullptr;
+			static long m_from = 0, m_to = 0;
+			if (!ml) {
+				std::string s = mp;
+				const size_t c = s.find(',');
+				ml = fopen(s.substr(0, c).c_str(), "w");
+				if (c != std::string::npos) sscanf(s.c_str() + c + 1, "%ld,%ld", &m_from, &m_to);
+			}
+			if (ml && long(f) >= m_from && long(f) <= m_to) {
+				static video::Scene ms;
+				scene_builder.build(board, ms);
+				for (size_t v = 0; v < ms.viewports.size(); v++) {
+					const video::Viewport &vp = ms.viewports[v];
+					for (size_t j = 0; j < vp.models.size(); j++) {
+						const video::Model &mm = vp.models[j];
+						const float z = -mm.matrix.m[14];
+						const float sx = z > 0 ? vp.vp_x + vp.vp_w * (mm.matrix.m[12] / z - vp.left) / (vp.right - vp.left) : -1;
+						const float sy = z > 0 ? vp.vp_y + vp.vp_h * (vp.top - mm.matrix.m[13] / z) / (vp.top - vp.bottom) : -1;
+						size_t nv = 0;
+						if (mm.meshes) for (auto &me : *mm.meshes) nv += me.verts.size();
+						fprintf(ml, "m %llu %zu %zu %08x %.0f %.0f %.0f %.2f %zu", (unsigned long long)f, v, j, mm.addr, sx, sy, z, mm.alpha, nv);
+						if (mm.meshes)
+							for (auto &me : *mm.meshes)
+								fprintf(ml, " t %d,%d %dx%d %d %d %d%d%d %d f%d%d%d%d%d%d%d w%d%d fog %.2f", me.x, me.y, me.width, me.height, me.page ^ mm.page, me.format, int(me.poly_alpha), int(me.texture_alpha),
+								        int(me.alpha_test), me.verts.empty() ? -1 : int(me.verts[0].colour[3]), int(me.layered), int(me.trans_select), int(me.high_priority),
+								        int(me.lighting), int(me.fixed_shading), int(me.translator_map), int(me.micro), me.wrap_u, me.wrap_v, me.fog_intensity);
+						fprintf(ml, "\n");
+					}
+				}
+				for (auto &u : board.tex_uploads) fprintf(ml, "u %llu %u,%u %ux%u\n", (unsigned long long)f, u.x, u.y, u.w, u.h);
+				fflush(ml);
+			}
+			board.tex_uploads.clear();   // (the texture areas written: listed per frame)
+		}
+		// VF3_HITCH=file: smooth motion's hitch finder's samples (tools/hitch/hitch.py reads them). Each frame, the
+		// pictures between it and the frame before at t = 0.25, 0.5, 0.75 and 1 (as smooth motion would show them, 4 a
+		// frame at even moments), and where the 3D is on average in each: the mean of the models' blended places in the
+		// view, as its move since the sample before. A line a sample: "s <frame> <k> <blended> <dx> <dy> <dz> <models>
+		// <depth>"; a line a frame: "p <frame> <total> <no_key> <turned> <moved> <matched>" (interpolate's stats) and
+		// "c <frame> <share> <move> <n> <turn>" (a real cut's signs, from the two frames alone: the share of the models
+		// found in the frame before, by address, and of the n alone at their address the median move over its depth and
+		// the median turn, the most a matrix element changed).
+		// VF3_HITCH_STRIP=dir,from-to,... (frames): those frames' samples drawn in a strip (dir/strip_<from>.png: a row a
+		// frame, its 4 samples across, at half size (VF3_HITCH_STRIP_FULL: full), a red bar over those shown unblended),
+		// the pictures to look at before believing a flag. VF3_HITCH_DEBUG=f,...: those frames' viewports' model counts.
+		if (static const char *hitch_path = getenv("VF3_HITCH"); hitch_path) {
+			static FILE *hl = fopen(hitch_path, "w");
+			static video::Scene hs[2], hm;
+			static int hc = 0;
+			static bool have = false;
+			hc ^= 1;
+			scene_builder.build(board, hs[hc]);
+			struct Strip { long from, to; std::vector<uint32_t> px; };
+			static std::vector<Strip> strips;
+			static std::string strip_dir;
+			if (static bool parsed = false; !parsed) {
+				parsed = true;
+				if (const char *sp = getenv("VF3_HITCH_STRIP")) {
+					std::string s = sp;
+					size_t c = s.find(',');
+					strip_dir = s.substr(0, c);
+					while (c != std::string::npos) {
+						long a = 0, b = 0;
+						if (sscanf(s.c_str() + c + 1, "%ld-%ld", &a, &b) == 2) strips.push_back({ a, b, {} });
+						c = s.find(',', c + 1);
+					}
+				}
+			}
+			// The models measured: all the viewports', but for a swarm's grains (under 40 vertices: the beach's spray
+			// and Wolf's desert sand, hundreds of 4-6 polygon models put somewhere new each frame, a viewport of their
+			// own at the beach: their mean was the swarm's)
+			auto counted = [](const video::Model &m) {
+				size_t nv = 0;
+				if (m.meshes) for (auto &me : *m.meshes) nv += me.verts.size();
+				return nv >= 40;
+			};
+			if (have) {
+				const video::Scene &A = hs[hc ^ 1], &B = hs[hc];
+				video::InterpStats st;
+				std::vector<std::vector<std::array<float, 3>>> last;   // (the models' places in the sample before)
+				std::vector<std::vector<char>> shown_as_b;             // (paired, but shown where they are in b: left out)
+				for (int k = 0; k < 4; k++) {
+					const float t = float(k + 1) / 4;
+					const bool blended = video::interpolate(A, B, t, hm, k == 0 ? &st : nullptr);
+					const video::Scene &S = blended ? hm : B;
+					// The mean of the models' moves since the sample before (a's partner's place before the first): the move
+					// of the mean place over the models b has a partner for, the same set in each of the 4 (one appearing or
+					// gone moved the mean of all, a lurch each frame that isn't one). A model paired but not blended (one too
+					// far in a frame) is left out, or its jump was a lurch each frame; when none is blended (a cut), all are.
+					std::vector<int> av;
+					const std::vector<std::vector<int>> *paired = video::interp_paired(A, B, &av);
+					double move[3] = { 0, 0, 0 }, depth = 0;
+					size_t n = 0;
+					if (k == 0) { last.assign(S.viewports.size(), {}); shown_as_b.assign(S.viewports.size(), {}); }
+					for (size_t v = 0; paired && v < S.viewports.size(); v++) {
+						if (av[v] < 0) continue;
+						const std::vector<video::Model> &now = S.viewports[v].models, &was = A.viewports[size_t(av[v])].models, &bm = B.viewports[v].models;
+						const std::vector<int> &pr = (*paired)[v];
+						if (k == 0) {
+							last[v].assign(now.size(), {});
+							shown_as_b[v].assign(now.size(), 0);
+							for (size_t j = 0; j < now.size() && j < pr.size(); j++) {
+								if (pr[j] < 0) continue;
+								const video::Model &p = was[size_t(pr[j])], &m = bm[j];
+								for (int r = 0; r < 3; r++) last[v][j][size_t(r)] = p.matrix.m[12 + r];
+								shown_as_b[v][j] = blended && memcmp(now[j].matrix.m, m.matrix.m, sizeof m.matrix.m) == 0 &&
+								                   memcmp(p.matrix.m, m.matrix.m, sizeof m.matrix.m) != 0;
+							}
+						}
+						for (size_t j = 0; j < now.size() && j < pr.size(); j++) {
+							if (pr[j] < 0 || shown_as_b[v][j] || !counted(bm[j])) continue;
+							for (int r = 0; r < 3; r++) {
+								move[r] += now[j].matrix.m[12 + r] - last[v][j][size_t(r)];
+								last[v][j][size_t(r)] = now[j].matrix.m[12 + r];
+							}
+							depth += std::fabs(now[j].matrix.m[14]);
+							n++;
+						}
+					}
+					if (n) {
+						for (double &x : move) x /= double(n);
+						depth /= double(n);
+					}
+					fprintf(hl, "s %llu %d %d %.4f %.4f %.4f %zu %.2f\n", (unsigned long long)f, k, blended ? 1 : 0, move[0], move[1], move[2], n, depth);
+					for (Strip &sp : strips) {
+						if (long(f) < sp.from || long(f) > sp.to) continue;
+						static const int z = getenv("VF3_HITCH_STRIP_FULL") ? 1 : 2;   // (full size: a swarm's grains seen)
+						const int w = video::W / z, h = video::H / z, row = int(long(f) - sp.from);
+						sp.px.resize(size_t(w) * 4 * h * size_t(sp.to - sp.from + 1), 0xFF000000u);
+						raster.render(S, board.tex_ram.data());
+						std::vector<uint32_t> o(size_t(video::W) * video::H, 0xFF000000u);
+						raster.compose(o.data(), o.data());
+						for (int y = 0; y < h; y++)
+							for (int x = 0; x < w; x++) {
+								// (z by z averaged, and a sample shown unblended marked by a red bar along its top)
+								uint32_t c = 0;
+								for (int sh = 0; sh < 24; sh += 8) {
+									int s = 0;
+									for (int dy = 0; dy < z; dy++) for (int dx = 0; dx < z; dx++) s += (o[size_t(z * y + dy) * video::W + z * x + dx] >> sh) & 255;
+									c |= uint32_t(s / (z * z)) << sh;
+								}
+								if (!blended && y < 4) c = 0xFF0000FFu;
+								sp.px[(size_t(row) * h + y) * w * 4 + size_t(k) * w + x] = c | 0xFF000000u;
+							}
+						if (long(f) == sp.to && k == 3)
+							write_png((strip_dir + "/strip_" + std::to_string(sp.from) + ".png").c_str(), sp.px.data(), w * 4, h * int(sp.to - sp.from + 1));
+					}
+				}
+				if (static const char *dbg = getenv("VF3_HITCH_DEBUG"); dbg && strstr((std::string(",") + dbg + ",").c_str(), ("," + std::to_string(f) + ",").c_str())) {
+					fprintf(stderr, "hitch %llu: viewports' models", (unsigned long long)f);
+					for (auto &vp : A.viewports) fprintf(stderr, " %zu", vp.models.size());
+					fprintf(stderr, " ->");
+					for (auto &vp : B.viewports) fprintf(stderr, " %zu", vp.models.size());
+					fprintf(stderr, "\n");
+					size_t same = 0, n = 0;
+					for (size_t v = 0; v < B.viewports.size() && v < A.viewports.size(); v++)
+						for (size_t j = 0; j < B.viewports[v].models.size() && j < A.viewports[v].models.size(); j++) {
+							n++;
+							same += memcmp(B.viewports[v].models[j].matrix.m, A.viewports[v].models[j].matrix.m, sizeof(float) * 16) == 0;
+						}
+					fprintf(stderr, "  %zu of %zu models' matrices the same, in order\n", same, n);
+				}
+				{
+					// The flicker detector: each of b's models with a partner in a, by kind, as the in-betweens show it:
+					// blended, or as it is in b while the rest are blended (as-is), and its move over the frame. Flagged:
+					//   toggle: blended in one frame and as-is in the next, or the other way (the partner's status the frame
+					//           before), the model alternating between gliding and jumping (both frames blended: a cut
+					//           is the hitch finder's)
+					//   jitter: blended both frames, its move unlike its move the frame before (they differ by over half the
+					//           larger and 3% of its distance): a zigzag in the in-betweens
+					//   stray:  blended across more than 4 times its own size and 2% of its distance in a frame: drawn
+					//           along a line between two unrelated models (a swarm's grain paired with another)
+					// A line a frame and kind: "f <frame> <kind> <models> <blended> <as-is> <toggle> <jitter> <stray>".
+					// Kinds: 0 grain (under 40 vertices), 1 joint (built in polygon RAM), 2 flipbook (its texture moved),
+					// 3 translucent (shadows, effects), 4 cut-out (alpha-textured: grass, leaves, flags), 5 small (under 300
+					// vertices), 6 the rest (the fighters' limbs, the stage).
+					struct Rec { char status = 0; float vel[3] = {}; };   // (status 0: no partner, 1 blended, 2 as-is)
+					static std::vector<std::vector<Rec>> prev_rec;
+					static bool prev_blended = false;
+					std::vector<std::vector<Rec>> rec(B.viewports.size());
+					std::vector<int> av;
+					const std::vector<std::vector<int>> *paired = video::interp_paired(A, B, &av);
+					video::Scene half;
+					const bool blended = video::interpolate(A, B, 0.5f, half);
+					long cnt[7][6] = {};
+					for (size_t v = 0; v < B.viewports.size(); v++) {
+						const std::vector<video::Model> &bm = B.viewports[v].models;
+						rec[v].resize(bm.size());
+						if (!paired || av[v] < 0) continue;
+						const std::vector<video::Model> &am = A.viewports[size_t(av[v])].models;
+						const std::vector<int> &pr = (*paired)[v];
+						for (size_t j = 0; j < bm.size() && j < pr.size(); j++) {
+							if (pr[j] < 0) continue;
+							const video::Model &m = bm[j], &p = am[size_t(pr[j])], &h = half.viewports[v].models[j];
+							size_t nv = 0;
+							bool trans = m.alpha < 1, cutout = false, flip = false;
+							float size = 0;
+							if (m.meshes)
+								for (size_t k = 0; k < m.meshes->size(); k++) {
+									const video::Mesh &me = (*m.meshes)[k];
+									nv += me.verts.size();
+									trans |= me.poly_alpha;
+									cutout |= me.texture_alpha;
+									flip |= me.flip > 0 || (h.meshes && k < h.meshes->size() && (*h.meshes)[k].flip > 0);
+									if (p.meshes && p.meshes->size() == m.meshes->size() && ((*p.meshes)[k].x != me.x || (*p.meshes)[k].y != me.y)) flip = true;
+									for (auto &vx : me.verts) size = std::max(size, vx.pos[0] * vx.pos[0] + vx.pos[1] * vx.pos[1] + vx.pos[2] * vx.pos[2]);
+								}
+							const float scale = std::sqrt(m.matrix.m[0] * m.matrix.m[0] + m.matrix.m[1] * m.matrix.m[1] + m.matrix.m[2] * m.matrix.m[2]);
+							size = std::sqrt(size) * scale;
+							const int kind = nv < 40 ? 0 : m.addr < 0x100000 ? 1 : flip ? 2 : trans ? 3 : cutout ? 4 : nv < 300 ? 5 : 6;
+							Rec &r = rec[v][j];
+							const bool same = memcmp(h.matrix.m, m.matrix.m, sizeof m.matrix.m) == 0;
+							const bool moves = memcmp(p.matrix.m, m.matrix.m, sizeof m.matrix.m) != 0;
+							if (!moves) { r.status = 0; continue; }   // (standing still: nothing to see)
+							r.status = blended && !same ? 1 : 2;
+							float d = 0, z = 0;
+							for (int c = 0; c < 3; c++) { r.vel[c] = m.matrix.m[12 + c] - p.matrix.m[12 + c]; d += r.vel[c] * r.vel[c]; z += m.matrix.m[12 + c] * m.matrix.m[12 + c]; }
+							d = std::sqrt(d);
+							z = std::sqrt(z);
+							long *c = cnt[kind];
+							c[0]++;
+							c[r.status]++;
+							const Rec *q = size_t(av[v]) < prev_rec.size() && size_t(pr[j]) < prev_rec[size_t(av[v])].size() ? &prev_rec[size_t(av[v])][size_t(pr[j])] : nullptr;
+							if (q && q->status && q->status != r.status && blended && prev_blended) c[3]++;
+							if (q && q->status == 1 && r.status == 1) {
+								float e = 0, dq = 0;
+								for (int k = 0; k < 3; k++) { e += (r.vel[k] - q->vel[k]) * (r.vel[k] - q->vel[k]); dq += q->vel[k] * q->vel[k]; }
+								e = std::sqrt(e);
+								if (e > 0.5f * std::max(d, std::sqrt(dq)) && e > 0.03f * z) c[4]++;
+							}
+							if (r.status == 1 && d > 4 * size && d > 0.02f * z) c[5]++;
+						}
+					}
+					prev_rec = std::move(rec);
+					prev_blended = blended;
+					for (int k = 0; k < 7; k++)
+						if (cnt[k][0]) fprintf(hl, "f %llu %d %ld %ld %ld %ld %ld %ld\n", (unsigned long long)f, k, cnt[k][0], cnt[k][1], cnt[k][2], cnt[k][3], cnt[k][4], cnt[k][5]);
+				}
+				fprintf(hl, "p %llu %zu %zu %zu %zu %zu\n", (unsigned long long)f, st.total, st.no_key, st.turned, st.moved, st.matched);
+				{
+					// A real cut's signs, from the two frames alone (each of b's viewports with a's with most addresses in
+					// common): the share of b's models found in a, and the median move over depth of those alone at their
+					// address in both
+					size_t all = 0, found = 0;
+					std::vector<float> rel, turn;
+					for (auto &vb : B.viewports) {
+						size_t best = 0, bu = 0;
+						for (size_t u = 0; u < A.viewports.size(); u++) {
+							std::map<uint32_t, int> left;
+							for (auto &m : A.viewports[u].models) if (counted(m)) left[m.addr]++;
+							size_t common = 0;
+							for (auto &m : vb.models) if (counted(m)) if (auto it = left.find(m.addr); it != left.end() && it->second > 0) { it->second--; common++; }
+							if (common > best) { best = common; bu = u; }
+						}
+						for (auto &m : vb.models) all += counted(m);
+						found += best;
+						if (!best) continue;
+						std::map<uint32_t, int> na, nb;
+						std::map<uint32_t, const video::Model *> at;
+						for (auto &m : A.viewports[bu].models) if (counted(m)) { na[m.addr]++; at[m.addr] = &m; }
+						for (auto &m : vb.models) if (counted(m)) nb[m.addr]++;
+						for (auto &m : vb.models) {
+							if (!counted(m) || nb[m.addr] != 1 || na[m.addr] != 1) continue;
+							const video::Model &p = *at[m.addr];
+							float d = 0, z = 0;
+							for (int r = 0; r < 3; r++) { const float e = m.matrix.m[12 + r] - p.matrix.m[12 + r]; d += e * e; z += m.matrix.m[12 + r] * m.matrix.m[12 + r]; }
+							rel.push_back(std::sqrt(d / std::max(z, 1.0f)));
+							float most = 0;
+							for (int c = 0; c < 3; c++) for (int r = 0; r < 3; r++) most = std::max(most, std::fabs(m.matrix.m[c * 4 + r] - p.matrix.m[c * 4 + r]));
+							turn.push_back(most);
+						}
+					}
+					float med = 1;
+					if (!rel.empty()) { std::nth_element(rel.begin(), rel.begin() + rel.size() / 2, rel.end()); med = rel[rel.size() / 2]; }
+					float med_turn = 0;
+					if (!turn.empty()) { std::nth_element(turn.begin(), turn.begin() + turn.size() / 2, turn.end()); med_turn = turn[turn.size() / 2]; }
+					fprintf(hl, "c %llu %.3f %.4f %zu %.3f\n", (unsigned long long)f, all ? double(found) / double(all) : 1.0, med, rel.size(), med_turn);
+				}
+			}
+			have = true;
 		}
 		static const long flicker_from = getenv("VF3_FLICKER_FROM") ? atol(getenv("VF3_FLICKER_FROM")) : 0;   // (tests: checked from this frame)
 		if (flicker_dir && long(f) >= flicker_from) {   // VF3_FLICKER: the in-between pictures (t = 0.5) against the frames either side
@@ -366,13 +758,13 @@ int main(int argc, char **argv)
 		}
 		if (getenv("VF3_PANO") && long(board.frame) == atol(getenv("VF3_PANO"))) {   // (tests: the stage's backdrop map, as the game keeps it)
 			const uint32_t r13 = board.cpu.s.r[13];
-			const int stage = int16_t(board.peek16(r13 - 0x1e0c));
-			const uint32_t desc = stage >= 0 ? board.peek32(0xFFB30004 + 4 * stage) : 0;
+			const int stage = int16_t(board.peek16(r13 - board.profile->backdrops.stage_below_r13));
+			const uint32_t desc = stage >= 0 ? board.peek32(board.profile->backdrops.descriptors + 4 * stage) : 0;
 			const int w = board.peek16(desc + 4), h = board.peek16(desc + 6);
 			fprintf(stderr, "pano r13 %08x stage %d desc %08x w %d h %d\n", r13, stage, desc, w, h);
 			auto entry = [&](int x, int y) {
 				const uint16_t e = board.peek16(desc + 8 + 2 * uint32_t(std::clamp(y, 0, h - 1) * w + ((x % w) + w) % w));
-				return int((e & 0x7F) + int16_t(board.peek16(0x161614 + ((e >> 6) & 0xFE))));
+				return int((e & 0x7F) + int16_t(board.peek16(board.profile->backdrops.banks + ((e >> 6) & 0xFE))));
 			};
 			const uint32_t *vr = reinterpret_cast<const uint32_t *>(board.tile_ram.data()) + (0xF8000 + 3 * 0x2000) / 4;
 			int tm[4][64];
@@ -409,11 +801,11 @@ int main(int argc, char **argv)
 					const uint16_t e = board.peek16(desc + 8 + 2 * uint32_t((y0 + lrow) * w + ((x0 + c) % w)));
 					fprintf(stderr, "c%d map e%04x(b%d i%d)=%04x tile %04x\n", c, e, (e >> 7) & 0x7F, e & 0x7F, entry(x0 + c, y0 + lrow) & 0x3FFF, ((c & 1) ? wd & 0xFFFF : wd >> 16) & 0x3FFF);
 				}
-				for (int i = 0; i < 40; i++) fprintf(stderr, "bank %d %04x\n", i, board.peek16(0x161614 + 2 * i));
+				for (int i = 0; i < 40; i++) fprintf(stderr, "bank %d %04x\n", i, board.peek16(board.profile->backdrops.banks + 2 * i));
 			}
 			if (getenv("VF3_PANO_ALL"))   // (tests: every stage's map looked through for the layer's rows)
 				for (int st = 0; st < 96; st++) {
-					const uint32_t d2 = board.peek32(0xFFB30004 + 4 * st);
+					const uint32_t d2 = board.peek32(board.profile->backdrops.descriptors + 4 * st);
 					if (d2 < 0xFF000000u) continue;
 					const int w2 = board.peek16(d2 + 4), h2 = board.peek16(d2 + 6);
 					if (w2 < 32 || w2 > 2048 || h2 < 1 || h2 > 256) continue;
@@ -422,7 +814,7 @@ int main(int argc, char **argv)
 							int ok = 0;
 							for (int c = 0; c < 60; c += 4) {
 								const uint16_t e = board.peek16(d2 + 8 + 2 * uint32_t(y * w2 + (x + c) % w2));
-								ok += ((e & 0x7F) + board.peek16(0x161614 + ((e >> 6) & 0xFE)) & 0x3FFF) == tm[0][c];
+								ok += ((e & 0x7F) + board.peek16(board.profile->backdrops.banks + ((e >> 6) & 0xFE)) & 0x3FFF) == tm[0][c];
 							}
 							if (ok >= 13) fprintf(stderr, "pano-all stage %d desc %08x %dx%d row %d col %d: %d/15\n", st, d2, w2, h2, y, x, ok);
 						}
@@ -438,7 +830,7 @@ int main(int argc, char **argv)
 					}
 				}
 		}
-		if (getenv("VF3_SKY_AUDIT") && !shots.empty())   // (tests: the widescreen backdrop's state each frame)
+		if (getenv("VF3_SKY_AUDIT") && !shots.empty() && (board.frame - 1) % uint64_t(tile_every) == 0)   // (tests: the widescreen backdrop's state each frame)
 		{
 			static long r0, f0, b0, n0;
 			fprintf(stderr, "sky %llu %s rows %ld refind %ld bad %ld nomap %ld\n", (unsigned long long)board.frame, tiles.audit(board).c_str(),
@@ -568,6 +960,22 @@ int main(int argc, char **argv)
 				raster.render(scene, board.tex_ram.data());
 				static std::vector<uint32_t> below, above;
 				tiles.aligned(below, above);
+				if (const char *hn = getenv("VF3_HUD_NAMES")) {   // (tests: "P1NAME,P2NAME" under the energy bars, as netplay shows them)
+					const std::string v = hn;
+					const size_t comma = v.find(',');
+					const std::string names[2] = { v.substr(0, comma), comma == std::string::npos ? std::string() : v.substr(comma + 1) };
+					static video::HudFlag test_flag;   // (VF3_HUD_FLAG=1: a test flag, 15 x 10, beside both)
+					if (getenv("VF3_HUD_FLAG") && !test_flag.w) {
+						test_flag.w = 15; test_flag.h = 10;
+						for (int y = 0; y < 10; y++) for (int x = 0; x < 15; x++) test_flag.px.push_back(y < 5 ? 0xFFFFFFFFu : 0xFF3030E0u);
+					}
+					const video::HudFlag *fl[2] = { &test_flag, &test_flag };
+					video::hud_names(board, above, names, test_flag.w ? fl : nullptr);
+				}
+				if (dural && board.dural_on()) {   // (her spot's picture, as the host draws it)
+					static video::DuralPicture dural_pic;
+					video::dural_cell(board, tiles, above, dural_pic);
+				}
 				if (getenv("VF3_VP")) {
 					for (int x : { 0, video::W - 3 }) {
 						int a = 0, b = 0;
@@ -613,6 +1021,13 @@ int main(int argc, char **argv)
 					const int k = std::clamp(atoi(bs), 1, 8);
 					big.resize(video::W * k, video::H * k);
 					big.render(scene, board.tex_ram.data());
+					if (const char *rt = getenv("VF3_RENDER_TIME")) {   // (tests: that many more renders at this scale, timed)
+						const int n = std::max(1, atoi(rt));
+						const auto t0 = std::chrono::steady_clock::now();
+						for (int i = 0; i < n; i++) big.render(scene, board.tex_ram.data());
+						printf("render %llu: %.3f ms at %dx%d\n", (unsigned long long)board.frame,
+							std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / n, big.width(), big.height());
+					}
 					std::vector<uint32_t> o(size_t(big.width()) * big.height(), 0xFF808080u);
 					big.compose(o.data(), o.data());
 					char p[64];
@@ -645,18 +1060,28 @@ int main(int argc, char **argv)
 				fclose(tf);
 			}
 		}
-		if (getenv("VF3_TEXDUMP") && long(board.frame) == atol(getenv("VF3_TEXDUMP"))) {   // texture RAM's first sheet as 16-bit ARGB1555
-			std::vector<uint32_t> px(2048 * 1024);
-			for (int i = 0; i < 2048 * 1024; i++) {
+		if (getenv("VF3_TEXDUMP") && long(board.frame) == atol(getenv("VF3_TEXDUMP"))) {   // the texture RAM (both sheets, sheet 1 below) as 16-bit ARGB1555, to texram.png
+			const int rows = int(board.tex_ram.size() / 2048);
+			std::vector<uint32_t> px(size_t(2048) * rows);
+			for (size_t i = 0; i < px.size(); i++) {
 				const uint16_t t = board.tex_ram[i];
 				const uint32_t r = (t >> 10) & 31, g = (t >> 5) & 31, b = t & 31;
 				px[i] = 0xFF000000u | (b * 255 / 31) << 16 | (g * 255 / 31) << 8 | (r * 255 / 31);
 			}
-			write_png("texram.png", px.data(), 2048, 1024);
+			write_png("texram.png", px.data(), 2048, rows);
 		}
 		if (long(board.frame) == ram_at) {
 			std::string p = "ram_" + std::to_string(board.frame) + ".bin";
 			if (FILE *rf = fopen(p.c_str(), "wb")) { fwrite(board.ram.data(), 1, board.ram.size(), rf); fclose(rf); }
+			p = "backup_" + std::to_string(board.frame) + ".bin";   // (the backup RAM, as Model3::backup holds it: the "b" pokes' indexes)
+			if (FILE *bf = fopen(p.c_str(), "wb")) { fwrite(board.backup.data(), 1, board.backup.size(), bf); fclose(bf); }
+			// (and the tile generator's RAM, then its 64 registers: the HUD's maps and patterns)
+			p = "tiles_" + std::to_string(board.frame) + ".bin";
+			if (FILE *tf = fopen(p.c_str(), "wb")) {
+				fwrite(board.tile_ram.data(), 1, board.tile_ram.size(), tf);
+				fwrite(board.tile_regs, 4, 64, tf);
+				fclose(tf);
+			}
 		}
 		if (board.cpu.s.fatal) {
 			fprintf(stderr, "vf3run: frame %llu: CPU stopped: %s\n", (unsigned long long)board.frame, board.cpu.fatal_message);
@@ -717,6 +1142,9 @@ int main(int argc, char **argv)
 			for (uint32_t a : recompiler.mismatch_addresses(10)) printf(" %06X", a);
 			printf("%s\n", n > 10 ? " ..." : "");
 		}
+	}
+	if (const char *out = getenv("VF3_MAP_OUT"); rec && out) {   // (tests: where the interpreter ran for want of a map entry, added)
+		if (FILE *f = fopen(out, "a")) { for (uint32_t a : recompiler.unmapped) fprintf(f, "%05X\n", a); fclose(f); }
 	}
 	return board.cpu.s.fatal ? 1 : 0;
 }

@@ -87,7 +87,24 @@ main{--s:1; position:relative; z-index:1; width:100%; min-width:0; margin-block:
 .get small{font-weight:600; font-size:.78rem; opacity:.62}
 .get.alt{background:transparent; color:var(--ink); box-shadow:inset 0 0 0 1.5px var(--line)}
 .get.alt:hover{box-shadow:inset 0 0 0 1.5px var(--ink); background:transparent}
+/* Online now: beside Download, the live count when the page can read it */
+#onl{line-height:normal}
+#onl .live{width:.55em; height:.55em; border-radius:50%; background:#3DDC84; flex:none; box-shadow:0 0 0 3px rgba(61,220,132,.18)}
 .get .os{width:1.05em; height:1.05em; fill:currentColor; flex:none; margin-top:-.1em}
+/* the downloads: one button, its platforms in a list under it (the visitor's own first) */
+.dlw .get{border:0; cursor:pointer; font-family:inherit}
+.get .ico{width:1.1em; height:1.1em; stroke-width:2.4}
+.dlw.open .get{background:var(--teal-soft)}
+.pop.dl{text-align:left}
+@media (min-width:641px){ .cta .info::before{bottom:auto; top:100%} .cta .pop.dl{bottom:auto; top:calc(100% + 10px); width:min(330px, calc(100vw - 32px))} }
+.pop.dl ul li{padding:0; margin:0}
+.pop.dl ul li::before{display:none}
+.pop.dl li a{display:flex; align-items:center; gap:.6rem; padding:.6rem 0; font-weight:600; font-size:.92rem; color:var(--ink); text-decoration:none; border-bottom:1px solid rgba(255,255,255,.07)}
+.pop.dl li:last-child a{border-bottom:0}
+.pop.dl li a:hover,.pop.dl li.here a{color:var(--teal)}
+.pop.dl li a .os{width:1.05em; height:1.05em; fill:currentColor; flex:none}
+.pop.dl li a small{margin-left:auto; padding-left:.6rem; font-weight:500; font-size:.74rem; color:var(--dim); text-align:right}
+.pop.dl p{margin-top:.6rem; font-size:.78rem}
 .ico{flex:none; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round}
 
 .more{position:relative; margin-top:1.4rem; display:flex; align-items:baseline; justify-content:center; flex-wrap:wrap; gap:.15rem 1rem;
@@ -295,9 +312,17 @@ dialog .x:hover{background:rgba(255,255,255,.2)}
   <p class="ver">Recomp %VERSION% &middot; %DATE%</p>
 
   <div class="cta" id="cta">
-    <a class="get alt" data-os="win" href="%WIN_URL%"><svg class="os" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 3.449 9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>Windows</a>
-    <a class="get alt" data-os="mac" href="%MAC_URL%"><svg class="os" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>Mac</a>
-    <a class="get alt" data-os="deck" href="%DECK_URL%"><svg class="os" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z"/></svg>Linux / Steam Deck</a>
+    <span class="info dlw"><button class="get" aria-expanded="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M6.5 9.5 12 15l5.5-5.5M4 15v5h16v-5"/></svg>Download</button>
+      <div class="pop dl" role="dialog" aria-label="Download">
+        <ul>
+          <li data-os="win"><a href="%WIN_URL%"><svg class="os" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 3.449 9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>Windows <small>10 and 11, 64-bit</small></a></li>
+          <li data-os="mac"><a href="%MAC_URL%"><svg class="os" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>macOS <small>Apple Silicon and Intel</small></a></li>
+          <li data-os="deck"><a href="%DECK_URL%"><svg class="os" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z"/></svg>Linux / Steam Deck <small>x86-64</small></a></li>
+          <li data-os="arm"><a href="https://github.com/mr-finster/vf3-recomp/releases/latest/download/VirtuaFighter3Recomp-linux-arm64.tar.gz"><svg class="os" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M8 2h8v2h3a1 1 0 0 1 1 1v3h2v2h-2v4h2v2h-2v3a1 1 0 0 1-1 1h-3v2H8v-2H5a1 1 0 0 1-1-1v-3H2v-2h2v-4H2V8h2V5a1 1 0 0 1 1-1h3V2zm-1 5v10h10V7H7zm2 2h6v6H9V9z"/></svg>Linux on ARM <small>a Raspberry Pi 5, ARM64</small></a></li>
+        </ul>
+        <p>Needs your own <code>vf3.zip</code>. <a href="https://github.com/mr-finster/vf3-recomp/releases/latest" target="_blank" rel="noopener">Release notes</a></p>
+      </div></span>
+    <a class="get alt" id="onl" href="https://vf-online.pages.dev/online" target="_blank" rel="noopener noreferrer"><span class="live" aria-hidden="true"></span><span id="onl-t">Online now</span></a>
   </div>
 
   <nav class="more" aria-label="More about it">
@@ -367,7 +392,7 @@ dialog .x:hover{background:rgba(255,255,255,.2)}
           <li>It's an <b>alpha</b>: if something looks or plays differently from the arcade, say so in <a href="https://github.com/mr-finster/vf3-recomp/issues" target="_blank" rel="noopener">GitHub Issues</a>, with the <code>log.txt</code> from the game's data folder.</li>
           <li>Shun's stage water is the game's own low-resolution 2D art, so it's soft up close.</li>
           <li>Direct3D 12 hasn't been tried on real Windows hardware yet. If it draws wrong, the game switches to Vulkan, or the CPU.</li>
-          <li>No Team Battle (<code>vf3tb</code>) and no online play yet.</li>
+          <li>Online play is <b>experimental</b>: both players need the same <code>vf3.zip</code>, and a build from v0.1.7-online-preview on. Report anything odd with both players' <code>log.txt</code>.</li>
           <li>The Mac and Windows builds are <b>unsigned</b>: see Install for the one-time click-through.</li>
           <li>8BitDo pads on a Mac: use <b>Switch (S) mode</b>.</li>
         </ul>
@@ -376,9 +401,124 @@ dialog .x:hover{background:rgba(255,255,255,.2)}
       <div class="pop" role="dialog" aria-label="Changelog">
         <p><b>%VERSION%</b> &middot; %DATE%</p>
         <ul>
+          <li><b>Free camera</b>: fly a camera around the fight with <b>F4</b>, a pad&rsquo;s View (Back) + R3, or Display &rarr; Free camera. The mouse or the right stick looks; W A S D or the left stick moves (E and Q, or the triggers, up and down; Shift faster). The fight goes on, or press P to pause it and fly around the frozen moment. Offline, and while watching an online match. Only the picture: the game plays exactly the same.</li>
+          <li><b>The top of the sky</b> (vf3-recomp #43): when the camera tilts up fast (a round&rsquo;s start, a throw, a jump), it now shows the stage&rsquo;s real sky from the game&rsquo;s own data, not a mirrored band.</li>
+          <li><b>The menus are back to their full size</b>, and Display is now three pages: Picture, Quality, and Screen filter and colours, each showing its settings at a glance (Free camera is on Display itself). A player&rsquo;s button combinations have a page of their own. No page scrolls.</li>
+          <li><b>The menus match across Virtua Fighter 1, 2 and 3 Recomp</b>: the same order and wording in all three, and help texts brought up to date.</li>
+          <li><b>Frame limit</b> starts at the screen&rsquo;s refresh on a new install, as in Virtua Fighter 1 and 2 Recomp (a setting you saved is kept).</li>
+          <li>No update is forced: plays v0.1.20-alpha and every build it played online as before.</li>
+        </ul>
+        <details><summary>v0.1.20-alpha</summary><ul>
+          <li><b>A room&rsquo;s line moves after every match</b> (vf3-recomp #42): when someone is waiting in a room&rsquo;s line, the guest makes way after each match, whoever won, and the next in line plays the host. With nobody waiting, the loser can press Start and play on as before.</li>
+          <li><b>Watching is smoother</b>: a watcher stays at least 1.5 s behind the players (it was about 0.2 s), so on a steady connection it no longer skips or repeats a frame now and then.</li>
+          <li><b>Cheats &rarr; Dural&rsquo;s stage online</b> (vf3-recomp #36): a quick cursor move and Guard no longer gets &ldquo;no Dural version&rdquo; for the stage next to it (Lau&rsquo;s and Taka&rsquo;s). In Team Battle the Cave gets its Dural look (the original VF3 cave), online too. Aoi&rsquo;s stage still can&rsquo;t: the arcade never gives its Dural version.</li>
+          <li>No update is forced: plays v0.1.19-alpha and every build it played online as before.</li>
+        </ul></details>
+        <details><summary>v0.1.19-alpha</summary><ul>
+          <li><b>Display &rarr; HUD: Off</b> hides a fight&rsquo;s energy bars, timer, names and round calls, for a clean picture of the 3D (the select, the VS screen and the menus keep theirs). Only the picture: the game plays exactly the same.</li>
+          <li><b>The match found chime is the cabinet&rsquo;s own coin sound</b> (as in Virtua Fighter 1 Recomp), made from your ROMs when the game starts. Online &rarr; Settings &rarr; Match found chime still turns it on and off.</li>
+          <li><b>A second key and a second pad button for every control</b>: Controls &rarr; Player &rarr; Second keys and Second pad buttons. Either one works (Guard on a face button and a trigger, for example).</li>
+          <li><b>Display &rarr; V-Sync</b> (On / Off) and <b>Frame limit</b> (Off, 30, 60, 120, the default as before, 144 or the screen&rsquo;s refresh). Only the pictures: the game&rsquo;s speed, its sound and online timing are as before.</li>
+          <li><b>The menus are a size smaller, so every page fits whole</b>: none scrolls any more (Display&rsquo;s last rows and a player&rsquo;s keys were below the bottom, and looked missing).</li>
+          <li><b>Quad rendering is always on</b>, its row gone from Display (issue #39): the quads drawn as the arcade draws them, the default since it came. An Off saved before is not kept. Only the picture: the game plays the same.</li>
+          <li><b>Watching a match you join late is quicker</b>: the game catches up with it about twice as fast, and silently, showing only how far along it is until it reaches the live match (no sped-up sound any more). Only for watchers: the players&rsquo; match is untouched.</li>
+          <li><b>Dural&rsquo;s spot on the select screen fades in with the rest of the grid</b>, frame for frame (it showed a frame early, and brighter).</li>
+          <li>No update is forced: plays v0.1.18-alpha and every build it played online as before.</li>
+        </ul></details>
+        <details><summary>v0.1.18-alpha</summary><ul>
+          <li><b>Online is a room browser.</b> Menu &rarr; Online lists the open rooms and the matches being played, with the players, the score and how many are watching. CREATE ROOM (unlisted, code only, unless you list it; a name if you like), ENTER CODE and QUICK MATCH.</li>
+          <li><b>Watch any match.</b> WATCH on a match in the list, or its code: a watcher never slows the players down, however many watch (up to 400) and whatever their ping. The players see how many are watching. Join late and it catches up from the start, unseen.</li>
+          <li><b>13 languages</b> in every menu: Game &rarr; Language (or <code>language =</code> in settings.ini).</li>
+          <li><b>The Online page</b> (vf-online.pages.dev/online): every game&rsquo;s rooms and matches; JOIN and WATCH open the game.</li>
+          <li>No update is forced: builds from v0.1.7-online-preview on still play this one (they just don&rsquo;t see rooms).</li>
+        </ul></details>
+        <details><summary>v0.1.17-alpha</summary><ul>
+          <li><b>Two Durals reflect right</b> (issue #23). With Play as Dural, a mirror match with gold Dural on player 1 and chrome on player 2 drew half of each one&rsquo;s chrome with an old reflection (bronze, striped legs). It was in the game&rsquo;s own code, never seen on the arcade, where you can&rsquo;t have two Durals; Revision D and Team Battle. Online, Dural still plays against v0.1.16-alpha, that version&rsquo;s way on both sides (the fix needs this version on both); everyone else plays v0.1.16-alpha as before.</li>
+          <li><b>Also since v0.1.16-alpha&rsquo;s first download:</b> the 2D sky no longer smears at the top and sides (#35); on Windows, Fullscreen is a borderless window (#7); Wolf&rsquo;s desert grade and ranking boards run at full speed; Cheats &gt; Dural&rsquo;s stage is Guard only, so Start does the game&rsquo;s own thing (#36).</li>
+        </ul></details>
+        <details><summary>v0.1.16-alpha</summary><ul>
+          <li><b>Online: everyone meets everyone</b> (issues #25, #32). Random and room codes no longer split players by stage select, Dural or Team Battle&rsquo;s 1 vs 1 or 3 vs 3: a match plays the host&rsquo;s stage select and mode, Dural is on the select when either player has her on, and both players are told the match&rsquo;s settings as it starts. Players on older versions are still met, played their version&rsquo;s way.</li>
+          <li><b>Stage select online is on</b>, turned on once for everyone; turned off after that, it stays off.</li>
+          <li><b>When the 3D falls back to the CPU</b> during play (a graphics device lost, or a GPU picture that isn&rsquo;t right), it draws at 1x without antialiasing for that run, so the game stays playable; your Display settings are kept (issue #26).</li>
+          <li><b>Fit the window up to 80:9</b>: three or five screens side by side get the whole picture.</li>
+          <li><b>Play as Dural</b>: her arcade boss fight on any of ten stages, not always Taka-Arashi&rsquo;s; her reflection right in a mirror match and as gold player 1 (issue #23).</li>
+          <li><b>Arcade settings &rarr; CPU opponents&rsquo; order: Random</b> (Revision D, offline; issue #30).</li>
+          <li><b><code>--game vf3</code> or <code>--game tb</code></b> picks the version at startup (issue #27).</li>
+        </ul></details>
+        <details><summary>v0.1.15-alpha</summary><ul>
+          <li><b>Window size</b> (issue #20): Menu &gt; Display &gt; Window size makes the window a whole multiple of the arcade&rsquo;s 384 lines (1x is 512 &times; 384 for the 4:3 picture, up to 4x, as many as your screen holds). Render scale 1x with Window size 1x shows the arcade&rsquo;s 384 lines one to one; Window size 2x doubles each of them. Resizing the window by hand sets it back to Free.</li>
+          <li><b>The window is remembered</b> (issue #21): its size, place, maximised and fullscreen stay as you left them from one start to the next, so an OBS capture keeps working.</li>
+          <li><b>No red triangle</b> bottom left of the attract (issue #19): the game&rsquo;s own mark that the arcade&rsquo;s Free Play notice covers is hidden with the notice.</li>
+          <li><b>Dural&rsquo;s stage</b> (issue #22): Menu &gt; Cheats &gt; Dural&rsquo;s stage. On the stage screen, confirm a stage with Guard for its Dural version: Start is held for you and the pick made at the second the arcade allows it (up to about 12 s). Offline it always works. Online too: it&rsquo;s only your inputs, so your opponent needs nothing, but about a third of the picks have no second left for it and play the normal stage (a notice says so).</li>
+          <li><b>Stage lighting fixed</b> (issue #19): Team Battle&rsquo;s sumo ring and VF3&rsquo;s lava cave are no longer too red (their red spotlight now stops at full light, as on the arcade&rsquo;s hardware).</li>
+          <li>VF3&rsquo;s lava cave lit as the arcade&rsquo;s: brown and orange, not red.</li>
+          <li><b>Online matches are always first to 3</b> (updated 2 Nov), whatever either player&rsquo;s Arcade settings &rarr; Rounds to win (vs player), which is for playing offline: against an older v0.1.15-alpha download too when this one hosts.</li>
+        </ul></details>
+        <details><summary>v0.1.14-alpha</summary><ul>
+          <li><b>Stage select online</b> (issue #18): Menu &gt; Online &gt; Settings &gt; Stage select. On, the challenger picks the stage on the arcade&rsquo;s own screen, so the loser picks on every rematch, as Japanese arcades had it. You meet only players who have it on too; off, everyone as before.</li>
+          <li><b>Arcade settings &gt; Stage select</b> shows the arcade&rsquo;s own options by name: Challenger or Off (Team Battle&rsquo;s Variable and Full too). For the stage&rsquo;s Dural version, use Menu &gt; Cheats &gt; Dural&rsquo;s stage: the arcade&rsquo;s own way (the picker holding Start as the screen&rsquo;s timer runs out) works only when a hidden count lines up with the timer, about 1 time in 17 after the first match.</li>
+          <li><b>No stutter in the first seconds</b> on some graphics cards (issue #15): when the GPU&rsquo;s start-up check is unsure, the game keeps the GPU&rsquo;s pictures while it checks again, not the CPU&rsquo;s.</li>
+        </ul></details>
+        <details><summary>v0.1.13-alpha</summary><ul>
+          <li><b>Arcade sticks that weren&rsquo;t found now work</b> (DirectInput sticks such as HORI&rsquo;s Virtua Stick High Grade and the Astro City Mini): any stick gets a fighting-stick layout, and Menu &gt; Controls &gt; Player 1 (or 2) &gt; Set up buttons sets its buttons by pressing them. A <code>gamecontrollerdb.txt</code> in the data folder is read too.</li>
+          <li><b>Team Battle 1 vs 1 by default:</b> Menu &gt; Game &gt; Team Battle mode (1 vs 1 or 3 vs 3). It&rsquo;s the arcade&rsquo;s own setting: Up + Start gives 3 vs 3, Down + Start 1 vs 1. Online you meet only players who chose the same mode.</li>
+          <li><b>3D renderer on Auto stays on the GPU:</b> its start-up check is tried on two more scenes before it moves to the CPU (the title&rsquo;s close-ups were failing working graphics cards).</li>
+          <li><b>Log file:</b> Menu &gt; Game &gt; Log file turns <code>log.txt</code> off (from the next start). A <code>portable.txt</code> beside the game keeps everything in its own folder.</li>
+          <li><b>Fullscreen freezing on AMD with Vulkan:</b> a test, <code>fullscreen_window = 1</code> in settings.ini, makes fullscreen a borderless window instead.</li>
+        </ul></details>
+        <details><summary>v0.1.12-alpha</summary><ul>
+          <li><b>Virtua Fighter 3 Team Battle</b> plays too, online as well (Team Battle with Team Battle): put <code>vf3tb.zip</code> beside <code>vf3.zip</code> and choose it in Menu &gt; Game &gt; Version, or Menu &gt; Game &gt; Add Team Battle. Start in a fight changes the camera; the CPU&rsquo;s teams are new each time.</li>
+          <li><b>Play as Dural:</b> Menu &gt; Cheats &gt; Dural on the select, a 13th spot with her own picture, for either player. Online with others who have it on.</li>
+          <li><b>Play by address</b> (the same network, or a VPN): Menu &gt; Online &gt; Play by address; <code>--host</code>, <code>--join ADDRESS</code> and <code>--port N</code> on the command line.</li>
+          <li><b>Online:</b> a chime when a match is found (the window flashes if it isn&rsquo;t in front), and Random: max ping in Online &gt; Settings. Plays every online build since the preview.</li>
+          <li><b>Widescreen:</b> the skies right on every stage (no more stripes), clean sides on the character select and the rankings, Wolf&rsquo;s desert dust no longer flickers at 120 Hz.</li>
+          <li><b>No more black triangle</b> on fighters&rsquo; faces on the beach at high render scales (the game&rsquo;s own one-pixel slip, made big).</li>
+        </ul></details>
+        <details><summary>v0.1.11-alpha</summary><ul>
+          <li><b>Slower PCs keep the arcade&rsquo;s speed.</b> Where the 3D is drawn on the CPU (a graphics chip the GPU renderer can&rsquo;t use), the game used to slow down to fit its pictures in; now it keeps full speed and shows fewer pictures instead (updated 29 Oct: offline too, where only online did).</li>
+          <li><b>Display:</b> brightness and gamma beside CRT colours.</li>
+          <li><b>Online:</b> the connection bar&rsquo;s and the Start prompt&rsquo;s text centred in their boxes; the flags on the energy bar sharper; your fighter&rsquo;s line on the VS screen; a side the computer plays shows the game&rsquo;s own name. Plays every online build.</li>
+          <li><b>0 online</b> (updated 29 Oct) on the RANDOM card when no one else is: that&rsquo;s where the players online are counted.</li>
+        </ul></details>
+        <details><summary>v0.1.10-alpha</summary><ul>
+          <li><b>Online, Hide my IP address:</b> a relay that doesn't answer at once is asked again by itself, so one lost answer no longer stops the match. Plays every online build.</li>
+          <li><b>Updated 25 Oct:</b> with a room code, the host now sees the flag of the player who joins (only the joiner saw both); and with Hide my IP address on, the relay is asked again from a new port, the last time on its second port, so a firewall or router that drops the first rarely stops the match.</li>
+          <li><b>Updated again 25 Oct:</b> online, the character select waits for the other player's moves instead of guessing them, so their face no longer flashes as their cursor moves on a slower connection.</li>
+        </ul></details>
+        <details><summary>v0.1.9-alpha</summary><ul>
+          <li><b>Online:</b> the rematch prompt goes as soon as the loser presses Start, a quick tap through the KO too (it stayed up over New Challenger and the character select). Plays v0.1.8-alpha and the online preview.</li>
+        </ul></details>
+        <details><summary>v0.1.8-alpha</summary><ul>
+          <li><b>Online play</b> (experimental): rollback netcode, a random opponent in one click (the nearest first) or a friend by a 6-letter room code, nothing to set up. Your name and flag under your energy bar, Auto input delay, the sound on its own clock, a connection display. Menu &gt; Online; the README says how.</li>
+          <li>Faster: the tile layers drawn on a thread of their own, and Wolf's desert in widescreen no longer slows down (30 ms a frame as its camera tilted).</li>
+          <li><b>Never slow on a working GPU.</b> One failed check or slow start no longer keeps the 3D on the CPU for good (each new build tries the GPU again), a graphics driver that closes the game on Vulkan goes to Direct3D 12 by itself on Windows, and if the 3D does run on the CPU the game says why on screen, with how to try the GPU again.</li>
+          <li><b>Windows laptops</b> with two graphics chips: the game asks for the faster one (NVIDIA's and AMD's drivers look for it).</li>
+          <li><b>Linux on ARM</b> (a Raspberry Pi 5, an ARM laptop): Download &gt; Linux on ARM (<code>VirtuaFighter3Recomp-linux-arm64.tar.gz</code>).</li>
+          <li>No more one-frame sky flash between rounds; the last 3 runs' <code>log.txt</code> kept.</li>
+          <li>No more stutter every few seconds on a hard disk: the game's saves are written in the background, and its bookkeeping once a minute instead of every 3 seconds.</li>
+        </ul></details>
+        <details><summary>v0.1.5-alpha</summary><ul>
+          <li>Windows: the GPU renderer starts on Vulkan for every graphics card (it was AMD only), where Direct3D 12 could be far slower on NVIDIA cards. Direct3D 12 is still used by itself if Vulkan fails, and Display &gt; Graphics driver chooses it.</li>
+        </ul></details>
+        <details><summary>v0.1.4-alpha</summary><ul>
+          <li>No more crash when clicking an option that restarts the game (Play style) with the mouse.</li>
+        </ul></details>
+        <details><summary>v0.1.3-alpha</summary><ul>
+          <li>The menu with a mouse: clicking an option's &lt; steps it down, and a click at either end goes round to the other (the render scale and the difficulty looked stuck at their top, #3).</li>
+        </ul></details>
+        <details><summary>v0.1.2-alpha</summary><ul>
+          <li>Hold Start while choosing a character for their second outfit, as on the cabinet (Start reached the game only as a tap).</li>
+          <li>Music at the arcade's tempo: it ran 0.8% fast (the sound chip's timers a sample short). Pai's theme has its missing instrument back from 9 seconds in (an FM voice's depth, as Supermodel's).</li>
+          <li>No more crash on leaving the arcade's test menu (after changing the coin settings, for one) in the PC play style.</li>
+          <li>Sharper textures in the distance at higher render scales: their detail now picked for the picture's size, not the arcade's 384 lines (Display &gt; Distant textures: Arcade for the original's).</li>
+          <li>Smooth motion no longer stuck at 60 fps after the character select or a fight's intro: the settings now always stay as you set them (as in VF1 and VF2 Recomp), nothing lowered by itself.</li>
+          <li>Smoother motion in throws and on the beach and desert stages (no more stop-then-jump there), and no more fighters' pieces flying across the screen at the attract's camera cuts.</li>
+          <li>CRT colours (Display): the colours as an arcade monitor showed them, as Supermodel's presets. Sega arcade is a Japanese cabinet's 9300 K: bluer whites and richer colours.</li>
+        </ul></details>
+        <details><summary>v0.1.1-alpha</summary><ul>
           <li>Windows with an AMD Radeon: the GPU renderer starts on Vulkan, where Direct3D 12 could hold the game to 30 fps at any render scale. If Vulkan doesn't work, the game goes back to Direct3D 12 by itself.</li>
           <li>Smooth motion no longer stuck at 60 fps for a whole session after a slow first launch (Windows scanning the new exe, the driver building its shaders).</li>
-        </ul>
+        </ul></details>
         <details><summary>v0.1.0-alpha</summary><ul>
           <li>First alpha release, for Mac, Windows and Steam Deck.</li>
           <li>Up to 6x, widescreen and ultrawide, smooth motion up to 120 fps, and the 3D on the GPU.</li>
@@ -440,10 +580,18 @@ document.getElementById('slot').addEventListener('click', () => clip.play().catc
   }
 }
 
+{ const ua = navigator.userAgent, p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+  const os = /Win/.test(p + ua) ? 'win' : /Mac|iPhone|iPad/.test(p + ua) ? 'mac' : /aarch64|arm/i.test(p + ua) ? 'arm' : /Linux|X11/.test(p + ua) ? 'deck' : '';
+  const li = os && document.querySelector('.pop.dl li[data-os="' + os + '"]');
+  if (li) { li.classList.add('here'); li.parentNode.prepend(li); }
+  const cta = document.getElementById('cta'), w = cta.querySelector('.dlw');
+  const up = () => { cta.style.zIndex = w.classList.contains('open') || w.matches(':hover') ? '7' : ''; };
+  w.addEventListener('mouseenter', up); w.addEventListener('mouseleave', up);
+  new MutationObserver(up).observe(w, { attributes: true, attributeFilter: ['class'] }); }
 document.querySelectorAll('.info').forEach(info => {
-  const btn = info.querySelector('.lnk'), pop = info.querySelector('.pop'); if (!pop) return;
+  const btn = info.querySelector('.lnk, .get'), pop = info.querySelector('.pop'); if (!pop) return;
   btn.addEventListener('click', e => { e.stopPropagation(); const open = !info.classList.contains('open');
-    document.querySelectorAll('.info.open').forEach(o => { o.classList.remove('open'); o.querySelector('.lnk').setAttribute('aria-expanded', 'false'); });
+    document.querySelectorAll('.info.open').forEach(o => { o.classList.remove('open'); o.querySelector('.lnk, .get').setAttribute('aria-expanded', 'false'); });
     info.classList.toggle('open', open); btn.setAttribute('aria-expanded', open); });
   pop.addEventListener('click', e => e.stopPropagation());
 });
@@ -499,5 +647,11 @@ document.querySelectorAll('.pop details').forEach(d => {
 });
 </script>
 <script data-name="BMC-Widget" data-cfasync="false" src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js" data-id="mrfinster" data-description="Support me on Buy me a coffee!" data-message="" data-color="#BD5FFF" data-position="Right" data-x_margin="18" data-y_margin="18" defer></script>
+<script>/* Online now: how many are playing, read from the public page's counts; plain text if not (no cookies, no referrer) */
+(function(){var t=document.getElementById("onl-t"),G=["vf3", "vf3tb"];if(!t||!window.fetch)return;
+fetch("https://vf-online.pages.dev/api/online",{cache:"no-store",credentials:"omit",referrerPolicy:"no-referrer"})
+.then(function(r){return r.ok?r.json():null}).then(function(d){var g=d&&d.games,n=0,k=0;if(!g)return;
+G.forEach(function(x){var c=g[x]&&g[x].total;if(typeof c==="number"&&c>=0&&c%1===0){n+=c;k++}});
+if(k)t.textContent="Online now: "+n+" playing"}).catch(function(){})})();</script>
 </body>
 </html>

@@ -48,6 +48,9 @@ struct Mesh
 	float flip = 0;
 	int flip_x = 0, flip_y = 0;
 	std::vector<Vertex> verts;    // triangles
+	// per triangle, 1: it and the next are a quad's halves (its corners 0 1 2 and 0 2 3), drawn as one quad when
+	// Raster::quad_rendering is on (as the Real3D draws them: a quad that isn't flat is one surface, not two)
+	std::vector<uint8_t> quads;
 	uint64_t key = 0;             // the polygon header bits that made it
 	// Which of the passes draws it: 0 the opaque layer, 1 and 2 the two translucent layers
 	bool in_layer(int layer, float node_alpha) const
@@ -106,6 +109,9 @@ struct Scene
 // too far in a frame is shown where it is in b; if most did (a cut), out is b and the result false.
 struct InterpStats { size_t total = 0, no_key = 0, turned = 0, moved = 0, matched = 0, blended = 0, not_blended = 0; };
 bool interpolate(const Scene &a, const Scene &b, float t, Scene &out, InterpStats *stats = nullptr);
+// (tests: the pairing interpolate last made between a and b: for each viewport, each of b's models' partner in a,
+// blended or not (-1: none), in a's viewport given in viewports (-1: none); null if it was made between others)
+const std::vector<std::vector<int>> *interp_paired(const Scene &a, const Scene &b, std::vector<int> *viewports = nullptr);
 // The camera's move between two frames' viewport (b = camera a for what stands still), from the models alone at their
 // address in both; false if too few agree on one
 bool camera_move(const Viewport &a, const Viewport &b, Mat4 &camera);
@@ -121,6 +127,9 @@ public:
 	// Widescreen: how much wider than 4:3 the full-screen viewports are drawn (the picture's width over its 4:3
 	// width); their culling's side planes are widened as much, or what's past the 4:3 sides would pop in and out
 	float widen = 1;
+	// The free camera on (src/host/free_cam.h): nothing culled against the game's camera's planes (the free camera
+	// sees what it can't); the detail levels stay the game camera's
+	bool cull_off = false;
 
 private:
 	const uint32_t *cull_lo = nullptr, *cull_hi = nullptr, *poly = nullptr, *vrom = nullptr;
@@ -128,6 +137,9 @@ private:
 	uint32_t visits = 0;           // nodes visited this scene
 	static constexpr uint32_t NODE_BUDGET = 200000;
 	void node_one(uint32_t addr);
+	// The 3D the attract's FREE PLAY notice covers, left out while the running program doesn't draw the notice (the
+	// profile's free_play_text.marker; 0: none): picture only, the game's memory only read
+	uint32_t hidden_marker[2] = {};
 	const float *matrix_base = nullptr;
 	const float *lod_table = nullptr;
 	uint32_t colour_table = 0;

@@ -12,6 +12,11 @@
 
 #include "../machine/model3.h"
 
+// The CRT colours' fragment shader (r3d.hlsl's FS_COLOUR) on a device, for the host renderer's SDL_GPURenderState:
+// its picture the texture drawn, sampler 0; uniforms 0: three float4, the matrix's rows, the first's w the gamma.
+// Null if it can't be made here (SDL_GetError()).
+SDL_GPUShader *colour_shader(SDL_GPUDevice *dev);
+
 class R3dGpu
 {
 public:
@@ -22,6 +27,8 @@ public:
 	bool init(SDL_GPUDevice *device);
 	const std::string &error() const { return err; }
 	const char *driver() const;
+	// The whole texture memory sent with the next picture (its changes were taken elsewhere meanwhile: the CPU drew)
+	void retexture() { texram_full = true; }
 
 	// The output texture (made here, RGBA8, premultiplied), for the renderer to show: the picture drawn w x h, shown
 	// w / ss x h / ss (antialiasing: each pixel the average of ss x ss drawn)
@@ -41,17 +48,21 @@ private:
 	SDL_GPUDevice *dev = nullptr;
 	std::string err;
 	SDL_GPUGraphicsPipeline *p_opq = nullptr, *p_opq_l = nullptr, *p_tr = nullptr, *p_tr_l = nullptr, *p_fog = nullptr, *p_out = nullptr;
+	// (quad rendering's: the whole quads' pixels from their four corners, video::Raster::quad_rendering)
+	SDL_GPUGraphicsPipeline *p_opq_q = nullptr, *p_opq_lq = nullptr, *p_tr_q = nullptr, *p_tr_lq = nullptr;
 	SDL_GPUSampler *sampler = nullptr;
 	SDL_GPUTextureFormat ds_format = SDL_GPU_TEXTUREFORMAT_INVALID;
 	int w = 0, h = 0, ss = 1;
 	SDL_GPUTexture *base = nullptr, *t1 = nullptr, *t2 = nullptr, *odepth = nullptr, *ds = nullptr, *out = nullptr;
-	SDL_GPUBuffer *vbuf = nullptr, *dbuf = nullptr, *pbuf = nullptr, *texram = nullptr;
-	uint32_t vbuf_size = 0, dbuf_size = 0, pbuf_size = 0;
+	SDL_GPUBuffer *vbuf = nullptr, *dbuf = nullptr, *pbuf = nullptr, *qbuf = nullptr, *texram = nullptr;
+	uint32_t vbuf_size = 0, dbuf_size = 0, pbuf_size = 0, qbuf_size = 0;
 	SDL_GPUTransferBuffer *tb = nullptr;
 	uint32_t tb_size = 0;
 	bool texram_full = true;
-	struct GV { float clip[4], view[3], normal[3], misc[4], lodbase; uint32_t draw; };
+	struct GV { float clip[4], view[3], normal[3], misc[4], lodbase; uint32_t draw, quad; };
 	std::vector<GV> verts;
+	struct GQuad { float corner[4][4], a[4][12]; };   // (as the shader's quads: x, y, 1/w; the attributes over w)
+	std::vector<GQuad> quads;
 	void free_targets();
 	bool make_targets(int w, int h, int ss);
 	bool ensure_buffer(SDL_GPUBuffer *&b, uint32_t &size, uint32_t need, SDL_GPUBufferUsageFlags usage);

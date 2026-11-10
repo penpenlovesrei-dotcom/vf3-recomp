@@ -1,0 +1,229 @@
+// Play as Dural's patches for each program known (profile.h's DuralPatch, Model3::set_dural).
+#include "profile.h"
+
+namespace m3 {
+
+namespace {
+
+// Play as Dural's patches (Model3::set_dural). Revision D's, found for issue #12 (Dural playable):
+// - the crash: the dojo's (stage 14, the byte at 0x10201C) extra model. The routine at 0x49878 takes a share of the
+//   pool 0xA0000-0xE0000 for it (bl 0x3B25C: the old top, or -1 and cr0 "less" when it doesn't fit) and copies table
+//   entry 0x1A90 (0xD7B8 bytes) there (bl 0x3B2E0) without looking. Akira vs Kage there leaves 0xCBB4 bytes free;
+//   Dural's 17 extra pieces (0x44430) take 0xE334, so the share fails and the copy writes from 0xFFFFFFFF up, over
+//   the program at RAM 0 (0440004B at 0x18BC, frame 3254 of the issue's run). Now the share is checked, in as many
+//   instructions as before (the stack frame's two addi r1 become one, so the bl 0x3B2E0 stays at 0x498C8 and all the
+//   routine leaves in memory and registers is as it was): after the share, blt to dead words after 0x49634's blr
+//   (0x49648-0x49650, zeros nothing branches to), which set the object's state to the blr at 0x498FC (what every
+//   other stage's object gets) and join the routine's end. Nothing is copied: Dural on the dojo goes without that
+//   model (with Akira there it's never drawn either: the same pictures with it left out). Without Dural the share
+//   never fails: the same state every frame as without the patch (vf3run --state, the program's words aside).
+// - her portrait: the select's big portrait is a 3D head. On a cursor move 0x55E68 loads the list of models and
+//   textures at 0x7DE92[fighter] (her ids 9 and 22) and draws what the tables at 0x77160 and 0x77404 name: her own
+//   head, 0x0095. But her lists are copies of Shun's (0x7DB80, 0x7DDC4), so it isn't loaded (the cyan box). The pair
+//   table's own entry for her (0x77184: 0x0095 then the lists' end) makes a list of one: her head shows. Player 2's
+//   side shows her second costume (id 22), whose head is 0x10AF, the gold one (0x0095 there drew nothing): the
+//   program's FFFF 10AF FFFF at 0x77608 holds the list [0x10AF] at 0x7760A (both are also the per-fighter
+//   sequences of heads the select draws, 0x77650[9] and [22]: 0x774FE and 0x7760A).
+// - her chrome: those heads are made to be environment mapped. A fight remakes their texture coordinates every frame
+//   (her object at 0x444C0: matrix stack push 0x2C20, view times the bone, the translation times [0x1514] and the
+//   third column negated, then 0x450F8(model in RAM, words), which writes each vertex's UV from its normal and the
+//   view, and 0x3B454 to send it to the polygon RAM); the select draws them as stored, the UVs that fit no view (the
+//   "teeth"). Now the select's three head draws (0x2E1AC, 0x2E050 and 0x2E0D8: addi r3,rN,0 before bl 0x207B8) go
+//   through stubs in the erased ROM after the program's data (0x9F000-0x9F0EC: FFFFFFFF, nothing refers to it), which
+//   for 0x0095 or 0x10AF only: copy the head from the ROM once into unused RAM (0x7E0000 or 0x7E4000, above the 2 MB
+//   the game uses; 0x3B2E0, marked at +0x3FF8), find its polygon RAM place in the select's load lists (0x5522C), do as
+//   the fight does with the select's matrix (the portrait's camera and turn) and write the words to the polygon RAM.
+//   Her reflection (the corridor picture her textures upload, in her costume's row of the portraits' slot) can be
+//   overwritten when she's held from the select's start (1P: the hidden right side's Akira, id 0, loads into the same
+//   row a few frames after hers): when the texture loader (0x13C800) is idle and its last load was another
+//   fighter's in her row, 0x46 of her side's select object asks for hers again (once). Every other fighter's draw
+//   runs 6 more instructions, the same pictures.
+// - her reflection's place (issue #23): 0x450F8 puts her pieces' texture at 0x126460's place (sheet 1's (256,0))
+//   for id 9 and at 0x126468's ((256,256)) for any other, so for 22, her second costume: by her costume. But her
+//   picture is uploaded by side (the loader's request at 0x2CC40 takes the side, byte 4 of the side's object, at
+//   0x13C828): 1P's row (256,0), 2P's (256,256). They agree for 1P's 9 and 2P's 22 (and the arcade's boss, 9 on the
+//   1P side, 22 on the 2P side); with Start held on the pick (her second costume on 1P: gold 1P, so chrome 2P) or a
+//   lone 1P in gold, each side drew the other row: the other Dural's picture, or the CPU's portrait's (another
+//   fighter's face and hair in her legs, the select's gold head 1P a face). Now for 9 and 22 the place is her side's
+//   (0x451C8-0x451E0 and 0x9F144-0x9F150: id 22 joins 9's test, then the side picks 0x126460 or 0x126468): the
+//   same place as before for 1P's 9 and 2P's 22, and nothing changes for another fighter (or the dojo's model, which
+//   goes through 0x450F8 too). Team Battle's own 0x4A650 already picks it by side (lbz r3,4(r14): Sega's fix), so
+//   its patches stay as they were.
+// - two Durals at once (issue #23 again): 0x444C0 redoes her reflection in two halves, a frame each: the byte at
+//   -0x5F94(r13) is flipped on each call and picks the half (0x4450C: bne 0x44584, the 6 pieces from 0x2C on and the
+//   shared ones after; else the first 11). It's one byte for the game, not hers: with two Durals it's flipped twice a
+//   frame, so the first drawn always redid the same half and the second the other, and each kept the other half's
+//   texture coordinates and place as left (the other picture, stripes: her legs bronze while both are on screen; with
+//   one off screen, at a win, the halves took turns again and drew right). Now the half is the frame counter's
+//   (0x100070) low bit xor her side (0x4450C: b 0x9F154; 0x9F154-0x9F170), so each takes turns, the two on opposite
+//   halves (the same work a frame as before); the byte is still flipped. Team Battle's at 0x4999C (+0x5490), the same.
+//   That's the chrome one (her first costume, 9). The gold one (22) has her own, 0x448E8, which reads the same byte
+//   and flips it too unless 1P's fighter (-0x5EF8(r13), +0x70) is 9: Sega's way for the arcade's chrome 1P, so the
+//   byte flipped once a frame. With the gold one on 1P (22) both flip it, so the gold one's half never changed either
+//   (the reporter's: only gold 1P and chrome 2P is wrong). Her half now the same way (0x44944: b 0x9F174;
+//   0x9F174-0x9F190), whoever's on 1P; Team Battle's at 0x49DD4, the same.
+// - her spot on the select: the cursor's routine (0x2C7C4) keeps the column (r17, 0x45 of the player's select object
+//   0x108000 + 0x80 * player) in 0-5, wrapping, and reads the fighter from the grid's rows (0x70400: 0x70408 and
+//   0x7040F), whose seventh byte is already 9, Dural, in both rows. Now the column goes to 6: right from the sixth
+//   (cmpwi r17,5 at 0x2C8A8 -> 6) and left from the first (li r17,5 at 0x2C8C4 -> 6) reach her: right from Kage (the
+//   top row's last) and left from Akira to Dural, right from Dural to Akira, left from Dural to Kage; up and down from
+//   her keep her (the bottom row's seventh is Dural too: right from Taka, left from Sarah). Both players, from the
+//   game's own inputs (so a save state and a rollback have it). The cursor's frame and marker are the game's, drawn a
+//   column on (off the 4:3 picture but its first 36 pixels); the host draws her spot's picture
+//   (src/video/dural_cell.cpp).
+// - her profile: the select's text beside the portrait is a picture per fighter (the tile generator's 0x3F-0x4B, in
+//   alphabetical order: 0x3F Akira ... 0x4A Wolf, 0x4B Dural: "Name : Dural, Country : Unknown" and so on), picked
+//   by the byte table at 0x7366C by fighter (0x5474); hers says 0x3F, Akira's: now 0x4B, her own.
+// Team Battle's: the same code moved (matched word for word, branches and data addresses aside); its tables below are
+// Revision D's with each address and branch moved, each word checked against Team Battle's own: the cursor's routine
+// +0x3E08, the head draws +0x4478, the dojo's routine +0x5680, the loads +0x4E10, the UV writer +0x5490 (its last
+// store at 0x4AB84), the load lists' search +0x5638, the matrix stack +0x5A0, the draw call 0x207B8 +0x315C, the grid
+// +0x68C0, the profiles' table +0x68F8, the head sequences +0x6B18, the portraits' lists +0x60D0; RAM, the erased ROM
+// (from 0x8C99C) and her pictures the same.
+
+const uint32_t REV_D_KNOWN[][2] = {
+	{ 0x49878, 0x886DA01C }, { 0x4987C, 0x2803000E }, { 0x49880, 0x41820014 }, { 0x49888, 0x300098FC },
+	{ 0x49898, 0x7C0802A6 }, { 0x498C0, 0x7C641B78 }, { 0x498C8, 0x4BFF1A19 }, { 0x498D4, 0x900F0000 },
+	{ 0x498DC, 0x30009A08 }, { 0x498E4, 0xBA010000 }, { 0x498E8, 0x38210040 }, { 0x498EC, 0x80010000 },
+	{ 0x498FC, 0x4E800020 }, { 0x49A08, 0x4E800020 }, { 0x49634, 0x4E800020 }, { 0x49644, 0x4BFFFFF4 },
+	{ 0x49660, 0x3821FFF0 }, { 0x3B294, 0x3860FFFF }, { 0x3B29C, 0x2C030000 }, { 0x7DEB2, 0x0007DB80 },
+	{ 0x7DEE6, 0x0007DDC4 }, { 0x77184, 0x0095FFFF }, { 0x77608, 0xFFFF10AF }, { 0x7760C, 0xFFFF122A },
+	{ 0x77414, 0x10880095 }, { 0x77430, 0x10AF122A }, { 0x774FC, 0xFFFF0095 }, { 0x2E1B0, 0x4BFF2609 },
+	{ 0x2E054, 0x4BFF2765 }, { 0x2E0DC, 0x4BFF26DD }, { 0x2E12C, 0x3821FFF0 }, { 0x2E00C, 0x3821FFF0 },
+	{ 0x2C20, 0xD681FFD0 }, { 0x2C54, 0xC2810000 }, { 0x3B2E0, 0x3821FFF0 }, { 0x5522C, 0x3CC00014 },
+	{ 0x450F8, 0x3821FFF0 }, { 0x45518, 0x7CD8852C }, { 0x1514, 0x45000000 }, { 0x7366C, 0x3F414743 },
+	{ 0x2C8B4, 0x5660C001 }, { 0x2C8C8, 0x9A4C0044 }, { 0x2C8A4, 0x3A310001 }, { 0x2C8BC, 0x3631FFFF },
+	{ 0x70408, 0x00060407 }, { 0x7040C, 0x05030902 },
+};
+const uint32_t REV_D_PATCH[][3] = {
+	{ 0x49894, 0x3821FFF0, 0x3821FFB0 }, { 0x4989C, 0x90010000, 0x90010040 }, { 0x498A0, 0x3821FFC0, 0xBE010000 },
+	{ 0x498A4, 0xBE010000, 0x7E138378 }, { 0x498A8, 0x7E138378, 0x3A201A90 }, { 0x498AC, 0x3A201A90, 0xB2330038 },
+	{ 0x498B0, 0xB2330038, 0x7E238B78 }, { 0x498B4, 0x7E238B78, 0x4BFF19A9 }, { 0x498B8, 0x4BFF19A5, 0x90730058 },
+	{ 0x498BC, 0x90730058, 0x4180FD8C }, { 0x49648, 0x00000000, 0x3C000005 }, { 0x4964C, 0x00000000, 0x300098FC },
+	{ 0x49650, 0x00000000, 0x48000284 }, { 0x7DEB6, 0x0007DB80, 0x00077184 }, { 0x7DEEA, 0x0007DDC4, 0x0007760A },
+	{ 0x2E1AC, 0x38650000, 0x48070E54 }, { 0x2E050, 0x38650000, 0x48070FBC }, { 0x2E0D8, 0x38660000, 0x48070F40 },
+	{ 0x9F000, 0xFFFFFFFF, 0x38650000 }, { 0x9F004, 0xFFFFFFFF, 0x48000021 }, { 0x9F008, 0xFFFFFFFF, 0x4BF8F1A8 },
+	{ 0x9F00C, 0xFFFFFFFF, 0x38650000 }, { 0x9F010, 0xFFFFFFFF, 0x48000015 }, { 0x9F014, 0xFFFFFFFF, 0x4BF8F040 },
+	{ 0x9F018, 0xFFFFFFFF, 0x38660000 }, { 0x9F01C, 0xFFFFFFFF, 0x48000009 }, { 0x9F020, 0xFFFFFFFF, 0x4BF8F0BC },
+	{ 0x9F024, 0xFFFFFFFF, 0x28030095 }, { 0x9F028, 0xFFFFFFFF, 0x4182000C }, { 0x9F02C, 0xFFFFFFFF, 0x280310AF },
+	{ 0x9F030, 0xFFFFFFFF, 0x4C820020 }, { 0x9F034, 0xFFFFFFFF, 0x9421FFC0 }, { 0x9F038, 0xFFFFFFFF, 0x7C0802A6 },
+	{ 0x9F03C, 0xFFFFFFFF, 0x9001003C }, { 0x9F040, 0xFFFFFFFF, 0xBF210008 }, { 0x9F044, 0xFFFFFFFF, 0x7C7E1B78 },
+	{ 0x9F048, 0xFFFFFFFF, 0x3CC00014 }, { 0x9F04C, 0xFFFFFFFF, 0x38C6C800 }, { 0x9F050, 0xFFFFFFFF, 0x80E60000 },
+	{ 0x9F054, 0xFFFFFFFF, 0x28070000 }, { 0x9F058, 0xFFFFFFFF, 0x40820044 }, { 0x9F05C, 0xFFFFFFFF, 0x80E60004 },
+	{ 0x9F060, 0xFFFFFFFF, 0x890E0070 }, { 0x9F064, 0xFFFFFFFF, 0x7C074000 }, { 0x9F068, 0xFFFFFFFF, 0x41820034 },
+	{ 0x9F06C, 0xFFFFFFFF, 0x39200000 }, { 0x9F070, 0xFFFFFFFF, 0x2807000D }, { 0x9F074, 0xFFFFFFFF, 0x41800008 },
+	{ 0x9F078, 0xFFFFFFFF, 0x39200001 }, { 0x9F07C, 0xFFFFFFFF, 0x39400000 }, { 0x9F080, 0xFFFFFFFF, 0x2808000D },
+	{ 0x9F084, 0xFFFFFFFF, 0x41800008 }, { 0x9F088, 0xFFFFFFFF, 0x39400001 }, { 0x9F08C, 0xFFFFFFFF, 0x7C095000 },
+	{ 0x9F090, 0xFFFFFFFF, 0x4082000C }, { 0x9F094, 0xFFFFFFFF, 0x38000001 }, { 0x9F098, 0xFFFFFFFF, 0x981D0046 },
+	{ 0x9F09C, 0xFFFFFFFF, 0x3FE0007E }, { 0x9F0A0, 0xFFFFFFFF, 0x281E0095 }, { 0x9F0A4, 0xFFFFFFFF, 0x41820008 },
+	{ 0x9F0A8, 0xFFFFFFFF, 0x3BFF4000 }, { 0x9F0AC, 0xFFFFFFFF, 0x807F3FF8 }, { 0x9F0B0, 0xFFFFFFFF, 0x7C03F000 },
+	{ 0x9F0B4, 0xFFFFFFFF, 0x41820014 }, { 0x9F0B8, 0xFFFFFFFF, 0x7FC3F378 }, { 0x9F0BC, 0xFFFFFFFF, 0x7FE4FB78 },
+	{ 0x9F0C0, 0xFFFFFFFF, 0x4BF9C221 }, { 0x9F0C4, 0xFFFFFFFF, 0x93DF3FF8 }, { 0x9F0C8, 0xFFFFFFFF, 0x7FC3F378 },
+	{ 0x9F0CC, 0xFFFFFFFF, 0x4BFB6161 }, { 0x9F0D0, 0xFFFFFFFF, 0x4082005C }, { 0x9F0D4, 0xFFFFFFFF, 0x7CBD2B78 },
+	{ 0x9F0D8, 0xFFFFFFFF, 0x7C9C2378 }, { 0x9F0DC, 0xFFFFFFFF, 0x4BF63B45 }, { 0x9F0E0, 0xFFFFFFFF, 0xC0001514 },
+	{ 0x9F0E4, 0xFFFFFFFF, 0xEFBD0032 }, { 0x9F0E8, 0xFFFFFFFF, 0xEFDE0032 }, { 0x9F0EC, 0xFFFFFFFF, 0xEFFF0032 },
+	{ 0x9F0F0, 0xFFFFFFFF, 0xFF40D050 }, { 0x9F0F4, 0xFFFFFFFF, 0xFF60D850 }, { 0x9F0F8, 0xFFFFFFFF, 0xFF80E050 },
+	{ 0x9F0FC, 0xFFFFFFFF, 0x7FE3FB78 }, { 0x9F100, 0xFFFFFFFF, 0x7F84E378 }, { 0x9F104, 0xFFFFFFFF, 0x4BFA5FF5 },
+	{ 0x9F108, 0xFFFFFFFF, 0x4BF63B4D }, { 0x9F10C, 0xFFFFFFFF, 0x7F8903A6 }, { 0x9F110, 0xFFFFFFFF, 0x38DFFFFC },
+	{ 0x9F114, 0xFFFFFFFF, 0x57A7103A }, { 0x9F118, 0xFFFFFFFF, 0x64E79800 }, { 0x9F11C, 0xFFFFFFFF, 0x38E7FFFC },
+	{ 0x9F120, 0xFFFFFFFF, 0x85060004 }, { 0x9F124, 0xFFFFFFFF, 0x95070004 }, { 0x9F128, 0xFFFFFFFF, 0x4200FFF8 },
+	{ 0x9F12C, 0xFFFFFFFF, 0x7FC3F378 }, { 0x9F130, 0xFFFFFFFF, 0xBB210008 }, { 0x9F134, 0xFFFFFFFF, 0x8001003C },
+	{ 0x9F138, 0xFFFFFFFF, 0x7C0803A6 }, { 0x9F13C, 0xFFFFFFFF, 0x38210040 }, { 0x9F140, 0xFFFFFFFF, 0x4E800020 },
+	{ 0x2C8A8, 0x2C110005, 0x2C110006 }, { 0x2C8C4, 0x3A200005, 0x3A200006 }, { 0x73674, 0x483F4540, 0x484B4540 },
+	{ 0x451C8, 0x40820010, 0x2C820016 }, { 0x451CC, 0x3F600012, 0x4C423382 }, { 0x451D0, 0x3B7B6460, 0x3F600012 },
+	{ 0x451D4, 0x48000018, 0x3B7B6468 }, { 0x451D8, 0x3F600012, 0x40820014 }, { 0x451DC, 0x3B7B6468, 0x880E0004 },
+	{ 0x451E0, 0x4800000C, 0x48059F64 }, { 0x9F144, 0xFFFFFFFF, 0x2C000000 }, { 0x9F148, 0xFFFFFFFF, 0x40820008 },
+	{ 0x9F14C, 0xFFFFFFFF, 0x3B7BFFF8 }, { 0x9F150, 0xFFFFFFFF, 0x4BFA609C },
+	{ 0x4450C, 0x40A20078, 0x4805AC48 }, { 0x9F154, 0xFFFFFFFF, 0x3C600010 }, { 0x9F158, 0xFFFFFFFF, 0x80630070 },
+	{ 0x9F15C, 0xFFFFFFFF, 0x888E0004 }, { 0x9F160, 0xFFFFFFFF, 0x7C632278 }, { 0x9F164, 0xFFFFFFFF, 0x70630001 },
+	{ 0x9F168, 0xFFFFFFFF, 0x41820008 }, { 0x9F16C, 0xFFFFFFFF, 0x4BFA5418 }, { 0x9F170, 0xFFFFFFFF, 0x4BFA53A0 },
+	{ 0x44944, 0x41820078, 0x4805A830 }, { 0x9F174, 0xFFFFFFFF, 0x3C600010 }, { 0x9F178, 0xFFFFFFFF, 0x80630070 },
+	{ 0x9F17C, 0xFFFFFFFF, 0x888E0004 }, { 0x9F180, 0xFFFFFFFF, 0x7C632278 }, { 0x9F184, 0xFFFFFFFF, 0x70630001 },
+	{ 0x9F188, 0xFFFFFFFF, 0x41820008 }, { 0x9F18C, 0xFFFFFFFF, 0x4BFA5830 }, { 0x9F190, 0xFFFFFFFF, 0x4BFA57B8 },
+};
+
+const uint32_t TB_KNOWN[][2] = {
+	{ 0x4EEF8, 0x886DA01C }, { 0x4EEFC, 0x2803000E }, { 0x4EF00, 0x41820014 }, { 0x4EF08, 0x3000EF7C },
+	{ 0x4EF18, 0x7C0802A6 }, { 0x4EF40, 0x7C641B78 }, { 0x4EF48, 0x4BFF11A9 }, { 0x4EF54, 0x900F0000 },
+	{ 0x4EF5C, 0x3000F088 }, { 0x4EF64, 0xBA010000 }, { 0x4EF68, 0x38210040 }, { 0x4EF6C, 0x80010000 },
+	{ 0x4EF7C, 0x4E800020 }, { 0x4F088, 0x4E800020 }, { 0x4ECB4, 0x4E800020 }, { 0x4ECC4, 0x4BFFFFF4 },
+	{ 0x4ECE0, 0x3821FFF0 }, { 0x400A4, 0x3860FFFF }, { 0x400AC, 0x2C030000 }, { 0x83F82, 0x00083C50 },
+	{ 0x83FB6, 0x00083E94 }, { 0x7DC9C, 0x0095FFFF }, { 0x7E120, 0xFFFF10AF }, { 0x7E124, 0xFFFF122A },
+	{ 0x7DF2C, 0x10880095 }, { 0x7DF48, 0x10AF122A }, { 0x7E014, 0xFFFF0095 }, { 0x32628, 0x4BFF12ED },
+	{ 0x324CC, 0x4BFF1449 }, { 0x32554, 0x4BFF13C1 }, { 0x325A4, 0x3821FFF0 }, { 0x32484, 0x3821FFF0 },
+	{ 0x31C0, 0xD681FFD0 }, { 0x31F4, 0xC2810000 }, { 0x400F0, 0x3821FFF0 }, { 0x5A864, 0x3CC00014 },
+	{ 0x4A588, 0x3821FFF0 }, { 0x4AB84, 0x7CD8852C }, { 0x1514, 0x45000000 }, { 0x79F64, 0x3F414743 },
+	{ 0x306BC, 0x5660C001 }, { 0x306D0, 0x9A4C0044 }, { 0x306AC, 0x3A310001 }, { 0x306C4, 0x3631FFFF },
+	{ 0x76CC8, 0x00060407 }, { 0x76CCC, 0x05030902 },
+};
+const uint32_t TB_PATCH[][3] = {
+	{ 0x4EF14, 0x3821FFF0, 0x3821FFB0 }, { 0x4EF1C, 0x90010000, 0x90010040 }, { 0x4EF20, 0x3821FFC0, 0xBE010000 },
+	{ 0x4EF24, 0xBE010000, 0x7E138378 }, { 0x4EF28, 0x7E138378, 0x3A201A90 }, { 0x4EF2C, 0x3A201A90, 0xB2330038 },
+	{ 0x4EF30, 0xB2330038, 0x7E238B78 }, { 0x4EF34, 0x7E238B78, 0x4BFF1139 }, { 0x4EF38, 0x4BFF1135, 0x90730058 },
+	{ 0x4EF3C, 0x90730058, 0x4180FD8C }, { 0x4ECC8, 0x00000000, 0x3C000005 }, { 0x4ECCC, 0x00000000, 0x3000EF7C },
+	{ 0x4ECD0, 0x00000000, 0x48000284 }, { 0x83F86, 0x00083C50, 0x0007DC9C }, { 0x83FBA, 0x00083E94, 0x0007E122 },
+	{ 0x32624, 0x38650000, 0x4806C9DC }, { 0x324C8, 0x38650000, 0x4806CB44 }, { 0x32550, 0x38660000, 0x4806CAC8 },
+	{ 0x9F000, 0xFFFFFFFF, 0x38650000 }, { 0x9F004, 0xFFFFFFFF, 0x48000021 }, { 0x9F008, 0xFFFFFFFF, 0x4BF93620 },
+	{ 0x9F00C, 0xFFFFFFFF, 0x38650000 }, { 0x9F010, 0xFFFFFFFF, 0x48000015 }, { 0x9F014, 0xFFFFFFFF, 0x4BF934B8 },
+	{ 0x9F018, 0xFFFFFFFF, 0x38660000 }, { 0x9F01C, 0xFFFFFFFF, 0x48000009 }, { 0x9F020, 0xFFFFFFFF, 0x4BF93534 },
+	{ 0x9F024, 0xFFFFFFFF, 0x28030095 }, { 0x9F028, 0xFFFFFFFF, 0x4182000C }, { 0x9F02C, 0xFFFFFFFF, 0x280310AF },
+	{ 0x9F030, 0xFFFFFFFF, 0x4C820020 }, { 0x9F034, 0xFFFFFFFF, 0x9421FFC0 }, { 0x9F038, 0xFFFFFFFF, 0x7C0802A6 },
+	{ 0x9F03C, 0xFFFFFFFF, 0x9001003C }, { 0x9F040, 0xFFFFFFFF, 0xBF210008 }, { 0x9F044, 0xFFFFFFFF, 0x7C7E1B78 },
+	{ 0x9F048, 0xFFFFFFFF, 0x3CC00014 }, { 0x9F04C, 0xFFFFFFFF, 0x38C6C800 }, { 0x9F050, 0xFFFFFFFF, 0x80E60000 },
+	{ 0x9F054, 0xFFFFFFFF, 0x28070000 }, { 0x9F058, 0xFFFFFFFF, 0x40820044 }, { 0x9F05C, 0xFFFFFFFF, 0x80E60004 },
+	{ 0x9F060, 0xFFFFFFFF, 0x890E0070 }, { 0x9F064, 0xFFFFFFFF, 0x7C074000 }, { 0x9F068, 0xFFFFFFFF, 0x41820034 },
+	{ 0x9F06C, 0xFFFFFFFF, 0x39200000 }, { 0x9F070, 0xFFFFFFFF, 0x2807000D }, { 0x9F074, 0xFFFFFFFF, 0x41800008 },
+	{ 0x9F078, 0xFFFFFFFF, 0x39200001 }, { 0x9F07C, 0xFFFFFFFF, 0x39400000 }, { 0x9F080, 0xFFFFFFFF, 0x2808000D },
+	{ 0x9F084, 0xFFFFFFFF, 0x41800008 }, { 0x9F088, 0xFFFFFFFF, 0x39400001 }, { 0x9F08C, 0xFFFFFFFF, 0x7C095000 },
+	{ 0x9F090, 0xFFFFFFFF, 0x4082000C }, { 0x9F094, 0xFFFFFFFF, 0x38000001 }, { 0x9F098, 0xFFFFFFFF, 0x981D0046 },
+	{ 0x9F09C, 0xFFFFFFFF, 0x3FE0007E }, { 0x9F0A0, 0xFFFFFFFF, 0x281E0095 }, { 0x9F0A4, 0xFFFFFFFF, 0x41820008 },
+	{ 0x9F0A8, 0xFFFFFFFF, 0x3BFF4000 }, { 0x9F0AC, 0xFFFFFFFF, 0x807F3FF8 }, { 0x9F0B0, 0xFFFFFFFF, 0x7C03F000 },
+	{ 0x9F0B4, 0xFFFFFFFF, 0x41820014 }, { 0x9F0B8, 0xFFFFFFFF, 0x7FC3F378 }, { 0x9F0BC, 0xFFFFFFFF, 0x7FE4FB78 },
+	{ 0x9F0C0, 0xFFFFFFFF, 0x4BFA1031 }, { 0x9F0C4, 0xFFFFFFFF, 0x93DF3FF8 }, { 0x9F0C8, 0xFFFFFFFF, 0x7FC3F378 },
+	{ 0x9F0CC, 0xFFFFFFFF, 0x4BFBB799 }, { 0x9F0D0, 0xFFFFFFFF, 0x4082005C }, { 0x9F0D4, 0xFFFFFFFF, 0x7CBD2B78 },
+	{ 0x9F0D8, 0xFFFFFFFF, 0x7C9C2378 }, { 0x9F0DC, 0xFFFFFFFF, 0x4BF640E5 }, { 0x9F0E0, 0xFFFFFFFF, 0xC0001514 },
+	{ 0x9F0E4, 0xFFFFFFFF, 0xEFBD0032 }, { 0x9F0E8, 0xFFFFFFFF, 0xEFDE0032 }, { 0x9F0EC, 0xFFFFFFFF, 0xEFFF0032 },
+	{ 0x9F0F0, 0xFFFFFFFF, 0xFF40D050 }, { 0x9F0F4, 0xFFFFFFFF, 0xFF60D850 }, { 0x9F0F8, 0xFFFFFFFF, 0xFF80E050 },
+	{ 0x9F0FC, 0xFFFFFFFF, 0x7FE3FB78 }, { 0x9F100, 0xFFFFFFFF, 0x7F84E378 }, { 0x9F104, 0xFFFFFFFF, 0x4BFAB485 },
+	{ 0x9F108, 0xFFFFFFFF, 0x4BF640ED }, { 0x9F10C, 0xFFFFFFFF, 0x7F8903A6 }, { 0x9F110, 0xFFFFFFFF, 0x38DFFFFC },
+	{ 0x9F114, 0xFFFFFFFF, 0x57A7103A }, { 0x9F118, 0xFFFFFFFF, 0x64E79800 }, { 0x9F11C, 0xFFFFFFFF, 0x38E7FFFC },
+	{ 0x9F120, 0xFFFFFFFF, 0x85060004 }, { 0x9F124, 0xFFFFFFFF, 0x95070004 }, { 0x9F128, 0xFFFFFFFF, 0x4200FFF8 },
+	{ 0x9F12C, 0xFFFFFFFF, 0x7FC3F378 }, { 0x9F130, 0xFFFFFFFF, 0xBB210008 }, { 0x9F134, 0xFFFFFFFF, 0x8001003C },
+	{ 0x9F138, 0xFFFFFFFF, 0x7C0803A6 }, { 0x9F13C, 0xFFFFFFFF, 0x38210040 }, { 0x9F140, 0xFFFFFFFF, 0x4E800020 },
+	{ 0x306B0, 0x2C110005, 0x2C110006 }, { 0x306CC, 0x3A200005, 0x3A200006 }, { 0x79F6C, 0x483F4540, 0x484B4540 },
+	{ 0x4999C, 0x40A20078, 0x480557B8 }, { 0x9F154, 0xFFFFFFFF, 0x3C600010 }, { 0x9F158, 0xFFFFFFFF, 0x80630070 },
+	{ 0x9F15C, 0xFFFFFFFF, 0x888E0004 }, { 0x9F160, 0xFFFFFFFF, 0x7C632278 }, { 0x9F164, 0xFFFFFFFF, 0x70630001 },
+	{ 0x9F168, 0xFFFFFFFF, 0x41820008 }, { 0x9F16C, 0xFFFFFFFF, 0x4BFAA8A8 }, { 0x9F170, 0xFFFFFFFF, 0x4BFAA830 },
+	{ 0x49DD4, 0x41820078, 0x480553A0 }, { 0x9F174, 0xFFFFFFFF, 0x3C600010 }, { 0x9F178, 0xFFFFFFFF, 0x80630070 },
+	{ 0x9F17C, 0xFFFFFFFF, 0x888E0004 }, { 0x9F180, 0xFFFFFFFF, 0x7C632278 }, { 0x9F184, 0xFFFFFFFF, 0x70630001 },
+	{ 0x9F188, 0xFFFFFFFF, 0x41820008 }, { 0x9F18C, 0xFFFFFFFF, 0x4BFAACC0 }, { 0x9F190, 0xFFFFFFFF, 0x4BFAAC48 },
+};
+
+// The arcade's Dural boss (offline only: a 1P game vs the CPU, never online). When the CPU's next opponent is Dural
+// (index 9 of the order), the routine at 0x2BDF8 picks her stage from the list at 0x7702C[the player's fighter]
+// (16 bytes, a random number & 15): most fighters' is 0x770EE (the Dural versions of stages 1, 2, 7, 8, 9, 11, 12, 13,
+// 14, 15), but Jeffry's, Aoi's and Dural's own (4, 9, 11 and their second costumes 17, 22, 24) are 0x77094, sixteen
+// times stage 31 (Taka-Arashi's stage's Dural version). The game's choice for those it could pick; she had no reason
+// to be among them, so for her (9, 22) the list is most fighters' (each stage played Dural against Dural, CPU and
+// GPU: none freezes). Team Battle's 1 vs 1 has the same lists at 0x7DB14 (0x7DB7C, 0x7DBD6), and its 3 vs 3 takes
+// the least of the team's stage counts (bytes at 0x7DBF0 by fighter: hers 1) from the list at 0x7DC0A: hers made 10.
+const uint32_t REV_D_OFFLINE[][3] = { { 0x77050, 0x00077094, 0x000770EE }, { 0x77084, 0x00077094, 0x000770EE } };
+const uint32_t TB_OFFLINE[][3] = {
+	{ 0x7DB38, 0x0007DB7C, 0x0007DBD6 }, { 0x7DB6C, 0x0007DB7C, 0x0007DBD6 },
+	{ 0x7DBF8, 0x0A010A01, 0x0A0A0A01 }, { 0x7DC04, 0x0A0A0109, 0x0A0A0A09 },
+};
+
+// The words issue #23's fix added at the end of each patch list (two Durals' halves: 0x4450C and 0x44944, Team
+// Battle's 0x4999C and 0x49DD4, with their code at 0x9F154-0x9F190): without them, v0.1.16-alpha's set (`legacy`)
+constexpr size_t ISSUE23_WORDS = 18;
+
+} // namespace
+
+const DuralPatch REV_D_DURAL = { REV_D_KNOWN, sizeof REV_D_KNOWN / sizeof REV_D_KNOWN[0], REV_D_PATCH, sizeof REV_D_PATCH / sizeof REV_D_PATCH[0],
+	REV_D_OFFLINE, sizeof REV_D_OFFLINE / sizeof REV_D_OFFLINE[0],
+	0x7E0000, 0x7E8000, 0x4C, 0xFFB30004, 0xFF300000, 7, sizeof REV_D_PATCH / sizeof REV_D_PATCH[0] - ISSUE23_WORDS };
+const DuralPatch TB_DURAL = { TB_KNOWN, sizeof TB_KNOWN / sizeof TB_KNOWN[0], TB_PATCH, sizeof TB_PATCH / sizeof TB_PATCH[0],
+	TB_OFFLINE, sizeof TB_OFFLINE / sizeof TB_OFFLINE[0],
+	0x7E0000, 0x7E8000, 0x4C, 0xFFB30004, 0xFF300000, 7, sizeof TB_PATCH / sizeof TB_PATCH[0] - ISSUE23_WORDS };
+
+} // namespace m3

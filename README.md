@@ -15,7 +15,7 @@ pictures a second and the 3D on the GPU.</b></p>
 <p align="center">
   <a href="https://vf3-recomp.pages.dev/">Play</a> ·
   <a href="https://github.com/mr-finster/vf3-recomp/releases/latest">Download</a> ·
-  <a href="https://youtu.be/ZdoFNnHOANA">Trailer</a> ·
+  <a href="https://youtu.be/hqvoalzgnNU">Trailer</a> ·
   <a href="#status">Status</a> ·
   <a href="#controls">Controls</a> ·
   <a href="https://github.com/mr-finster/vf3-recomp/issues">Report a bug</a>
@@ -26,7 +26,7 @@ pictures a second and the 3D on the GPU.</b></p>
 </p>
 
 <p align="center">
-  <a href="https://youtu.be/ZdoFNnHOANA"><img src="https://img.youtube.com/vi/ZdoFNnHOANA/hqdefault.jpg" alt="Watch the trailer" width="560"></a>
+  <a href="https://youtu.be/hqvoalzgnNU"><img src="https://img.youtube.com/vi/hqvoalzgnNU/hqdefault.jpg" alt="Watch the trailer" width="560"></a>
   <br><sub>Trailer (click to watch on YouTube)</sub>
 </p>
 
@@ -53,19 +53,20 @@ the hardware; none of its code is in this one.
 | --- | --- |
 | The PowerPC program, recompiled to native code | Working: identical to the interpreter on every frame checked |
 | Board, tile generator, Real3D (CPU renderer) | Working: the pictures match the reference's, but for the differences below |
-| The 3D on the GPU (Display > 3D renderer: Auto, GPU or CPU) | Working on Metal (Apple M4 Max: 120 pictures a second at 4x and 6x) and Vulkan (checked against the CPU's picture as the game starts); Direct3D 12 not yet tried on real hardware. Direct3D 12 that draws nothing falls back to Vulkan, and any difference or error to the CPU |
-| Sound board (68000, two SCSPs) | Working: against the reference's on the same inputs, the same loudness (0.1 dB apart on average) and balance across the bands, a little brighter above 8 kHz (MAME's SCSP, where the reference has its own) |
+| The 3D on the GPU (Display > 3D renderer: Auto, GPU or CPU) | Working on Metal (Apple M4 Max: 120 pictures a second at 4x and 6x) and Vulkan (checked against the CPU's picture as the game starts); Direct3D 12 (an RTX 3070 Laptop, #4). On Windows the GPU renderer starts on Vulkan for every card (Direct3D 12 was far slower on some AMD and NVIDIA cards), Direct3D 12 if Vulkan fails or as chosen in Display > Graphics driver. Direct3D 12 that draws nothing falls back to Vulkan, and any difference or error to the CPU |
+| Sound board (68000, two SCSPs) | Working: against the reference's on the same inputs, every song of the sound test within 0.2 dB of it in each band over the song (MAME's SCSP, with the reference's VF3 tunings: its timers, FM depth and pitch LFO depth), the voices bit-identical |
 | Render scale up to 6x, antialiasing, widescreen and ultrawide, smooth motion | Working. Widescreen: the fights see more to the sides, and the stages' backgrounds carry on from the game's own panoramas |
 | Menu, keyboard and gamepads, two players, the arcade's settings, screen filters | Working |
 | Portable mode, your own ROM folder | Working |
 | macOS, Windows, Linux / Steam Deck | macOS (Apple silicon) and the Steam Deck: the downloads working, a steady 60 pictures a second on the Deck; Windows tested under Wine; Intel Macs not yet tried (the Mac build is universal) |
-| Online play | Not yet |
+| Online play | Experimental: rollback netplay with room codes, no setup (see [Online play](#online-play-experimental)) |
+| Virtua Fighter 3 Team Battle (`vf3tb`) | Working, online too (see [Team Battle](#team-battle)) |
 
 **This is an alpha.** Please report anything that looks or plays differently from the arcade in
 [Issues](https://github.com/mr-finster/vf3-recomp/issues), with the `log.txt` from the game's data folder.
 
 Known issues: Shun's stage water is the game's own low-resolution
-2D art up close, and Direct3D 12 is untested. Virtua Fighter 3 Team Battle (`vf3tb`) isn't supported yet.
+2D art up close.
 
 Known differences from the reference's pictures: textures far away are softer (the Real3D's own mipmap level choice,
 as Supermodel's New3D documents it, where the reference build used OpenGL's).
@@ -77,6 +78,7 @@ as Supermodel's New3D documents it, where the reference build used OpenGL's).
 | macOS 11+ (Apple silicon and Intel) | `VirtuaFighter3Recomp-mac.zip` |
 | Windows 10 or 11 (64-bit) | `VirtuaFighter3Recomp-windows.zip` |
 | Linux / Steam Deck (x86-64) | `VirtuaFighter3Recomp-deck.tar.gz` |
+| Linux on ARM (ARM64: a Raspberry Pi 5; Ubuntu 22.04, Debian 12, Raspberry Pi OS bookworm or newer), unpacked and run as the x86-64 Linux one | `VirtuaFighter3Recomp-linux-arm64.tar.gz` |
 
 **Mac and Windows**
 
@@ -142,24 +144,213 @@ Change them in the menu (<kbd>Esc</kbd>, or View / Select on a pad).
 | <kbd>F12</kbd> | A screenshot of the picture (in the Screenshots folder) |
 | <kbd>Tab</kbd> (held) | As fast as it goes |
 | <kbd>F2</kbd> / <kbd>9</kbd> | The arcade's test and service buttons (in its test menu, Down and Start do too) |
+| <kbd>F4</kbd> | Free camera (see below) |
 
 Gamepads: d-pad or left stick, X guard, A punch, B kick, Y escape, LT guard + punch, RB punch + kick, LB guard + kick,
 RT all three, Start. The menu: View (tapped), L3 + R3, or the touchpad's click (View + Start too). View + LB: render
 scale; View + RB: picture shape. For Arcade play on a pad, set a Coin button in Controls.
 
+Arcade sticks the game doesn't know (DirectInput sticks such as HORI's Virtua Stick High Grade or the Astro City
+Mini) get a fighting stick's layout; Controls > Player 1 (or 2) > Set up buttons sets theirs by pressing each in turn. A
+`gamecontrollerdb.txt` (SDL's mappings) in the data folder or beside the program is read too.
+
+### Free camera
+
+Fly a camera around the fight: <kbd>F4</kbd>, on a pad View (Back / Select) + R3, or Display > Free camera. It starts
+at the game's camera; the game goes on (or stays paused with <kbd>P</kbd> while you fly), only the picture changes, and
+the HUD is hidden. Not while playing online yourself (watching a match, yes). Off at each start. The sky is the stage's own
+backdrop wherever you look (the game's map of it: on most stages it comes round four times a turn, as it does for the
+game's own camera), with the game's plain colour above and below it.
+
+| Keyboard and mouse | Pad | Does |
+| --- | --- | --- |
+| Mouse, or the arrows | Right stick | Look |
+| <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> | Left stick | Move, strafe |
+| <kbd>E</kbd> / <kbd>Space</kbd>, <kbd>Q</kbd> / <kbd>Ctrl</kbd> | RT, LT | Up, down |
+| <kbd>Shift</kbd> (x4), <kbd>Alt</kbd> (x0.25) | L3 held (x4) | Faster, slower while held |
+| Mouse wheel | LB, RB | Base speed down, up |
+| <kbd>R</kbd> | Y | Back to the game's camera |
+| <kbd>F4</kbd> | View + R3 | Leave |
+
 ## Menu
 
 - **Resume** and **Quit**.
-- **Display:** render scale (up to 6x), antialiasing (2x, 3x), the 3D renderer, picture shape (fit the window, 4:3,
-  16:10, 16:9, 21:9), background filter, smooth motion, screen filter (scanlines, CRT), Show FPS, fullscreen.
-- **Sound:** volume, and the music's and the effects' own volumes.
-- **Game:** play style (PC: no boot screen, always free play; Arcade: the boot, coins and credits, its coin settings kept for it), reset.
-- **Arcade settings:** difficulty, rounds to win, energy, demo sound, country, and the arcade's own service menu (its
-  other settings, sound test, bookkeeping). A change restarts the game.
-- **Controls:** each player's pad, keys and buttons.
+- **Display:** three pages, each shown on its row with what it's set to, and the free camera's On / Off:
+  - **Picture:** picture shape (fit the window, 4:3, 16:10, 16:9, 21:9), window size, fullscreen and (on Windows)
+    fullscreen mode, the HUD, Show FPS.
+  - **Quality:** render scale (up to 6x), antialiasing (2x, 3x), the 3D renderer and (on Windows) the graphics
+    driver, background filter, distant textures (sharp, or as the arcade's), smooth motion, V-Sync, frame limit.
+  - **Screen filter and colours:** screen filter (scanlines, CRT), CRT colours (an arcade monitor's, as
+    Supermodel's presets), brightness, gamma.
+  - **Free camera** (see [Free camera](#free-camera)).
 
-If the computer can't keep up, the game first shows only the arcade's own 57.5 pictures a second, then lowers the
-antialiasing and the render scale, and lifts them again once it can.
+  **Window size** makes the window a whole multiple of the arcade's 384 lines (1x 512 x 384 for the 4:3 picture,
+  2x 1024 x 768, up to 4x: as many as your screen holds; a wider picture shape makes it as wide as the shape), each
+  arcade line that many of your screen's: Render scale 1x with Window size 1x shows the arcade's 384 lines one to one,
+  Window size 2x with Render scale 1x doubles each of them. It's for playing in a window (fullscreen keeps it for
+  when you're back in one), sized in the window's pixels on a Mac's Retina screen too, and resizing the window by hand
+  sets it back to **Free**. The window's size, place, maximised and fullscreen are remembered from one start to the
+  next (handy for capturing it in OBS).
+  On Windows, fullscreen is a borderless window over the screen (a line taller than it, so no graphics driver takes
+  it for a game's own fullscreen): switching to fullscreen froze on AMD cards in the driver's exclusive fullscreen
+  (issue #7). **Fullscreen mode** (Windows only) switches to **Standard**, the old way, as does
+  `fullscreen_exclusive = 1` in settings.ini. A Mac (its green button too), Linux and the Steam Deck keep the system's
+  own fullscreen (`fullscreen_window = 1` gives them the borderless window).
+- **Sound:** volume, and the music's and the effects' own volumes.
+- **Game:** play style (PC: no boot screen, always free play; Arcade: the boot, coins and credits, its coin settings kept for it), reset, and **Version**: Virtua Fighter 3 or Team Battle (it asks first: the game restarts), or **Add Team Battle** while it has only one.
+- **Arcade settings:** difficulty, rounds to win, energy, stage select between two players, demo sound, country, and
+  the arcade's own service menu (its other settings, sound test, bookkeeping). A change restarts the game. Online
+  matches are always first to 3, whatever the rounds to win (vs player) here.
+  **Stage select** has the arcade's own options by name: **Off** (each two-player match on the game's next stage,
+  starting from a random one) or **Challenger** (the challenger picks the stage, so on every rematch
+  the loser picks, as Japanese arcades had it; the stage's Dural version is easiest with Menu > Cheats > Dural's stage). Team Battle also lists **Variable** and **Full**, the arcade's own, not yet known (no stage screen seen between two players).
+  **Stage select**'s Variable and Full were never seen to show a stage screen between two players. **CPU opponents'
+  order** is offline only: online never plays the computer.
+  **Debug mode** (issue #37, offline only): the arcade's hidden debug mode without its code: the CPU load, polygons, hits and damage on the screen; in a fight, P2 Guard held and P2 Start pause the game, P1 Start then runs a frame at a time, P1 Start with P2 Start held goes on.
+- **Controls:** each player's pad, keys and buttons (a key for two or three buttons at once: Button combinations, on the keys' page).
+- **Online:** a random opponent, host a match, join one, play by address, your name, input delay, the connection display (see below).
+- **Cheats:** **Dural on the select** and **Dural's stage** (see [Dural](#dural)).
+
+The settings stay as you set them, as in Virtua Fighter 1 and 2 Recomp: if the computer can't keep up at a render
+scale, choose a lower one (F5).
+
+## Team Battle
+
+Virtua Fighter 3 Team Battle (MAME's `vf3tb`, 1997), three fighters a side, plays too. Either zip works:
+
+- **Have both?** Put `vf3tb.zip` beside your `vf3.zip`. Menu > Game > **Version** switches between them (it asks
+  first: the game saves and starts again in the other). Each keeps its own rankings and arcade settings.
+- **From a command line or a launcher:** `--game vf3` or `--game tb` starts Revision D or Team Battle for that run,
+  whatever Menu > Game > Version remembers (it isn't saved: the next start without it plays the remembered one).
+- **Only `vf3.zip`?** Menu > Game > **Add Team Battle** asks for your `vf3tb.zip`, copies it beside `vf3.zip` and
+  starts Team Battle. A split `vf3tb.zip` (only Team Battle's own ROMs) works beside `vf3.zip`; MAME's full one works
+  on its own.
+- **Press Start in a fight** to change the camera: the normal view, close behind your opponent, high behind you, and
+  from above (Team Battle's own feature).
+- **1 vs 1 or 3 vs 3:** Menu > Game > **Team Battle mode** is what Start begins (hold Up as you press Start for
+  3 vs 3 instead, or Down for 1 vs 1). A player joining plays the mode already on, and the intro follows it as the
+  arcade's does (its sunset in 3 vs 3).
+- **Online:** Team Battle plays only Team Battle (and Virtua Fighter 3 only Virtua Fighter 3).
+- **The CPU's teams** are new each time you play: the game's random numbers start somewhere new at each launch,
+  as on a cabinet that's been on all day.
+
+## Dural
+
+Menu > **Cheats** > **Dural on the select**: the boss, in a 13th spot past Kage, for either player (right from Kage,
+or left from Akira; Start held for her other colours). Her own picture on the grid and her profile, in both games.
+The arcade froze with her on Akira's stage: fixed here. Changing it restarts the game.
+
+Online, Dural is on the select for both players when either of them has her on (the other just sees her spot and
+needn't pick her; said as the match starts: Dural on, yours, theirs or both), so it no longer splits players. Against
+an older version, the match plays that version's choice (Revision D's from before v0.1.15-alpha's 2 Nov update, with her older
+patches, still only meets the same version). Against v0.1.16-alpha she's on too, played that version's way on both
+sides (said as "Dural on (older version's)"): two Durals' reflection as it was there, the gold 1P / chrome 2P glitch
+fixed in v0.1.17-alpha (issue #23) only between two players of v0.1.17-alpha or later.
+
+Menu > **Cheats** > **Dural's stage** (issue #22; Off or Guard: Start stays the game's own, so in Team Battle holding Start and picking with Punch or Kick still gives a stage's VF3 version, issue #36): on the stage screen (Stage select:
+Challenger), confirm a stage with that button for its Dural version. The arcade gives it only to the picker holding
+Start at the right second of the screen's timer (a count kept since power-on decides which), so holding Start till the
+timer runs out yourself, the arcade's own trick, works only about 1 time in 17 after the first match. The cheat holds
+Start for you and makes the pick at that second, at once or up to about 12 s later. Offline it always works. Online
+it's only your inputs, so your opponent needs nothing and sees the same stage, but about a third of the picks have no
+second left for it: the stage is then the plain one (a notice says so). The arcade's stage screen never gives the
+Dural version of two stages, the cave and Aoi's river, and the cheat leaves those plain too (issue #36), but for Team
+Battle's cave: its VF3 version, which the cheat picks there, looks the same as its Dural version.
+
+## Online play (experimental)
+
+Rollback netplay, as modern fighting games have it: your own inputs show at once (after the input delay), and the
+game quietly corrects the moment your opponent's arrive. Both players need **the same online version** (every release
+from v0.1.7-online-preview on plays the others, until one changes the game: its notes will say; a build of your own
+between releases plays only the same build) and **the same
+`vf3.zip`**; it tells you if not. Matches always play the PC way, free play, with the
+host's arcade settings (rounds, difficulty, energy). The stage is the game's own next one, as on an arcade cabinet
+that's been on all day: a random one for the first match, the game's order after it (or picked: **Stage select**,
+below). Each player uses their own Player 1 controls.
+
+**Stage select** (Online > Settings): On (the default) plays the arcade's stage screen (Challenger): the challenger
+picks the stage, so on every rematch the loser does. Off plays as above. This version turns it on once for everyone,
+at its first start; turned off after that, it stays off. It no longer splits players: a match plays
+the host's choice, and so does Team Battle's 1 vs 1 or 3 vs 3 (Dural: on when either player has her on; each player
+is told the match's settings as it starts). Random and room codes meet everyone on this version whatever their
+settings, and older versions' players this one can play their way. Against an older version the match plays that version's settings, when this one has
+them. It can't change while you're hosting, joining or playing.
+
+**Online matches are always first to 3**, as SEGA's tournaments and Japan's arcades play, whatever either player's
+Menu > Arcade settings > **Rounds to win (vs player)**, which is for playing offline. The host's game sets it for the
+match, so it's first to 3 against an older download of v0.1.15-alpha too when this one hosts.
+
+**A random opponent:** Menu > **Online** > **RANDOM**. It finds whoever else is looking, the nearest first (the
+best connection), and widens the search the longer you wait; **Stop** gives up. Play solo while you wait: the match
+takes over once it's found. After the match, **New opponent** looks again.
+
+**With a friend, by room code (anywhere: no setup, nothing to forward):**
+
+1. Both: Menu > **Online**. The first time, it asks your name (up to 10 letters, shown under your energy bar,
+   with your country's flag).
+2. One player: **HOST**. It shows a room code like `FR7-W25` (**Copy code** puts it on the clipboard): send it to
+   the other player.
+3. The other: **JOIN**, and type the code (or paste it). It joins by itself at the 6th letter; the steps on the screen
+   show how far it's got. Once you're both in, the game starts at its title screen: both press Start.
+
+On a controller the code and name screens show letters to pick with A (X deletes, Y pastes); on a keyboard just type.
+In a match, whoever loses is told to press Start for a rematch (as in the arcade, the winner plays on against the
+computer until they do). After leaving a match, **Play again** keeps the same code: the host opens it again and the other player joins it by itself.
+
+The games connect to each other directly whenever they can; when a network won't let them (phones' 5G, some
+office, school and hotel networks), the match goes through a relay (Cloudflare's) instead, automatically. The
+connection display says RELAY then (DIRECT otherwise). The room code only finds the other player: no game data goes through the
+lobby. The flags are the countries Cloudflare places each player's connection in (a VPN shows its own).
+
+**Play by address (the same network, or a VPN like Tailscale: no online service):** Menu > Online, then **Play by
+address** beside Settings. One player picks **Host by address** (it shows the address to give the other), the other
+**Join by address** and types it. **Port** sets the port (7700 unless you change it). From a command line or a
+launcher: `--host` (and `--port N`), or `--join ADDRESS` (with `:PORT` if not 7700), starts it as the game opens.
+
+**If it won't connect**
+
+- The Online screen says what went wrong in plain words, under **Couldn't connect**, and which step it got to:
+  check the code, and that the host is still hosting (a room closes when the host stops). **Try again** goes again.
+- **Firewalls:** the first time you host, allow the game when asked. Windows: if you dismissed it, Windows Security >
+  Firewall > Allow an app, tick Virtua Fighter 3 Recomp for **Private and Public**. Mac: System Settings > Network >
+  Firewall > Options: allow it; each new version of the (unsigned) Mac app may need allowing again. Also System
+  Settings > Privacy & Security > Local Network: on.
+- Hotel, school and public Wi-Fi often keep devices on the same network from seeing each other: the match goes
+  through the relay instead, by itself.
+
+**For the smoothest match**
+
+- A cable beats Wi-Fi. **Steam Deck:** turn off Wi-Fi power management (Settings > System > Developer Mode on, then
+  Settings > Developer > Enable Wi-Fi power management off): it holds packets back in bursts.
+- **Input delay** (Online > Settings): Auto uses as little as it can (none on a LAN, 1 frame almost anywhere else)
+  and accounts for slower machines: each side tells the other how much rollback it can run without a hitch (a Steam
+  Deck in a fight: none), and the other side's delay covers the rest, so neither side stutters. It keeps the game at
+  full speed against a far opponent with more delay instead (up to 15 frames). A short burst of ping is left to rollback; a delay raised for a
+  longer spell comes back down a frame a second once it's over.
+  Or set 0 to 10 yourself: higher means fewer corrections, lower a quicker response.
+- **Connection display:** On shows the other player, the ping, the input delay, the rollback and DIRECT or RELAY at
+  the bottom of the screen (the game's own bars and time are at the top), each in a cell of its own that doesn't move
+  as the numbers change (the dot green, yellow or red); Detailed adds a row: the jitter, the average rollback, how far
+  ahead your side runs and each frame's cost. Under about 100 ms ping plays well; past ~250 ms the delay rises to keep
+  the game at its full speed.
+- **Random: max ping:** Any, or 80 to 250 ms. A random opponent's ping is measured as you connect, before the match
+  starts; over your limit, the game leaves and looks for someone else (and the two of you aren't matched again for 10
+  minutes). Room codes and addresses play whatever the ping.
+- **Match found chime:** On (the default) plays a chime when an online match is found, and the game's window flashes in
+  the taskbar or the Dock if it isn't the one in front, so you can wait for an opponent in another window.
+
+**Good to know**
+
+- The menu doesn't pause a match (it goes on behind it, your inputs off). Leaving a match tells the other player.
+- Your opponent can see your IP address, as in any direct peer-to-peer game (and a friend by code your local network's, in case you share one; a random opponent never gets that). **Hide my IP address** (Menu >
+  Online > Settings) sends matches through the relay instead, so they see only Cloudflare's: it adds a
+  little ping (more on the same network), so it's off unless you want it.
+- Not yet: spectating, replays, rematch without reconnecting.
+
+**Reporting a problem:** please include **both players'** `log.txt` (and `log.1.txt` if the game's been opened again
+since: the last 3 runs' logs are kept as `log.1.txt` to `log.3.txt`; the game's data folder: Windows `%APPDATA%\Virtua
+Fighter 3 Recomp`, Mac `~/Library/Application Support/Virtua Fighter 3 Recomp`, Steam Deck / Linux the game's own
+folder or `~/.local/share/Virtua Fighter 3 Recomp`), what each is playing on, Wi-Fi or cable, and the ping shown.
 
 ## How it works
 
@@ -191,7 +382,7 @@ CPU (a machine with no graphics driver), where the CPU's own renderer is faster.
 | `src/gpu` | the Real3D on the GPU (SDL_GPU), its HLSL shaders (`r3d.hlsl`) and their compiled forms (`r3d_shaders.h`) |
 | `src/sound` | the sound board: MAME's SCSP and its DSP, with MAME's 68000 in `third_party/mame` |
 | `src/host` | the SDL 3 game: window, input, pacing, the GPU compositing, settings, the RmlUi menu |
-| `assets/` | the app icon, the menu (`ui/`) and its font |
+| `assets/` | the app icon, the menu (`ui/`) and its fonts |
 | `third_party/` | MAME's 68000 and SCSP, SLJIT, RmlUi (`third_party/README.md`) |
 | `tools/recomp` | the address map's maker (from coverage runs) |
 | `tools/ref` | the instrumented reference build (Supermodel with coverage, input scripts and state dumps) |
@@ -242,16 +433,18 @@ Built on MAME's work: the 68000 core (Olivier Galibert), the SCSP and its DSP (E
 sound board's design (R. Belmont, Ville Linde), as Virtua Fighter 2 Recomp has them (`third_party/mame/README.md`
 lists the files), all BSD-3-Clause. Supermodel (Bart Trzynadlowski, Ian Curtis, Nik Henson and others) was read as
 documentation of the Model 3 and its Real3D, and was the reference everything was checked against; none of its code
-is in this one. Also SLJIT (Zoltan Herczeg, BSD-2-Clause), RmlUi (MIT), SDL 3 (zlib), FreeType (FreeType License),
-zlib, and the Barlow Condensed font (SIL Open Font License).
+is in this one, but its settings for Virtua Fighter 3's sound (the SCSP's timers counted at the samples, its FM and
+pitch LFO depths) and its CRT colours (Dan Mons' colour_matrix_adaptations) are followed. Also SLJIT (Zoltan Herczeg, BSD-2-Clause), RmlUi (MIT), SDL 3 (zlib), FreeType (FreeType License),
+zlib, the Barlow Condensed font and, for the menus' Korean, Japanese, Chinese and Cyrillic, Noto Sans (all SIL Open
+Font License).
 
 Virtua Fighter 3 is SEGA's. This project is not affiliated with or endorsed by SEGA.
 
 ## Licence
 
 MIT for this project's own code: see [LICENSE](LICENSE). Code from MAME keeps its BSD-3-Clause licence and notices;
-the rest of `third_party/` keeps its own (`third_party/README.md`), and the Barlow Condensed font the SIL Open Font
-License. The app icon (`assets/icon/`, drawn by `tools/release/make_icon.py`) is by Mr Finster under
+the rest of `third_party/` keeps its own (`third_party/README.md`), and the fonts (Barlow Condensed, Noto Sans, JetBrains
+Mono: `assets/fonts/README.txt`) the SIL Open Font License. The app icon (`assets/icon/`, drawn by `tools/release/make_icon.py`) is by Mr Finster under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 ## Support

@@ -30,6 +30,16 @@ public:
 
 	void render(const Scene &scene, const uint16_t *tex_ram);
 
+	// The textures' mipmap levels as the arcade picks them, for its 384 lines (true), or for the picture's own
+	// height (false, the default): the level by distance alone, the same at any size, left the distance's textures
+	// a level coarser for each doubling of the render scale than the arcade showed them on its screen
+	static bool arcade_lod;
+	// Quads drawn as quads (always: the game's Display > Quad rendering is gone, issue #39; false only in tests, vf3run's
+	// VF3_QUADS=0): each pixel's depth and attributes from all four corners (mean value
+	// coordinates, see draw_tri), as the Real3D draws them, not from one of the two triangles that split it; a quad
+	// that isn't flat (clothes and skin, bent by the joints) is then one surface whichever way it would be split
+	static bool quad_rendering;
+
 	// The 3D over `under` (RGBA8, the tile generator's lower layer at this size), into out (may be `under`)
 	void compose(const uint32_t *under, uint32_t *out) const;
 
@@ -58,6 +68,8 @@ public:
 	{
 		int draw;
 		int n;                // 3 to 8 (a triangle clipped by the near plane and the view's sides)
+		bool quad = false;    // n 4, a whole quad (quad_rendering): its pixels from all four corners
+		bool convex = false;  // (a quad's outline convex: its 1-3 diagonal inside too)
 		float sx[8], sy[8], iw[8];
 		float a[8][11];       // the attributes over w
 	};

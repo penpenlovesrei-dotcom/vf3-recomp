@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Builds the download page into build/site, ready for Cloudflare Pages. Deploy from the repo root (the
-production branch is main; any other branch is only a preview):
-  npx wrangler pages deploy build/site --project-name vf3-recomp --branch main
+production branch is claude/adoring-feynman-rsrxic, the name the first page went up under; any other branch is only a preview):
+  npx wrangler pages deploy build/site --project-name vf3-recomp --branch claude/adoring-feynman-rsrxic
 
 The page (tools/site/index.html) holds nothing from the game. The screenshots, the video and its
 poster are made from it, so they live only in build/site (never in git):
@@ -81,6 +81,10 @@ def main():
     for f in ('screen.mp4', 'poster.jpg', 'og.jpg'):
         if not os.path.exists(os.path.join(OUT, 'media', f)):
             raise SystemExit(f'missing build/site/media/{f}')
+    # the README embeds the site's /img/montage.jpg: a site without it breaks the README, so none is built
+    m = os.path.join(ROOT, 'build', 'readme', 'vf3_montage.jpg')
+    if not os.path.exists(m):
+        raise SystemExit('missing build/readme/vf3_montage.jpg (the README shows it from the site; it is not in git)')
 
     # downloads
     dl = os.path.join(OUT, 'downloads')
@@ -103,9 +107,7 @@ def main():
     img = os.path.join(OUT, 'img')
     os.makedirs(img, exist_ok=True)
     # the README's montage (game pictures: kept out of git, in build/readme, and served from the site)
-    m = os.path.join(ROOT, 'build', 'readme', 'vf3_montage.jpg')
-    if os.path.exists(m): shutil.copyfile(m, os.path.join(img, 'montage.jpg'))
-    else: print('no build/readme/vf3_montage.jpg: no README montage on the site')
+    shutil.copyfile(m, os.path.join(img, 'montage.jpg'))
     icon = Image.open(os.path.join(ROOT, 'assets', 'icon', 'icon.png')).convert('RGBA')
     subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'site', 'marquee.py'), os.path.join(img, 'marquee.png')], check=True)
     icon.resize((64, 64), Image.LANCZOS).save(os.path.join(img, 'icon-64.png'), optimize=True)
@@ -138,6 +140,10 @@ def main():
     if not os.path.isdir(os.path.join(strip, 'node_modules')): subprocess.run(['npm', 'install', '--no-audit', '--no-fund'], cwd=strip, check=True)
     subprocess.run(['node', os.path.join(strip, 'strip.mjs'), os.path.join(OUT, 'index.html'), os.path.join(OUT, 'index.html')], check=True)
     shutil.copyfile(os.path.join(ROOT, 'tools', 'site', '_headers'), os.path.join(OUT, '_headers'))
+    # (a 404 page: without one Pages serves index.html for any path, and a crawler following the page's relative
+    # links ever deeper, /img/shots/img/..., counted 173k page views in two hours on 19 Oct)
+    open(os.path.join(OUT, '404.html'), 'w').write('<!doctype html><meta charset="utf-8"><title>Not found</title>'
+        '<p>Not found. <a href="/">Virtua Fighter 3 Recomp</a></p>\n')
     print('built', OUT)
 
 

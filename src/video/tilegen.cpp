@@ -15,6 +15,7 @@
 // A name table entry, 4-bit: pattern ((e & 0x3FFF) << 1 | e >> 15) * 32 bytes, colour (e & 0x7FF0) | texel;
 // 8-bit: pattern (e & 0x3FFF) * 64 bytes, colour (e & 0x7F00) | texel. The leftmost texel is the top bits.
 #include "tilegen.h"
+#include "dural_cell.h"
 #include "../machine/model3.h"
 #include <algorithm>
 #include <cmath>
@@ -25,12 +26,15 @@
 
 namespace video {
 
+const uint32_t *TileGen::regs_of(const m3::Model3 &board) const { return regs_now ? regs_now : board.tile_regs; }
+
 void TileGen::clear()
 {
 	std::fill(below.begin(), below.end(), 0);
 	std::fill(above.begin(), above.end(), 0);
 	std::fill(below_wide.begin(), below_wide.end(), 0);
 	std::fill(std::begin(scroll.below_columns), std::end(scroll.below_columns), 0);
+	for (LineRegs &l : drawn_regs) l.drawn = false;
 }
 
 bool TileGen::scrolled(const Scroll &b, const Scroll &n, const std::vector<uint32_t> &bp, const std::vector<uint32_t> &np,
@@ -180,7 +184,7 @@ void TileGen::place_seen(const m3::Model3 &board)
 {
 	const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
 	const uint32_t *pal = vram + 0x40000;
-	const uint32_t *regs = board.tile_regs;
+	const uint32_t *regs = regs_of(board);
 	for (int layer = 0; layer < 4; layer++) {
 		Seen &m = seen[layer];
 		if (!(regs[0x60 / 4 + layer] & 0x80000000u) || ((regs[0x20 / 4] >> (8 + layer)) & 1) || m.at_x.empty()) continue;
@@ -322,19 +326,19 @@ uint32_t TileGen::backdrop_entry(const m3::Model3 &board, int x, int y, bool tab
 std::string TileGen::audit(const m3::Model3 &board) const
 {
 	const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
-	const uint32_t *regs = board.tile_regs;
+	const uint32_t *regs = regs_of(board);
 	char buf[256];
 	const bool on = regs[0x60 / 4 + 3] & 0x80000000u;
-	const int stage = int16_t(board.peek16(board.cpu.s.r[13] - 0x1E0C));
+	const int stage = int16_t(board.peek16(board.cpu.s.r[13] - board.profile->backdrops.stage_below_r13));
 	if (!on) return "off";
 	if (!backdrop.ok) {
 		// (tests: why: the best place's mismatches on screen, and the bank table's changes since the last frame)
 		static int16_t prev[128];
 		int changed = 0;
 		int16_t cur[128];
-		for (int i = 0; i < 128; i++) { cur[i] = int16_t(board.peek16(0x161614 + 2 * uint32_t(i))); changed += cur[i] != prev[i]; }
+		for (int i = 0; i < 128; i++) { cur[i] = int16_t(board.peek16(board.profile->backdrops.banks + 2 * uint32_t(i))); changed += cur[i] != prev[i]; }
 		memcpy(prev, cur, sizeof prev);
-		snprintf(buf, sizeof buf, "NOMAP stage %d desc %08x bank-changes %d", stage, board.peek32(0xFFB30004 + 4 * uint32_t(stage)), changed);
+		snprintf(buf, sizeof buf, "NOMAP stage %d desc %08x bank-changes %d", stage, board.peek32(board.profile->backdrops.descriptors + 4 * uint32_t(stage)), changed);
 		return buf;
 	}
 	const Backdrop &b = backdrop;
@@ -366,6 +370,51 @@ std::string TileGen::audit(const m3::Model3 &board) const
 	return buf;
 }
 
+// The backdrop's banks, the table's and those seen on screen, in a sum (the searches' inputs beside the tiles)
+uint64_t TileGen::banks_sum(const Backdrop &b)
+{
+	uint64_t h = 1469598103934665603ull;
+	for (int i = 0; i < 128; i++) h = (h ^ uint64_t(uint16_t(b.bank[i])) ^ uint64_t(uint32_t(b.seen[i])) << 16) * 1099511628211ull;
+	return h;
+}
+
+// All find_backdrop reads, and the backdrop as it stands, in a sum: the same sum, the same search, the same answer
+uint64_t TileGen::backdrop_inputs(const m3::Model3 &board, bool full) const
+{
+	const Backdrop &b = backdrop;
+	const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
+	const uint32_t *regs = regs_of(board);
+	uint64_t h = 1469598103934665603ull;
+	auto add = [&](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
+	add(full); add(full_failed_sum); add(board.frame);
+	for (int i = 0; i < 64; i++) add(regs[i]);
+	add(vram[(0xF6000 + 3 * 0x400) / 4]);   // (the layer's first line's own scroll)
+	const uint32_t *names = vram + (0xF8000 + 3 * 0x2000) / 4;
+	for (int i = 0; i < 64 * 32; i++) add(names[i]);
+	const int stage = int16_t(board.peek16(board.cpu.s.r[13] - board.profile->backdrops.stage_below_r13));
+	add(uint64_t(uint32_t(stage)));
+	if (stage >= 0 && stage <= 255) add(board.peek32(board.profile->backdrops.descriptors + 4 * uint32_t(stage)));
+	for (int i = 0; i < 128; i++) add(board.peek16(board.profile->backdrops.banks + 2 * uint32_t(i)));
+	add(board.peek32(board.profile->backdrops.place + 4)); add(board.peek32(board.profile->backdrops.place + 8));
+	add(b.ok); add(b.known); add(b.desc); add(uint64_t(b.w) << 32 | uint32_t(b.h)); add(uint64_t(uint32_t(b.x0)) << 32 | uint32_t(b.y0));
+	add(uint64_t(uint32_t(b.game_x)) << 32 | uint32_t(b.game_y)); add(uint64_t(uint32_t(b.prev_x)) << 32 | uint32_t(b.prev_y)); add(b.game_frame);
+	add(b.map.size()); add(banks_sum(b));
+	return h;
+}
+
+// find_backdrop for a row of the frame that isn't the backdrop's place (again and again on a screen of its own, the
+// select's: 60 times a frame), not looked for again while all it reads is as when it last found nothing and changed
+// nothing (it would find nothing again)
+void TileGen::refind_backdrop(const m3::Model3 &board, bool full)
+{
+	static const bool no_skip = getenv("VF3_NO_TILE_SKIP") != nullptr;   // (tests: every search made, the picture compared)
+	if (no_skip) { find_backdrop(board, full); return; }
+	const uint64_t before = backdrop_inputs(board, full);
+	if (before == refind_failed) return;
+	find_backdrop(board, full);
+	refind_failed = !backdrop.ok && backdrop_inputs(board, full) == before ? before : 0;
+}
+
 void TileGen::find_backdrop(const m3::Model3 &board, bool full)
 {
 	Backdrop &b = backdrop;
@@ -373,23 +422,26 @@ void TileGen::find_backdrop(const m3::Model3 &board, bool full)
 	b.ok = false;
 	b.known = false;
 	const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
-	const uint32_t *regs = board.tile_regs;
+	const uint32_t *regs = regs_of(board);
 	if (!(regs[0x60 / 4 + 3] & 0x80000000u)) return;
-	const int stage = int16_t(board.peek16(board.cpu.s.r[13] - 0x1E0C));
+	if (!board.profile->backdrops.descriptors) return;   // (not known for this program: the sky kept to the middle 4:3)
+	const int stage = int16_t(board.peek16(board.cpu.s.r[13] - board.profile->backdrops.stage_below_r13));
 	if (stage < 0 || stage > 255) return;
-	const uint32_t desc = board.peek32(0xFFB30004 + 4 * uint32_t(stage));
+	const uint32_t desc = board.peek32(board.profile->backdrops.descriptors + 4 * uint32_t(stage));
 	if (desc < 0xFF000000u) return;
 	const int w = board.peek16(desc + 4), h = board.peek16(desc + 6);
 	if (w < 64 || w > 2048 || h < 1 || h > 256) return;
 	if (desc != b.desc) { b.x0 = 0; b.y0 = 0; }   // (the last place kept while the same map: a frame not found starts from it)
 	if (desc != b.desc) std::fill(std::begin(b.seen), std::end(b.seen), -1);
+	if (desc != b.desc) std::fill(std::begin(b.trust), std::end(b.trust), -1);
 	if (desc != b.desc || b.map.size() != size_t(w) * size_t(h)) {   // (the map read once: the searches below look at it often)
 		b.map.resize(size_t(w) * size_t(h));
 		for (size_t i = 0; i < b.map.size(); i++) b.map[i] = board.peek16(desc + 8 + 2 * uint32_t(i));
 	}
 	b.desc = desc; b.w = w; b.h = h;
+	b.stage = stage;
 	b.known = true;
-	for (int i = 0; i < 128; i++) b.bank[i] = int16_t(board.peek16(0x161614 + 2 * uint32_t(i)));
+	for (int i = 0; i < 128; i++) b.bank[i] = int16_t(board.peek16(board.profile->backdrops.banks + 2 * uint32_t(i)));
 	// where the layer's map is in it: some of the rows on screen compared
 	const uint32_t *names = vram + (0xF8000 + 3 * 0x2000) / 4;
 	const int sy = int((regs[0x60 / 4 + 3] >> 16) & 0x1FF), s = (scroll_x(vram, regs, 3, 0) & 511) >> 3;
@@ -443,11 +495,72 @@ void TileGen::find_backdrop(const m3::Model3 &board, bool full)
 				else if (votes[bank] == 0) { b.seen[bank] = at; votes[bank] = 1; }
 				else votes[bank]--;
 			}
+		for (int i = 0; i < 128; i++) if (b.seen[i] >= 0 && votes[i] >= 4) b.trust[i] = b.seen[i];
+	};
+	// The places tried first (the game's own, this frame's and the last's; the last place found; those near it) are
+	// told apart by all of the screen, a tile in 5 of every row: the rows compared above are of the most different
+	// tiles, but a sky's rows of few tiles (a moon's glow, a dusk's bands) agree with them a column or two off too, 14
+	// of 76 missed where the right place misses none, and with banks just moved a place a row off can match them all
+	// (the patterns running on from row to row: stage 49's sky, the camera looking up). Taken: the one that misses
+	// fewest of the screen's, not the first good enough. The first looked at, the last place, had stuck there for
+	// frames while the camera turned (Jeffry's beach in Team Battle, whose place the game keeps elsewhere: the sides
+	// drawn from rows a few tiles off, a bright bar); the game's this frame's is often a frame ahead of the screen's.
+	// One that misses none ends it (the usual frame: the first looked at); the rest each given up past the best so far.
+	const int n_screen = 48 * ((62 + 4) / 5);
+	auto screen_misses = [&](int x0, int y0, int limit) {
+		int missed = 0;
+		for (int r = sy >> 3; r < (sy >> 3) + 48; r++)
+			for (int c = s; c < s + 62; c += 5) {
+				const int e = raw(x0 + c, y0 + (r & 63)), bank = (e >> 7) & 0x7F;
+				const int t = int(name_at(names, r & 63, c) & 0x3FFF);
+				if (!(t == (((e & 0x7F) + b.bank[bank]) & 0x3FFF) || (b.seen[bank] >= 0 && t == (((e & 0x7F) + b.seen[bank]) & 0x3FFF))) && ++missed > limit) return missed;
+			}
+		return missed;
+	};
+	int pbest = INT32_MAX, pbx = 0, pby = INT32_MIN;
+	bool must_agree = false;
+	// (a place's misses of the screen, if it agrees where it must; ties: the one looked at first)
+	auto consider = [&](int x0, int y0) {
+		if (pbest == 0 || (must_agree && !agrees(x0, y0))) return;
+		const int m = screen_misses(x0, y0, pbest == INT32_MAX ? INT32_MAX : pbest - 1);
+		if (m < pbest) { pbest = m; pbx = ((x0 % w) + w) % w; pby = y0; }
+	};
+	// the game's own place, kept at 0x1617B4 + 4 and + 8 in pixels (Team Battle's 0x16195C; the routine at 0x5D000
+	// writes the map from the place it kept the frame before, 0x5D12C: this frame's and the last's tried)
+	// (the last frame's only if find_backdrop saw it: a netplay match's frames run again after a rollback are run
+	// unseen, and the place it saw last is then frames old, as is the last place found: the camera's moved on since,
+	// further than near it looks. So near the game's own place too, a frame's move at most from the screen's)
+	const int gx = int(int32_t(board.peek32(board.profile->backdrops.place + 4))) >> 3, gy = int(int32_t(board.peek32(board.profile->backdrops.place + 8))) >> 3;
+	if (board.frame != b.game_frame) {
+		const bool last_frame = b.game_frame != ~0ull && board.frame == b.game_frame + 1;
+		b.prev_x = b.game_x; b.prev_y = last_frame ? b.game_y : INT32_MIN;
+		b.game_x = gx; b.game_y = gy; b.game_frame = board.frame;
+	}
+	const bool same = had && desc == b.desc;
+	const bool game_sane = gy >= -112 && gy <= h + 48;   // (a place off the map further than the screen's rows reach is none: another program's)
+	auto first_places = [&]() {
+		if (game_sane) consider(gx, gy);
+		if (b.prev_y >= -112 && b.prev_y <= h + 48) consider(b.prev_x, b.prev_y);
+		if (same || must_agree) consider(b.x0, b.y0);
+	};
+	auto near_places = [&]() {
+		const int gdx = ((gx - b.x0) % w + w) % w;
+		const bool around_game = game_sane && (std::abs(gy - b.y0) > 2 || std::min(gdx, w - gdx) > 4);   // (and not near the last place: looked at there)
+		for (int k = around_game ? 0 : 1; k < 2 && pbest > 0; k++) {
+			const int cx = k ? b.x0 : gx, cy = k ? b.y0 : gy;
+			for (int d = 1; d <= 6 && pbest > 0; d++)
+				for (int dy = -2; dy <= 2 && pbest > 0; dy++) {
+					const int ax = d - std::abs(dy);
+					if (ax < 0 || ax > 4) continue;
+					consider(cx + ax, cy + dy);
+					if (ax) consider(cx - ax, cy + dy);
+				}
+		}
 	};
 	if (few) {
 		// Too little on screen to tell: as before, if the same backdrop; but a screen of the map's top or bottom
 		// filler alone (the camera up at the sky, down at the sea) puts the map's place above or below it
-		b.ok = had && desc == b.desc;
+		b.ok = same;
 		// (the fillers as the table places their banks, or the screen had them)
 		const uint32_t top = backdrop_entry(board, 0, -1) & 0x3FFF, bottom = backdrop_entry(board, 0, h) & 0x3FFF;
 		const uint32_t top_t = backdrop_entry(board, 0, -1, true) & 0x3FFF, bottom_t = backdrop_entry(board, 0, h, true) & 0x3FFF;
@@ -457,34 +570,39 @@ void TileGen::find_backdrop(const m3::Model3 &board, bool full)
 				const uint32_t t = name_at(names, r & 63, c) & 0x3FFF;
 				n++; n_top += t == top || t == top_t; n_bottom += t == bottom || t == bottom_t;
 			}
-		if (n_bottom * 10 >= n * 9) { b.y0 = h - (sy >> 3); b.ok = true; see(); }
-		else if (n_top * 10 >= n * 9) { b.y0 = -(sy >> 3) - 48; b.ok = true; see(); }
+		// (but first the places above, where one has 9 in 10 of the screen's tiles, the filler's place only where
+		// it misses fewer: the camera down at the sea with the horizon's last rows at the screen's top, stage 47's,
+		// had the filler's place, those rows a few tiles off, for a hundred frames)
+		pbest = n_screen / 10 + 1;   // (more missed than 1 in 10: none)
+		first_places();
+		const int filler_y0 = n_bottom * 10 >= n * 9 ? h - (sy >> 3) : n_top * 10 >= n * 9 ? -(sy >> 3) - 48 : INT32_MIN;
+		if (pbest > 0 && filler_y0 != INT32_MIN) {
+			const int m = screen_misses(b.x0, filler_y0, INT32_MAX);
+			if (m < pbest || pby == INT32_MIN) { pbest = m; pbx = b.x0; pby = filler_y0; }
+		}
+		if (same) near_places();
+		if (pby != INT32_MIN) { b.x0 = pbx; b.y0 = pby; b.ok = true; see(); }
 		else if (kinds[0] <= 2) b.ok = false;   // (the map cleared, one tile all over: no backdrop on show)
 		return;
 	}
-	// First where the game says it is: its backdrop's place in pixels, kept at 0x1617B4 + 4 and + 8 (the routine at
-	// 0x5D000 writes the map from the place it kept the frame before, 0x5D12C: this frame's and the last's tried), as
-	// the table places the banks or, with banks the game has just moved, each bank in one place
+	// First those places, of those that agree (as the table places the banks or, with banks the game has just moved,
+	// each bank in one place), the one that misses fewest of the screen
 	{
-		const int gx = int(int32_t(board.peek32(0x1617B4 + 4))) >> 3, gy = int(int32_t(board.peek32(0x1617B4 + 8))) >> 3;
-		if (board.frame != b.game_frame) { b.prev_x = b.game_x; b.prev_y = b.game_y; b.game_x = gx; b.game_y = gy; b.game_frame = board.frame; }
-		const int cand[2][2] = { { gx, gy }, { b.prev_x, b.prev_y } };
-		for (const auto &cxy : cand) {
-			const int x0 = ((cxy[0] % w) + w) % w, y0 = cxy[1];
-			if (agrees(x0, y0)) { b.x0 = x0; b.y0 = y0; b.ok = true; see(); return; }
-		}
+		must_agree = true;
+		first_places();
+		if (pbest > 0) near_places();
+		if (pby != INT32_MIN) { b.x0 = pbx; b.y0 = pby; b.ok = true; see(); return; }
 	}
-	for (int dy = -2; dy <= 2; dy++)
-		for (int dx = -4; dx <= 4; dx++)
-			if (agrees(b.x0 + dx, b.y0 + dy)) { b.x0 = ((b.x0 + dx) % w + w) % w; b.y0 += dy; b.ok = true; see(); return; }
 	// (all of it: the one nearest the last place of those that agree)
 	if (!full) return;
-	// (looked through in vain lately with the same rows on screen, the same map: not again for 16 frames; a screen of
-	// its own with the stage's map loaded, as the select's, had the whole map looked through every frame)
-	uint64_t screen_sum = desc;
+	// (looked through in vain with the same rows on screen, the same map and banks: not again, for it finds nothing
+	// again; a screen of its own with the stage's map loaded, as the select's, had the whole map looked through every
+	// 16 frames, a frame's hitch each time on a slow machine. What it compares is all in the sum: the rows' tiles it
+	// looks at, the map, and the banks' places, the table's and the screen's)
+	uint64_t screen_sum = desc ^ banks_sum(b);
 	for (int r : rows)
 		for (int c = s; c < s + 56; c += 3) screen_sum = screen_sum * 1000003u + (name_at(names, r, c) & 0x3FFF) + uint64_t(r) * 7;
-	if (screen_sum == full_failed_sum && board.frame - full_failed_frame < 16) return;
+	if (screen_sum == full_failed_sum && !getenv("VF3_NO_TILE_SKIP")) return;
 	int best = INT32_MAX, bx = 0, by = 0;
 	for (int y0 = -64; y0 <= h; y0++)
 		for (int x0 = 0; x0 < w; x0++)
@@ -493,11 +611,12 @@ void TileGen::find_backdrop(const m3::Model3 &board, bool full)
 				if (dist < best) { best = dist; bx = x0; by = y0; }
 			}
 	if (best < INT32_MAX) { b.x0 = bx; b.y0 = by; b.ok = true; see(); return; }
-	if (screen_sum != full_failed_sum || board.frame - full_failed_frame >= 16) { full_failed_sum = screen_sum; full_failed_frame = board.frame; }
+	full_failed_sum = screen_sum;
 	// (none exactly: the game's place with banks it has just moved, each bank in one place)
 	{
-		const int cand[2][2] = { { int(int32_t(board.peek32(0x1617B4 + 4))) >> 3, int(int32_t(board.peek32(0x1617B4 + 8))) >> 3 }, { b.prev_x, b.prev_y } };
+		const int cand[2][2] = { { int(int32_t(board.peek32(board.profile->backdrops.place + 4))) >> 3, int(int32_t(board.peek32(board.profile->backdrops.place + 8))) >> 3 }, { b.prev_x, b.prev_y } };
 		for (const auto &cxy : cand) {
+			if (cxy[1] < -112 || cxy[1] > h + 48) continue;   // (none: as above)
 			const int x0 = ((cxy[0] % w) + w) % w, y0 = cxy[1];
 			int place[128], n = 0, bad = 0;
 			std::fill(std::begin(place), std::end(place), -1);
@@ -543,7 +662,7 @@ void TileGen::find_backdrop(const m3::Model3 &board, bool full)
 void TileGen::learn(const m3::Model3 &board)
 {
 	const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
-	const uint32_t *regs = board.tile_regs;
+	const uint32_t *regs = regs_of(board);
 	const int n = W / 8 + 1;   // the map's columns on screen (from the one at its left edge)
 	for (int layer = 0; layer < 4; layer++) {
 		Pano &P = pano[layer];
@@ -591,8 +710,10 @@ void TileGen::learn(const m3::Model3 &board)
 
 static const uint32_t *vram_words(const m3::Model3 &board) { return reinterpret_cast<const uint32_t *>(board.tile_ram.data()); }
 
-void TileGen::line(const m3::Model3 &board, unsigned y)
+void TileGen::line(const m3::Model3 &board, unsigned y, const uint32_t *line_regs)
 {
+	regs_now = line_regs;   // (the registers as they were at this line: a worker drawing it a moment later)
+	struct Done { const uint32_t *&r; ~Done() { r = nullptr; } } done{ regs_now };
 	if (y >= unsigned(H))
 		return;
 	if (y == 0) {
@@ -618,7 +739,13 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 	}
 	const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
 	const uint32_t *pal = vram + 0x40000;
-	const uint32_t *regs = board.tile_regs;
+	const uint32_t *regs = regs_of(board);
+	{
+		LineRegs &l = drawn_regs[y];
+		l.order = regs[0x20 / 4]; l.offset_b = regs[0x44 / 4];
+		for (int k = 0; k < 4; k++) l.layer[k] = regs[0x60 / 4 + k];
+		l.drawn = true;
+	}
 	// B/B' first, then A/A' over it
 	for (int pair = 1; pair >= 0; pair--) {
 		const int prim = pair * 2;
@@ -901,7 +1028,7 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 					// scenes, are looked for alone below)
 					const bool full = refind_frame != board.frame;
 					refind_frame = board.frame;
-					find_backdrop(board, full);
+					refind_backdrop(board, full);
 					sky_refinds++;
 					from_map = backdrop.ok && !row_bad();
 					row_x0 = backdrop.x0; row_y = backdrop.y0 + row;
@@ -925,8 +1052,10 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 							RowFound &rf = row_found;
 							// (a row not found stays not found for 16 frames while the same: a screen of its own, as the
 							// select's, looked through the whole map for each of its rows every frame)
-							auto failed = row_failed.find(sum ^ b.desc);
-							const bool failed_lately = failed != row_failed.end() && board.frame - failed->second < 16;
+							// (and, as for the whole screen's, not again while its tiles, the map and the banks are the same:
+							// it finds nothing again)
+							const uint64_t row_key = sum ^ b.desc ^ banks_sum(b) * 31;
+							const bool failed_lately = row_failed.count(row_key) != 0 && !getenv("VF3_NO_TILE_SKIP");
 							if (failed_lately) { rf.frame = board.frame; rf.row = row; rf.sum = sum; rf.found = false; rf.moved.clear(); }
 							if (rf.frame != board.frame || rf.row != row || rf.sum != sum) {
 								rf.frame = board.frame; rf.row = row; rf.sum = sum; rf.found = false; rf.moved.clear();
@@ -934,8 +1063,13 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 								int moved[128], moved_n[128], touched[64];
 								std::fill(std::begin(moved), std::end(moved), -1);
 								std::fill(std::begin(moved_n), std::end(moved_n), 0);
-								for (int my = 0; my < b.h && !rf.found; my++)
-									for (int mx = 0; mx < b.w && !rf.found; mx++) {
+								// (near where the row was found last frame first: the camera moves it a tile or two at most, and a
+								// screen whose rows each move their own way, as the desert's when the camera tilts, had every row
+								// looked for through all the map every frame, 30 ms a frame on a fast machine. All of it only
+								// when that fails, and for a row it failed for lately, once in 8 frames)
+								RowHint &hint = row_hint[row & 63];
+								if (hint.desc != b.desc) hint = RowHint{ b.desc };
+								auto try_at = [&](int mx, int my) {
 										int exact = 0, bad = 0, nt = 0;
 										const uint16_t *mrow = &b.map[size_t(my) * size_t(b.w)];
 										for (int c = 0; c <= last && bad * 4 <= n && (exact + (n - c)) * 2 >= n; c++) {
@@ -954,11 +1088,31 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 											for (int i = 0; i < nt; i++) rf.moved.push_back({ touched[i], moved[touched[i]] });
 										}
 										for (int i = 0; i < nt; i++) { moved[touched[i]] = -1; moved_n[touched[i]] = 0; }
-									}
+								};
+								// (nearest first, the last place itself before any other: a repeating sky or dunes agree in places
+								// a few tiles apart, and the nearest is the row's)
+								if (hint.x >= 0)
+									for (int d = 0; d <= 8 + 3 && !rf.found; d++)
+										for (int dy = -3; dy <= 3 && !rf.found; dy++) {
+											const int my = hint.y + dy, ax = d - std::abs(dy);
+											if (ax < 0 || ax > 8 || my < 0 || my >= b.h) continue;
+											try_at(((hint.x + ax) % b.w + b.w) % b.w, my);
+											if (ax && !rf.found) try_at(((hint.x - ax) % b.w + b.w) % b.w, my);
+										}
+								const bool full_lately = hint.full_failed_at != ~0ull && board.frame >= hint.full_failed_at && board.frame - hint.full_failed_at < 8;
+								static const bool all_rows = getenv("VF3_NO_TILE_SKIP") != nullptr;
+								if (!full_lately || all_rows)
+									for (int my = 0; my < b.h && !rf.found; my++)
+										for (int mx = 0; mx < b.w && !rf.found; mx++) try_at(mx, my);
+								rf.all = !full_lately || all_rows;
+								if (rf.found) { hint.x = rf.x; hint.y = rf.y; hint.full_failed_at = ~0ull; }
+								else if (!full_lately) hint.full_failed_at = board.frame;
 							}
-							if (!rf.found && !failed_lately) {
+							// (remembered as not found only when all the map was looked through: while the 8 frames' gate
+							// held it to the hint's neighbourhood, a place further off wasn't looked at)
+							if (!rf.found && !failed_lately && rf.all) {
 								if (row_failed.size() > 4096) row_failed.clear();
-								row_failed[sum ^ b.desc] = board.frame;
+								row_failed[row_key] = board.frame;
 							}
 							if (rf.found) {
 								from_map = true; row_x0 = rf.x - s; row_y = rf.y;
@@ -1163,8 +1317,11 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 				if (side) { const int from = W - x0; if (from < 8) put(dst, W, ee->second, l.four, fy, from, 8 - from); }
 				else if (fine) put(dst, -fine, ee->second, l.four, fy, 0, fine);
 				// and its part on the screen, a few pixels at the 4:3 edge (mid-picture in widescreen: a strip in the
-				// sky), where the picture has this layer's tile: the map's
-				if ((ent(edge) & 0x3FFF) != (ee->second & 0x3FFF)) {
+				// sky), where the picture has this layer's tile: the map's. Only with the map's place found for the frame:
+				// a row matched alone can be anywhere in the map, and on a screen of its own with a stage's map still
+				// loaded (Team Battle's character select, its sea matched in stage 45's map) the picture's right edge got
+				// that place's tile, from patterns long since others' (black blocks, an x, a pink bar)
+				if (backdrop.ok && (ent(edge) & 0x3FFF) != (ee->second & 0x3FFF)) {
 					uint32_t was[8 + 2 * EXT] = {}, now[8 + 2 * EXT] = {};
 					put(was + EXT, 0, ent(edge), l.four, fy, 0, 8);
 					put(now + EXT, 0, ee->second, l.four, fy, 0, 8);
@@ -1198,7 +1355,9 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 			// doesn't agree with what's remembered (a row made wrongly: the sky streamed in pieces, the sun's tile
 			// repeated), what's remembered mirrored on out.
 			static const bool no_mem = getenv("VF3_NO_SEEN") != nullptr;   // (tests: the sides without the memory)
-			if (!no_mem && !from_map && !(prim + k == 3 && (backdrop.ok || backdrop.known))) {   // (not for a stage's backdrop: as the screen has it, a cleared map's rows blank)
+			// (nothing remembered yet, as for the stage's backdrop until the game's map is lost: a cut, the test menu
+			// left, find_backdrop above clearing backdrop.ok and .known mid-line after the memory was passed over)
+			if (!no_mem && !from_map && !(prim + k == 3 && (backdrop.ok || backdrop.known)) && !mem.at_x.empty()) {   // (not for a stage's backdrop: as the screen has it, a cleared map's rows blank)
 				const int32_t ax0 = mem.x + ((((l.sx & 511) - mem.last_sx + 256) & 511) - 256), ay = mem.y + int(y);
 				const size_t line_i = size_t(ay & 511) * R;
 				auto x_of = [&](int o) { return side ? W + o : -1 - o; };   // (o pixels out from the edge)
@@ -1249,6 +1408,361 @@ void TileGen::line(const m3::Model3 &board, unsigned y)
 	}
 }
 
+// The sky past the screen's top and bottom, for the sky drawn ahead of the game's backdrop (sky_lead.h): moved down
+// as the camera tilts up fast, the picture reaches above the layer's top. The layer's map holds no more than the
+// screen shows (its other rows are stale), but the game's own map of the stage's backdrop has the rest of the sky:
+// the rows the game writes there once the camera gets there (checked in the attract's fights, Revision D and Team
+// Battle: the lines drawn so match what the screen shows a few frames later for 99% of their pixels; the screen's
+// lines mirrored, 13%). A row past the map's top is the game's filler, its first entry, as the game writes it. Made
+// only where the screen's edge line is the backdrop's own (a stage's sky, not the letterbox, a cut's other layer);
+// a tile whose pattern has a see-through texel isn't the backdrop's (a bank the game hasn't loaded: a cut's first
+// frames): the screen's lines mirrored there instead, as past the layer's edge before.
+void TileGen::sky_past(const m3::Model3 &board, int top, int bottom, std::vector<uint32_t> &out)
+{
+	static const bool no_past = getenv("VF3_NO_SKY_PAST") != nullptr;   // (tests: the screen mirrored there, as before)
+	if (no_past || !backdrop.ok || cover2 || backdrop.w <= 0 || out.size() != size_t(WW) * HT) return;
+	const int S = 2;   // (aligned()'s shift)
+	std::vector<uint32_t> line_buf(WW);
+	const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
+	const uint32_t *pal = vram + 0x40000;
+	for (int side = 0; side < 2; side++) {
+		const int ey = side ? H - 1 : 0;   // (the screen's edge line, whose registers are used)
+		const LineRegs &L = drawn_regs[ey];
+		if (!L.drawn || !(L.layer[3] & 0x80000000u) || (L.order >> (8 + 3)) & 1) continue;
+		const bool four = (L.order >> (12 + 3)) & 1;
+		const int sy = int((L.layer[3] >> 16) & 0x1FF), sx = scroll.sx[3][ey] & 511;
+		const Offset off = offset_of(L.offset_b);
+		uint8_t lut[3][32];
+		const int offs[3] = { off.r, off.g, off.b };
+		for (int c = 0; c < 3; c++)
+			for (int i = 0; i < 32; i++) lut[c][i] = uint8_t(std::clamp(i * 255 / 31 + offs[c], 0, 255));
+		auto raw = [&](uint32_t e, int fy, int fx) {
+			if (four) {
+				const uint32_t pat = (((e & 0x3FFF) << 1) | (e >> 15)) * 8;
+				return pal[((e & 0x7FF0) | ((vram[(pat + fy) & 0x3FFFF] >> ((7 - fx) * 4)) & 0xF)) & 0x7FFF];
+			}
+			const uint32_t pat = (e & 0x3FFF) * 16;
+			return pal[((e & 0x7F00) | ((vram[(pat + fy * 2 + (fx >> 2)) & 0x3FFFF] >> ((3 - (fx & 3)) * 8)) & 0xFF)) & 0x7FFF];
+		};
+		auto colour = [&](uint32_t v) {
+			return 0xFF000000u | uint32_t(lut[2][(v >> 10) & 31]) << 16 | uint32_t(lut[1][(v >> 5) & 31]) << 8 | lut[0][v & 31];
+		};
+		// a line's map row (the screen's line ey's row in the layer, as find_backdrop places the map, and on from it)
+		const int r0 = ((ey + sy) >> 3) & 63, f0 = (ey + sy) & 7;
+		auto entry = [&](int line, int x) {
+			const int d = f0 + (line - ey);
+			return backdrop_entry(board, backdrop.x0 + ((x + sx) >> 3), backdrop.y0 + r0 + (d >> 3));
+		};
+		auto line_px = [&](int line, int x) {   // (0 where see-through)
+			const int d = f0 + (line - ey);
+			const uint32_t v = raw(entry(line, x), d & 7, (x + sx) & 7);
+			return (v & 0x8000) ? 0u : colour(v);
+		};
+		// the edge line as the map has it against the screen's: the backdrop's own all across
+		const uint32_t *scr = below.data() + size_t(ey) * W;
+		int same = 0, n = 0;
+		for (int x = 0; x < W; x += 2) { n++; same += scr[x] != 0 && line_px(ey, x) == scr[x]; }
+		if (same * 20 < n * 19) continue;
+		// a tile's pattern solid (no see-through texel): solid_memo's (this frame's, by entry and depth)
+		auto is_solid = [&](uint32_t e) {
+			uint8_t &m = solid_memo[size_t(e & 0xFFFF) << 1 | size_t(four)];
+			if (!m) {
+				m = 1;
+				for (int fy = 0; fy < 8 && m == 1; fy++)
+					for (int fx = 0; fx < 8; fx++) if (raw(e, fy, fx) & 0x8000) { m = 2; break; }
+			}
+			return m == 1;
+		};
+		// the aligned lines a: above, -1 to -top (aligned's -1 and -2 the screen's lines 1 and 0, which aligned_tall
+		// left mirrored, then the drawn lines -1 on); below, H - 2 to H + bottom - 1 (the drawn H on)
+		const int a0 = side ? H - S : -std::clamp(top, 0, EY), a1 = side ? H + std::clamp(bottom, 0, EY) : 0;
+		for (int a = a0; a < a1; a++) {
+			const int line = a + S;
+			uint32_t *dst = line_buf.data() + EXT;
+			if (line >= 0 && line < H)
+				std::copy(below_wide.begin() + std::ptrdiff_t(line) * WW, below_wide.begin() + std::ptrdiff_t(line + 1) * WW, line_buf.begin());
+			else {
+				const int mirror = side ? std::max(2 * H - 1 - line, 0) : std::min(-1 - line, H - 1);   // (the screen's line mirrored)
+				const uint32_t *mir = below_wide.data() + size_t(mirror) * WW + EXT;
+				const int fy = (f0 + (line - ey)) & 7;
+				for (int x = -EXT; x < W + EXT;) {
+					const uint32_t e = entry(line, x);
+					const int fx0 = (x + sx) & 7, m = std::min(8 - fx0, W + EXT - x);
+					if (!is_solid(e)) std::copy(mir + x, mir + x + m, dst + x);
+					else if (four) {
+						const uint32_t w = vram[((((e & 0x3FFF) << 1) | (e >> 15)) * 8 + fy) & 0x3FFFF], base = e & 0x7FF0;
+						for (int j = 0; j < m; j++) dst[x + j] = colour(pal[(base | ((w >> ((7 - (fx0 + j)) * 4)) & 0xF)) & 0x7FFF]);
+					} else {
+						const uint32_t pat = (e & 0x3FFF) * 16, base = e & 0x7F00;
+						const uint32_t w2[2] = { vram[(pat + fy * 2) & 0x3FFFF], vram[(pat + fy * 2 + 1) & 0x3FFFF] };
+						for (int j = 0; j < m; j++) { const int fx = fx0 + j; dst[x + j] = colour(pal[(base | ((w2[fx >> 2] >> ((3 - (fx & 3)) * 8)) & 0xFF)) & 0x7FFF]); }
+					}
+					x += m;
+				}
+			}
+			// (as aligned(): S on, its last S columns the one before's)
+			uint32_t *o = out.data() + size_t(a + EY) * WW;
+			std::copy(line_buf.begin() + S, line_buf.end(), o);
+			for (int x = WW - S; x < WW; x++) o[x] = o[WW - S - 1];
+		}
+	}
+}
+
+// The stage's whole backdrop from the game's map (the free camera's sky): each of the map's tiles as the layer would
+// show it (the bank where the screen has it, else where the game's table says; the palette, the depth and the colour
+// offset of the screen line it's placed by), made again only when one of those changes. Placed by the first of a few
+// screen lines that is the backdrop's own (as sky_past's edge line: the map's line there the screen's).
+struct TileGen::RomPicture { uint32_t desc = 0; int bank = -1; bool ok = false; int stage = -1; TilePictureData data; };
+
+void TileGen::panorama(const m3::Model3 &board, Panorama &out)
+{
+	out.ok = false;
+	if (!backdrop.ok || cover2 || backdrop.w <= 0 || backdrop.h <= 0) return;
+	const int S = 2;   // (aligned()'s shift)
+	const uint32_t *vram = reinterpret_cast<const uint32_t *>(board.tile_ram.data());
+	const uint32_t *pal = vram + 0x40000;
+	static const int LINES[] = { 0, 48, 96, 144, 192 };
+	for (int ey : LINES) {
+		const LineRegs &L = drawn_regs[ey];
+		if (!L.drawn || !(L.layer[3] & 0x80000000u) || (L.order >> (8 + 3)) & 1) continue;
+		const bool four = (L.order >> (12 + 3)) & 1;
+		const int sy = int((L.layer[3] >> 16) & 0x1FF), sx = scroll.sx[3][ey] & 511;
+		const Offset off = offset_of(L.offset_b);
+		uint8_t lut[3][32];
+		const int offs[3] = { off.r, off.g, off.b };
+		for (int c = 0; c < 3; c++)
+			for (int i = 0; i < 32; i++) lut[c][i] = uint8_t(std::clamp(i * 255 / 31 + offs[c], 0, 255));
+		auto raw = [&](uint32_t e, int fy, int fx) {
+			if (four) {
+				const uint32_t pat = (((e & 0x3FFF) << 1) | (e >> 15)) * 8;
+				return pal[((e & 0x7FF0) | ((vram[(pat + fy) & 0x3FFFF] >> ((7 - fx) * 4)) & 0xF)) & 0x7FFF];
+			}
+			const uint32_t pat = (e & 0x3FFF) * 16;
+			return pal[((e & 0x7F00) | ((vram[(pat + fy * 2 + (fx >> 2)) & 0x3FFFF] >> ((3 - (fx & 3)) * 8)) & 0xFF)) & 0x7FFF];
+		};
+		auto colour = [&](uint32_t v) {
+			return 0xFF000000u | uint32_t(lut[2][(v >> 10) & 31]) << 16 | uint32_t(lut[1][(v >> 5) & 31]) << 8 | lut[0][v & 31];
+		};
+		const int r0 = ((ey + sy) >> 3) & 63, f0 = (ey + sy) & 7;
+		// the line as the map has it against the screen's
+		const uint32_t *scr = below.data() + size_t(ey) * W;
+		int same = 0, n = 0;
+		for (int x = 0; x < W; x += 2) {
+			const uint32_t v = raw(backdrop_entry(board, backdrop.x0 + ((x + sx) >> 3), backdrop.y0 + r0), f0, (x + sx) & 7);
+			n++;
+			same += scr[x] != 0 && !(v & 0x8000) && colour(v) == scr[x];
+		}
+		if (same * 20 < n * 19) continue;
+		const int w = backdrop.w * 8, h = backdrop.h * 8;
+		out.ok = true;
+		out.x = backdrop.x0 * 8 + sx + S;
+		out.y = (backdrop.y0 + r0) * 8 + f0 + S - ey;
+		// what it's made from, summed: the map, the banks' places, the depth, the offset, the palette, and the
+		// patterns (their words sampled: a bank loaded changes thousands)
+		uint64_t key = 1469598103934665603ull;
+		auto mix = [&](uint64_t v) { key = (key ^ v) * 1099511628211ull; };
+		mix(backdrop.desc); mix(uint64_t(four)); mix(L.offset_b); mix(uint64_t(w) << 32 | uint32_t(h));
+		for (int i = 0; i < 128; i++) mix(uint64_t(uint16_t(backdrop.bank[i])) << 32 | uint32_t(backdrop.seen[i]));
+		for (int i = 0; i < 128; i++) mix(uint32_t(backdrop.trust[i]));
+		// the stage's picture from the ROM, once: the bank of the CROM its data is in the one that decodes whole (Dural's
+		// picture's first: the game's pictures are all in it)
+		static const bool no_rom = getenv("VF3_NO_SKY_ROM") != nullptr;   // (tests: the pattern RAM's tiles only)
+		if (!rom_picture) rom_picture = std::make_shared<RomPicture>();
+		RomPicture &rp = *rom_picture;
+		if (rp.desc != backdrop.desc) {
+			rp = RomPicture();
+			rp.desc = backdrop.desc;
+			rp.stage = backdrop.stage;
+			const int first = board.profile->dural ? int(board.profile->dural->data_bank) : 7;
+			const uint32_t data_table = board.profile->dural ? board.profile->dural->data : 0xFF300000u;
+			for (int k = 0; k < 17 && !rp.ok && backdrop.stage >= 0; k++) {
+				const int bank = k == 0 ? first : k - 1;
+				if (k > 0 && bank == first) continue;
+				if (tile_picture_data(board, bank, board.profile->backdrops.descriptors, data_table, backdrop.stage, rp.data) &&
+				    rp.data.desc == backdrop.desc && rp.data.tw == backdrop.w && rp.data.th == backdrop.h) { rp.ok = true; rp.bank = bank; }
+			}
+		}
+		mix(uint64_t(rp.ok && !no_rom));
+		for (int i = 0; i < 0x8000; i++) mix(pal[i]);
+		for (int i = 0; i < 0x40000; i += 7) mix(vram[i]);
+		if (key == out.key && out.px.size() == size_t(w) * h && out.w == w && out.h == h) return;
+		out.key = key;
+		out.desc = backdrop.desc;
+		out.w = w; out.h = h;
+		out.version++;
+		out.px.assign(size_t(w) * h, 0);
+		// a tile: its 64 pixels, or none of them if any is see-through (a bank not loaded: not the backdrop's)
+		auto tile = [&](uint32_t e, uint32_t t[64]) {
+			if (four) {
+				const uint32_t pat = (((e & 0x3FFF) << 1) | (e >> 15)) * 8, base = e & 0x7FF0;
+				for (int fy = 0; fy < 8; fy++) {
+					const uint32_t wd = vram[(pat + fy) & 0x3FFFF];
+					for (int fx = 0; fx < 8; fx++) {
+						const uint32_t v = pal[(base | ((wd >> ((7 - fx) * 4)) & 0xF)) & 0x7FFF];
+						if (v & 0x8000) return false;
+						t[fy * 8 + fx] = colour(v);
+					}
+				}
+			} else {
+				const uint32_t pat = (e & 0x3FFF) * 16, base = e & 0x7F00;
+				for (int fy = 0; fy < 8; fy++) {
+					const uint32_t w2[2] = { vram[(pat + fy * 2) & 0x3FFFF], vram[(pat + fy * 2 + 1) & 0x3FFFF] };
+					for (int fx = 0; fx < 8; fx++) {
+						const uint32_t v = pal[(base | ((w2[fx >> 2] >> ((3 - (fx & 3)) * 8)) & 0xFF)) & 0x7FFF];
+						if (v & 0x8000) return false;
+						t[fy * 8 + fx] = colour(v);
+					}
+				}
+			}
+			return true;
+		};
+		// a bank there to draw from: on screen now, or the screen has had it where the game's table still has it
+		auto there = [&](int bank) {
+			return backdrop.seen[bank] >= 0 || (backdrop.trust[bank] >= 0 && backdrop.trust[bank] == (int(uint16_t(backdrop.bank[bank])) & 0x3FFF));
+		};
+		auto raw_at = [&](int tx, int ty) { return backdrop.map[size_t(ty) * backdrop.w + tx]; };
+		uint32_t t[64];
+		const int tw = backdrop.w, th = backdrop.h;
+		// a tile from the ROM's picture (false: not in it, or a see-through pixel); the loader's two special pictures'
+		// colours as it stores them (0x32CA4)
+		auto rom_tile = [&](uint16_t e, uint32_t q[64]) {
+			const size_t c = (e >> 7) & 0x7F, i = e & 0x7F;
+			if (!rp.ok || c >= rp.data.pat.size() || (i + 1) * 64 > rp.data.pat[c].size()) return false;
+			const uint8_t *src = &rp.data.pat[c][i * 64];
+			const std::vector<uint16_t> &pl = rp.data.pal[c];
+			for (int k = 0; k < 64; k++) {
+				if (src[k] >= pl.size()) return false;
+				uint32_t v = pl[src[k]];
+				if (rp.stage == 0xA2 && v == 0x739C) v = 0x7FFF;
+				if (rp.stage == 0xD && v) v |= 0x7C00;
+				if (v & 0x8000) return false;
+				q[k] = colour(v);
+			}
+			return true;
+		};
+		std::vector<uint8_t> have(size_t(tw) * th, 0);
+		out.vram_tiles = out.rom_compared = out.rom_same = out.rom_tiles = out.filled_tiles = 0;
+		out.rom_bank = rp.ok ? rp.bank : -1;
+		uint32_t q[64];
+		for (int ty = 0; ty < th; ty++)
+			for (int tx = 0; tx < tw; tx++) {
+				const uint16_t e = raw_at(tx, ty);
+				if (!there((e >> 7) & 0x7F) || !tile(backdrop_entry(board, tx, ty), t)) continue;
+				have[size_t(ty) * tw + tx] = 1;
+				out.vram_tiles++;
+				if (rom_tile(e, q)) { out.rom_compared++; out.rom_same += memcmp(q, t, sizeof q) == 0; }
+				for (int fy = 0; fy < 8; fy++) memcpy(&out.px[size_t(ty * 8 + fy) * w + size_t(tx) * 8], t + fy * 8, 32);
+			}
+		// the chunks not loaded, from the ROM: only once it's seen to give the loaded ones' pixels (49 in 50 of at
+		// least 64 tiles: a palette the game is fading differs for a frame or two)
+		const bool rom_good = rp.ok && !no_rom && out.rom_compared >= 64 && out.rom_same * 50 >= out.rom_compared * 49;
+		if (rom_good)
+			for (int ty = 0; ty < th; ty++)
+				for (int tx = 0; tx < tw; tx++) {
+					if (have[size_t(ty) * tw + tx] || !rom_tile(raw_at(tx, ty), q)) continue;
+					have[size_t(ty) * tw + tx] = 1;
+					out.rom_tiles++;
+					for (int fy = 0; fy < 8; fy++) memcpy(&out.px[size_t(ty * 8 + fy) * w + size_t(tx) * 8], q + fy * 8, 32);
+				}
+		for (uint8_t hv : have) out.filled_tiles += !hv;
+		// The tiles of banks not there (the sky's top, mostly: the game loads those rows when its camera looks up): each
+		// the colour of the row next to it's edge (from below first: a sky's colour goes on up from its clouds; then from
+		// above), never the patterns the bank's place holds
+		std::vector<uint32_t> fill(size_t(tw) * th, 0);
+		auto edge = [&](int tx, int ty, int line) {   // (a tile's top or bottom line, averaged)
+			if (!have[size_t(ty) * tw + tx]) return fill[size_t(ty) * tw + tx];
+			uint32_t sum[3] = {};
+			const uint32_t *q = &out.px[size_t(ty * 8 + line) * w + size_t(tx) * 8];
+			for (int i = 0; i < 8; i++) for (int c = 0; c < 3; c++) sum[c] += (q[i] >> (8 * c)) & 255;
+			return 0xFF000000u | (sum[0] / 8) | (sum[1] / 8) << 8 | (sum[2] / 8) << 16;
+		};
+		for (int pass = 0; pass < 2; pass++)
+			for (int i = 0; i < th; i++) {
+				const int ty = pass ? i : th - 1 - i, from = pass ? ty - 1 : ty + 1;
+				if (from < 0 || from >= th) continue;
+				// (the row's own colour: the middle one, each of red, green and blue, of that edge all along it; a cloud
+				// under a tile isn't carried up into it)
+				std::vector<uint8_t> ch[3];
+				for (int tx = 0; tx < tw; tx++)
+					if (const uint32_t v = edge(tx, from, pass ? 7 : 0)) for (int c = 0; c < 3; c++) ch[c].push_back(uint8_t(v >> (8 * c)));
+				if (ch[0].empty()) continue;
+				uint32_t mid = 0xFF000000u;
+				for (int c = 0; c < 3; c++) {
+					std::nth_element(ch[c].begin(), ch[c].begin() + std::ptrdiff_t(ch[c].size() / 2), ch[c].end());
+					mid |= uint32_t(ch[c][ch[c].size() / 2]) << (8 * c);
+				}
+				for (int tx = 0; tx < tw; tx++)
+					if (!have[size_t(ty) * tw + tx] && !fill[size_t(ty) * tw + tx]) fill[size_t(ty) * tw + tx] = mid;
+			}
+		for (int ty = 0; ty < th; ty++)
+			for (int tx = 0; tx < tw; tx++)
+				if (!have[size_t(ty) * tw + tx] && fill[size_t(ty) * tw + tx])
+					for (int fy = 0; fy < 8; fy++) std::fill_n(&out.px[size_t(ty * 8 + fy) * w + size_t(tx) * 8], 8, fill[size_t(ty) * tw + tx]);
+		// above and below the map, the game's fillers (its first entry, its last row's first): their colour if their
+		// bank is there, else the map's top or bottom line's, averaged
+		auto filler = [&](int row) -> uint32_t {
+			const int ty = row < 0 ? 0 : th - 1;
+			uint64_t sum[3] = {}, cnt = 0;
+			const bool loaded = there((raw_at(0, ty) >> 7) & 0x7F) && tile(backdrop_entry(board, 0, row), t);
+			if (loaded || (rom_good && rom_tile(raw_at(0, ty), t))) {
+				for (uint32_t v : t) { for (int c = 0; c < 3; c++) sum[c] += (v >> (8 * c)) & 255; cnt++; }
+			} else {
+				const uint32_t *q = &out.px[size_t(row < 0 ? 0 : h - 1) * w];
+				for (int x = 0; x < w; x++) if (q[x]) { for (int c = 0; c < 3; c++) sum[c] += (q[x] >> (8 * c)) & 255; cnt++; }
+			}
+			return cnt ? 0xFF000000u | uint32_t(sum[0] / cnt) | uint32_t(sum[1] / cnt) << 8 | uint32_t(sum[2] / cnt) << 16 : 0u;
+		};
+		out.above = filler(-1);
+		out.below = filler(backdrop.h);
+		// the map's top lines into the filler's colour above it, its bottom lines into the one below: eased (slow at
+		// both ends), so no line shows where the map ends and the plain colour starts
+		for (int side = 0; side < 2; side++) {
+			const uint32_t to = side ? out.below : out.above;
+			if (!to) continue;
+			for (int i = 0; i < SKY_BLEND && i < h / 3; i++) {
+				const float u = 1.0f - (float(i) + 0.5f) / float(SKY_BLEND), k = u * u * (3 - 2 * u);
+				const int a256 = int(std::lround(k * 256));
+				uint32_t *row = &out.px[size_t(side ? h - 1 - i : i) * w];
+				for (int x = 0; x < w; x++) {
+					const uint32_t v = row[x] ? row[x] : to;
+					uint32_t o = 0xFF000000u;
+					for (int c = 0; c < 24; c += 8) o |= ((((v >> c) & 255) * uint32_t(256 - a256) + ((to >> c) & 255) * uint32_t(a256)) >> 8) << c;
+					row[x] = o;
+				}
+			}
+		}
+		return;
+	}
+}
+
+std::string TileGen::backdrop_list(const m3::Model3 &board) const
+{
+	std::string s;
+	if (!board.profile->backdrops.descriptors) return s;
+	char buf[96];
+	for (int stage = 0; stage < 256; stage++) {
+		const uint32_t desc = board.peek32(board.profile->backdrops.descriptors + 4 * uint32_t(stage));
+		if (desc < 0xFF000000u) continue;
+		const int w = board.peek16(desc + 4), h = board.peek16(desc + 6);
+		if (w < 64 || w > 2048 || h < 1 || h > 256) continue;
+		snprintf(buf, sizeof buf, "  stage %d: desc %08x, %d x %d tiles (%d x %d pixels)%s\n", stage, desc, w, h, w * 8, h * 8, desc == backdrop.desc ? " <- on now" : "");
+		s += buf;
+	}
+	// (the map on now: each bank its tiles use, where the game's table has it and where the screen does, and its tiles)
+	if (backdrop.ok && getenv("VF3_TEST_BANKS")) {
+		int count[128] = {};
+		for (uint16_t e : backdrop.map) count[(e >> 7) & 0x7F]++;
+		for (int i = 0; i < 128; i++)
+			if (count[i]) { snprintf(buf, sizeof buf, "  bank %d: table %d (%04x), screen %d, %d tiles\n", i, backdrop.bank[i], uint16_t(backdrop.bank[i]), backdrop.seen[i], count[i]); s += buf; }
+		for (int y = 0; y < backdrop.h; y++) {
+			s += "  row ";
+			for (int x = 0; x < backdrop.w; x += 4) { snprintf(buf, sizeof buf, "%02x ", (backdrop.map[size_t(y) * backdrop.w + x] >> 7) & 0x7F); s += buf; }
+			s += "\n";
+		}
+	}
+	return s;
+}
+
 void TileGen::aligned(std::vector<uint32_t> &b, std::vector<uint32_t> &a) const
 {
 	const int S = 2;
@@ -1280,6 +1794,26 @@ void TileGen::aligned_wide(std::vector<uint32_t> &b) const
 		for (int x = WW - S; x < WW; x++) b[size_t(y) * WW + x] = b[size_t(y) * WW + WW - S - 1];
 	}
 	for (int y = H - S; y < H; y++) memcpy(&b[size_t(y) * WW], &b[size_t(H - S - 1) * WW], size_t(WW) * 4);
+}
+
+void TileGen::aligned_tall(std::vector<uint32_t> &b) const
+{
+	const int S = 2;
+	b.assign(size_t(WW) * HT, 0);
+	auto put = [&](int a, const uint32_t *src) {   // (aligned line a, from the drawn line src: S on)
+		uint32_t *o = &b[size_t(a + EY) * WW];
+		memcpy(o, src + S, size_t(WW - S) * 4);
+		for (int x = WW - S; x < WW; x++) o[x] = o[WW - S - 1];
+	};
+	auto copy = [&](int a, int from) { memcpy(&b[size_t(a + EY) * WW], &b[size_t(from + EY) * WW], size_t(WW) * 4); };
+	for (int a = -EY; a < H + EY; a++) {
+		const int d = a + S;   // (the drawn line)
+		if (d >= 0 && d < H) put(a, &below_wide[size_t(d) * WW]);
+	}
+	// the last S lines as aligned()'s, and the screen mirrored at its edges
+	for (int a = H - S; a < H; a++) copy(a, H - S - 1);
+	for (int a = -EY; a < 0; a++) copy(a, -1 - a);
+	for (int a = H; a < H + EY; a++) copy(a, 2 * H - 1 - a);
 }
 
 void TileGen::compose(const uint32_t *pic3d, uint32_t *out) const

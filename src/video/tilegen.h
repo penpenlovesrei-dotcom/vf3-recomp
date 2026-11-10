@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -16,6 +17,8 @@ namespace video {
 const int W = 496, H = 384;
 // the layer below the 3D widened for widescreen: EXT more pixels each side
 const int EXT = 256, WW = W + 2 * EXT;
+// and taller for the stages' sky drawn ahead of the game's backdrop (sky_lead.h): EY more lines above and below
+const int EY = 64, HT = H + 2 * EY;
 
 class TileGen
 {
@@ -31,6 +34,11 @@ public:
 	// 32-pixel columns, this frame): what moved, for smooth motion's pictures between frames
 	struct Scroll { int16_t sx[4][H] = {}, sy[4][H] = {}; int below_columns[4] = {}; };
 	Scroll scroll;
+	// The registers each line was drawn with (drawn false: a line not drawn this frame): what's drawn over the layers afterwards
+	// (Dural's spot on the select, dural_cell) shown as the game's own lines were, not as the registers are at the
+	// frame's end (the game sets the next frame's fade before it ends: a frame ahead)
+	struct LineRegs { uint32_t order = 0, offset_b = 0, layer[4] = {}; bool drawn = false; };
+	LineRegs drawn_regs[H];
 	// The layer below the 3D that drew most of it and how far it moved from `before` to `now` (in its pixels;
 	// false: none, another layer, or a jump: a cut)
 	// The registers hold the layer's scroll within a tile, the game moving the rest by rewriting the map, so the
@@ -42,15 +50,45 @@ public:
 	// (tests: the backdrop's state this frame, a line: its map found, how it agrees with the layer on screen, and the
 	// sides' tiles (as far as 21:9 shows them) from banks of tiles not loaded: whose place another bank on screen has)
 	std::string audit(const m3::Model3 &board) const;
-	void line(const m3::Model3 &board, unsigned y);
+	// line_regs: the tile generator's 64 registers as they were when the line began (a worker thread drawing the line
+	// while the game runs on: only the registers change line by line); null, the board's now
+	void line(const m3::Model3 &board, unsigned y, const uint32_t *line_regs = nullptr);
 	// The two layers as they line up with the 3D: 2 pixels left and up of where they're drawn (as Supermodel
 	// places them, its 3D drawn as ours is)
 	void aligned(std::vector<uint32_t> &below_out, std::vector<uint32_t> &above_out) const;
 	void aligned_wide(std::vector<uint32_t> &out) const;   // below_wide, as aligned() (WW wide)
+	// below_wide with EY lines above and below it (WW x HT, the screen's lines from EY), as aligned(): the screen's
+	// lines mirrored at its edges there (sky_past puts a stage's sky over them)
+	void aligned_tall(std::vector<uint32_t> &out) const;
+	// After the frame (its lines drawn, before the next's): a stage's sky past the screen's top and bottom into
+	// aligned_tall's out, as the game would draw it there, the lines a picture reaches (top, bottom: how many past the
+	// screen, up to EY; the screen's last 2 lines, which aligned()'s shift leaves as copies, always). Where the screen's
+	// edge isn't the stage's backdrop, the mirrored lines are kept.
+	void sky_past(const m3::Model3 &board, int top, int bottom, std::vector<uint32_t> &out);
+	// The stage's whole backdrop as the game's own map has it (the free camera's sky: src/host/free_cam.h), after the
+	// frame as sky_past: every tile of the map (w x h pixels, RGBA as the layers; 0 where a tile's bank isn't loaded),
+	// the aligned screen's top left's place in it (x, y: the screen shows the map from there, 1:1), and what the game
+	// fills above and below the map with (its filler tiles' colour, averaged; 0: not loaded). Across, the map wraps.
+	// version: counted on each time the picture is made again (it is only when what it's made from has changed).
+	// The game keeps only the chunks of tiles around the screen in the pattern RAM (a row or so of the map each): the
+	// others are decoded from the ROM as the game's loader would (dural_cell.h's tile_picture_data), once a stage,
+	// and used once the chunks that are loaded have been seen to be the same pixels from the ROM. The map's top and
+	// bottom lines go over into the fillers' colours (SKY_BLEND lines, eased), so no line shows where the map ends.
+	static constexpr int SKY_BLEND = 56;
+	// ok false: no stage's backdrop on screen (or its place in the map not known).
+	struct Panorama { bool ok = false; int w = 0, h = 0, x = 0, y = 0; uint32_t above = 0, below = 0; uint64_t version = 0, key = 0; uint32_t desc = 0; std::vector<uint32_t> px;
+		// (tests: the picture's tiles: from the pattern RAM, of those the ROM's decoded too and the same pixels, from
+		// the ROM, and left without either: the next row's colour)
+		int vram_tiles = 0, rom_compared = 0, rom_same = 0, rom_tiles = 0, filled_tiles = 0, rom_bank = -1; };
+	void panorama(const m3::Model3 &board, Panorama &out);
+	// (tests: the stages' maps in the ROM, a line each: its number, width and height in tiles)
+	std::string backdrop_list(const m3::Model3 &board) const;
 	// the 3D (RGBA, alpha ignored) between the layers, into out (RGBA); out may be the 3D's own buffer
 	void compose(const uint32_t *pic3d, uint32_t *out) const;
 
 private:
+	const uint32_t *regs_now = nullptr;   // (line's line_regs while it draws)
+	const uint32_t *regs_of(const m3::Model3 &board) const;
 	// a layer's panorama: its rows as runs of patterns (first, length), learned where the map shows one wrap
 	struct Pano { std::map<int, int> rows; int len = 0; };   // (len: the rows' usual length, the map's rows apart)
 	Pano pano[4];
@@ -93,18 +131,30 @@ private:
 	// from it, as the game would. x0, y0: where the layer's map starts in it (found each frame)
 	// (seen: each bank's place as the layer on screen has it, -1 where none of it is on screen: the game moves banks
 	// in the pattern RAM as it loads them, and its table can be ahead of the layer for a frame)
-	struct Backdrop { bool ok = false; uint32_t desc = 0; int w = 0, h = 0, x0 = 0, y0 = 0; int16_t bank[128] = {}; int seen[128] = {}; bool known = false; int game_x = 0, game_y = 0, prev_x = 0, prev_y = 0; uint64_t game_frame = ~0ull; std::vector<uint16_t> map; };   // (map: the stage's entries, read from the ROM once a stage)   // (game_*: the game's place this frame, prev_*: the frame before's, in tiles)   // (known: the stage's map read this frame, its place found or not)
+	struct Backdrop { bool ok = false; uint32_t desc = 0; int w = 0, h = 0, x0 = 0, y0 = 0; int16_t bank[128] = {}; int seen[128] = {}; int trust[128] = {}; bool known = false; int stage = -1; int game_x = 0, game_y = 0, prev_x = 0, prev_y = 0; uint64_t game_frame = ~0ull; std::vector<uint16_t> map; };   // (map: the stage's entries, read from the ROM once a stage)   // (game_*: the game's place this frame, prev_*: the frame before's, in tiles)   // (known: the stage's map read this frame, its place found or not)
 	Backdrop backdrop;
+	struct RomPicture;   // (the stage's picture from the ROM, decoded when panorama first wants it: tilegen.cpp)
+	std::shared_ptr<RomPicture> rom_picture;
+	// (trust: each bank's place when the screen last had it, this stage, -1 never: the game keeps only the banks around
+	// the screen loaded, and its table's place for one it never loaded holds other pictures (the HUD's letters); a bank
+	// the screen has had, at the place the table still gives it, is taken as still there: panorama)
 	uint64_t refind_frame = ~0ull;
 	// (this frame: a palette's see-through colours, by its first colour's place / 16: 4-bit, a bit each; 8-bit, 256 bits)
 	std::vector<uint64_t> clear_cols = std::vector<uint64_t>(4096 * 4);
 	std::vector<uint8_t> clear_known = std::vector<uint8_t>(4096);   // (8-bit's from 2048)
 	std::vector<uint8_t> solid_memo = std::vector<uint8_t>(1 << 17);   // (this frame: a pattern's entry and depth: 0 not looked at, 1 solid, 2 see-through)
-	uint64_t full_failed_sum = 0, full_failed_frame = 0;   // (the backdrop looked for in the whole map in vain: the screen's rows then, and when)
-	std::unordered_map<uint64_t, uint64_t> row_failed;   // (a row's tiles and the map: the frame it was last looked for in vain)
-	struct RowFound { uint64_t frame = ~0ull; int row = -1; uint64_t sum = 0; bool found = false; int x = 0, y = 0; std::vector<std::pair<int, int>> moved; } row_found;   // (a row looked for alone in the map: the other side's the same)
+	uint64_t full_failed_sum = 0;   // (the backdrop looked for in the whole map in vain: the screen's rows, the map and banks then)
+	static uint64_t banks_sum(const Backdrop &b);
+	std::unordered_map<uint64_t, uint64_t> row_failed;   // (a row's tiles, the map and banks: looked for in vain, and the frame)
+	struct RowFound { uint64_t frame = ~0ull; int row = -1; uint64_t sum = 0; bool found = false, all = true; int x = 0, y = 0; std::vector<std::pair<int, int>> moved; } row_found;   // (a row looked for alone in the map: the other side's the same)
+	// (each screen row's last place found alone, looked at first next frame, and when it was last looked for in all the
+	// map in vain: by the map, its desc)
+	struct RowHint { uint64_t desc = 0; int x = -1, y = 0; uint64_t full_failed_at = ~0ull; } row_hint[64];
 	bool cover2 = false;   // (this frame: layer 2 at the screen's edges for most of its lines, the mask's)
-	void find_backdrop(const m3::Model3 &board, bool full = true);   // (full: all the map looked through, else near the last place)
+	void find_backdrop(const m3::Model3 &board, bool full = true);
+	void refind_backdrop(const m3::Model3 &board, bool full);   // (a row's: not again while nothing it reads has changed)
+	uint64_t backdrop_inputs(const m3::Model3 &board, bool full) const;
+	uint64_t refind_failed = 0;   // (full: all the map looked through, else near the last place)
 	uint32_t backdrop_entry(const m3::Model3 &board, int x, int y, bool table = false) const;   // (table: its bank where the game's table has it, not the screen)   // (the layer's entry, as the game writes it)
 	std::map<uint64_t, bool> mem_mirror;   // (this frame's: by layer, map row and side, the row as made mirrored past what's remembered)
 	void place_seen(const m3::Model3 &board);   // (each frame, before its lines)

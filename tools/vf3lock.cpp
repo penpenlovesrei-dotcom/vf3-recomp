@@ -5,6 +5,7 @@
 //   vf3lock <vf3.zip> --script FILE [--frames N] [--quiet]
 #include "../src/host/input_script.h"
 #include "../src/machine/model3.h"
+#include "../src/machine/romset.h"
 #include "../src/rec/ppc_rec.h"
 #include <chrono>
 #include <cstdio>
@@ -108,6 +109,16 @@ int main(int argc, char **argv)
 	auto ia = std::make_unique<m3::Model3>(), ib = std::make_unique<m3::Model3>();
 	m3::Model3 &A = *ia, &B = *ib;
 	std::string error;
+	// the program the zip holds (romset.h's order: Revision D before Team Battle), so the lockstep can be run
+	// on Fighting Vipers 2 as well; VF3_SET names another
+	if (const char *set = getenv("VF3_SET")) {
+		if (const m3::Profile *p = m3::find_profile(set)) A.profile = B.profile = p;
+		else { fprintf(stderr, "vf3lock: no such set %s\n", set); return 2; }
+	} else if (const std::vector<const m3::Profile *> in_zip = romset::sets_in(rom); !in_zip.empty()) {
+		bool here = false;
+		for (const m3::Profile *p : in_zip) here |= p == A.profile;
+		if (!here) A.profile = B.profile = in_zip.front();
+	}
 	if (!A.load(rom, error) || !B.load(rom, error)) {
 		fprintf(stderr, "vf3lock: %s\n", error.c_str());
 		return 1;
@@ -119,11 +130,7 @@ int main(int argc, char **argv)
 	}
 	ppcrec::Rec rec;
 	ppcrec::Stats st;
-	size_t seed_count = 0;
-	const uint32_t *seed_map = ppcrec::map_for(B.set, seed_count);
-	if (!seed_count)
-		fprintf(stderr, "vf3lock: no address map for \"%s\": there is nothing to check\n", B.set.c_str());
-	if (!rec.build(B.cpu, B.program_image(), &st, seed_map, seed_count)) {
+	if (!rec.build(B.cpu, B.program_image(), B.profile->map, B.profile->map_count, &st)) {
 		fprintf(stderr, "vf3lock: the recompile failed\n");
 		return 1;
 	}
@@ -150,7 +157,7 @@ int main(int argc, char **argv)
 		a2.load(rom, error);
 		b2.load(rom, error);
 		ppcrec::Rec rec2;
-		rec2.build(b2.cpu, b2.program_image(), nullptr, seed_map, seed_count);
+		rec2.build(b2.cpu, b2.program_image(), b2.profile->map, b2.profile->map_count);
 		b2.cpu.rec = &rec2;
 		a2.reset();
 		b2.reset();
