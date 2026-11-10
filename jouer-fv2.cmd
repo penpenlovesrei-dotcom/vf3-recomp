@@ -11,4 +11,6 @@ if not exist "build\bin\vf3.exe" (
   pause
   exit /b 1
 )
-"build\bin\vf3.exe" "%ROM%" %*
+rem --game : le dossier des ROM tient aussi vf3.zip, et la fenetre joue sinon le premier programme
+rem qu'elle y trouve (Virtua Fighter 3). Ce raccourci-ci est celui de Fighting Vipers 2.
+"build\bin\vf3.exe" "%ROM%" --game fvipers2 %*
