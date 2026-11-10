@@ -1,0 +1,5 @@
+# The shader source keeps LF endings on every machine: tools/gpu/shaders.sh writes the sha1 of this very
+# file into src/gpu/r3d_shaders.h, and the check that the header still matches it (docs, RESUMPTION.md)
+# hashes the file as it lies on disk. With core.autocrlf on Windows it would be hashed with CRLF here and
+# with LF everywhere else, and the two would never agree.
+src/gpu/r3d.hlsl text eol=lf
