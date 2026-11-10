@@ -38,6 +38,30 @@ namespace {
 //   row a few frames after hers): when the texture loader (0x13C800) is idle and its last load was another
 //   fighter's in her row, 0x46 of her side's select object asks for hers again (once). Every other fighter's draw
 //   runs 6 more instructions, the same pictures.
+// - her reflection's place (issue #23): 0x450F8 puts her pieces' texture at 0x126460's place (sheet 1's (256,0))
+//   for id 9 and at 0x126468's ((256,256)) for any other, so for 22, her second costume: by her costume. But her
+//   picture is uploaded by side (the loader's request at 0x2CC40 takes the side, byte 4 of the side's object, at
+//   0x13C828): 1P's row (256,0), 2P's (256,256). They agree for 1P's 9 and 2P's 22 (and the arcade's boss, 9 on the
+//   1P side, 22 on the 2P side); with Start held on the pick (her second costume on 1P: gold 1P, so chrome 2P) or a
+//   lone 1P in gold, each side drew the other row: the other Dural's picture, or the CPU's portrait's (another
+//   fighter's face and hair in her legs, the select's gold head 1P a face). Now for 9 and 22 the place is her side's
+//   (0x451C8-0x451E0 and 0x9F144-0x9F150: id 22 joins 9's test, then the side picks 0x126460 or 0x126468): the
+//   same place as before for 1P's 9 and 2P's 22, and nothing changes for another fighter (or the dojo's model, which
+//   goes through 0x450F8 too). Team Battle's own 0x4A650 already picks it by side (lbz r3,4(r14): Sega's fix), so
+//   its patches stay as they were.
+// - two Durals at once (issue #23 again): 0x444C0 redoes her reflection in two halves, a frame each: the byte at
+//   -0x5F94(r13) is flipped on each call and picks the half (0x4450C: bne 0x44584, the 6 pieces from 0x2C on and the
+//   shared ones after; else the first 11). It's one byte for the game, not hers: with two Durals it's flipped twice a
+//   frame, so the first drawn always redid the same half and the second the other, and each kept the other half's
+//   texture coordinates and place as left (the other picture, stripes: her legs bronze while both are on screen; with
+//   one off screen, at a win, the halves took turns again and drew right). Now the half is the frame counter's
+//   (0x100070) low bit xor her side (0x4450C: b 0x9F154; 0x9F154-0x9F170), so each takes turns, the two on opposite
+//   halves (the same work a frame as before); the byte is still flipped. Team Battle's at 0x4999C (+0x5490), the same.
+//   That's the chrome one (her first costume, 9). The gold one (22) has her own, 0x448E8, which reads the same byte
+//   and flips it too unless 1P's fighter (-0x5EF8(r13), +0x70) is 9: Sega's way for the arcade's chrome 1P, so the
+//   byte flipped once a frame. With the gold one on 1P (22) both flip it, so the gold one's half never changed either
+//   (the reporter's: only gold 1P and chrome 2P is wrong). Her half now the same way (0x44944: b 0x9F174;
+//   0x9F174-0x9F190), whoever's on 1P; Team Battle's at 0x49DD4, the same.
 // - her spot on the select: the cursor's routine (0x2C7C4) keeps the column (r17, 0x45 of the player's select object
 //   0x108000 + 0x80 * player) in 0-5, wrapping, and reads the fighter from the grid's rows (0x70400: 0x70408 and
 //   0x7040F), whose seventh byte is already 9, Dural, in both rows. Now the column goes to 6: right from the sixth
@@ -106,6 +130,16 @@ const uint32_t REV_D_PATCH[][3] = {
 	{ 0x9F12C, 0xFFFFFFFF, 0x7FC3F378 }, { 0x9F130, 0xFFFFFFFF, 0xBB210008 }, { 0x9F134, 0xFFFFFFFF, 0x8001003C },
 	{ 0x9F138, 0xFFFFFFFF, 0x7C0803A6 }, { 0x9F13C, 0xFFFFFFFF, 0x38210040 }, { 0x9F140, 0xFFFFFFFF, 0x4E800020 },
 	{ 0x2C8A8, 0x2C110005, 0x2C110006 }, { 0x2C8C4, 0x3A200005, 0x3A200006 }, { 0x73674, 0x483F4540, 0x484B4540 },
+	{ 0x451C8, 0x40820010, 0x2C820016 }, { 0x451CC, 0x3F600012, 0x4C423382 }, { 0x451D0, 0x3B7B6460, 0x3F600012 },
+	{ 0x451D4, 0x48000018, 0x3B7B6468 }, { 0x451D8, 0x3F600012, 0x40820014 }, { 0x451DC, 0x3B7B6468, 0x880E0004 },
+	{ 0x451E0, 0x4800000C, 0x48059F64 }, { 0x9F144, 0xFFFFFFFF, 0x2C000000 }, { 0x9F148, 0xFFFFFFFF, 0x40820008 },
+	{ 0x9F14C, 0xFFFFFFFF, 0x3B7BFFF8 }, { 0x9F150, 0xFFFFFFFF, 0x4BFA609C },
+	{ 0x4450C, 0x40A20078, 0x4805AC48 }, { 0x9F154, 0xFFFFFFFF, 0x3C600010 }, { 0x9F158, 0xFFFFFFFF, 0x80630070 },
+	{ 0x9F15C, 0xFFFFFFFF, 0x888E0004 }, { 0x9F160, 0xFFFFFFFF, 0x7C632278 }, { 0x9F164, 0xFFFFFFFF, 0x70630001 },
+	{ 0x9F168, 0xFFFFFFFF, 0x41820008 }, { 0x9F16C, 0xFFFFFFFF, 0x4BFA5418 }, { 0x9F170, 0xFFFFFFFF, 0x4BFA53A0 },
+	{ 0x44944, 0x41820078, 0x4805A830 }, { 0x9F174, 0xFFFFFFFF, 0x3C600010 }, { 0x9F178, 0xFFFFFFFF, 0x80630070 },
+	{ 0x9F17C, 0xFFFFFFFF, 0x888E0004 }, { 0x9F180, 0xFFFFFFFF, 0x7C632278 }, { 0x9F184, 0xFFFFFFFF, 0x70630001 },
+	{ 0x9F188, 0xFFFFFFFF, 0x41820008 }, { 0x9F18C, 0xFFFFFFFF, 0x4BFA5830 }, { 0x9F190, 0xFFFFFFFF, 0x4BFA57B8 },
 };
 
 const uint32_t TB_KNOWN[][2] = {
@@ -157,13 +191,39 @@ const uint32_t TB_PATCH[][3] = {
 	{ 0x9F12C, 0xFFFFFFFF, 0x7FC3F378 }, { 0x9F130, 0xFFFFFFFF, 0xBB210008 }, { 0x9F134, 0xFFFFFFFF, 0x8001003C },
 	{ 0x9F138, 0xFFFFFFFF, 0x7C0803A6 }, { 0x9F13C, 0xFFFFFFFF, 0x38210040 }, { 0x9F140, 0xFFFFFFFF, 0x4E800020 },
 	{ 0x306B0, 0x2C110005, 0x2C110006 }, { 0x306CC, 0x3A200005, 0x3A200006 }, { 0x79F6C, 0x483F4540, 0x484B4540 },
+	{ 0x4999C, 0x40A20078, 0x480557B8 }, { 0x9F154, 0xFFFFFFFF, 0x3C600010 }, { 0x9F158, 0xFFFFFFFF, 0x80630070 },
+	{ 0x9F15C, 0xFFFFFFFF, 0x888E0004 }, { 0x9F160, 0xFFFFFFFF, 0x7C632278 }, { 0x9F164, 0xFFFFFFFF, 0x70630001 },
+	{ 0x9F168, 0xFFFFFFFF, 0x41820008 }, { 0x9F16C, 0xFFFFFFFF, 0x4BFAA8A8 }, { 0x9F170, 0xFFFFFFFF, 0x4BFAA830 },
+	{ 0x49DD4, 0x41820078, 0x480553A0 }, { 0x9F174, 0xFFFFFFFF, 0x3C600010 }, { 0x9F178, 0xFFFFFFFF, 0x80630070 },
+	{ 0x9F17C, 0xFFFFFFFF, 0x888E0004 }, { 0x9F180, 0xFFFFFFFF, 0x7C632278 }, { 0x9F184, 0xFFFFFFFF, 0x70630001 },
+	{ 0x9F188, 0xFFFFFFFF, 0x41820008 }, { 0x9F18C, 0xFFFFFFFF, 0x4BFAACC0 }, { 0x9F190, 0xFFFFFFFF, 0x4BFAAC48 },
 };
+
+// The arcade's Dural boss (offline only: a 1P game vs the CPU, never online). When the CPU's next opponent is Dural
+// (index 9 of the order), the routine at 0x2BDF8 picks her stage from the list at 0x7702C[the player's fighter]
+// (16 bytes, a random number & 15): most fighters' is 0x770EE (the Dural versions of stages 1, 2, 7, 8, 9, 11, 12, 13,
+// 14, 15), but Jeffry's, Aoi's and Dural's own (4, 9, 11 and their second costumes 17, 22, 24) are 0x77094, sixteen
+// times stage 31 (Taka-Arashi's stage's Dural version). The game's choice for those it could pick; she had no reason
+// to be among them, so for her (9, 22) the list is most fighters' (each stage played Dural against Dural, CPU and
+// GPU: none freezes). Team Battle's 1 vs 1 has the same lists at 0x7DB14 (0x7DB7C, 0x7DBD6), and its 3 vs 3 takes
+// the least of the team's stage counts (bytes at 0x7DBF0 by fighter: hers 1) from the list at 0x7DC0A: hers made 10.
+const uint32_t REV_D_OFFLINE[][3] = { { 0x77050, 0x00077094, 0x000770EE }, { 0x77084, 0x00077094, 0x000770EE } };
+const uint32_t TB_OFFLINE[][3] = {
+	{ 0x7DB38, 0x0007DB7C, 0x0007DBD6 }, { 0x7DB6C, 0x0007DB7C, 0x0007DBD6 },
+	{ 0x7DBF8, 0x0A010A01, 0x0A0A0A01 }, { 0x7DC04, 0x0A0A0109, 0x0A0A0A09 },
+};
+
+// The words issue #23's fix added at the end of each patch list (two Durals' halves: 0x4450C and 0x44944, Team
+// Battle's 0x4999C and 0x49DD4, with their code at 0x9F154-0x9F190): without them, v0.1.16-alpha's set (`legacy`)
+constexpr size_t ISSUE23_WORDS = 18;
 
 } // namespace
 
 const DuralPatch REV_D_DURAL = { REV_D_KNOWN, sizeof REV_D_KNOWN / sizeof REV_D_KNOWN[0], REV_D_PATCH, sizeof REV_D_PATCH / sizeof REV_D_PATCH[0],
-	0x7E0000, 0x7E8000, 0x4C, 0xFFB30004, 0xFF300000, 7 };
+	REV_D_OFFLINE, sizeof REV_D_OFFLINE / sizeof REV_D_OFFLINE[0],
+	0x7E0000, 0x7E8000, 0x4C, 0xFFB30004, 0xFF300000, 7, sizeof REV_D_PATCH / sizeof REV_D_PATCH[0] - ISSUE23_WORDS };
 const DuralPatch TB_DURAL = { TB_KNOWN, sizeof TB_KNOWN / sizeof TB_KNOWN[0], TB_PATCH, sizeof TB_PATCH / sizeof TB_PATCH[0],
-	0x7E0000, 0x7E8000, 0x4C, 0xFFB30004, 0xFF300000, 7 };
+	TB_OFFLINE, sizeof TB_OFFLINE / sizeof TB_OFFLINE[0],
+	0x7E0000, 0x7E8000, 0x4C, 0xFFB30004, 0xFF300000, 7, sizeof TB_PATCH / sizeof TB_PATCH[0] - ISSUE23_WORDS };
 
 } // namespace m3

@@ -54,6 +54,7 @@ public:
 	{
 		io.pod(regs); io.pod(CS); io.pod(CLK); io.pod(DI); io.pod(DO); io.pod(out); io.pod(in);
 		io.pod(bits_out); io.pod(receiving); io.pod(addr); io.pod(busy); io.pod(locked);
+		if constexpr (IO::loading) addr &= 0x3F;   // (a state from elsewhere: kept to the 64 words)
 	}
 private:
 	unsigned CS = 0, CLK = 0, DI = 0, DO = 0;
@@ -81,6 +82,13 @@ public:
 			io.pod(d.asic); io.pod(d.kind); io.pod(d.id); io.pod(d.shift); io.pod(d.size); io.pod(d.ir); io.pod(d.mode);
 		}
 		io.pod(state); io.pod(last_tck); io.pod(tdo); io.pod(modeword);
+		if constexpr (IO::loading) {   // (a state from elsewhere: which ASIC and the shift's length kept in range)
+			for (Device &d : dev) {
+				if (d.kind < -1 || d.kind > 4) d.kind = -1;
+				d.size = d.size < 1 ? 1 : d.size > 64 ? 64 : d.size;
+			}
+			if (!io.check(state >= 0 && state < 16)) state = 0;   // (the TAP's state: a row of FSM)
+		}
 	}
 private:
 	struct Device
@@ -126,7 +134,9 @@ public:
 	uint8_t read(unsigned reg);
 	void write(unsigned reg, uint8_t data);
 private:
+	bool running = false;   // (not in the state: a frame never ends in a run)
 	void run(bool single);
+	void run_once(bool single);
 	bool exec();
 	uint32_t fetch(uint32_t off);
 };
@@ -509,8 +519,21 @@ public:
 	// arcade's freeze); her select portrait loads her own head, made chrome as a fight makes it; and either player's
 	// cursor can move onto her, a seventh column of the grid. On: returns how many words changed (0: not the program
 	// known, nothing changed). Off: puts them back.
-	int set_dural(bool on);
+	// `offline` (the PC's own games only, never online, where the other side's build plays without them): the
+	// arcade's Dural boss stages for her as a player too (the DuralPatch's offline list; issue #30)
+	// `legacy`: v0.1.16-alpha's set (the DuralPatch's legacy_count: without issue #23's fix), for an online match on
+	// an older version's Dural flag, so both sides' program words are the same
+	int set_dural(bool on, bool offline = false, bool legacy = false);
+	// Arcade settings > Debug mode (offline only, never on an online match's board): the arcade's own, as its secret code gives
+	// it (the profile's debug_flags, set before each frame) with DIP switch 7 on (8 is: the board's 0x7F), which lets
+	// it read all eight: the CPU load, polygons, hits and damage on the screen. P2 Guard held and P2 Start pause the
+	// game (0x4250), P1 Start then runs a frame, P1 Start with P2 Start held goes on. A setting, not in the saved
+	// state; off, nothing (the game as ever). (Switch 3 too, 0x04, would add the CPU's time per task: a screenful.)
+	bool debug_mode = false;
+	static constexpr uint8_t DEBUG_DIPS = 0x40;
 	bool dural_on() const { return !dural_words.empty(); }
+	bool dural_offline = false;   // the offline patches are among dural_words
+	bool dural_legacy = false;    // v0.1.16-alpha's set
 	std::vector<std::pair<size_t, uint32_t>> dural_words;   // what set_dural replaced (the program's word addresses)
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
@@ -524,6 +547,7 @@ public:
 	std::vector<uint32_t> cull_lo, cull_hi, poly_ram, tex_fifo;
 	uint32_t r3d_config[4] = {};
 	uint32_t vrom_fifo[2] = {};
+	bool dma_running = false;   // (a DMA's copy under way: not in the state, a frame never ends in one)
 	int vrom_fifo_n = 0;
 	bool ping_pong = false, ping_pong_copy = false;
 	unsigned flushes = 0;            // writes to 0x88000000 this frame
@@ -583,6 +607,7 @@ public:
 	// it) if it isn't one. The renderers are told which textures changed, and the recompiled code rechecks RAM.
 	void save_state(std::vector<uint8_t> &out, std::vector<StateSection> *sections = nullptr);
 	bool load_state(const uint8_t *p, size_t n);
+	size_t fixed_state_size() const;   // (the memories' part, and its header: a state's least)
 	static constexpr uint32_t STATE_MAGIC = 0x53334656, STATE_VERSION = 2;   // "VF3S"
 	// The state's first bytes are for this board's saves alone (which board, since which reset, which save): two
 	// boards in the same state have the same bytes after them, and only those are compared or hashed
@@ -643,6 +668,7 @@ private:
 	bool scsi_mapped(uint32_t addr) const;
 
 	template <class IO> void state(IO &io);
+	bool state_sane() const;   // (a loaded state's values used as an index, a count or an address: as the board makes them)
 	bool textures_loaded = false;
 	// Save states copy the device memories by the 4 KB pages written since (save_state): each page's save number
 	// when last written. The RAM is copied whole (the recompiled code writes it directly).
@@ -653,7 +679,6 @@ private:
 	uint32_t snap_id = 0, snap_epoch = 0, snap_gen = 1;
 	void touch(int r, size_t byte) { paged[r].gen[byte / PAGE] = snap_gen; }
 	void setup_pages();
-	size_t fixed_state_size() const;
 
 	uint32_t r3d_register(unsigned reg) const;
 	void r3d_flush();

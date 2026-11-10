@@ -13,6 +13,8 @@ enum : uint16_t { UP = 1, DOWN = 2, LEFT = 4, RIGHT = 8, PUNCH = 16, KICK = 32, 
 static_assert(START == START_BUTTON);
 
 constexpr uint32_t BLOB_MAGIC = 0x42334656;   // "VF3B"
+constexpr uint32_t TERMS_MAGIC = 0x48334656;   // "VF3H": the host's settings after the blob (a pool match's)
+constexpr size_t TERMS_SIZE = 8;               // (magic, then: 1, stage select, Dural, 0)
 
 } // namespace
 
@@ -57,14 +59,14 @@ std::string online_version(const std::string &b)
 
 uint64_t content_hash(m3::Model3 &b)
 {
-	const bool hidden = !b.free_play_text.empty(), dural = b.dural_on();
+	const bool hidden = !b.free_play_text.empty(), dural = b.dural_on(), offline = b.dural_offline, legacy = b.dural_legacy;
 	if (hidden) b.show_free_play_text();
 	if (dural) b.set_dural(false);   // (Play as Dural's patches aside: online plays without them)
 	uint64_t h = 0;
 	for (const std::vector<uint8_t> *v : { &b.crom, &b.banked, &b.vrom, &b.sound_rom, &b.samples })
 		h = h * 0x100000001B3ull ^ vfnet::hash64(v->data(), v->size());
 	if (hidden) b.hide_free_play_text();
-	if (dural) b.set_dural(true);
+	if (dural) b.set_dural(true, offline, legacy);
 	return h;
 }
 
@@ -88,9 +90,60 @@ std::vector<uint8_t> start_blob(const m3::Model3 &b)
 	std::vector<uint8_t> out(4);
 	memcpy(out.data(), &BLOB_MAGIC, 4);
 	out.insert(out.end(), b.backup.begin(), b.backup.end());
+	// (Rounds to win (vs player) ONLINE_VS_ROUNDS in the blob's copy, when the game has written its settings: 2-5 there)
+	if (const m3::Profile::Settings &set = b.profile->settings; set.at && set.at + size_t(set.rounds_vs) < b.backup.size()) {
+		uint8_t &rounds = out[4 + set.at + size_t(set.rounds_vs)];
+		if (rounds >= 2 && rounds <= 5) rounds = uint8_t(ONLINE_VS_ROUNDS);
+	}
 	const uint8_t *e = reinterpret_cast<const uint8_t *>(b.eeprom.regs);
 	out.insert(out.end(), e, e + sizeof b.eeprom.regs);
 	out.push_back(uint8_t(random_versus_count()));
+	return out;
+}
+
+std::string pool_version(const std::string &online)
+{
+	return online.substr(0, online.find('+')) + HOST_TERMS_FLAG;
+}
+
+bool terms_of(const std::string &terms, const std::string &own, const std::string &pool, bool tb, Terms &out)
+{
+	out = {};
+	// (the pool's: the host's settings, Dural on the select when the lobby marks it, either player having her on)
+	if (terms == pool) { out.host_terms = true; return true; }
+	if (terms == pool + DURAL_FLAG) { out.host_terms = out.dural = true; return true; }
+	if (terms == pool + legacy_dural_flag(tb)) { out.host_terms = out.dural = out.dural_legacy = true; return true; }   // (an older version's)
+	const std::string base = own.substr(0, own.find('+'));
+	if (terms.compare(0, base.size(), base) != 0 || (terms.size() > base.size() && terms[base.size()] != '+')) return false;
+	for (size_t at = base.size(); at < terms.size();) {   // (each "+flag": only those a build of this one's has)
+		const size_t next = terms.find('+', at + 1);
+		const std::string f = terms.substr(at, next == std::string::npos ? std::string::npos : next - at);
+		if (f == DURAL_FLAG && !out.dural) out.dural = true;
+		else if (f == legacy_dural_flag(tb) && !out.dural) out.dural = out.dural_legacy = true;
+		else if (f == "+stage" && !out.stage) out.stage = true;
+		else if (tb && f == "+1v1" && out.team_one < 0) out.team_one = 1;   // (Team Battle's 1 vs 1: the host's blob sets it)
+		else return false;
+		at = next == std::string::npos ? terms.size() : next;
+	}
+	if (tb && out.team_one < 0) out.team_one = 0;   // (without "+1v1": 3 vs 3, as that version's host has it)
+	return true;
+}
+
+std::vector<uint8_t> Adapter::host_blob() const
+{
+	std::vector<uint8_t> out = start_blob(board);
+	// (an older version's terms: its Team Battle mode, as its host's NVRAM has it, whatever this host's own)
+	if (const m3::Profile::Settings &set = board.profile->settings; team_one >= 0 && set.team_mode && set.at &&
+		set.at + size_t(set.team_mode) < board.backup.size())
+		out[4 + set.at + size_t(set.team_mode)] = uint8_t(team_one);
+	if (!host_terms) return out;
+	const size_t n = out.size();
+	out.resize(n + TERMS_SIZE);
+	memcpy(out.data() + n, &TERMS_MAGIC, 4);
+	out[n + 4] = 1;
+	out[n + 5] = stage_select_on ? 1 : 0;
+	out[n + 6] = dural ? 1 : 0;
+	out[n + 7] = 0;
 	return out;
 }
 
@@ -115,17 +168,26 @@ void Adapter::take_midi(std::vector<uint8_t> &out)
 bool Adapter::begin(const std::vector<uint8_t> &blob)
 {
 	uint32_t magic = 0;
-	if (blob.size() != 4 + board.backup.size() + sizeof board.eeprom.regs + 1) return false;
+	const size_t base = 4 + board.backup.size() + sizeof board.eeprom.regs + 1;
+	if (blob.size() != base + (host_terms ? TERMS_SIZE : 0)) return false;
 	memcpy(&magic, blob.data(), 4);
 	if (magic != BLOB_MAGIC) return false;
+	if (host_terms) {   // (the host's stage select and Dural, this side's own aside for the match)
+		memcpy(&magic, blob.data() + base, 4);
+		if (magic != TERMS_MAGIC || blob[base + 4] != 1 || blob[base + 5] > 1 || blob[base + 6] > 1) return false;
+		stage_select_on = blob[base + 5] != 0;
+		dural = blob[base + 6] != 0;
+		if (dural && !board.profile->dural) return false;
+	}
 	if (settle) settle();
 	if (on_begin) on_begin();
+	board.debug_mode = false;   // (Arcade settings > Debug mode: never online, the match's boot neither)
 	memcpy(board.backup.data(), blob.data() + 4, board.backup.size());
 	memcpy(board.eeprom.regs, blob.data() + 4 + board.backup.size(), sizeof board.eeprom.regs);
 	// the PC way on both sides, whatever each plays offline: the FREE PLAY notices hidden in the CROM the boot
 	// copies the program from, free play in the settings, the boot run unseen, the same clock
 	if (!dural) board.set_dural(false);   // (Dural on the select: the match's, the same on both sides)
-	else if (board.set_dural(true) == 0) return false;
+	else if (board.set_dural(true, false, dural_legacy) == 0) return false;   // (without the offline patches: the arcade's own boss stages; an older version's terms, its set)
 	// (the notices are in the program the boot copies from the CROM: a program whose place is not known has none
 	// to hide, and plays free play by the coin setting alone, as Fighting Vipers 2 does)
 	if (board.profile->free_play_text.free_play && board.hide_free_play_text() != 2) return false;
@@ -137,16 +199,17 @@ bool Adapter::begin(const std::vector<uint8_t> &blob)
 		if (booting && i % 60 == 59) booting();
 	}
 	if (board.coin_setting() < 0 || (!board.set_coin_setting(m3::Model3::COIN_FREE_PLAY) && !board.free_play())) return false;
-	// and its stage select off, as most arcades had it (no stage screen: the game's own next stage), starting at
-	// the host's random place in the stages' list, as an arcade on all day would be
-	if (board.profile->settings.stage_select) board.backup[stage_select(board)] = 1;   // (0: not known for this program)
+	// and its stage select off, as most arcades had it (no stage screen: the game's own next stage), or CHALLENGER
+	// if both chose it (the stage screen for the challenger, the loser on a rematch), starting at the host's random
+	// place in the stages' list, as an arcade on all day would be
+	if (board.profile->settings.stage_select) board.backup[stage_select(board)] = stage_select_on ? 0 : 1;   // (0: not known for this program)
 	board.power_on();
 	for (int i = 0; i < board.profile->boot_frames; i++) {
 		board.run_frame();
 		if (booting && i % 60 == 59) booting();
 	}
 	if (after_boot) after_boot();
-	set_versus_count(board, blob.back() % 16);
+	set_versus_count(board, blob[base - 1] % 16);
 	board.midi.clear();
 	frame = 0;
 	midi_sent.clear();
@@ -158,6 +221,34 @@ uint64_t Adapter::hash(const std::vector<uint8_t> &state)
 {
 	const size_t skip = std::min(state.size(), m3::Model3::STATE_HEADER);
 	return vfnet::hash64(state.data() + skip, state.size() - skip);
+}
+
+uint32_t Adapter::snap_format() const
+{
+	const std::string k = std::string("vf3|") + NET_VERSION + "|" + board.profile->set + "|" + std::to_string(m3::Model3::STATE_VERSION) + "|" +
+	                      std::to_string(board.ram.size()) + "|" + std::to_string(board.backup.size()) + "|" + std::to_string(sizeof(void *));
+	uint32_t h = 2166136261u;
+	for (const char c : k) h = (h ^ uint8_t(c)) * 16777619u;
+	return h ? h : 1;
+}
+
+std::pair<size_t, size_t> Adapter::snap_state_bytes() const
+{
+	// (the memories, then the small parts (the CPU, the board's registers, the writes and texture words waiting: tens of MB
+	// at most), then the frame)
+	const size_t fixed = board.fixed_state_size();
+	return { fixed + 4, fixed + (32u << 20) };
+}
+
+bool Adapter::load_snap(const std::vector<uint8_t> &state, const std::vector<uint8_t> &, uint32_t snap_frame)
+{
+	const auto [least, most] = snap_state_bytes();
+	if (state.size() < least || state.size() > most) return false;
+	std::vector<uint8_t> was;   // (refused, the game as it was: its own state back, every part of it, not half another's)
+	save(was);
+	if (load(state) && frame == snap_frame) return true;
+	load(was);
+	return false;
 }
 
 void Adapter::save(std::vector<uint8_t> &state)
@@ -182,13 +273,17 @@ void Adapter::advance(const uint16_t input[2], bool resim)
 {
 	unpack(input[0], 0, board.controls);
 	unpack(input[1], 1, board.controls);
+	board.debug_mode = false;   // (Arcade settings > Debug mode: never online)
 	midi_taken = false;
 	if (run) run(resim);
 	else board.run_frame();
 	if (!midi_taken) {
 		std::vector<uint8_t> out;
 		take_midi(out);
-		if (!out.empty() && midi_out) midi_out(out);
+		if (mute) {   // (a watcher catching up: unheard, in time)
+			if (midi_unheard) midi_unheard(out);
+		} else if (!out.empty() && midi_out)
+			midi_out(out);
 	}
 	frame++;
 	if (checkpoint_every && frame % checkpoint_every == 0) {

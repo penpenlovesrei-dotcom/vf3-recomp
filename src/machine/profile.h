@@ -29,10 +29,17 @@ struct DuralPatch
 	size_t known_count;
 	const uint32_t (*patch)[3];   // the patches: address, the word known there, the new word
 	size_t patch_count;
+	// offline only (set_dural's `offline`): the arcade's Dural boss stages for a player who is Dural (ids 9, 22), as
+	// the program's own list for most fighters (Revision D's is always Taka-Arashi's Dural version for her: issue #30)
+	const uint32_t (*offline)[3];
+	size_t offline_count;
 	uint32_t ram_from, ram_to;    // RAM the patched code keeps its copies in (cleared when the patches go)
 	// her picture, the FINAL MATCH screen's (the tile generator's pictures: a descriptor (in the fixed CROM) of chunk
 	// count, width and height in tiles and the map, then chunks of palette and patterns in the banked CROM)
 	uint32_t picture, descriptors, data, data_bank;
+	// the patches v0.1.16-alpha applied: the first legacy_count of patch (set_dural's `legacy`: an older version's
+	// online match, "+dural2" / Team Battle's "+dural", plays her as it did, the same words on both sides)
+	size_t legacy_count;
 };
 
 struct Profile
@@ -60,12 +67,15 @@ struct Profile
 
 	// The FREE PLAY notices (Model3::hide_free_play_text), as the program image's addresses: the fight's top line
 	// ("     FREE PLAY       ", 21 characters, between "PRESS START BUTTON   " and "CREDIT"), and the attract's
-	// picture (its number in a table) and the call that draws it (a no-op instead)
+	// picture (its number in a table) and the call that draws it (a no-op instead); and the game's own 3D the attract's
+	// notice covers (issue #19: a red triangle bottom left with the notice hidden), two one-triangle models in the
+	// video ROM, left out of the picture while the running program's draw call is the no-op (video::SceneBuilder)
 	struct FreePlayText
 	{
 		uint32_t press_start, free_play, credit;
 		uint32_t picture_table, picture;
 		uint32_t draw_call, draw_word;
+		uint32_t marker[2];
 	} free_play_text;
 
 	// Backup RAM (offsets into Model3::backup, as the code has always used them)
@@ -86,6 +96,10 @@ struct Profile
 	uint32_t rounds_p1, rounds_p2, playing;   // the score's bytes (vf3_netplay.h's Score)
 	uint32_t select_cursor;   // a byte: player 1's column on the character select (player 2's 0x80 on; the row the byte before)
 	uint32_t mode;            // a byte: the game's mode, 5 from Start through the select (the stage select too)
+	// (within mode 5 the byte at mode + 8, 0x102010 in both programs, tells them apart: 18 the character select, 19
+	// then 20 the stage screen, 22 the VS screen; logged through a challenge and its rematch with the stage select on.
+	// The stage then is the byte at 0x10607C: the dojo 14, its Dural version 30, the picker's Start held till the
+	// screen's timer ran out (only the picker's counts); 46 with Start held and the stage chosen by a button)
 
 	// The stages' backdrops (tilegen.cpp): the stage's number at r13 minus this, the backdrops' descriptors (a word
 	// per stage), the bank table (128 halfwords) and the backdrop's place (+4, +8)
@@ -106,6 +120,18 @@ struct Profile
 	// skipping the boot, the same teams came but for when Start was pressed: the host sets it at random after the
 	// boot (an arcade on all day had it anywhere)
 	uint32_t random_seed;
+
+	// RAM: a byte 0 through the boot and the region's notices, 16 from the SEGA logo's first frame on (0: not known).
+	// The notices before the logo are the Country setting's (Japan's warning, the US's FBI screen, Team Battle's
+	// parental advisory, none for Export and Asia), so the logo comes from frame 300 to 948: the PC way's unseen boot
+	// stops at it (issue #7), not at boot_frames (Revision D's Japan's: its logo + 12), which online's boot keeps
+	uint32_t sega_logo;
+
+	// RAM: the debug mode's word (0: not known). The arcade's secret code (Service held, then player 1's Left, P, G,
+	// Right, Right, Left, K, Right, P, K, Right, Right, K: Revision D's table at 0x76D74, checked at 0x28580) sets its
+	// 0x200000; with it, the DIP switches 7 and 8 on (0x4280) let the game read all eight, which turn on its displays
+	// (Model3::debug_mode)
+	uint32_t debug_flags;
 };
 
 extern const Profile VF3_REV_D, VF3_TB, FV2_REV_A, FV2O_REV, SRALLY2;

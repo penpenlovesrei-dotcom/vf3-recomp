@@ -312,6 +312,16 @@ bool Scsi::exec()
 
 void Scsi::run(bool single)
 {
+	// (a memory move into the 53C810's own registers started it again inside itself, deeper each time till the stack
+	// ran out: a SCRIPTS program in a snapshot's RAM can. The game's never does)
+	if (running) return;
+	running = true;
+	run_once(single);
+	running = false;
+}
+
+void Scsi::run_once(bool single)
+{
 	if (single) {
 		exec();
 		istat |= 1;
@@ -560,6 +570,8 @@ void Model3::run_lines(unsigned from, unsigned to)
 
 void Model3::run_frame_start()
 {
+	if (debug_mode && profile->debug_flags)   // (Arcade settings > Debug mode: the secret code's bit, before each frame)
+		write32(profile->debug_flags, read32(profile->debug_flags) | 0x200000);
 	auto exec = [this](int n) {
 		cpu.execute(n);
 		if (after_slice) after_slice();
@@ -610,7 +622,9 @@ void Model3::run_frame_end()
 
 namespace {
 
-template <class IO> void pairs(IO &io, std::vector<std::pair<uint32_t, uint32_t>> &v)
+// (writes waiting for a memory of `most` words: a state from elsewhere (a watched match's snapshot) with one past its
+// end isn't taken)
+template <class IO> void pairs(IO &io, std::vector<std::pair<uint32_t, uint32_t>> &v, size_t most)
 {
 	uint64_t n = v.size();
 	io.pod(n);
@@ -619,6 +633,9 @@ template <class IO> void pairs(IO &io, std::vector<std::pair<uint32_t, uint32_t>
 		v.resize(size_t(n));
 	}
 	for (auto &w : v) { io.pod(w.first); io.pod(w.second); }
+	if constexpr (IO::loading)
+		for (auto &w : v)
+			if (w.first >= most) { io.ok = false; v.clear(); return; }
 }
 
 } // namespace
@@ -653,10 +670,24 @@ template <class IO> void Model3::state(IO &io)
 	io.pod(r3d_config); io.pod(vrom_fifo); io.pod(vrom_fifo_n);
 	io.pod(ping_pong); io.pod(ping_pong_copy); io.pod(flushes); io.pod(command_written);
 	io.pod(dma_src); io.pod(dma_dst); io.pod(dma_len); io.pod(dma_data); io.pod(dma_status); io.pod(dma_config);
-	pairs(io, pending_hi);
-	pairs(io, pending_poly);
+	pairs(io, pending_hi, cull_hi.size());
+	pairs(io, pending_poly, poly_ram.size());
 	io.vec(tex_fifo);
 	io.section("end");
+	if constexpr (IO::loading) io.check(state_sane());
+}
+
+// A state from another process (a watcher's snapshot, from any match's host) may hold anything: what's used as an
+// index, a divisor, an address to fetch from or a count is as the board makes it, else the state's refused. The
+// board's own states always are (a few comparisons a load)
+bool Model3::state_sane() const
+{
+	const ppc::State &c = cpu.s;
+	for (const uint8_t f : c.cr) if (f > 15) return false;
+	auto fetchable = [](uint32_t pc) { return !(pc & 3) && (pc <= 0x007FFFFC || pc >= 0xFF800000); };
+	if (!fetchable(c.pc) || !fetchable(c.npc) || c.timer_ratio < 1 || (c.reserved != 0 && c.reserved != 1)) return false;
+	// (the texture FIFO and the sound bytes: no more than the board keeps; the frame's)
+	return tex_fifo.size() <= 0x100000 / 4 && midi.size() <= 0x10000;
 }
 
 namespace {
@@ -916,7 +947,7 @@ uint8_t Model3::read_inputs(unsigned reg)
 	}
 	case 0x10: return outputs[0];
 	case 0x14: return outputs[1];
-	case 0x18: return 0x7F;
+	case 0x18: return debug_mode ? uint8_t(0x7F & ~DEBUG_DIPS) : 0x7F;   // (Arcade settings > Debug mode: its switch on)
 	case 0x2C: return serial1;
 	case 0x30: return serial2;
 	case 0x34: return 0;
@@ -1171,7 +1202,7 @@ void Model3::r3d_upload(uint32_t header, const uint16_t *data, size_t avail)
 		r3d_store(x, y + page * 1024, w, h, data, end, sixteen, lsb, msb);
 	if (type == 1)
 		return;
-	for (int i = 1; w >= 4 && h >= 4; i++) {
+	for (int i = 1; w >= 4 && h >= 4 && i < int(std::size(mip_y)); i++) {   // (a 4096 x 4096 header, a snapshot's texture FIFO's, ran past the levels' table)
 		unsigned mx = mip_x[i] + (x >> i), my = mip_y[i] + (y >> i);
 		w /= 2;
 		h /= 2;
@@ -1188,9 +1219,8 @@ void Model3::r3d_texture_port(unsigned, uint32_t data)
 		// the texture FIFO, which is unpacked at the frame's start
 		uint32_t addr = data & 0xFFFFFF;
 		uint32_t n = (2 + v[addr] / 2) / 4;
-		for (uint32_t i = 0; i < n; i++)
-			if (tex_fifo.size() < 0x100000 / 4)
-				tex_fifo.push_back(v[(addr + i) & 0xFFFFFF]);
+		for (uint32_t i = 0; i < n && tex_fifo.size() < 0x100000 / 4; i++)   // (the same words; a count of millions, a VROM word a program in a snapshot points at, no longer run through once the FIFO's full)
+			tex_fifo.push_back(v[(addr + i) & 0xFFFFFF]);
 		return;
 	}
 	// Step 1.5 and later: the three words of the port are an address, then the texture's header, then a write
@@ -1222,6 +1252,10 @@ void Model3::r3d_dma_write32(unsigned reg, uint32_t data)
 	case 0x00: dma_src = data; break;
 	case 0x04: dma_dst = data; break;
 	case 0x08:
+		// (a DMA into this register started another inside it, deeper each time till the stack ran out; and a length of
+		// billions ran for minutes: a program in a snapshot can ask either. The game's: short, never into the DMA's
+		// own registers; done as ever)
+		if (dma_running) break;
 		dma_len = data;
 		// (tests: VF3_DMA_LOG=1 says where each block of the display list comes from and goes. The culling RAM
 		// is filled by THIS, not by the CPU's stores, which is why --watch on 0x8E... reports nothing: a
@@ -1229,13 +1263,15 @@ void Model3::r3d_dma_write32(unsigned reg, uint32_t data)
 		if (static const bool say = getenv("VF3_DMA_LOG") != nullptr; say && dma_len)
 			fprintf(stderr, "r3d dma: frame %llu  %08X -> %08X, %u words\n",
 					(unsigned long long)frame, dma_src, dma_dst, dma_len);
-		while (dma_len) {
+		dma_running = true;
+		for (uint32_t guard = 0; dma_len && guard < 0x400000; guard++) {
 			uint32_t v = read32(dma_src);
 			write32(dma_dst, (dma_config & 0x80) ? bswap32(v) : v);
 			dma_src += 4;
 			dma_dst += 4;
 			--dma_len;
 		}
+		dma_running = false;
 		if (dma_config & 1) {
 			dma_status |= 1;
 			irq.assert_(IRQ_R3D_DMA);
@@ -1628,7 +1664,7 @@ int Model3::hide_free_play_text()
 	return int(free_play_text.size());
 }
 
-int Model3::set_dural(bool on)
+int Model3::set_dural(bool on, bool offline, bool legacy)
 {
 	const size_t CROM_AT = profile->program_at;
 	auto at = [&](size_t a) -> uint8_t & { return crom[(a + CROM_AT) ^ 3]; };
@@ -1639,17 +1675,30 @@ int Model3::set_dural(bool on)
 		for (auto it = dural_words.rbegin(); it != dural_words.rend(); ++it) put(it->first, it->second);
 		if (!dural_words.empty() && d && ram.size() >= d->ram_to) std::fill(ram.begin() + d->ram_from, ram.begin() + d->ram_to, 0);   // (her heads' copies: as the game leaves that RAM)
 		dural_words.clear();
+		dural_offline = dural_legacy = false;
 		return 0;
 	}
+	if (!dural_words.empty() && (dural_offline != offline || dural_legacy != legacy)) set_dural(false);   // (the other set: from the start)
 	if (!dural_words.empty()) return int(dural_words.size());   // (on already)
 	if (!d || crom.size() < CROM_AT + profile->program_size) return 0;
 	for (size_t i = 0; i < d->known_count; i++)
 		if (word(d->known[i][0]) != d->known[i][1]) return 0;
-	for (size_t i = 0; i < d->patch_count; i++)
+	const size_t count = legacy ? d->legacy_count : d->patch_count;
+	for (size_t i = 0; i < count; i++)
 		if (word(d->patch[i][0]) != d->patch[i][1]) return 0;
-	for (size_t i = 0; i < d->patch_count; i++) {
+	for (size_t i = 0; i < count; i++) {
 		dural_words.push_back({ d->patch[i][0], d->patch[i][1] });
 		put(d->patch[i][0], d->patch[i][2]);
+	}
+	dural_legacy = legacy;
+	if (offline) {
+		bool known = true;
+		for (size_t i = 0; i < d->offline_count; i++) known = known && word(d->offline[i][0]) == d->offline[i][1];
+		for (size_t i = 0; known && i < d->offline_count; i++) {
+			dural_words.push_back({ d->offline[i][0], d->offline[i][1] });
+			put(d->offline[i][0], d->offline[i][2]);
+		}
+		dural_offline = true;
 	}
 	return int(dural_words.size());
 }

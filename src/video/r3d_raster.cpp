@@ -237,6 +237,7 @@ void Raster::gather(const Viewport &vp, int layer, bool overlay, std::vector<int
 }
 
 bool Raster::arcade_lod = false;
+bool Raster::quad_rendering = true;
 
 void Raster::prepare_mesh(int di, std::vector<Tri> &result) const
 {
@@ -253,24 +254,126 @@ void Raster::prepare_mesh(int di, std::vector<Tri> &result) const
 	for (int c = 0; c < 3; c++) {
 		for (int rr = 0; rr < 3; rr++) nmat[c * 3 + rr] = M.m[c * 4 + rr] / m.scale;
 	}
-		for (size_t i = 0; i + 2 < mesh.verts.size(); i += 3) {
-			float v[3][11];
-			for (int k = 0; k < 3; k++) {
-				const Vertex &s = mesh.verts[i + k];
-				float *o = v[k];
-				for (int q = 0; q < 3; q++)
-					o[q] = M.m[q] * s.pos[0] + M.m[4 + q] * s.pos[1] + M.m[8 + q] * s.pos[2] + M.m[12 + q];
-				for (int q = 0; q < 3; q++)
-					o[3 + q] = nmat[q] * s.normal[0] + nmat[3 + q] * s.normal[1] + nmat[6 + q] * s.normal[2];
-				o[6] = s.uv[0];
-				o[7] = s.uv[1];
-				o[8] = s.fixed_shade;
-				float fn[3];
-				for (int q = 0; q < 3; q++)
-					fn[q] = M.m[q] * s.face_normal[0] + M.m[4 + q] * s.face_normal[1] + M.m[8 + q] * s.face_normal[2];
-				o[9] = o[0] * fn[0] + o[1] * fn[1] + o[2] * fn[2];
-				o[10] = o[9] * -vp.cota * s.texture_np * lod_k;
+	auto transform = [&](const Vertex &s, float *o) {
+		for (int q = 0; q < 3; q++)
+			o[q] = M.m[q] * s.pos[0] + M.m[4 + q] * s.pos[1] + M.m[8 + q] * s.pos[2] + M.m[12 + q];
+		for (int q = 0; q < 3; q++)
+			o[3 + q] = nmat[q] * s.normal[0] + nmat[3 + q] * s.normal[1] + nmat[6 + q] * s.normal[2];
+		o[6] = s.uv[0];
+		o[7] = s.uv[1];
+		o[8] = s.fixed_shade;
+		float fn[3];
+		for (int q = 0; q < 3; q++)
+			fn[q] = M.m[q] * s.face_normal[0] + M.m[4 + q] * s.face_normal[1] + M.m[8 + q] * s.face_normal[2];
+		o[9] = o[0] * fn[0] + o[1] * fn[1] + o[2] * fn[2];
+		o[10] = o[9] * -vp.cota * s.texture_np * lod_k;
+	};
+	const float gl = l - 0.5f * (r - l), gr = r + 0.5f * (r - l), gb = b - 0.5f * (t - b), gt = t + 0.5f * (t - b);
+	auto plane = [&](int pl, const float *q) {
+		switch (pl) {
+		case 0: return -q[2] - NEAR;
+		case 1: return q[0] + gl * q[2];    // x >= gl * w (w = -z)
+		case 2: return -gr * q[2] - q[0];   // x <= gr * w
+		case 3: return q[1] + gb * q[2];
+		default: return -gt * q[2] - q[1];
+		}
+	};
+	// a polygon's corners (n of them, in view space) projected onto the output: false if it's off the viewport
+	auto project = [&](Tri &T, float (*poly)[11], int n) {
+		T.draw = di;
+		T.n = n;
+		float minx = 1e30f, maxx = -1e30f, miny = 1e30f, maxy = -1e30f;
+		for (int k = 0; k < n; k++) {
+			float iw = 1.0f / -poly[k][2];
+			float nx = (2.0f * (poly[k][0] * iw) - (r + l)) / (r - l);
+			float ny = (2.0f * (poly[k][1] * iw) - (t + b)) / (t - b);
+			T.sx[k] = sx0 + (nx + 1.0f) * 0.5f * sw;
+			T.sy[k] = sy0 + (1.0f - ny) * 0.5f * sh;
+			T.iw[k] = iw;
+			for (int q = 0; q < 11; q++) T.a[k][q] = poly[k][q] * iw;
+			minx = std::min(minx, T.sx[k]); maxx = std::max(maxx, T.sx[k]);
+			miny = std::min(miny, T.sy[k]); maxy = std::max(maxy, T.sy[k]);
+		}
+		return maxx >= x0 && minx < x1 && maxy >= y0 && miny < y1;   // (false too if not a number)
+	};
+	const size_t tri_count = mesh.verts.size() / 3;
+	for (size_t ti = 0; ti < tri_count; ti++) {
+		const size_t i = ti * 3;
+		// a whole quad: its four corners all inside the near plane and the guard band (else its two triangles, clipped)
+		if (quad_rendering && ti + 1 < tri_count && ti < mesh.quads.size() && mesh.quads[ti]) {
+			float v[4][11];
+			for (int k = 0; k < 3; k++) transform(mesh.verts[i + k], v[k]);
+			transform(mesh.verts[i + 5], v[3]);
+			if (v[0][9] > 0 && v[1][9] > 0 && v[2][9] > 0 && v[3][9] > 0) {
+				ti++;
+				continue;   // facing away
 			}
+			bool inside = true;
+			for (int pl = 0; pl < 5 && inside; pl++)
+				for (int k = 0; k < 4; k++)
+					if (!(plane(pl, v[k]) >= 0)) { inside = false; break; }
+			if (inside) {
+				Tri T;
+				T.quad = true;
+				const bool on = project(T, v, 4);
+				// its outline on the screen: convex, or one corner bent in (the triangles fanned from that corner
+				// cover it); crossed over itself: its two triangles, as before
+				int neg = 0, pos = 0, reflex = 0;
+				float cr[4];
+				for (int k = 0; k < 4; k++) {
+					const int p0 = (k + 3) & 3, p2 = (k + 1) & 3;
+					cr[k] = (T.sx[k] - T.sx[p0]) * (T.sy[p2] - T.sy[k]) - (T.sy[k] - T.sy[p0]) * (T.sx[p2] - T.sx[k]);
+					if (cr[k] > 0) pos++;
+					else if (cr[k] < 0) neg++;
+				}
+				if (pos && neg) {
+					const bool few_pos = pos < neg;
+					for (int k = 0; k < 4; k++)
+						if (few_pos ? cr[k] > 0 : cr[k] < 0) reflex = k;
+				}
+				// flat and its attributes even over it (the fourth corner where the first three's plane on the
+				// screen puts it, in 1/w and every attribute over w): the two triangles draw the same, for less
+				bool even = false;
+				{
+					const float ax = T.sx[1] - T.sx[0], ay = T.sy[1] - T.sy[0], bx = T.sx[2] - T.sx[0], by = T.sy[2] - T.sy[0];
+					const float det = ax * by - ay * bx;
+					if (std::fabs(det) > 1e-6f) {
+						const float cx = T.sx[3] - T.sx[0], cy = T.sy[3] - T.sy[0];
+						const float u = (cx * by - cy * bx) / det, v = (ax * cy - ay * cx) / det;   // corner 3 = 0 + u (1 - 0) + v (2 - 0)
+						auto off = [&](float f0, float f1, float f2, float f3) {
+							const float e = f0 + u * (f1 - f0) + v * (f2 - f0) - f3;
+							const float mag = std::max({ std::fabs(f0), std::fabs(f1), std::fabs(f2), std::fabs(f3) });
+							return !(std::fabs(e) <= 1e-4f * mag + 1e-12f);
+						};
+						even = !off(T.iw[0], T.iw[1], T.iw[2], T.iw[3]);
+						// (the normals only if lit by them, the fixed shade only if lit by that)
+						const bool normals = mesh.lighting && !mesh.fixed_shading, shade = mesh.lighting && mesh.fixed_shading;
+						for (int q = 0; q < 11 && even; q++)
+							if ((normals || q < 3 || q > 5) && (shade || q != 8) && off(T.a[0][q], T.a[1][q], T.a[2][q], T.a[3][q]))
+								even = false;
+					}
+				}
+				if (even) T.quad = false;   // (corners 0 1 2 3 fanned from 0: the same two triangles)
+				T.convex = !(pos && neg);
+				if (std::min(pos, neg) <= 1) {
+					if (reflex) {   // (the corners turned round so that the bent-in one is the first)
+						Tri R = T;
+						for (int k = 0; k < 4; k++) {
+							const int s2 = (k + reflex) & 3;
+							R.sx[k] = T.sx[s2]; R.sy[k] = T.sy[s2]; R.iw[k] = T.iw[s2];
+							memcpy(R.a[k], T.a[s2], sizeof(T.a[k]));
+						}
+						T = R;
+					}
+					if (on) result.push_back(T);
+					ti++;
+					continue;
+				}
+			}
+		}
+		{
+			float v[3][11];
+			for (int k = 0; k < 3; k++) transform(mesh.verts[i + k], v[k]);
 			if (v[0][9] > 0 && v[1][9] > 0 && v[2][9] > 0)
 				continue;   // facing away
 			// clipped by the near plane (view Z <= -NEAR) and the view's sides, with a guard band of half the view
@@ -280,16 +383,6 @@ void Raster::prepare_mesh(int di, std::vector<Tri> &result) const
 			for (int k = 0; k < 3; k++) memcpy(bufa[k], v[k], sizeof(float) * 11);
 			int n = 3;
 			float (*in)[11] = bufa, (*out)[11] = bufb;
-			const float gl = l - 0.5f * (r - l), gr = r + 0.5f * (r - l), gb = b - 0.5f * (t - b), gt = t + 0.5f * (t - b);
-			auto plane = [&](int pl, const float *q) {
-				switch (pl) {
-				case 0: return -q[2] - NEAR;
-				case 1: return q[0] + gl * q[2];    // x >= gl * w (w = -z)
-				case 2: return -gr * q[2] - q[0];   // x <= gr * w
-				case 3: return q[1] + gb * q[2];
-				default: return -gt * q[2] - q[1];
-				}
-			};
 			for (int pl = 0; pl < 5 && n >= 3; pl++) {
 				int m = 0;
 				for (int k = 0; k < n; k++) {
@@ -308,26 +401,11 @@ void Raster::prepare_mesh(int di, std::vector<Tri> &result) const
 			}
 			if (n < 3)
 				continue;
-			float (*poly)[11] = in;
 			Tri T;
-			T.draw = di;
-			T.n = n;
-			float minx = 1e30f, maxx = -1e30f, miny = 1e30f, maxy = -1e30f;
-			for (int k = 0; k < n; k++) {
-				float iw = 1.0f / -poly[k][2];
-				float nx = (2.0f * (poly[k][0] * iw) - (r + l)) / (r - l);
-				float ny = (2.0f * (poly[k][1] * iw) - (t + b)) / (t - b);
-				T.sx[k] = sx0 + (nx + 1.0f) * 0.5f * sw;
-				T.sy[k] = sy0 + (1.0f - ny) * 0.5f * sh;
-				T.iw[k] = iw;
-				for (int q = 0; q < 11; q++) T.a[k][q] = poly[k][q] * iw;
-				minx = std::min(minx, T.sx[k]); maxx = std::max(maxx, T.sx[k]);
-				miny = std::min(miny, T.sy[k]); maxy = std::max(maxy, T.sy[k]);
-			}
-			if (!(maxx >= x0 && minx < x1 && maxy >= y0 && miny < y1))
-				continue;   // off the viewport (or not a number)
-			result.push_back(T);
+			if (project(T, in, n))
+				result.push_back(T);   // (off the viewport, or not a number: not)
 		}
+	}
 }
 
 void Raster::draw_band(const Scene &scene, int y0, int y1)
@@ -469,6 +547,71 @@ struct Sampler
 
 } // namespace
 
+// A point's mean value coordinates in a quad (x, y its corners in order, convex or with one corner bent in): four
+// weights summing to 1 that give the point back from the corners (so any function linear on the screen, as a flat
+// quad's 1/w and attributes over w are, comes out exactly), smooth inside, and along an edge its two corners' alone.
+// (Floater, "Mean value coordinates", 2003: corner i's weight (tan(a[i-1]/2) + tan(a[i]/2)) / r[i], a[i] the angle
+// the edge from corner i to i+1 makes at the point, r[i] its distance to corner i; the tangent of a half angle as
+// sin / (1 + cos), from the cross and dot products, which holds up but at an edge's own line.)
+static void quad_weights(const float *x, const float *y, float px, float py, float *out)
+{
+	// (each step for the four corners together and its checks after it, so the compiler can do the four at once: the
+	// CPU's 3D a frame ~8% faster with quad rendering on; the same arithmetic, the same pictures, as corner by corner)
+	float sx[4], sy[4], r[4];
+	for (int k = 0; k < 4; k++) {
+		sx[k] = x[k] - px;
+		sy[k] = y[k] - py;
+		r[k] = std::sqrt(sx[k] * sx[k] + sy[k] * sy[k]);
+	}
+	for (int k = 0; k < 4; k++)
+		if (r[k] < 1e-5f) {   // on a corner
+			for (int j = 0; j < 4; j++) out[j] = j == k ? 1.0f : 0.0f;
+			return;
+		}
+	float cr[4], den[4], lim[4];
+	for (int k = 0; k < 4; k++) {
+		const int n = (k + 1) & 3;
+		cr[k] = sx[k] * sy[n] - sy[k] * sx[n];
+		const float dt = sx[k] * sx[n] + sy[k] * sy[n];
+		den[k] = r[k] * r[n] + dt;
+		lim[k] = 1e-6f * r[k] * r[n];
+	}
+	for (int k = 0; k < 4; k++)
+		if (den[k] <= lim[k]) {   // on the edge from k to n: between those two alone
+			const int n = (k + 1) & 3;
+			const float t = r[k] / (r[k] + r[n]);
+			for (int j = 0; j < 4; j++) out[j] = 0;
+			out[k] = 1 - t;
+			out[n] = t;
+			return;
+		}
+	float th[4];
+	for (int k = 0; k < 4; k++) th[k] = cr[k] / den[k];
+	float w[4];
+	for (int k = 0; k < 4; k++) w[k] = (th[(k + 3) & 3] + th[k]) / r[k];
+	const float sum = ((w[0] + w[1]) + w[2]) + w[3];
+	if (!(std::fabs(sum) > 1e-20f)) {
+		out[0] = out[1] = out[2] = out[3] = 0.25f;
+		return;
+	}
+	const float inv = 1.0f / sum;
+	for (int k = 0; k < 4; k++) out[k] = w[k] * inv;
+}
+
+// A quad's 1/w at a point as split along one diagonal (0: corners 0-2, 1: corners 1-3), each half flat on the screen
+static float split_depth(const Raster::Tri &T, int diag, float px, float py)
+{
+	const int a = diag, c = diag + 2, b1 = (diag + 1) & 3, b2 = (diag + 3) & 3;
+	const float side = (T.sx[c] - T.sx[a]) * (py - T.sy[a]) - (T.sy[c] - T.sy[a]) * (px - T.sx[a]);
+	const float s1 = (T.sx[c] - T.sx[a]) * (T.sy[b1] - T.sy[a]) - (T.sy[c] - T.sy[a]) * (T.sx[b1] - T.sx[a]);
+	const int b = (side > 0) == (s1 > 0) ? b1 : b2;
+	const float x0 = T.sx[a], y0 = T.sy[a], x1 = T.sx[b], y1 = T.sy[b], x2 = T.sx[c], y2 = T.sy[c];
+	const float ar = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
+	if (!(std::fabs(ar) > 1e-12f)) return 0;
+	const float l1 = ((px - x0) * (y2 - y0) - (x2 - x0) * (py - y0)) / ar, l2 = ((x1 - x0) * (py - y0) - (px - x0) * (y1 - y0)) / ar;
+	return T.iw[a] + l1 * (T.iw[b] - T.iw[a]) + l2 * (T.iw[c] - T.iw[a]);
+}
+
 void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 {
 	const Draw &d = draws[T.draw];
@@ -539,20 +682,41 @@ void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 				if (ccw ? (e0 < 0 || e1 < 0 || e2 < 0) : (e0 > 0 || e1 > 0 || e2 > 0))
 					continue;
 				const float px = x + 0.5f;
-				const float b0 = e0 * inv_area, b1 = e1 * inv_area, b2 = e2 * inv_area;
-				const float wi = b0 * w0i + b1 * w1i + b2 * w2i;
-				if (!(wi > 0))
-					continue;
-				const float wv = 1.0f / wi;
-				float a[11];
-				for (int q = 0; q < 11; q++) a[q] = (b0 * aw[0][q] + b1 * aw[1][q] + b2 * aw[2][q]) * wv;
+				float wi, a[11];
+				float wd = -1;
+				if (T.quad) {
+					// a whole quad: the pixel's weights for the four corners, its mean value coordinates on the
+					// screen (Floater's: they give any flat quad's own plane, as the triangles did, and a bent one a
+					// surface that's the same whichever way it would be split); depth and attributes over w by them
+					float l4[4];
+					quad_weights(T.sx, T.sy, px, y + 0.5f, l4);
+					wi = l4[0] * T.iw[0] + l4[1] * T.iw[1] + l4[2] * T.iw[2] + l4[3] * T.iw[3];
+					if (!(wi > 0))
+						continue;
+					const float wv = 1.0f / wi;
+					for (int q = 0; q < 11; q++) a[q] = (l4[0] * T.a[0][q] + l4[1] * T.a[1][q] + l4[2] * T.a[2][q] + l4[3] * T.a[3][q]) * wv;
+					// its depth the nearest of that and its two splits' (corners 0-2 and 1-3, the second only if inside
+					// its outline): a bent quad's front, so what was made to lie just under it whichever way it bends
+					// stays under (Pai's skirt's top, 0x00c4f9 polygon 25, the torso's quad 0x001640 polygon 35 split
+					// 1-3 and a corner set back: the mean surface left it 0.04 units in front near corner 1)
+					const float d02 = split_depth(T, 0, px, py), d13 = T.convex ? split_depth(T, 1, px, py) : 0.0f;
+					wd = std::max({ wi, d02, d13 });
+				} else {
+					const float b0 = e0 * inv_area, b1 = e1 * inv_area, b2 = e2 * inv_area;
+					wi = b0 * w0i + b1 * w1i + b2 * w2i;
+					if (!(wi > 0))
+						continue;
+					const float wv = 1.0f / wi;
+					for (int q = 0; q < 11; q++) a[q] = (b0 * aw[0][q] + b1 * aw[1][q] + b2 * aw[2][q]) * wv;
+				}
 				if (a[9] > 0)
 					continue;   // facing away
+				if (!(wd > 0)) wd = wi;   // (a triangle's: its own)
 				const size_t at = size_t(y) * w + x;
 				if (mesh.layered && (stencil[at] & 0x7F))
 					continue;
 				// depth: 1/w, nearer is greater; the opaque layer passes equal, the translucent ones only nearer
-				if (layer == 0 ? wi < depth[at] : wi <= depth[at]) {
+				if (layer == 0 ? wd < depth[at] : wd <= depth[at]) {
 					if (mesh.layered) stencil[at]++;
 					continue;
 				}
@@ -597,9 +761,10 @@ void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 					float gxp = (px - gx) / xscale, gyp = py / scale;
 					float ex = (gxp - vp.spot_ellipse[0]) / vp.spot_ellipse[2], ey = (gyp - vp.spot_ellipse[1]) / vp.spot_ellipse[3];
 					float ell = std::max(0.0f, 1.0f - (ex * ex + ey * ey));
-					// (the spotlight's distances in Step 1.0's view space / 2048, as the reference's: VF3's lava cave is
-					// lit red across the arena, 9,000 units from the camera, by a spotlight 2,304 deep)
-					const float sz = a[2] * (1.0f / 2048.0f);
+					// (the spotlight's distances in Step 1.0's view space, as the reference's New3D: VF3's lava cave's
+					// red spotlight, 2,304 deep, lights only what is near the camera, the arena brown and orange as on the
+					// arcade's; the reference's Legacy3D's / 2048 lit it red across the arena, 9,000 units away; issue #19)
+					const float sz = a[2];
 					float enable = -sz >= vp.spot_range[0] ? 1.0f : 0.0f;
 					float range = 0;
 					if (vp.spot_range[1] != 0) {
@@ -618,13 +783,20 @@ void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 					else sun = vp.sun[0] * a[3] + vp.sun[1] * a[4] + vp.sun[2] * a[5];
 					sun = std::clamp(sun, -1.0f, 1.0f);
 					if (sun_clamp || c.a < 0.999f) sun = std::max(sun, 0.0f);
-					// the sun and ambient light, up to full on Step 1.0 and past it on the later steppings (which
-					// some games drive beyond 100%), with the spotlight's colour on top
+					// the sun and ambient light, and the spotlight's colour on top: up to full on Step 1.0 (as the
+					// reference's New3D -- Team Battle's sumo ring, lit by a red spotlight over the whole screen, and
+					// VF3's lava cave were twice as red; issue #19) and past it on the later steppings, which some games
+					// drive beyond 100%. r3d.hlsl's the same
 					float li = sun * vp.sun_intensity + vp.ambient;
 					if (vp.intensity_clamp) li = std::min(li, 1.0f);
 					float lr = li + vp.spot_colour[0] * lobe;
 					float lg = li + vp.spot_colour[1] * lobe;
 					float lb = li + vp.spot_colour[2] * lobe;
+					if (vp.intensity_clamp) {
+						lr = std::min(lr, 1.0f);
+						lg = std::min(lg, 1.0f);
+						lb = std::min(lb, 1.0f);
+					}
 					c.r *= lr; c.g *= lg; c.b *= lb;
 					if (mesh.specular) {
 						float s;
@@ -650,7 +822,7 @@ void Raster::draw_tri(const Tri &T, int layer, int band0, int band1)
 						ch += (target - ch) * fog;
 					}
 				}
-				depth[at] = wi;
+				depth[at] = wd;
 				if (mesh.layered) stencil[at]++;
 				if (layer == 0) {
 					base[at] = { c.r, c.g, c.b, 1.0f };

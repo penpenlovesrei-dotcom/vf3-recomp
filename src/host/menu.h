@@ -51,6 +51,13 @@ public:
 	bool init(SDL_Window *win, SDL_Renderer *ren, const std::string &assets_dir);
 	bool ready() const;
 	void set_footer(const std::string &text);
+	void set_language();                        // (tr::set's language into the menus: after a change, at once)
+	// (tests: each line of text drawn past the box it's in, as laid out now: the menu's page or screen and the overlay)
+	std::vector<std::string> overflow();
+	std::vector<std::string> misaligned();   // (rows whose labels don't start where the others' do: for tests)
+	// (tests: the page of rows shown, if it doesn't fit whole: its rows past their space, where they'd scroll, or the
+	// panel past the window's bottom, or the help under them wider than the panel; empty if it fits, or a screen is shown)
+	std::string page_fit();
 	void set_title(const std::string &text);    // (PAUSED; a match goes on under the menu: ONLINE MATCH)
 	void select_row(int i) { select(i); }
 	void set_fps(const std::string &text);      // the small FPS at the top right; empty hides it
@@ -61,7 +68,10 @@ public:
 	// In a match, the same place: the figures in cells of a fixed width, in a mono font (nothing moves as they
 	// change); detailed, a second row of them
 	struct net_cells { std::string name; int level = 0, ping = 0, delay = 0, rollback = 0; bool relay = false, interrupted = false, detailed = false;
-	                   double jitter = 0, rb_avg = 0, ahead = 0, frame_ms = 0; };
+	                   double jitter = 0, rb_avg = 0, ahead = 0, frame_ms = 0;
+	                   int watchers = -1;          // (how many watch this match: -1 none can)
+	                   bool watching = false;      // (a watched match's: the players and the score)
+	                   std::string score; };
 	void set_net(const net_cells &c);
 	void toast(const std::string &text, double seconds = 4);
 	void set_notice(const std::string &title, const std::string &sub = "", const std::string &small = "");

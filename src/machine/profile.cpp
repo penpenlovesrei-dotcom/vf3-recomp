@@ -236,7 +236,8 @@ const Profile VF3_REV_D = {
 	// the boot copy (docs/step1-measure.md)
 	0x710000, 0xA0000,
 	// FREE PLAY: the fight's line at 0x7CAE0; the attract's picture 0x4018 (table 0x7CB50), drawn by bl 0x33300 at 0x4E9C0
-	{ 0x7CACA, 0x7CAE0, 0x7CAF6, 0x7CB50, 0x4018, 0x4E9C0, 0x4BFE4941 },
+	// (and the 3D under the attract's notice, models 0x91CA78 and 0x91CA8B: a red triangle at about (53, 372))
+	{ 0x7CACA, 0x7CAE0, 0x7CAF6, 0x7CB50, 0x4018, 0x4E9C0, 0x4BFE4941, { 0x91CA78, 0x91CA8B } },
 	// the coin setting (found by setting each in the test menu)
 	{ 0x1E033, 0x1E037, 0x1E03B },
 	// GAME ASSIGNMENTS: rounds vs CPU 2, vs player 3, difficulty 6, demo sound 7, energies 8 and 12, stage select
@@ -254,6 +255,9 @@ const Profile VF3_REV_D = {
 	&REV_D_DURAL,
 	// (r13 0x108000 - 0x1F50: the routines at 0x1ECFC-0x1ED54, seed * 0x10DCD + 1, the select's and the attract's)
 	0x1060B0,
+	// (logged per Country, the four, with shots: Japan 948, USA 677, Export and Asia 311)
+	0x10201B,
+	0x102400,   // (r13 - 0x5C00: the code's check 0x28568-0x285D4, the debug mode 0x4250-0x4380)
 };
 
 // Team Battle: its ROMs, and the addresses found so far; what isn't known yet is 0 (that feature off). Online: only
@@ -263,8 +267,9 @@ const Profile VF3_TB = {
 	{ 0x10, 0, false, { 0x200000, 0x4000000, 0x2000000, 0x80000, 0x800000 } },
 	0x710000, 0xA0000,
 	// FREE PLAY: Revision D's text 0x61F0 on (0x82CD0), its picture's table 0x82D50, drawn by bl 0x37FFC at 0x5419C (the
-	// same code as Revision D's 0x4E990-0x4E9C0, with one more argument): found by matching Revision D's code
-	{ 0x82CBA, 0x82CD0, 0x82CE6, 0x82D50, 0x4018, 0x5419C, 0x4BFE3E61 },
+	// same code as Revision D's 0x4E990-0x4E9C0, with one more argument): found by matching Revision D's code; the 3D
+	// under the attract's notice Revision D's models (the same video ROM)
+	{ 0x82CBA, 0x82CD0, 0x82CE6, 0x82D50, 0x4018, 0x5419C, 0x4BFE3E61, { 0x91CA78, 0x91CA8B } },
 	// the coin setting: Revision D's (FREE PLAY there shows FREE PLAY and Start needs no credit: checked)
 	{ 0x1E033, 0x1E037, 0x1E03B },
 	// GAME ASSIGNMENTS: Revision D's places (its test menu shows a change there: MATCH COUNT(1P)), a marker 0x2E31 in
@@ -288,6 +293,8 @@ const Profile VF3_TB = {
 	"vf3tb",
 	&TB_DURAL,
 	0x1060B0,   // (Revision D's: the same routines at 0x20DD4-0x20E30, r13 the same)
+	0x10201B,   // (Revision D's: Japan 681, USA 797, Export and Asia 300)
+	0x102400,   // (Revision D's: the code's check 0x2B394-0x2B400, the debug mode 0x4828, the same code)
 };
 
 // FIGHTING VIPERS 2, the second program this port runs (Step 2.0 against Virtua Fighter 3's Step 1.0). What the

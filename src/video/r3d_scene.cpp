@@ -140,6 +140,13 @@ void SceneBuilder::build(const m3::Model3 &board, Scene &scene)
 	static std::atomic<uint64_t> next_id{ 1 };
 	scene.id = next_id++;
 	visits = 0;
+	// (issue #19: a red triangle bottom left of the attract, the game's own, under the arcade's notice; hidden with
+	// it, while the program in RAM has the notice's draw call made a no-op: from the boot hide_free_play_text's patch
+	// was copied in, whatever the CROM holds now)
+	const m3::Profile::FreePlayText &fp = board.profile->free_play_text;
+	const bool notice_hidden = fp.draw_call && fp.marker[0] && board.peek32(fp.draw_call) == 0x60000000;
+	hidden_marker[0] = notice_hidden ? fp.marker[0] : 0;
+	hidden_marker[1] = notice_hidden ? fp.marker[1] : 0;
 	if (rom_cache.size() > 20000)
 		rom_cache.clear();
 	if (dyn_cache.size() > 20000)
@@ -388,8 +395,8 @@ void SceneBuilder::node_one(uint32_t addr)
 	const float x = cur.m[12], y = cur.m[13], z = cur.m[14];
 	const float cull_r = float16(w7 & 0xFFFF) * attr.scale;
 	const float blend_r = float16(w7 >> 16) * attr.scale;
-	const bool outside = (z * planes.lu - x * planes.lv) > cull_r || (z * planes.tu + y * planes.tw) > cull_r ||
-		(z * planes.ru - x * planes.rv) > cull_r || (z * planes.bu + y * planes.bw) > cull_r;
+	const bool outside = !cull_off && ((z * planes.lu - x * planes.lv) > cull_r || (z * planes.tu + y * planes.tw) > cull_r ||
+		(z * planes.ru - x * planes.rv) > cull_r || (z * planes.bu + y * planes.bw) > cull_r);
 	float lod_scale = attr.no_cull ? std::numeric_limits<float>::max() : blend_r / std::sqrt(x * x + y * y + z * z);
 	if (!(lod_scale >= 0)) lod_scale = 0;   // NaN too
 	const int lod_entry = (w1 >> 12) & 0x7F;
@@ -499,6 +506,11 @@ void SceneBuilder::draw_model(uint32_t addr)
 	} else {
 		m.meshes = parse(data, true);
 	}
+	// (the marker under the notice: parsed as ever, the vertices it leaves for the next model kept, then left out;
+	// only as known, one untextured triangle)
+	if (hidden_marker[0] && (addr == hidden_marker[0] || addr == hidden_marker[1]) && m.meshes->size() == 1 &&
+		(*m.meshes)[0].verts.size() == 3 && !(*m.meshes)[0].textured)
+		return;
 	if (!m.meshes->empty())
 		vp->models.push_back(std::move(m));
 }
@@ -727,6 +739,8 @@ Meshes SceneBuilder::parse(const uint32_t *src, bool dynamic)
 				mesh->verts.push_back(p[2]);
 				mesh->verts.push_back(p[3]);
 			}
+			mesh->quads.resize(mesh->verts.size() / 3);
+			if (count == 4) mesh->quads[mesh->verts.size() / 3 - 2] = 1;
 		};
 		const bool discard = (h[0] & 0x300) == 0x300;
 		if ((h[1] & 0x10) && !discard) {

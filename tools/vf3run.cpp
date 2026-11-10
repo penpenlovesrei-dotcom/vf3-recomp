@@ -40,12 +40,15 @@
 // VF3_TILE_LAG=1: the tile layers' lines drawn at the frame's end from the registers each line had (the host's tile
 // worker at its latest); VF3_TILE_EVERY=n: the tile layers drawn every n-th frame only (a netplay match's frames run
 // again unseen after a rollback), the sky audit then of those frames.
-// VF3_LOG_BYTES=addr,...: those RAM bytes each frame ("bytes FRAME v..."). VF3_DURAL=1: Dural on the select (as the cheat: the program's patches, and her spot's picture in --shots). VF3_BORROW=backdrops,coin,settings,test_menu,versus_count,scene,score,free_play_text: those addresses from
+// VF3_VERSUS_COUNT=n: the versus count set after the boot (the first match's stage, as the host's). VF3_QUADS=0: the quads drawn as two triangles (as the game did with the old Display > Quad rendering Off).
+// VF3_RENDER_TIME=n: with VF3_BIGSHOT, n more renders of each shot's 3D at its scale, timed.
+// VF3_LOG_BYTES=addr,...: those RAM bytes each frame ("bytes FRAME v..."). VF3_DURAL_STAGE=1 (Guard) or 2 (Start): Cheats > Dural's stage on both players' inputs (VF3_DURAL_STAGE_ONLINE=1: inputs only, as online; VF3_DURAL_STAGE_LEAD=n: n frames' input delay). VF3_DEBUG_MODE=1: Arcade settings > Debug mode (Model3::debug_mode). VF3_DURAL=1: Dural on the select (as the cheat: the program's patches, and her spot's picture in --shots). (VF3_DURAL_ONLINE=1: without the offline patches, as online) VF3_BORROW=backdrops,coin,settings,test_menu,versus_count,scene,score,free_play_text: those addresses from
 // VF3_BORROW_FROM's profile (default vf3), to try them on another program; VF3_MAP_IN=file: more entry points (hex, a line each); VF3_MAP_OUT=file: appends every address the interpreter ran
 // from for want of one (--rec; a map's learning: run again with them in until none are new).
 #include <map>
 #include "../src/host/input_script.h"
 #include "../src/host/console_play.h"
+#include "../src/host/dural_stage.h"
 #include "../src/machine/model3.h"
 #include "../src/machine/fv2_portraits.h"
 #include "../src/machine/romset.h"
@@ -225,7 +228,8 @@ int main(int argc, char **argv)
 	}
 	// tests: Play as Dural as the game has it (main.cpp): her patches, and these players' select cursors held on her
 	const bool dural = getenv("VF3_DURAL") && atoi(getenv("VF3_DURAL"));
-	if (dural && board.set_dural(true) == 0) fprintf(stderr, "not the program known: no Dural on the select\n");
+	if (dural && board.set_dural(true, !getenv("VF3_DURAL_ONLINE")) == 0) fprintf(stderr, "not the program known: no Dural on the select\n");
+	board.debug_mode = getenv("VF3_DEBUG_MODE") && atoi(getenv("VF3_DEBUG_MODE"));   // tests: Arcade settings > Debug mode
 	InputScript script;
 	if (!script_path.empty() && !script.load(script_path, error)) {
 		fprintf(stderr, "vf3run: %s\n", error.c_str());
@@ -282,6 +286,7 @@ int main(int argc, char **argv)
 	static double tile_ms = 0;
 	static std::vector<uint32_t> picture(video::W * video::H);
 	static video::SceneBuilder scene_builder;
+	if (getenv("VF3_QUADS")) video::Raster::quad_rendering = atoi(getenv("VF3_QUADS")) != 0;   // (tests: 0 the quads as two triangles)
 	if (getenv("VF3_WIDEN")) scene_builder.widen = float(atof(getenv("VF3_WIDEN")));
 	static video::Scene scene;
 	static video::Raster raster;
@@ -422,10 +427,28 @@ int main(int argc, char **argv)
 			cplay.step(board, cc);
 			for (int q = 0; q < 2; q++) board.controls.start[q] = board.controls.start[q] || cc.start[q];
 		}
+		if (static const char *ds = getenv("VF3_DURAL_STAGE"); ds) {   // tests: Cheats > Dural's stage (1 Guard, 2 Start), on both players' inputs
+			static dural_stage::Picker picker;
+			picker.trigger = atoi(ds);
+			static const bool no_write = getenv("VF3_DURAL_STAGE_ONLINE") != nullptr;   // (as online: inputs only)
+			static const int lead = getenv("VF3_DURAL_STAGE_LEAD") ? atoi(getenv("VF3_DURAL_STAGE_LEAD")) : 0;
+			for (int p = 0; p < 2; p++) {
+				dural_stage::Picker::Said said;
+				int wait_s;
+				const uint16_t in = dural_stage::word(board.controls, p), out = picker.filter(board, p, in, lead, !no_write, said, wait_s);
+				if (out != in) dural_stage::set(board.controls, p, out);
+				if (said) fprintf(stderr, "frame %llu: Dural's stage, player %d: %s (%d s)\n", (unsigned long long)f, p + 1,
+				                  said == dural_stage::Picker::waiting ? "waiting" : said == dural_stage::Picker::no_version ? "no Dural version" : said == dural_stage::Picker::vf3_version ? "VF3 version (the cave)" : "not this time", wait_s);
+			}
+		}
 		for (auto &m : act.marks)
 			if (!quiet) printf("frame %llu: mark %s\n", (unsigned long long)f, m.c_str());
 		static double t_board = 0, t_sound = 0, t_scene = 0;
 		static const bool prof = getenv("VF3_PROF") != nullptr;
+		if (static const char *vc = getenv("VF3_VERSUS_COUNT"); vc && board.profile->versus_count && long(f) == long(board.profile->boot_frames)) {
+			const uint32_t c = uint32_t(atoi(vc));   // tests: the versus count after the boot, as the host's VF3_VERSUS_COUNT (that stage)
+			memcpy(board.ram.data() + board.profile->versus_count, &c, 4);
+		}
 		if (static const char *pk = getenv("VF3_POKE"); pk) {   // tests: "addr=value,..." (bytes, as --ram-at's dump holds them) before every frame
 			static const char *range = getenv("VF3_POKE_FRAMES");   // "from-to": only then
 			long from = 0, to = -1;
@@ -1375,7 +1398,7 @@ int main(int argc, char **argv)
 				}
 				if (dural && board.dural_on()) {   // (her spot's picture, as the host draws it)
 					static video::DuralPicture dural_pic;
-					video::dural_cell(board, above, dural_pic);
+					video::dural_cell(board, tiles, above, dural_pic);
 				}
 				{   // B.M.'s name on the select, as the host draws it: so a shot can be measured (fv2_bm_name.h)
 					static video::BMName bm_art;
@@ -1449,6 +1472,13 @@ int main(int argc, char **argv)
 					const int k = std::clamp(atoi(bs), 1, 8);
 					big.resize(video::W * k, video::H * k);
 					big.render(scene, board.tex_ram.data());
+					if (const char *rt = getenv("VF3_RENDER_TIME")) {   // (tests: that many more renders at this scale, timed)
+						const int n = std::max(1, atoi(rt));
+						const auto t0 = std::chrono::steady_clock::now();
+						for (int i = 0; i < n; i++) big.render(scene, board.tex_ram.data());
+						printf("render %llu: %.3f ms at %dx%d\n", (unsigned long long)board.frame,
+							std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / n, big.width(), big.height());
+					}
 					std::vector<uint32_t> o(size_t(big.width()) * big.height(), 0xFF808080u);
 					big.compose(o.data(), o.data());
 					char p[64];
@@ -1481,14 +1511,15 @@ int main(int argc, char **argv)
 				fclose(tf);
 			}
 		}
-		if (getenv("VF3_TEXDUMP") && long(board.frame) == atol(getenv("VF3_TEXDUMP"))) {   // texture RAM's first sheet as 16-bit ARGB1555
-			std::vector<uint32_t> px(2048 * 1024);
-			for (int i = 0; i < 2048 * 1024; i++) {
+		if (getenv("VF3_TEXDUMP") && long(board.frame) == atol(getenv("VF3_TEXDUMP"))) {   // the texture RAM (both sheets, sheet 1 below) as 16-bit ARGB1555, to texram.png
+			const int rows = int(board.tex_ram.size() / 2048);
+			std::vector<uint32_t> px(size_t(2048) * rows);
+			for (size_t i = 0; i < px.size(); i++) {
 				const uint16_t t = board.tex_ram[i];
 				const uint32_t r = (t >> 10) & 31, g = (t >> 5) & 31, b = t & 31;
 				px[i] = 0xFF000000u | (b * 255 / 31) << 16 | (g * 255 / 31) << 8 | (r * 255 / 31);
 			}
-			write_png("texram.png", px.data(), 2048, 1024);
+			write_png("texram.png", px.data(), 2048, rows);
 		}
 		if (modes_log) {
 			static int was_mode = -1, was_sub = -1;

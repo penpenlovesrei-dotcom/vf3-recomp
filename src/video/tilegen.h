@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -17,6 +18,8 @@ namespace video {
 const int W = 496, H = 384;
 // the layer below the 3D widened for widescreen: EXT more pixels each side
 const int EXT = 256, WW = W + 2 * EXT;
+// and taller for the stages' sky drawn ahead of the game's backdrop (sky_lead.h): EY more lines above and below
+const int EY = 64, HT = H + 2 * EY;
 
 class TileGen
 {
@@ -32,6 +35,11 @@ public:
 	// 32-pixel columns, this frame): what moved, for smooth motion's pictures between frames
 	struct Scroll { int16_t sx[4][H] = {}, sy[4][H] = {}; int below_columns[4] = {}; };
 	Scroll scroll;
+	// The registers each line was drawn with (drawn false: a line not drawn this frame): what's drawn over the layers afterwards
+	// (Dural's spot on the select, dural_cell) shown as the game's own lines were, not as the registers are at the
+	// frame's end (the game sets the next frame's fade before it ends: a frame ahead)
+	struct LineRegs { uint32_t order = 0, offset_b = 0, layer[4] = {}; bool drawn = false; };
+	LineRegs drawn_regs[H];
 	// The layer below the 3D that drew most of it and how far it moved from `before` to `now` (in its pixels;
 	// false: none, another layer, or a jump: a cut)
 	// The registers hold the layer's scroll within a tile, the game moving the rest by rewriting the map, so the
@@ -50,6 +58,32 @@ public:
 	// places them, its 3D drawn as ours is)
 	void aligned(std::vector<uint32_t> &below_out, std::vector<uint32_t> &above_out) const;
 	void aligned_wide(std::vector<uint32_t> &out) const;   // below_wide, as aligned() (WW wide)
+	// below_wide with EY lines above and below it (WW x HT, the screen's lines from EY), as aligned(): the screen's
+	// lines mirrored at its edges there (sky_past puts a stage's sky over them)
+	void aligned_tall(std::vector<uint32_t> &out) const;
+	// After the frame (its lines drawn, before the next's): a stage's sky past the screen's top and bottom into
+	// aligned_tall's out, as the game would draw it there, the lines a picture reaches (top, bottom: how many past the
+	// screen, up to EY; the screen's last 2 lines, which aligned()'s shift leaves as copies, always). Where the screen's
+	// edge isn't the stage's backdrop, the mirrored lines are kept.
+	void sky_past(const m3::Model3 &board, int top, int bottom, std::vector<uint32_t> &out);
+	// The stage's whole backdrop as the game's own map has it (the free camera's sky: src/host/free_cam.h), after the
+	// frame as sky_past: every tile of the map (w x h pixels, RGBA as the layers; 0 where a tile's bank isn't loaded),
+	// the aligned screen's top left's place in it (x, y: the screen shows the map from there, 1:1), and what the game
+	// fills above and below the map with (its filler tiles' colour, averaged; 0: not loaded). Across, the map wraps.
+	// version: counted on each time the picture is made again (it is only when what it's made from has changed).
+	// The game keeps only the chunks of tiles around the screen in the pattern RAM (a row or so of the map each): the
+	// others are decoded from the ROM as the game's loader would (dural_cell.h's tile_picture_data), once a stage,
+	// and used once the chunks that are loaded have been seen to be the same pixels from the ROM. The map's top and
+	// bottom lines go over into the fillers' colours (SKY_BLEND lines, eased), so no line shows where the map ends.
+	static constexpr int SKY_BLEND = 56;
+	// ok false: no stage's backdrop on screen (or its place in the map not known).
+	struct Panorama { bool ok = false; int w = 0, h = 0, x = 0, y = 0; uint32_t above = 0, below = 0; uint64_t version = 0, key = 0; uint32_t desc = 0; std::vector<uint32_t> px;
+		// (tests: the picture's tiles: from the pattern RAM, of those the ROM's decoded too and the same pixels, from
+		// the ROM, and left without either: the next row's colour)
+		int vram_tiles = 0, rom_compared = 0, rom_same = 0, rom_tiles = 0, filled_tiles = 0, rom_bank = -1; };
+	void panorama(const m3::Model3 &board, Panorama &out);
+	// (tests: the stages' maps in the ROM, a line each: its number, width and height in tiles)
+	std::string backdrop_list(const m3::Model3 &board) const;
 	// the 3D (RGBA, alpha ignored) between the layers, into out (RGBA); out may be the 3D's own buffer
 	void compose(const uint32_t *pic3d, uint32_t *out) const;
 
@@ -124,8 +158,13 @@ private:
 	// from it, as the game would. x0, y0: where the layer's map starts in it (found each frame)
 	// (seen: each bank's place as the layer on screen has it, -1 where none of it is on screen: the game moves banks
 	// in the pattern RAM as it loads them, and its table can be ahead of the layer for a frame)
-	struct Backdrop { bool ok = false; uint32_t desc = 0; int w = 0, h = 0, x0 = 0, y0 = 0; int16_t bank[128] = {}; int seen[128] = {}; bool known = false; int game_x = 0, game_y = 0, prev_x = 0, prev_y = 0; uint64_t game_frame = ~0ull; std::vector<uint16_t> map; };   // (map: the stage's entries, read from the ROM once a stage)   // (game_*: the game's place this frame, prev_*: the frame before's, in tiles)   // (known: the stage's map read this frame, its place found or not)
+	struct Backdrop { bool ok = false; uint32_t desc = 0; int w = 0, h = 0, x0 = 0, y0 = 0; int16_t bank[128] = {}; int seen[128] = {}; int trust[128] = {}; bool known = false; int stage = -1; int game_x = 0, game_y = 0, prev_x = 0, prev_y = 0; uint64_t game_frame = ~0ull; std::vector<uint16_t> map; };   // (map: the stage's entries, read from the ROM once a stage)   // (game_*: the game's place this frame, prev_*: the frame before's, in tiles)   // (known: the stage's map read this frame, its place found or not)
 	Backdrop backdrop;
+	struct RomPicture;   // (the stage's picture from the ROM, decoded when panorama first wants it: tilegen.cpp)
+	std::shared_ptr<RomPicture> rom_picture;
+	// (trust: each bank's place when the screen last had it, this stage, -1 never: the game keeps only the banks around
+	// the screen loaded, and its table's place for one it never loaded holds other pictures (the HUD's letters); a bank
+	// the screen has had, at the place the table still gives it, is taken as still there: panorama)
 	uint64_t refind_frame = ~0ull;
 	// (this frame: a palette's see-through colours, by its first colour's place / 16: 4-bit, a bit each; 8-bit, 256 bits)
 	std::vector<uint64_t> clear_cols = std::vector<uint64_t>(4096 * 4);

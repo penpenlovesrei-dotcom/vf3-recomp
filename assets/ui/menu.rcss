@@ -1,10 +1,15 @@
-/* The in-game menu. Sizes are in dp: the host sets 1dp = 1/720 of the window's height.
+/* The in-game menu. Sizes are in dp: the host sets 1dp = 1/720 of the window's height (or 1/1280 of its width,
+   if that's less: the panel is laid out for 720dp of height or more).
    Gradients are the vertex-colour kind (horizontal-gradient): the SDL renderer has no shaders.
 
    One column with a fixed space for each part, so nothing overlaps whatever the page:
-     top 24 + title 53 + crumb 28 + rows 14 x 32 = 448 + note 8 + 80 (4 lines) + hint 8 + 22
-     + version 4 + 18 = 693dp of 720. The longest page (a player's keys: 13 and Back) fits
-     whole, so no page scrolls; a long value is cut, never drawn over its label. */
+     top 24 + title 53 + crumb 28 + rows 14 x 32 = 448 + note 8 + 80 (4 lines) + hint 10 + 22
+     + version 4 + 18 = 695dp of 720. Every page fits whole, so none scrolls (a scroll can't be seen: the
+     rows below looked missing): a page is 14 rows at most, and one that would be longer is split into pages
+     of its own (Display's Picture, Quality and Screen filter and colours; a player's keys and buttons).
+     menutest fails a page that doesn't fit. A long value is cut, never drawn over its label.
+   (The sizes as they were up to v0.1.18-alpha; v0.1.19 and v0.1.20 had each 0.8 of this, for a Display page
+   of 20 rows.) */
 
 body {
 	width: 100%;
@@ -154,7 +159,7 @@ div { display: block; }
 }
 
 #hint {
-	margin-top: 8dp;
+	margin-top: 10dp;         /* (a help of four full lines clear of it) */
 	height: 22dp;
 	line-height: 22dp;
 	font-size: 17dp;

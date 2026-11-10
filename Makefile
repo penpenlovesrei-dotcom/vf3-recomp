@@ -33,10 +33,10 @@ VF3_VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 VF3_DATE ?= $(shell git log -1 --format=%cd --date=format:'%b %-d %Y' 2>/dev/null)
 # (the commit too: what a GPU failure is remembered by, src/host/main.cpp's BUILD)
 VF3_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null)
-# and the lobby the room codes use (tools/lobby/README.md): its https address, this one if unset or empty (the Deck's
+# and the lobby the room codes use (tools/lobby/README.md): its https address, .lobby-url's (one line, kept out of git) if unset or empty (the Deck's
 # container is handed it empty), "none" for none (Online then offers only the by-address matches)
 ifeq ($(strip $(VF_LOBBY_URL)),)
-VF_LOBBY_URL = https://vf-lobby.throbbing-lab-db6e.workers.dev
+VF_LOBBY_URL := $(strip $(shell cat .lobby-url 2>/dev/null))
 endif
 ifeq ($(VF_LOBBY_URL),none)
 VF_LOBBY_URL :=
@@ -52,15 +52,15 @@ RML_SRC = $(wildcard third_party/rmlui/Source/Core/*.cpp third_party/rmlui/Sourc
 	third_party/rmlui/Backends/RmlUi_Platform_SDL.cpp third_party/rmlui/Backends/RmlUi_Renderer_SDL.cpp
 RML_CFLAGS = -DRMLUI_STATIC_LIB -DRMLUI_FONT_ENGINE_FREETYPE -DRMLUI_SDL_VERSION_MAJOR=3 -Ithird_party/rmlui/Include -Ithird_party/rmlui/Backends
 $(OBJ)/third_party/rmlui/%.o: CXXFLAGS += $(RML_CFLAGS) $(FT_CFLAGS) $(SDL_CFLAGS) -w
-$(OBJ)/src/host/main.o $(OBJ)/src/host/menu.o $(OBJ)/src/host/online.o $(OBJ)/src/host/sysinfo.o $(OBJ)/src/host/d3d11_map.o $(OBJ)/src/gpu/r3d_gpu.o $(OBJ)/tools/menutest.o: CXXFLAGS += $(SDL_CFLAGS) $(RML_CFLAGS)
+$(OBJ)/src/host/main.o $(OBJ)/src/host/menu.o $(OBJ)/src/host/online.o $(OBJ)/src/host/i18n.o $(OBJ)/tools/langtest.o $(OBJ)/src/host/sysinfo.o $(OBJ)/src/host/d3d11_map.o $(OBJ)/src/gpu/r3d_gpu.o $(OBJ)/tools/menutest.o: CXXFLAGS += $(SDL_CFLAGS) $(RML_CFLAGS)
 $(OBJ)/src/host/main.o: $(OBJ)/version.h
 $(OBJ)/src/host/main.o: CXXFLAGS += -I$(OBJ)
 $(OBJ)/src/host/online.o: $(OBJ)/version.h
 $(OBJ)/src/host/online.o: CXXFLAGS += -I$(OBJ)
 # Netplay (src/net): rollback sessions and their links, nothing of the game's (shared with VF1 and VF2 Recomp)
-NET = src/net/session.cpp src/net/link.cpp src/net/room_link.cpp src/net/stun.cpp src/net/http.cpp
+NET = src/net/session.cpp src/net/link.cpp src/net/room_link.cpp src/net/stun.cpp src/net/http.cpp src/net/watch.cpp
 
-HOST = src/host/main.cpp src/host/menu.cpp src/host/online.cpp src/host/vf3_netplay.cpp src/host/sysinfo.cpp src/host/d3d11_map.cpp src/gpu/r3d_gpu.cpp $(NET)
+HOST = src/host/main.cpp src/host/menu.cpp src/host/online.cpp src/host/i18n.cpp src/host/text.cpp src/host/links.cpp src/host/vf3_netplay.cpp src/host/sysinfo.cpp src/host/d3d11_map.cpp src/gpu/r3d_gpu.cpp $(NET)
 
 CORE = src/ppc/ppc.cpp src/machine/model3.cpp src/machine/dural.cpp src/machine/romset.cpp src/machine/profile.cpp \
 	src/machine/fv2_portraits.cpp src/host/input_script.cpp \
@@ -110,24 +110,56 @@ $(BIN)/nettest: $(call objs,$(NET) tools/nettest.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
+# watchsim: watching a match, simulated (no ROM): the players the same with 0, 1 or 50 watchers, each watcher's game theirs
+$(BIN)/watchsim: $(call objs,$(NET) tools/watchsim.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
+
 # delaytest: Auto's input delay against simulated pings (full speed at any; raised and lowered as it should)
 $(BIN)/delaytest: $(call objs,$(NET) tools/delaytest.cpp)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
+# snapfuzz: a watcher's snapshot loading against a hostile host's (spoilt real snapshots: vf3net --watch-snap --snap-out
+# DIR), with AddressSanitizer and UBSan, its own objects (make snapfuzz: build/asan/bin/snapfuzz)
+ASAN_FLAGS = -std=c++20 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Wno-unused-function
+snapfuzz:
+	CXXFLAGS="$(ASAN_FLAGS)" $(MAKE) OBJ=build/asan/obj BIN=build/asan/bin build/asan/bin/snapfuzz
+.PHONY: snapfuzz
+# (the sound board's 68000, MAME's generated code, unchanged: without the sanitizers there, a gigabyte less and the same
+# checks everywhere else)
+ifeq ($(OBJ),build/asan/obj)
+$(OBJ)/third_party/mame/m68000/%.o: CXXFLAGS = -std=c++20 -O1 -g0 -Isrc/core/shim_include -DSLJIT_CONFIG_AUTO=1
+endif
+$(BIN)/snapfuzz: $(call objs,$(CORE) $(NET) src/host/vf3_netplay.cpp tools/snapfuzz.cpp) $(SLJIT_OBJ)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS) -lpthread
+
 $(BIN)/vf3net: $(call objs,$(CORE) $(NET) src/host/vf3_netplay.cpp tools/vf3net.cpp) $(SLJIT_OBJ)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
+# wsfuzz: the WebSocket frame reader against anything a server could send, with AddressSanitizer and UBSan
+$(BIN)/wsfuzz: src/net/http.cpp tools/wsfuzz.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) -std=c++20 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer $^ -o $@ -lpthread
+
 # netfuzz: the session against a peer who sends anything, with AddressSanitizer and UBSan (its own objects)
 $(BIN)/netfuzz: $(NET) tools/netfuzz.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) -std=c++20 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer $^ -o $@
+	$(CXX) -std=c++20 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer $^ -o $@ $(LDLIBS)
 
 # menutest: the Online pages drawn offscreen to pictures (SDL_VIDEO_DRIVER=offscreen)
-$(BIN)/menutest: $(call objs,src/host/menu.cpp src/host/online.cpp src/host/vf3_netplay.cpp src/machine/model3.cpp src/machine/dural.cpp src/machine/romset.cpp src/machine/profile.cpp src/rec/vf3_map.cpp src/rec/vf3tb_map.cpp src/ppc/ppc.cpp $(NET) tools/menutest.cpp $(RML_SRC))
+$(BIN)/menutest: $(call objs,src/host/menu.cpp src/host/online.cpp src/host/i18n.cpp src/host/text.cpp src/host/links.cpp src/host/vf3_netplay.cpp src/machine/model3.cpp src/machine/dural.cpp src/machine/romset.cpp src/machine/profile.cpp src/rec/vf3_map.cpp src/rec/vf3tb_map.cpp src/ppc/ppc.cpp $(NET) tools/menutest.cpp $(RML_SRC))
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(SDL_LIBS) $(FT_LIBS) $(LDLIBS)
+
+# langtest: the strings' tables (src/host/lang): every ID in every language once, the same {places} as the English, each
+# language's letters in the menus' fonts, the settings' language codes; no ROM, no window
+$(BIN)/langtest: $(call objs,src/host/i18n.cpp src/host/text.cpp tools/langtest.cpp)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(SDL_LIBS) $(FT_LIBS)
+$(OBJ)/tools/langtest.o: CXXFLAGS += $(FT_CFLAGS)
 
 $(BIN)/vf3: $(call objs,$(CORE) $(HOST) $(RML_SRC)) $(SLJIT_OBJ)
 	@mkdir -p $(dir $@)
@@ -261,5 +293,19 @@ test: $(BIN)/test_scsp_dsp $(BIN)/test_scspdsp $(BIN)/test_scsp_contract $(BIN)/
 clean:
 	rm -rf build
 
-.PHONY: all clean test test-without-mame FORCE
+# The menus' tests, always from this tree's sources: langtest (the strings' tables and fonts) and menutest (every page
+# drawn and checked, English; tools/langcheck.py for every language). The default make builds neither, and a menutest
+# built before a change passes for a tree it isn't: run them through here. Upstream calls this target `test`; here that
+# name is already the sound board's suite, so the menus' one keeps a name of its own and neither suite is lost
+test-menus: $(BIN)/langtest $(BIN)/menutest
+	$(BIN)/langtest
+	mkdir -p build/menutest
+	SDL_VIDEO_DRIVER=offscreen SDL_RENDER_DRIVER=software SDL_AUDIO_DRIVER=dummy $(BIN)/menutest build/menutest
+
+.PHONY: all clean test test-menus test-without-mame FORCE
 -include $(shell find $(OBJ) -name '*.d' 2>/dev/null)
+
+# vf3watchsound: a late watcher's match sound after its catch-up against a from-the-start watcher's (join points swept)
+$(BIN)/vf3watchsound: $(call objs,$(CORE) $(NET) src/host/vf3_netplay.cpp tools/vf3watchsound.cpp) $(SLJIT_OBJ)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
