@@ -82,6 +82,7 @@ if [ "${FV2:-0}" = 1 ]; then
 	[ -d texture_remplacement/CHARACTERS/Kuhn ] || { echo "FV2=1 needs texture_remplacement/CHARACTERS/Kuhn in the working tree (it is not in the repository)"; exit 1; }
 	mkdir -p "$P/texture_replacement/CHARACTERS"
 	cp -R texture_remplacement/CHARACTERS/Kuhn "$P/texture_replacement/CHARACTERS/"
+	cp -R assets/fv2 "$P/assets/"
 	cp tools/win/README-fv2.txt "$P/README.txt"
 	# The hidden fighters ON from the very first start, before the player has any settings of his own.
 	# They are what this package is for; the port's own default is off, and a player who does not know
