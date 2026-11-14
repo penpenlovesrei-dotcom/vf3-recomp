@@ -4925,8 +4925,9 @@ int main(int argc, char **argv)
 			return p;
 		}
 		p.items.push_back({ tr::M_RESUME, tr::M_RESUME_HELP, {}, {}, [&] { menu.close(); } });
-		// Fighting Vipers 2's own two modes, which its cabinet keeps behind the operator's buttons. They are
-		// the game's, not this port's: a row asks for one and hands the game a press of Start (fv2_modes.h).
+		// Fighting Vipers 2's own four modes: Arcade, Versus, Survival, Random. Arcade is the game its own
+		// cabinet starts; the other three the cabinet keeps behind the operator's buttons. They are the game's,
+		// not this port's: a row asks for one and hands the game a press of Start (fv2_modes.h, fv2_versus.h).
 		// Their names are the game's own, as it prints them, so they are not translated. Revision A only (the
 		// addresses are that build's), and not while anything online is on.
 		if (board.profile == &m3::FV2_REV_A && online.phase() == Online::Phase::off) {
@@ -4940,7 +4941,18 @@ int main(int argc, char **argv)
 				fv2_modes.start(m, board);
 				menu.close();
 			};
-			// VERSUS first, because it is the one two players came for. Same shape as the two below it -- the menu
+			// ARCADE AT THE TOP, which is the game as its own cabinet starts it: one player up the roster, and no
+			// byte of its own at all. It is the row that undoes the other three -- a menu that can put the game
+			// into three modes and not back out of them is a menu with a way in and no way out -- and it is the
+			// console's own first entry, where Frederic asked for it (fv2_modes.h).
+			p.items.push_back({ "ARCADE MODE", tr::M_ARCADE_MODE_HELP, {}, {},
+				[&] {
+					if (game.emu_thread.joinable()) game.job_wait();
+					fv2_versus.let_go(board, "Arcade chosen");
+					fv2_modes.arcade(board);
+					menu.close();
+				} });
+			// VERSUS next, because it is the one two players came for. Same shape as the two below it -- the menu
 			// closes and the game is handed a real press of Start -- and then one for player 2, thirty frames after
 			// the select screen appears, which is the whole of the entry (fv2_versus.h).
 			p.items.push_back({ "VERSUS MODE", tr::M_VERSUS_HELP, {}, {},

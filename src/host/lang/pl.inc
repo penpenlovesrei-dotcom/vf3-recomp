@@ -39,6 +39,7 @@ T(M_SURVIVAL_HELP, "Survival, tryb samej gry: jeden przeciwnik po drugim, na tym
 T(M_RANDOM_HELP, "Random, tryb samej gry: ekran wyboru przechodzi w RANDOM MODE. Wiersz prosi o niego i podaje grze prawdziwe naciśnięcie Start; to, co ustawia, wraca na miejsce po końcu gry. Automat trzyma go za przyciskami operatora.")
 T(M_VERSUS_HELP, "Versus, tryb samej maszyny: gracz 2 wchodzi do gry gracza 1 na ekranie wyboru, co gra nazywa INTRUDE. Wiersz prosi o ten tryb i podaje grze prawdziwe naciśnięcie Start, a potem jedno dla gracza 2, trzydzieści klatek po pojawieniu się ekranu wyboru. Obaj gracze wybierają arenę, a koniec walki proponuje kolejną zamiast GAME OVER.")
 T(M_VS_NOTE, "Walka jest rozstrzygnięta. Kolejna z tymi samymi zawodnikami, inna arena, znów ekran wyboru albo powrót do ekranu tytułowego.")
+T(M_ARCADE_MODE_HELP, "Arcade, gra taka, jaką uruchamia jej własny automat: jeden gracz przeciw całej obsadzie i żadnego własnego bajtu. Wiersz puszcza pozostałe trzy i daje grze prawdziwe naciśnięcie Start, więc rozpoczynająca się gra nie jest w żadnym z nich.")
 T(M_DISPLAY_HELP, "Okno i format, jakość, filtr ekranu i kolory, wolna kamera.")
 T(P_SOUND, "Dźwięk")
 T(M_SOUND_HELP, "Głośność ogólna, muzyki i efektów.")

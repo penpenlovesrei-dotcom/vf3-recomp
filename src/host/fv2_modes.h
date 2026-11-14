@@ -53,6 +53,24 @@ public:
 	{
 		for (int m = 0; m < COUNT; m++) if (at[m] != OFF) let_go(b, m, why);
 	}
+
+	// ---- AND ARCADE, WHICH IS NO BYTE AT ALL ----
+	//
+	// It is the game as its own cabinet starts it: one player up the roster, Sega's default, the thing every
+	// other row is a departure from. So there is nothing to write and nothing to put back -- the row's whole
+	// command is the press of Start the other rows begin with, and the three modes let go of first, so the
+	// game that starts is in none of them. It lives in this file because the press is this file's (controls).
+	//
+	// It is the top row because it is the one that needs no explaining, and because a menu that can put the
+	// game into three modes and not back out of them is a menu with a way in and no way out.
+	void arcade(m3::Model3 &b)
+	{
+		for (int m = 0; m < COUNT; m++) if (at[m] != OFF) let_go(b, m, "Arcade chosen");
+		const bool idle = b.fv2_in_attract();
+		if (idle) inject_start = 8;
+		fprintf(stderr, "Fighting Vipers 2: ARCADE chosen%s\n",
+		        idle ? ", and the game handed a press of Start" : " (a game is already running: it is already this)");
+	}
 	// Every game frame, once the frame has run. `allowed` is false in an online match.
 	void step(m3::Model3 &b, bool allowed)
 	{

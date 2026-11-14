@@ -39,6 +39,7 @@ T(M_SURVIVAL_HELP, "Survival, il modo del gioco stesso: un avversario dopo l'alt
 T(M_RANDOM_HELP, "Random, il modo del gioco stesso: la schermata di selezione passa in RANDOM MODE. La riga lo chiede e dà al gioco una vera pressione di Start; quello che imposta viene rimesso a posto a fine partita. Il cabinato lo tiene dietro i tasti del gestore.")
 T(M_VERSUS_HELP, "Versus, il modo della scheda stessa: il giocatore 2 entra nella partita del giocatore 1 sulla schermata di selezione, quello che il gioco chiama INTRUDE. La riga lo chiede e dà al gioco una vera pressione di Start, poi una per il giocatore 2 trenta fotogrammi dopo la comparsa della schermata di selezione. I due giocatori scelgono l'arena, e la fine dell'incontro ne propone un altro invece del GAME OVER.")
 T(M_VS_NOTE, "L'incontro è deciso. Un altro con gli stessi lottatori, un'altra arena, di nuovo la schermata di selezione, o il ritorno alla schermata del titolo.")
+T(M_ARCADE_MODE_HELP, "Arcade, il gioco come lo avvia il suo cabinato: un giocatore contro tutta la rosa, e nessun byte proprio. La riga lascia andare le altre tre e dà al gioco una vera pressione di Start, così la partita che comincia non è in nessuna di esse.")
 T(M_DISPLAY_HELP, "Immagine, qualità, filtro schermo e colori, telecamera libera.")
 T(P_SOUND, "Audio")
 T(M_SOUND_HELP, "Volume generale, della musica e degli effetti.")

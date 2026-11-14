@@ -39,6 +39,7 @@ T(M_SURVIVAL_HELP, "Survival, o modo do próprio jogo: um adversário depois do 
 T(M_RANDOM_HELP, "Random, o modo do próprio jogo: a tela de seleção entra em RANDOM MODE. A linha pede por ele e dá ao jogo um toque de verdade em Start; o que ela ajusta volta ao normal quando o jogo acaba. O fliperama guarda isso atrás dos botões do operador.")
 T(M_VERSUS_HELP, "Versus, o modo da própria placa: o jogador 2 entra na partida do jogador 1 na tela de seleção, o que o jogo chama de INTRUDE. A linha pede o modo e dá ao jogo um toque real de Start, e depois um para o jogador 2 trinta quadros após a tela de seleção aparecer. Os dois jogadores escolhem o cenário, e o fim da luta oferece outra em vez do GAME OVER.")
 T(M_VS_NOTE, "A luta está decidida. Outra com os mesmos lutadores, outro cenário, a tela de seleção de novo, ou voltar à tela de título.")
+T(M_ARCADE_MODE_HELP, "Arcade, o jogo como o próprio fliperama o inicia: um jogador contra todo o elenco, e nenhum byte próprio. A linha solta as outras três e dá ao jogo um toque real de Start, para que a partida que começa não esteja em nenhuma delas.")
 T(M_DISPLAY_HELP, "Imagem, qualidade, filtro de tela e cores, câmera livre.")
 T(P_SOUND, "Som")
 T(M_SOUND_HELP, "Volume geral, da música e dos efeitos.")

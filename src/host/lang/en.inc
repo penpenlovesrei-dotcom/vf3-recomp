@@ -44,6 +44,7 @@ T(M_SURVIVAL_HELP, "Survival, the game's own: one opponent after another, on the
 T(M_RANDOM_HELP, "Random, the game's own: the select screen goes into RANDOM MODE. The row asks for it and hands the game a press of Start; what it sets is put back when the game is over. The cabinet keeps it behind the operator's buttons.")
 T(M_VERSUS_HELP, "Versus, the board's own: player 2 steps into player 1's game on the select screen, which the game calls INTRUDE. The row asks for it and hands the game a press of Start, then one for player 2 thirty frames after the select screen appears. The two players choose the arena, and the end of the match offers another instead of GAME OVER.")   // the main page's Versus row (Fighting Vipers 2 only)
 T(M_VS_NOTE, "The match is decided. Another with the same fighters, another arena, the select screen again, or back to the title screen.")   // under the end-of-match panel's four lines
+T(M_ARCADE_MODE_HELP, "Arcade, the game as its cabinet starts it: one player up the roster, and no byte of its own. The row lets the other three go and hands the game a press of Start, so the game that begins is in none of them.")   // the main page's Arcade row (Fighting Vipers 2 only)
 T(M_DISPLAY_HELP, "Picture, quality, screen filter and colours, free camera.")
 T(P_SOUND, "Sound")
 T(M_SOUND_HELP, "The overall, music and effects volumes.")

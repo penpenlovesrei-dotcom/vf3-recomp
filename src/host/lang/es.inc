@@ -39,6 +39,7 @@ T(M_SURVIVAL_HELP, "Survival, el modo del propio juego: un rival tras otro, con 
 T(M_RANDOM_HELP, "Random, el modo del propio juego: la pantalla de selección entra en RANDOM MODE. La línea lo pide y le da al juego una pulsación real de Start; lo que deja puesto se quita al terminar la partida. La máquina lo guarda detrás de los botones del operador.")
 T(M_VERSUS_HELP, "Versus, el modo de la propia placa: el jugador 2 entra en la partida del jugador 1 en la pantalla de selección, lo que el juego llama INTRUDE. La línea lo pide y da al juego una pulsación real de Start, y luego otra para el jugador 2 treinta fotogramas después de aparecer la pantalla de selección. Los dos jugadores eligen el escenario, y el final del combate ofrece otro en lugar de GAME OVER.")
 T(M_VS_NOTE, "El combate está decidido. Otro con los mismos luchadores, otro escenario, volver a la pantalla de selección o a la pantalla de título.")
+T(M_ARCADE_MODE_HELP, "Arcade, el juego tal como lo arranca su propia máquina: un jugador contra toda la plantilla, y ningún byte propio. La línea suelta las otras tres y da al juego una pulsación real de Start, para que la partida que empieza no esté en ninguna de ellas.")
 T(M_DISPLAY_HELP, "Imagen, calidad, filtro de pantalla y colores, cámara libre.")
 T(P_SOUND, "Sonido")
 T(M_SOUND_HELP, "Volumen general, de la música y de los efectos.")
