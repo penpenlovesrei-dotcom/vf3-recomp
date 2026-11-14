@@ -665,6 +665,7 @@ struct settings
 	bool debug_mode = false;     // Arcade settings > Debug mode, the arcade's own (Model3::debug_mode; offline only, issue #37)
 	std::string language = "auto";   // Game > Language: auto (the system's), or a language's code (tr::choice_key)
 	bool log = true;    // log.txt written (Game > Log file: read before the log's opened, so from the next start)
+	bool full_roster = true;   // Fighting Vipers 2's hidden fighters open (Game > Hidden fighters): this port's default, and what the package was made for
 	bool tb_one = true; // Team Battle: a Start that begins a game held Down with it, the arcade's way into 1 vs 1 (false: 3 vs 3)
 	std::string game;   // the program played, its set's name ("vf3", "vf3tb"): Game > Version, when the zips hold both
 	static constexpr const char *BUILD = VF3_VERSION " " VF3_DATE " " VF3_COMMIT;   // (what gpu3d_failed was learnt by)
@@ -785,6 +786,7 @@ struct settings
 		if (window_w < 64 || window_h < 48) window_w = window_h = 0;
 		flag("team_battle_1v1", tb_one);
 		flag("log", log);
+		flag("full_roster", full_roster);
 		if (auto it = kv.find("language"); it != kv.end()) {   // (one this build doesn't know: auto)
 			tr::choice c;
 			language = tr::choice_from(it->second, c) ? it->second : "auto";
@@ -852,6 +854,7 @@ struct settings
 		if (debug_mode) fprintf(f, "cheat_debug_mode = 1\n");
 		fprintf(f, "team_battle_1v1 = %d\n", int(tb_one));
 		if (!log) fprintf(f, "log = 0\n");
+		if (!full_roster) fprintf(f, "full_roster = 0\n");   // (on is the default: only the off is written)
 		fprintf(f, "language = %s\n", language.c_str());
 		if (fs_window) fprintf(f, "fullscreen_window = 1\n");
 		if (fs_exclusive) fprintf(f, "fullscreen_exclusive = 1\n");
@@ -1256,10 +1259,12 @@ struct Game
 	// program; Model3::unlock_roster reads before it writes and says whether it wrote, so this can be called as
 	// often as one likes, and it does nothing at all for Virtua Fighter 3. The write that matters is the one just
 	// before the rebuild after the boot, which is what makes the native code from the patched program.
+	bool full_roster = true;   // (Game > Hidden fighters: on from the first start, and off takes the patch out again)
 	uint64_t roster_written = 0;
-	void hold_roster()
+	void hold_roster() { if (full_roster) write_roster(true); }
+	void write_roster(bool on)
 	{
-		if (board.unlock_roster() <= 0) return;
+		if (board.unlock_roster(on) <= 0) return;
 		roster_written++;
 		// Before the boot's own rebuild there is nothing more to do: that rebuild makes the native code from the
 		// patched program. After it, any write at all -- the game having reloaded that stretch of its code --
@@ -1267,8 +1272,8 @@ struct Game
 		// turns the whole recompiler off. So it is built again from RAM, where it agrees. (Getting this wrong is
 		// what made the game run at a sixth of its speed once before: docs/step2-fvipers2.md, section 19.)
 		if (!rebuilt_after_boot) return;
-		fprintf(stderr, "the hidden fighters: the patch went in after the boot (%llu), the native code made again\n",
-		        (unsigned long long)roster_written);
+		fprintf(stderr, "the hidden fighters: the patch %s after the boot (%llu), the native code made again\n",
+		        on ? "went in" : "came out", (unsigned long long)roster_written);
 		rebuild_from_ram_if_stale();
 	}
 	// The sound board runs on a thread of its own, a frame behind the game (its ~3 ms a frame alongside the next
@@ -2074,6 +2079,9 @@ int main(int argc, char **argv)
 	}
 	m3::Model3 &board = game.board;
 	SDL_SetWindowTitle(win, board.profile->name);   // (made before the game was loaded: named now)
+	// The hidden fighters as the player left them, before the boot writes them in: the setting is read here
+	// and nowhere else, so a run that is told off never patches anything at all (Game > Hidden fighters).
+	game.full_roster = cfg.full_roster;
 	const uint64_t BOOT_FRAMES = uint64_t(board.profile->boot_frames);   // the boot, up to the SEGA logo (the PC way: unseen)
 	// Online play (online.h): in a match the board holds the host's NVRAM, and this player's own is kept here
 	static Online online(board);
@@ -3892,6 +3900,22 @@ int main(int argc, char **argv)
 			p.items.push_back({ tr::G_TB_MODE, tr::G_TB_MODE_HELP,
 				[&] { return std::string(cfg.tb_one ? tr::G_1V1 : tr::G_3V3); },
 				[&](int) { tb_mode_flip(); }, [&] { tb_mode_flip(); } });
+		// Fighting Vipers 2's hidden fighters, which this port holds open from the first start: this is where
+		// they go off again, and on. The patch is written into the game's own RAM, so no frame may be in flight
+		// while it goes in (the menu has the game paused, the thread can still be finishing one), and the native
+		// code is made again from RAM right after -- one word disagreeing turns the whole recompiler off.
+		auto roster_flip = [&] {
+			if (game.emu_thread.joinable()) game.job_wait();
+			cfg.full_roster = !cfg.full_roster;
+			cfg_dirty = true;
+			game.full_roster = cfg.full_roster;
+			game.write_roster(cfg.full_roster);
+			fprintf(stderr, "Game > Hidden fighters: %s\n", cfg.full_roster ? "on" : "off");
+		};
+		if (board.profile == &m3::FV2_REV_A)   // (Revision A's three addresses: the other set is left alone)
+			p.items.push_back({ tr::G_ROSTER, tr::G_ROSTER_HELP,
+				[&] { return on_off(cfg.full_roster); },
+				[roster_flip](int) { roster_flip(); }, roster_flip });
 		p.items.push_back({ tr::G_LOG, tr::G_LOG_HELP,
 			[&] { return on_off(cfg.log); }, [&](int) { cfg.log = !cfg.log; cfg_dirty = true; }, [&] { cfg.log = !cfg.log; cfg_dirty = true; } });
 		p.items.push_back(back_item());

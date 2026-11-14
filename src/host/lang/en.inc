@@ -198,6 +198,8 @@ T(G_TB_MODE, "Team Battle mode")
 T(G_TB_MODE_HELP, "1 vs 1: one fighter each, as in Virtua Fighter 3. 3 vs 3: three fighters a side, Team Battle's own. It's what Start begins (the arcade's own setting): hold Up as you press Start for 3 vs 3 instead, or Down for 1 vs 1. ONLINE: a match plays the host's mode (said as it starts), so you meet everyone.")
 T(G_1V1, "1 vs 1")
 T(G_3V3, "3 vs 3")
+T(G_ROSTER, "Hidden fighters")                      // (Game, Fighting Vipers 2 only)
+T(G_ROSTER_HELP, "Del Sol, Kuhn and B.M. on the character select, the cursor's row opened from ten faces to thirteen. Off: the select screen as the cabinet left it. Either way it takes at once, in the game behind this menu.")
 T(G_LOG, "Log file")
 T(G_LOG_HELP, "log.txt in the data folder: what the game did, a few kilobytes a session, kept for bug reports (send it with one). Off, nothing's written. From the next start.")
 

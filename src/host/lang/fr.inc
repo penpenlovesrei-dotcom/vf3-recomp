@@ -193,6 +193,8 @@ T(G_TB_MODE, "Mode Team Battle")
 T(G_TB_MODE_HELP, "1 contre 1\xC2\xA0: un combattant chacun, comme dans Virtua Fighter 3. 3 contre 3\xC2\xA0: trois par camp, celui de Team Battle. C'est ce que lance Start (le réglage de l'arcade)\xC2\xA0: maintiens Haut en appuyant sur Start pour du 3 contre 3, ou Bas pour du 1 contre 1. EN LIGNE\xC2\xA0: un match joue le mode de l'hôte (annoncé au début), donc tu affrontes tout le monde.")
 T(G_1V1, "1 contre 1")
 T(G_3V3, "3 contre 3")
+T(G_ROSTER, "Personnages cachés")
+T(G_ROSTER_HELP, "Del Sol, Kuhn et B.M. sur l'écran de sélection, la rangée du curseur ouverte de dix visages à treize. Non\xC2\xA0: l'écran de sélection tel que la borne l'a laissé. Dans les deux sens, l'effet est immédiat, dans la partie derrière ce menu.")
 T(G_LOG, "Fichier journal")
 T(G_LOG_HELP, "log.txt dans le dossier de données\xC2\xA0: ce que le jeu a fait, quelques Ko par session, gardé pour les rapports de bug (envoie-le avec un rapport). Non\xC2\xA0: rien n'est écrit. Au prochain démarrage.")
 

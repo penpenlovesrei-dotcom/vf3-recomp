@@ -193,6 +193,8 @@ T(G_TB_MODE, "Team-Battle-Modus")
 T(G_TB_MODE_HELP, "1 gegen 1: je ein Kämpfer wie in Virtua Fighter 3. 3 gegen 3: drei pro Seite, Team Battles eigener. Das beginnt Start (die Einstellung des Automaten): halte Oben beim Drücken von Start für 3 gegen 3, oder Unten für 1 gegen 1. ONLINE: ein Match spielt den Modus des Hosts (am Anfang gesagt), so triffst du jeden.")
 T(G_1V1, "1 gegen 1")
 T(G_3V3, "3 gegen 3")
+T(G_ROSTER, "Versteckte Kämpfer")
+T(G_ROSTER_HELP, "Del Sol, Kuhn und B.M. in der Charakterauswahl, die Reihe des Cursors von zehn Gesichtern auf dreizehn geöffnet. Aus: die Auswahl, wie der Automat sie hinterlassen hat. In beide Richtungen sofort, im Spiel hinter diesem Menü.")
 T(G_LOG, "Logdatei")
 T(G_LOG_HELP, "log.txt im Datenordner: was das Spiel getan hat, ein paar KB pro Sitzung, für Fehlerberichte (schick sie mit). Aus: nichts wird geschrieben. Ab dem nächsten Start.")
 

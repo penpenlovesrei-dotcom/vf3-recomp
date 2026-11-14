@@ -1686,7 +1686,7 @@ void Model3::show_free_play_text()
 //   0005F4B8   cmpwi cr1,r0,14     and at 0005FA28, ble, else the cursor goes back to 0
 //
 // Both carry 14, both become 13, and the row is then 0 to 13: the game's ten, Del Sol, Kuhn and B.M.
-int Model3::unlock_roster()
+int Model3::unlock_roster(bool on)
 {
 	if (set != "fvipers2") return -1;
 	struct Site { uint32_t at, sega, ours; };
@@ -1696,12 +1696,14 @@ int Model3::unlock_roster()
 		{ 0x0005F4B8, 0x2C80000E, 0x2C80000D },   // cmpwi r0,14   -> cmpwi r0,13    the right bound
 	};
 	// Read before each write: this game's program is a gzip the boot stub inflates into RAM, so anything but the
-	// instruction Sega wrote means this is not the moment, and nothing is written. Each site stands on its own --
-	// the gate may already be in from an earlier call while a bound is not.
+	// instruction that belongs there means this is not the moment, and nothing is written. Each site stands on its
+	// own -- the gate may already be in from an earlier call while a bound is not. Off reads and writes the same
+	// three sites the other way round, so a patch that is not in is not taken out twice.
 	int wrote = 0;
 	for (const Site &s : SITES) {
-		if (ram.size() <= s.at + 4 || word(ram, s.at) != s.sega) continue;
-		word(ram, s.at) = s.ours;
+		const uint32_t there = on ? s.sega : s.ours, put = on ? s.ours : s.sega;
+		if (ram.size() <= s.at + 4 || word(ram, s.at) != there) continue;
+		word(ram, s.at) = put;
 		cpu.ram_written(s.at);   // (the recompiler's native code was made from the instruction that was there)
 		wrote = 1;
 	}

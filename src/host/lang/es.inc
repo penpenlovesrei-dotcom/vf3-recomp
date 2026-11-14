@@ -193,6 +193,8 @@ T(G_TB_MODE, "Modo Team Battle")
 T(G_TB_MODE_HELP, "1 vs 1: un luchador cada uno, como en Virtua Fighter 3. 3 vs 3: tres por bando, el de Team Battle. Es lo que empieza Start (el ajuste del arcade): mantén Arriba al pulsar Start para 3 vs 3, o Abajo para 1 vs 1. ONLINE: se juega el modo del anfitrión (se avisa al empezar), así juegas con todos.")
 T(G_1V1, "1 vs 1")
 T(G_3V3, "3 vs 3")
+T(G_ROSTER, "Luchadores ocultos")
+T(G_ROSTER_HELP, "Del Sol, Kuhn y B.M. en la selección de personaje, con la fila del cursor abierta de diez caras a trece. No: la pantalla de selección tal como la dejó la máquina. En ambos sentidos surte efecto al momento, en la partida que hay detrás de este menú.")
 T(G_LOG, "Archivo de registro")
 T(G_LOG_HELP, "log.txt en la carpeta de datos: lo que hizo el juego, unos KB por sesión, para informes de errores (envíalo con uno). No: no se escribe nada. Desde el próximo arranque.")
 

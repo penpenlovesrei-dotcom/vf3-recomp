@@ -193,6 +193,8 @@ T(G_TB_MODE, "Tryb Team Battle")
 T(G_TB_MODE_HELP, "1 na 1: po jednym zawodniku, jak w Virtua Fighter 3. 3 na 3: po trzech, tryb Team Battle. To zaczyna Start (ustawienie automatu): trzymaj Górę przy Starcie dla 3 na 3 albo Dół dla 1 na 1. ONLINE: mecz idzie w trybie hosta (podany na starcie), więc grasz z każdym.")
 T(G_1V1, "1 na 1")
 T(G_3V3, "3 na 3")
+T(G_ROSTER, "Ukryci zawodnicy")
+T(G_ROSTER_HELP, "Del Sol, Kuhn i B.M. na ekranie wyboru, rząd kursora otwarty z dziesięciu twarzy do trzynastu. Wył.: ekran wyboru taki, jaki zostawił automat. W obie strony działa od razu, w grze za tym menu.")
 T(G_LOG, "Plik logu")
 T(G_LOG_HELP, "log.txt w folderze danych: co robiła gra, kilka KB na sesję, do zgłoszeń błędów (dołącz go). Wył.: nic nie jest zapisywane. Od następnego startu.")
 

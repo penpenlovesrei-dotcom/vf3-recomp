@@ -194,6 +194,8 @@ T(G_TB_MODE, "Team Battle modu")
 T(G_TB_MODE_HELP, "1'e 1: Virtua Fighter 3'teki gibi birer dövüşçü. 3'e 3: her tarafta üç dövüşçü, Team Battle'ın kendi modu. Start'ın başlattığı moddur (salon makinesinin ayarı): bunun yerine 3'e 3 için Start'a basarken Yukarı'yı, 1'e 1 için Aşağı'yı basılı tut. ÇEVRİMİÇİ: maç, kurucunun modunda oynanır (başlarken söylenir), böylece herkesle karşılaşırsın.")
 T(G_1V1, "1'e 1")
 T(G_3V3, "3'e 3")
+T(G_ROSTER, "Gizli dövüşçüler")
+T(G_ROSTER_HELP, "Karakter seçiminde Del Sol, Kuhn ve B.M.; imlecin sırası on yüzden on üçe açılır. Kapalı: seçim ekranı, makinenin bıraktığı gibi. Her iki yönde de anında, bu menünün arkasındaki oyunda.")
 T(G_LOG, "Günlük dosyası")
 T(G_LOG_HELP, "Veri klasöründeki log.txt: oyunun ne yaptığı, oturum başına birkaç kilobayt, hata bildirimleri için saklanır (bildirimle birlikte gönder). Kapalıyken hiçbir şey yazılmaz. Bir sonraki açılıştan itibaren.")
 

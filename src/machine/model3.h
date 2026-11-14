@@ -225,7 +225,9 @@ public:
 	// name wearing Bahn's name plate. The patch is in RAM, which the boot unpacks the program into, so it reads
 	// before it writes: 1 if it wrote, 0 if what is there is not the instruction Sega wrote (the boot not done
 	// yet, or the patch already in), -1 for any other game.
-	int unlock_roster();
+	// Off (on == false) is the same walk the other way round: what this port wrote is what is read, and
+	// Sega's own three instructions go back, which closes the row again (Game > Hidden fighters).
+	int unlock_roster(bool on = true);
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 
