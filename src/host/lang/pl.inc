@@ -113,6 +113,8 @@ T(D_WIDE_HUD_HELP, "W obrazie szerszym niż 4:3 to, co Fighting Vipers 2 pokazuj
 T(D_FREECAM, "Wolna kamera")
 T(D_FREECAM_HELP, "Lataj kamerą wokół walki: WASD + mysz (E/Spacja w górę, Q/Ctrl w dół, Shift szybciej, R powrót do kamery gry) albo gałki (LT/RT w dół/w górę, Y powrót). F4 albo Back + R3 na padzie. Zmienia się tylko obraz: gra przebiega dokładnie tak samo. Wyłączona przy każdym uruchomieniu. Działa po zamknięciu menu.")
 T(D_FREECAM_NOT_ONLINE, "Nie podczas gry online")
+T(D_TOONZ, "Imai Toonz Portraits")   // Display: On / Off (Fighting Vipers 2 only)
+T(D_TOONZ_HELP, "Szesnaście portretów ekranu wyboru, przerysowanych w stylu toon Imaia, czytanych z assets/fv2/portraits obok programu. Wyłączenie przywraca te od Segi. Nic nie jest zapisywane w twoim ROM-ie: obrazy są podmieniane w kopii, którą ten port trzyma w pamięci, a zmiana widać przy następnym wczytaniu ekranu wyboru.")
 T(FREECAM_ON_KEYS, "Wolna kamera: WASD + mysz albo gałki. F4, aby wyjść")
 T(FREECAM_ON_PAD, "Wolna kamera: gałki, LT/RT w dół/w górę. Back + R3, aby wyjść")
 T(FREECAM_NOT_ONLINE, "Wolna kamera: nie podczas gry online")

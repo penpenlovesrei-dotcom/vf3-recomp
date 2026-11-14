@@ -113,6 +113,8 @@ T(D_WIDE_HUD_HELP, "4:3より横に広い画面で、ゲームの表示をウィ
 T(D_FREECAM, "フリーカメラ")
 T(D_FREECAM_HELP, "カメラを自由に動かして対戦を見られます：WASD + マウス（E/Space で上、Q/Ctrl で下、Shift で高速、R でゲームのカメラに戻る）、またはスティック（LT/RT で下/上、Y で戻る）。F4、またはパッドの Back + R3。変わるのは画面だけで、ゲームはまったく同じに進みます。起動時は毎回オフ。メニューを閉じると切り替わります。")
 T(D_FREECAM_NOT_ONLINE, "オンライン対戦中は不可")
+T(D_TOONZ, "Imai Toonz Portraits")   // Display: On / Off (Fighting Vipers 2 only)
+T(D_TOONZ_HELP, "セレクト画面の16枚の顔グラを、今井風のトゥーン調に描き直したもの。プログラムの隣の assets/fv2/portraits から読み込みます。オフでセガのものに戻ります。ROM には何も書き込まれず、メモリ上の複製だけが差し替わります。次にセレクト画面が読み込まれたときに反映されます。")
 T(FREECAM_ON_KEYS, "フリーカメラ：WASD + マウス、またはスティック。F4 で終了")
 T(FREECAM_ON_PAD, "フリーカメラ：スティック、LT/RT で下/上。Back + R3 で終了")
 T(FREECAM_NOT_ONLINE, "フリーカメラ：オンライン対戦中は使えません")

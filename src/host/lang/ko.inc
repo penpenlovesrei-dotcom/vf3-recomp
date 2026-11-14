@@ -113,6 +113,8 @@ T(D_WIDE_HUD_HELP, "4:3보다 가로로 넓은 화면에서 게임의 표시를 
 T(D_FREECAM, "자유 카메라")
 T(D_FREECAM_HELP, "카메라를 자유롭게 움직여 대전을 볼 수 있어요: WASD + 마우스(E/Space 위로, Q/Ctrl 아래로, Shift 빠르게, R 게임 카메라로 돌아가기) 또는 스틱(LT/RT 아래로/위로, Y 돌아가기). F4, 또는 패드의 Back + R3. 바뀌는 건 화면뿐이고, 게임 진행은 완전히 같아요. 시작할 때마다 꺼짐. 메뉴를 닫으면 적용돼요.")
 T(D_FREECAM_NOT_ONLINE, "온라인 대전 중에는 안 돼요")
+T(D_TOONZ, "Imai Toonz Portraits")   // Display: On / Off (Fighting Vipers 2 only)
+T(D_TOONZ_HELP, "선택 화면의 초상화 16장을 이마이 풍의 툰 스타일로 다시 그린 것. 프로그램 옆 assets/fv2/portraits에서 읽습니다. 끄면 세가의 것으로 돌아갑니다. ROM에는 아무것도 기록되지 않으며, 메모리의 사본만 바뀝니다. 다음에 선택 화면이 불러올 때 반영됩니다.")
 T(FREECAM_ON_KEYS, "자유 카메라: WASD + 마우스, 또는 스틱. F4로 나가기")
 T(FREECAM_ON_PAD, "자유 카메라: 스틱, LT/RT 아래로/위로. Back + R3로 나가기")
 T(FREECAM_NOT_ONLINE, "자유 카메라: 온라인 대전 중에는 안 돼요")

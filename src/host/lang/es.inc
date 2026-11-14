@@ -113,6 +113,8 @@ T(D_WIDE_HUD_HELP, "En una imagen más ancha que el 4:3, lo que Fighting Vipers 
 T(D_FREECAM, "Cámara libre")
 T(D_FREECAM_HELP, "Vuela una cámara alrededor del combate: WASD + ratón (E/Espacio sube, Q/Ctrl baja, Mayús más rápido, R vuelve a la cámara del juego) o los sticks (LT/RT baja/sube, Y vuelve). F4, o Back + R3 en un mando. Solo cambia la imagen: el juego es exactamente el mismo. Desactivada en cada inicio. Se aplica al cerrar el menú.")
 T(D_FREECAM_NOT_ONLINE, "No mientras juegas en línea")
+T(D_TOONZ, "Imai Toonz Portraits")   // Display: On / Off (Fighting Vipers 2 only)
+T(D_TOONZ_HELP, "Los dieciséis retratos de la pantalla de selección, redibujados al estilo toon de Imai, leídos de assets/fv2/portraits junto al programa. No devuelve los de Sega. No se escribe nada en tu ROM: las imágenes se sustituyen en la copia que este port guarda en memoria, y el cambio se ve la próxima vez que el juego carga la pantalla de selección.")
 T(FREECAM_ON_KEYS, "Cámara libre: WASD + ratón, o los sticks. F4 para salir")
 T(FREECAM_ON_PAD, "Cámara libre: sticks, LT/RT baja/sube. Back + R3 para salir")
 T(FREECAM_NOT_ONLINE, "Cámara libre: no mientras juegas en línea")

@@ -118,6 +118,8 @@ T(D_WIDE_HUD_HELP, "In a picture wider than 4:3, Fighting Vipers 2's display is 
 T(D_FREECAM, "Free camera")   // Display > Free camera: On / Off (not saved)
 T(D_FREECAM_HELP, "Fly a camera around the fight: WASD + mouse (E/Space up, Q/Ctrl down, Shift faster, R back to the game's camera), or the sticks (LT/RT down/up, Y back). F4, or Back + R3 on a pad. Only the picture changes: the game plays exactly the same. Off at each start. It takes effect when the menu closes.")
 T(D_FREECAM_NOT_ONLINE, "Not while playing online")   // (Free camera's value in a match of the player's own)
+T(D_TOONZ, "Imai Toonz Portraits")   // Display: On / Off (Fighting Vipers 2 only)
+T(D_TOONZ_HELP, "The select screen's sixteen portraits, redrawn in Imai's toon style, read from assets/fv2/portraits beside the program. Off puts Sega's own back. Nothing is written to your ROM: the pictures are replaced in the copy this port holds in memory, and the change shows the next time the game loads the select screen.")
 T(FREECAM_ON_KEYS, "Free camera: WASD + mouse, or the sticks. F4 to leave")   // a toast as it turns on from the keyboard (key names as printed)
 T(FREECAM_ON_PAD, "Free camera: sticks, LT/RT down/up. Back + R3 to leave")   // ...from a pad
 T(FREECAM_NOT_ONLINE, "Free camera: not while playing online")   // a toast: F4 or View + R3 in a match of the player's own

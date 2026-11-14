@@ -113,6 +113,8 @@ T(D_WIDE_HUD_HELP, "In einem Bild, das breiter als 4:3 ist, werden die Anzeigen 
 T(D_FREECAM, "Freie Kamera")
 T(D_FREECAM_HELP, "Eine Kamera frei um den Kampf fliegen: WASD + Maus (E/Leertaste hoch, Q/Strg runter, Umschalt schneller, R zurück zur Kamera des Spiels) oder die Sticks (LT/RT runter/hoch, Y zurück). F4 oder Back + R3 am Pad. Nur das Bild ändert sich: Das Spiel läuft genau gleich. Bei jedem Start aus. Wirkt, sobald das Menü schließt.")
 T(D_FREECAM_NOT_ONLINE, "Nicht beim Online-Spielen")
+T(D_TOONZ, "Imai Toonz Portraits")   // Display: On / Off (Fighting Vipers 2 only)
+T(D_TOONZ_HELP, "Die sechzehn Porträts des Auswahlbildschirms, im Toon-Stil von Imai neu gezeichnet, gelesen aus assets/fv2/portraits neben dem Programm. Aus setzt Segas eigene zurück. In deine ROM wird nichts geschrieben: die Bilder werden in der Kopie ersetzt, die dieser Port im Speicher hält, und die Änderung ist beim nächsten Laden des Auswahlbildschirms zu sehen.")
 T(FREECAM_ON_KEYS, "Freie Kamera: WASD + Maus oder die Sticks. F4 zum Verlassen")
 T(FREECAM_ON_PAD, "Freie Kamera: Sticks, LT/RT runter/hoch. Back + R3 zum Verlassen")
 T(FREECAM_NOT_ONLINE, "Freie Kamera: nicht beim Online-Spielen")

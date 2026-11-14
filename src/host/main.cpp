@@ -134,6 +134,7 @@
 #include "../video/fv2_bm_name.h"
 #include "../video/fv2_hud_name.h"
 #include "flags.h"
+#include "../machine/fv2_portraits.h"
 #include "../machine/model3.h"
 #include "../machine/romset.h"
 #include "../rec/ppc_rec.h"
@@ -671,6 +672,7 @@ struct settings
 	std::string language = "auto";   // Game > Language: auto (the system's), or a language's code (tr::choice_key)
 	bool log = true;    // log.txt written (Game > Log file: read before the log's opened, so from the next start)
 	bool full_roster = true;   // Fighting Vipers 2's hidden fighters open (Game > Hidden fighters): this port's default, and what the package was made for
+	bool toonz = true;  // Display > Imai Toonz Portraits: the select screen's sixteen faces redrawn, on from the first start
 	bool tb_one = true; // Team Battle: a Start that begins a game held Down with it, the arcade's way into 1 vs 1 (false: 3 vs 3)
 	std::string game;   // the program played, its set's name ("vf3", "vf3tb"): Game > Version, when the zips hold both
 	static constexpr const char *BUILD = VF3_VERSION " " VF3_DATE " " VF3_COMMIT;   // (what gpu3d_failed was learnt by)
@@ -793,6 +795,7 @@ struct settings
 		flag("team_battle_1v1", tb_one);
 		flag("log", log);
 		flag("full_roster", full_roster);
+		flag("imai_toonz_portraits", toonz);
 		flag("wide_hud", wide_hud);
 		if (auto it = kv.find("language"); it != kv.end()) {   // (one this build doesn't know: auto)
 			tr::choice c;
@@ -862,6 +865,7 @@ struct settings
 		fprintf(f, "team_battle_1v1 = %d\n", int(tb_one));
 		if (!log) fprintf(f, "log = 0\n");
 		if (!full_roster) fprintf(f, "full_roster = 0\n");   // (on is the default: only the off is written)
+		if (!toonz) fprintf(f, "imai_toonz_portraits = 0\n");   // (the same)
 		if (!wide_hud) fprintf(f, "wide_hud = 0\n");         // (the same: on from the first start)
 		fprintf(f, "language = %s\n", language.c_str());
 		if (fs_window) fprintf(f, "fullscreen_window = 1\n");
@@ -2235,6 +2239,10 @@ int main(int argc, char **argv)
 	//
 	// HIS GAME ONLY. A pack loaded is Raster::resolve_hd installed for every polygon of every picture, and that
 	// is exactly what Virtua Fighter 3 is not to feel: it shares this program and settings.ini with him.
+	// Imai Toonz Portraits (Display > Imai Toonz Portraits): where the pictures are read from, and Sega's own
+	// two sheets as they came out of the zip. Both are kept out here because the line in the menu needs them.
+	std::string toonz_dir;
+	std::vector<uint8_t> sega_portraits;
 	if (board.profile == &m3::FV2_REV_A) {
 		std::error_code ec;
 		std::string pack = data + "/texture_replacement";
@@ -2258,6 +2266,14 @@ int main(int argc, char **argv)
 		// board at all, it is the name Sega never drew, so there is nothing to replace and nothing to hash.
 		video::bm_name_load(find_assets(), game.bm_art);
 		video::fv2_hud_name_load(find_assets(), pack, game.hud_art);
+		// THE SELECT SCREEN'S OWN SIXTEEN FACES, redrawn. They are not tiles and not a pack texture: they are two
+		// 256x256 Real3D sheets in the VROM, so that is where they are written -- in the image this process holds,
+		// never in the player's zip, and once, the VROM being a ROM the game never writes itself
+		// (src/machine/fv2_portraits.h, docs/fv2-portraits.md). Sega's own two are copied out first, whatever the
+		// setting says, so the line in the menu can put them back at any moment without restarting the game.
+		toonz_dir = find_assets() + "/fv2/portraits";
+		sega_portraits = fv2::save_portrait_sheets(board.set, board.vrom);
+		if (cfg.toonz) fv2::replace_portraits_and_report(board.set, board.vrom, toonz_dir, stderr);
 	}
 	// Fighting Vipers 2's SURVIVAL and RANDOM (fv2_modes.h): what the two rows of the main page ask for,
 	// and the machine that writes the game's own bytes once a game is running and puts them back at the end.
@@ -4121,6 +4137,22 @@ int main(int argc, char **argv)
 				if (own_match()) { menu.toast(tr::FREECAM_NOT_ONLINE); return; }   // (said, as F4 there)
 				fc_menu = (fc_menu >= 0 ? fc_menu == 1 : fc.on) ? 0 : 1;
 			} });
+		// Imai Toonz Portraits. The swap is made in the VROM, and the game asks the hardware to upload those two
+		// sheets from the VROM as it builds the select screen -- so a change is seen the next time it builds it,
+		// not on a picture already standing in texture memory. No frame may be in flight while the bytes move,
+		// which is what the wait is for; the menu has the game paused, but a thread can still be finishing one.
+		auto toonz_flip = [&] {
+			if (game.emu_thread.joinable()) game.job_wait();
+			cfg.toonz = !cfg.toonz;
+			cfg_dirty = true;
+			if (cfg.toonz) fv2::replace_portraits_and_report(board.set, board.vrom, toonz_dir, stderr);
+			else fv2::restore_portrait_sheets(board.set, board.vrom, sega_portraits);
+			fprintf(stderr, "Display > Imai Toonz Portraits: %s\n", cfg.toonz ? "on" : "off");
+		};
+		if (board.profile == &m3::FV2_REV_A)   // (his game only: the two offsets were measured on it)
+			p.items.push_back({ tr::D_TOONZ, tr::D_TOONZ_HELP,
+				[&] { return on_off(cfg.toonz); },
+				[toonz_flip](int) { toonz_flip(); }, toonz_flip });
 		p.items.push_back(back_item());
 		return p;
 	};

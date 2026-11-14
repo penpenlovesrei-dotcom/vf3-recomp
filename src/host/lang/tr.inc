@@ -114,6 +114,8 @@ T(D_WIDE_HUD_HELP, "4:3'ten geniş bir görüntüde Fighting Vipers 2'nin göste
 T(D_FREECAM, "Serbest kamera")
 T(D_FREECAM_HELP, "Dövüşün etrafında bir kamerayla uçun: WASD + fare (E/Boşluk yukarı, Q/Ctrl aşağı, Shift daha hızlı, R oyunun kamerasına dön) ya da çubuklar (LT/RT aşağı/yukarı, Y geri dön). F4 ya da gamepad'de Back + R3. Yalnızca görüntü değişir: oyun tamamen aynı oynanır. Her açılışta kapalı. Menü kapanınca geçerli olur.")
 T(D_FREECAM_NOT_ONLINE, "Çevrim içi oynarken olmaz")
+T(D_TOONZ, "Imai Toonz Portraits")   // Display: On / Off (Fighting Vipers 2 only)
+T(D_TOONZ_HELP, "Seçim ekranının on altı portresi, Imai'nin çizgi film üslubunda yeniden çizilmiş, programın yanındaki assets/fv2/portraits klasöründen okunur. Kapalı, Sega'nınkileri geri getirir. ROM'unuza hiçbir şey yazılmaz: görüntüler yalnızca bellekteki kopyada değiştirilir ve değişiklik seçim ekranı bir sonraki yüklenişinde görülür.")
 T(FREECAM_ON_KEYS, "Serbest kamera: WASD + fare ya da çubuklar. Çıkmak için F4")
 T(FREECAM_ON_PAD, "Serbest kamera: çubuklar, LT/RT aşağı/yukarı. Çıkmak için Back + R3")
 T(FREECAM_NOT_ONLINE, "Serbest kamera: çevrim içi oynarken olmaz")

@@ -113,6 +113,8 @@ T(D_WIDE_HUD_HELP, "在比4:3更宽的画面里，把游戏的显示移到窗口
 T(D_FREECAM, "自由视角")
 T(D_FREECAM_HELP, "让镜头在对战周围自由飞行：WASD + 鼠标（E/空格 上升，Q/Ctrl 下降，Shift 加速，R 回到游戏的镜头），或摇杆（LT/RT 下降/上升，Y 回到游戏的镜头）。F4，或手柄上的 Back + R3。只改变画面：游戏进行完全相同。每次启动时为关。关闭菜单后生效。")
 T(D_FREECAM_NOT_ONLINE, "在线对战时不可用")
+T(D_TOONZ, "Imai Toonz Portraits")   // Display: On / Off (Fighting Vipers 2 only)
+T(D_TOONZ_HELP, "选人画面的十六张头像，以今井的卡通风格重绘，从程序旁的 assets/fv2/portraits 读取。关闭则换回世嘉原版。不会写入你的 ROM：只替换内存中的副本，下一次加载选人画面时生效。")
 T(FREECAM_ON_KEYS, "自由视角：WASD + 鼠标，或摇杆。按 F4 退出")
 T(FREECAM_ON_PAD, "自由视角：摇杆，LT/RT 下降/上升。按 Back + R3 退出")
 T(FREECAM_NOT_ONLINE, "自由视角：在线对战时不可用")
