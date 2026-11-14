@@ -33,12 +33,18 @@
 // game is -- which is the shape Survival and Random already have (fv2_modes.h).
 #pragma once
 #include "../machine/model3.h"
+#include "fv2_home.h"
 #include <cstdio>
 #include <cstdlib>
 
 class Fv2Versus
 {
 public:
+	// THE WAY HOME IS NOT THIS FILE'S ANY MORE (fv2_home.h): walking a game back to a place where a new
+	// game can begin is what every row of the menu needs and not only the panel's two lines, so the
+	// machine is shared and the host owns the one copy of it. What is left here is the asking.
+	explicit Fv2Versus(Fv2Home &h) : home(h) {}
+
 	// The panel's four lines. They are the console build's own four, less RESUME: there is no fight to go back
 	// to at the end of a match, and a line that promises one is a line that lies.
 	//
@@ -59,7 +65,6 @@ public:
 	// here opens anything, because the host owns the surfaces.
 	enum { W_NONE, W_STAGE, W_PANEL };
 	int wants = W_NONE;
-	bool veil = false;   // the way out is running: the host hides the game and silences it (see THE WAY OUT)
 
 	// THE PAGE OPENED BY THE PANEL STANDS OVER A FROZEN GAME, not a parked one, and the difference is
 	// measured: the park writes sub-state 2, and 2 means Sega's empty STAGE_SEL only in SEL -- in a fight it
@@ -84,12 +89,18 @@ public:
 		stage_held = false;
 		over_done = false;
 		task_live[0] = task_live[1] = 0;
-		leaving = L_OFF;
-		veil = false;
-		const bool idle = b.fv2_in_attract();
-		if (idle) inject_start = 8;
-		fprintf(stderr, "Fighting Vipers 2: VERSUS chosen%s\n",
-		        idle ? ", and the game handed a press of Start" : " (a game is already running: player 2 steps in)");
+		// AND IT BEGINS AT THE SELECT SCREEN OR IT DOES NOT BEGIN. Player 2 steps into player 1's game on the
+		// select screen and nowhere else, so a versus asked for during a match used to wait for a screen that
+		// was never coming and show the player nothing -- Frederic's of the 2026-11-14. The game is walked
+		// home first now and this is called on arrival (fv2_home.h, main.cpp).
+		if (!b.fv2_in_attract()) {
+			at = OFF;
+			fprintf(stderr, "Fighting Vipers 2: VERSUS chosen, but a game was running -- let go of rather than"
+			                " left waiting for a select screen\n");
+			return;
+		}
+		inject_start = 8;
+		fprintf(stderr, "Fighting Vipers 2: VERSUS chosen, and the game handed a press of Start\n");
 	}
 
 	// ---- one game frame, after the frame has run; `allowed` is false in an online match ----
@@ -111,7 +122,6 @@ public:
 			}
 		}
 
-		step_leaving(b);
 		note_tasks(b);
 		step_select(b);
 		step_over(b);
@@ -121,7 +131,7 @@ public:
 
 		// And over when the game is over. A rematch never leaves the fight, so this is the attract loop and
 		// nothing else: the arena given back, the panel's own state cleared, the row ready to be chosen again.
-		if (at == IN && leaving == L_OFF && !running && wants == W_NONE) {
+		if (at == IN && !home.on() && !running && wants == W_NONE) {
 			fprintf(stderr, "Fighting Vipers 2: VERSUS over, the game being over\n");
 			put_back(b);
 			at = OFF;
@@ -196,12 +206,13 @@ public:
 			wants = W_STAGE;
 			break;
 		case L_VIPERS:
-			leave_match(b, L_TO_SELECT);
+			// The select screen, and the mode kept: it is the MATCH that was asked to change (again).
+			home.go(b, Fv2Home::SELECT, true, Fv2Home::A_VERSUS_AGAIN);
 			break;
 		case L_EXIT:
-			// The game's own title screen, and the mode let go of with it (arrive): out of the versus, back where
+			// The game's own title screen, and the mode let go of with it (done): out of the versus, back where
 			// a coin and a press of Start start another one.
-			leave_match(b, L_TO_TITLE);
+			home.go(b, Fv2Home::TITLE, true, Fv2Home::A_NOTHING);
 			break;
 		default:
 			break;
@@ -213,6 +224,34 @@ public:
 	// winner's pose asks to move on again, and the panel is back on the very next step. Which is the console
 	// build's rule said in this package's own terms: there, the panel simply refuses to be backed out of.
 	void panel_dismissed() { over_done = false; }
+
+	// ---- THE TWO ARRIVALS, handed back by the host on the frame the way home ends ----
+	//
+	// CHANGE YOUR VIPER asks for another versus, which from the attract loop is a new game -- and the select
+	// screen with it, two players on it, which is the whole point of the line. The arena is KEPT: a player
+	// who asked to change his fighter did not ask to change the stage.
+	void again(m3::Model3 &b)
+	{
+		sel_at = SEL_AWAY;
+		sel_frames = 0;
+		sel_two_players = true;
+		sel_wants_page = false;   // (the arena is already chosen; asking again would be a page to dismiss)
+		over_done = false;
+		task_live[0] = task_live[1] = 0;
+		at = ASKED;
+		wait = 0;
+		inject_start = 8;
+		fprintf(stderr, "Fighting Vipers 2: back to the select screen, two players\n");
+	}
+
+	// And EXIT, where the mode is simply over: the arena given back, the panel's own state cleared, the row
+	// ready to be chosen again.
+	void done(m3::Model3 &b)
+	{
+		put_back(b);
+		at = OFF;
+		fprintf(stderr, "Fighting Vipers 2: back at the title screen, VERSUS over\n");
+	}
 	// The mode let go of from outside -- the row chosen again, something online starting, the port closing.
 	void let_go(m3::Model3 &b, const char *why)
 	{
@@ -220,8 +259,7 @@ public:
 		put_back(b);
 		at = OFF;
 		wants = W_NONE;
-		veil = false;
-		leaving = L_OFF;
+		home.give_up(b, why);
 		fprintf(stderr, "Fighting Vipers 2: VERSUS let go of (%s)\n", why);
 	}
 
@@ -229,7 +267,8 @@ private:
 	enum { OFF, ASKED, IN };
 	static constexpr int GIVE_UP = 900;        // 15 s of the game's own frames
 	static constexpr int SEL_P2_AT = 30;       // frames after the select screen is seen, before player 2's Start
-	static constexpr int LEAVE_GIVE_UP = 3600; // a minute: a match that will not end is let go of
+
+	Fv2Home &home;   // the one way home, the host's (fv2_home.h)
 
 	uint8_t at = OFF;
 	int wait = 0;
@@ -304,7 +343,7 @@ private:
 	bool over_done = false;   // this match's panel has been shown: one a match, not one a tick
 	void step_over(m3::Model3 &b)
 	{
-		if (leaving != L_OFF || wants != W_NONE) return;
+		if (home.on() || wants != W_NONE) return;
 		const int m = b.fv2_mode(), su = b.fv2_submode();
 		if (m != 6 && m != 7) { over_done = false; return; }   // off GAME: the next match gets its own
 		// AND A ROUND BEING FOUGHT IS WHAT ARMS IT AGAIN. Leaving GAME is not enough: a rematch goes back into
@@ -332,148 +371,6 @@ private:
 	// port's own menu, and the menu stops the game. Nothing advances under it, so nothing has to be renewed.
 	void hold_panel(m3::Model3 &b) { b.fv2_hold_submode(); }
 
-	// ---- LEAVING A MATCH, in two phases, and the game does the work in both ----
-	//
-	// ENDING    the game's own exit. From a round being fought that is fv2_end_match -- the round timer put at
-	//           1, so FIGHT_DSP ends the round itself, and the bit NEXT_PROG_SEL branches on set, so that
-	//           handler decides the match is over instead of opening another round. FROM THE PANEL THERE IS
-	//           NOTHING TO END: the match is already decided and the branch point that would have ended it is
-	//           out of reach -- the byte it tests, 0x0058145A, falls from 3 to 1 in the very frame it runs, the
-	//           INTRUDE rule handing the winner the game. So that road writes what Sega's own three
-	//           instructions write and goes straight to the end-of-game screens.
-	// CLEARING  CONTINUE and GAME OVER are MODES of their own, so the sub-state request does not reach them and
-	//           their own counter is the only lever. They are walked through and made SHORT rather than jumped
-	//           over: asking for the title from inside them takes their housekeeping with them and the title
-	//           comes up glitched. It is WATCHED rather than written once, each of those screens arming its own
-	//           timer as it begins. Over when the SCENE INDEX changes, which is what says the end of the game
-	//           has gone past -- the task register has read zero since the K.O. and does not tell them apart.
-	//
-	// AND THE VEIL OVER ALL OF IT, because what is being walked through is the end of a game nobody was
-	// playing: the host hides the picture and silences the sound while this runs (see `veil`). The console
-	// build puts its own pictures there; this package has none, so it puts nothing there, which is at least not
-	// somebody else's GAME OVER.
-	enum leave_phase { L_OFF, L_ENDING, L_CLEARING };
-	enum leave_dest { L_TO_TITLE, L_TO_SELECT };
-	leave_phase leaving = L_OFF;
-	leave_dest leave_for = L_TO_TITLE;
-	int leave_frames = 0, leave_cut = -1, leave_scene = -1;
-	int leave_vs_finish = -1;   // VS FINISH as the player had it, lent for the length of the way out
-
-	void leave_match(m3::Model3 &b, leave_dest what)
-	{
-		// AND THE DOOR OUT OF A TWO-PLAYER MATCH IS OPENED FIRST, because the game only reads it when the match
-		// ends: when both players are in, the end of a match asks whether VS FINISH is on and, if it is, asks
-		// for GAME OVER. If it is off, the winner is handed the ladder and the game goes on. It is given back at
-		// the far side, and only the working copy is touched, so what the player set in the cabinet's own
-		// settings is not changed.
-		borrow_vs_finish(b);
-		leaving = L_ENDING;
-		leave_for = what;
-		leave_frames = 0;
-		leave_cut = -1;
-		leave_scene = -1;
-		veil = true;
-		// The panel's road: the match is already decided, so there is nothing to end and GAME OVER is asked for
-		// with the game's own write, once.
-		b.fv2_request_game_over();
-		fprintf(stderr, "Fighting Vipers 2: the match was already decided -- GAME OVER asked for, the game's"
-		                " own way out of a settled versus\n");
-	}
-
-	void borrow_vs_finish(m3::Model3 &b)
-	{
-		if (leave_vs_finish >= 0) return;
-		leave_vs_finish = b.fv2_vs_finish();
-		if (leave_vs_finish < 0) return;
-		if (leave_vs_finish == 0) b.fv2_set_vs_finish(1);
-		fprintf(stderr, "Fighting Vipers 2: VS FINISH was %d, lent as 1 for the way out\n", leave_vs_finish);
-	}
-	void return_vs_finish(m3::Model3 &b)
-	{
-		if (leave_vs_finish < 0) return;
-		b.fv2_set_vs_finish(leave_vs_finish);
-		fprintf(stderr, "Fighting Vipers 2: VS FINISH given back as %d\n", leave_vs_finish);
-		leave_vs_finish = -1;
-	}
-
-	void step_leaving(m3::Model3 &b)
-	{
-		if (leaving == L_OFF) return;
-		if (++leave_frames > LEAVE_GIVE_UP) {
-			fprintf(stderr, "Fighting Vipers 2: the way out gave up after %d frames -- mode %d sub %d\n",
-			        leave_frames, b.fv2_mode(), b.fv2_submode());
-			leaving = L_OFF;
-			arrive(b);
-			return;
-		}
-		if (leaving == L_ENDING) {
-			if (leave_frames % 60 == 0 || getenv("VF3_LEAVE_TRACE"))
-				fprintf(stderr, "Fighting Vipers 2: the way out is %d frames old -- mode %d sub %d, the match"
-				                " says %s\n", leave_frames, b.fv2_mode(), b.fv2_submode(),
-				        b.fv2_match_over() ? "decided" : "not decided");
-			// THE MATCH IS OVER WHEN THE GAME SAYS SO, and it says it in TWO ways. The attract loop coming back
-			// is one. The other is a mode of its own: CONTINUE (8, 9), RANKING (16, 17), OVER (18, 19), RESULT
-			// (22, 23) -- the end-of-game screens, which the game walks to with its tasks still running, so
-			// "no game running" goes on saying a game is on.
-			const int m = b.fv2_mode();
-			const bool end_screen = m == 8 || m == 9 || m == 16 || m == 17 || m == 18 || m == 19 || m == 22 || m == 23;
-			if (b.fv2_in_attract() || end_screen) {
-				fprintf(stderr, "Fighting Vipers 2: the match is over in %d frames, the end screens next\n",
-				        leave_frames);
-				leave_scene = b.fv2_scene_index();
-				leave_frames = 0;
-				leaving = L_CLEARING;
-			}
-			return;
-		}
-		// L_CLEARING
-		if (leave_for == L_TO_TITLE && b.fv2_on_title()) {
-			fprintf(stderr, "Fighting Vipers 2: the title screen reached in %d frames\n", leave_frames);
-			leaving = L_OFF;
-			arrive(b);
-			return;
-		}
-		// Firmly positive, because an already expired screen reads negative and shortening it would lengthen
-		// it; four times our own edge, so our own writing is never written over again. And every frame it is
-		// still positive rather than once: each of those screens arms its own timer as it begins, so one write
-		// only shortens the first of them.
-		if (b.fv2_screen_timer() > 4 * 8) b.fv2_expire_screen();
-		if (b.fv2_scene_index() != leave_scene) {
-			fprintf(stderr, "Fighting Vipers 2: the end of the game is past in %d frames\n", leave_frames);
-			leaving = L_OFF;
-			arrive(b);
-		}
-	}
-
-	// Where the way out leads. The title screen is the game's own lever and it WORKS here where it does nothing
-	// from a fight: by now the attract loop is running again, so there IS a list to walk off. CHANGE YOUR VIPER
-	// asks for another versus instead, which from the attract loop is a new game -- and the select screen with
-	// it, two players on it, which is the whole point of the line.
-	void arrive(m3::Model3 &b)
-	{
-		return_vs_finish(b);
-		veil = false;
-		if (leave_for == L_TO_TITLE) {
-			if (!b.fv2_on_title()) b.fv2_attract_to_title();
-			put_back(b);
-			at = OFF;
-			fprintf(stderr, "Fighting Vipers 2: back at the title screen, VERSUS over\n");
-			return;
-		}
-		// The mode comes back with the match, the match being what was asked to change. The arena is kept: a
-		// player who asked to change his fighter did not ask to change the stage.
-		sel_at = SEL_AWAY;
-		sel_frames = 0;
-		sel_two_players = true;
-		sel_wants_page = false;   // (the arena is already chosen; asking again would be a page to dismiss)
-		over_done = false;
-		task_live[0] = task_live[1] = 0;
-		at = ASKED;
-		wait = 0;
-		inject_start = 8;
-		fprintf(stderr, "Fighting Vipers 2: back to the select screen, two players\n");
-	}
-
 	void release_stage(m3::Model3 &b)
 	{
 		if (!stage_held) return;
@@ -484,7 +381,8 @@ private:
 	void put_back(m3::Model3 &b)
 	{
 		release_stage(b);
-		return_vs_finish(b);
+		// (VS FINISH is the way home's to lend and to give back, and it gives it back on both of its ends --
+		// the arrival and the letting go. Nothing of it is owed here.)
 		scene = 0;
 		stage_from_panel = false;
 		over_done = false;

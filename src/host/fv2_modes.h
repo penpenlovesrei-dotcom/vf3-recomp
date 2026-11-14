@@ -41,10 +41,21 @@ public:
 		at[m] = ASKED;
 		wait[m] = 0;
 		was[m] = 0;
+		// AND THE PRESS OF START IS THE WHOLE COMMAND, so this is only ever called where a press of Start
+		// starts a game. It used not to be, and that was Frederic's of the 2026-11-14: chosen during a match
+		// the row injected nothing and wrote its flag into the game already being fought, which is not a game
+		// in that mode and showed the player nothing at all. The game is now walked home first and the row
+		// started on arrival (fv2_home.h, main.cpp), so `idle` is false here only if something took the game
+		// in the same frame -- and then the row is let go of rather than written into a stranger's match.
 		const bool idle = b.fv2_in_attract();
-		if (idle) inject_start = 8;
-		fprintf(stderr, "Fighting Vipers 2: %s chosen%s\n", name(m),
-		        idle ? ", and the game handed a press of Start" : " (a game is already running: it takes at once)");
+		if (!idle) {
+			at[m] = OFF;
+			fprintf(stderr, "Fighting Vipers 2: %s chosen, but a game was running -- let go of rather than"
+			                " written into it\n", name(m));
+			return;
+		}
+		inject_start = 8;
+		fprintf(stderr, "Fighting Vipers 2: %s chosen, and the game handed a press of Start\n", name(m));
 	}
 
 	// Both let go of, whatever they were doing: the Versus row does it for the same reason a row of this

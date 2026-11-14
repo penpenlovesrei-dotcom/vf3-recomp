@@ -127,6 +127,7 @@
 #include "text.h"
 #include "chime.h"
 #include "fv2_modes.h"
+#include "fv2_home.h"
 #include "fv2_versus.h"
 #include "fv2_stages.h"
 #include "../video/hud_names.h"
@@ -2387,7 +2388,12 @@ int main(int argc, char **argv)
 	// GAME OVER stood. The panel is a page of this port's own menu, which is where the mode was chosen and
 	// which stops the game while it is up; the page of arenas is a surface of its own, because the game has
 	// to go on running under it.
-	Fv2Versus fv2_versus;
+	// AND THE ONE WAY HOME (fv2_home.h), which is what a row chosen while a game is running asks for first:
+	// the game walked back to a place where a new game can begin, and the row started on arrival. It is here
+	// and not inside either mode because all three rows and the panel's two lines ask the same walk, and two
+	// copies of it would walk the same game twice.
+	Fv2Home fv2_home;
+	Fv2Versus fv2_versus{ fv2_home };
 	fv2_stages versus_stages;
 	bool versus_panel_up = false;      // the panel is the menu's top page just now
 	int versus_panel_want = -1;        // the line chosen, acted on once the menu has closed
@@ -3709,7 +3715,7 @@ int main(int argc, char **argv)
 		// Fighting Vipers 2's VERSUS: the page of arenas over the picture the game made, and the veil over the
 		// way out of a match (fv2_stages.h, fv2_versus.h). After the CRT pass, both being this port's own
 		// surfaces and not part of the picture the board drew.
-		if (fv2_versus.veil) {
+		if (fv2_home.veil()) {
 			SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
 			SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
 			SDL_RenderFillRect(ren, &all);
@@ -4934,26 +4940,33 @@ int main(int argc, char **argv)
 			// choosing a mode on a console does. It is not a setting, so it carries no yes and no no -- the mode
 			// is over when that game is (fv2_modes.h). It may write the game's RAM, so the thread is let finish
 			// its frame first.
-			auto mode_start = [&](int m) {
+			//
+			// AND A ROW CHOSEN WHILE A GAME IS RUNNING TAKES THE GAME HOME FIRST, which is Frederic's of the
+			// 2026-11-14: choosing another mode during a match did nothing a player could see, and it did nothing
+			// for the same reason in all three rows. A row's whole command is a press of Start, and a press of
+			// Start starts a game only where the game is waiting for one. So the match is ended by the game's own
+			// branch points, its end-of-game screens walked through short behind a veil, and the row is handed its
+			// press at the title screen (fv2_home.h, and the arrival below). One walk at a time, and the mode that
+			// was running goes with it -- a second row is a change of mind, not an extra.
+			auto row_chosen = [&](int what, int row) {
 				if (game.emu_thread.joinable()) game.job_wait();
-				fv2_versus.let_go(board, "another mode chosen");   // (one mode at a time, as between these two)
-				fv2_modes.start(m, board);
 				menu.close();
+				fv2_home.give_up(board, "another mode chosen");
+				fv2_modes.let_go_all(board, "another mode chosen");
+				fv2_versus.let_go(board, "another mode chosen");
+				if (!board.fv2_in_attract()) { fv2_home.go(board, Fv2Home::TITLE, false, what, row); return; }
+				if (what == Fv2Home::A_VERSUS) fv2_versus.start(board);
+				else fv2_modes.start(row, board);
 			};
 			// VERSUS first, because it is the one two players came for. Same shape as the two below it -- the menu
 			// closes and the game is handed a real press of Start -- and then one for player 2, thirty frames after
 			// the select screen appears, which is the whole of the entry (fv2_versus.h).
 			p.items.push_back({ "VERSUS MODE", tr::M_VERSUS_HELP, {}, {},
-				[&] {
-					if (game.emu_thread.joinable()) game.job_wait();
-					fv2_modes.let_go_all(board, "Versus chosen");
-					fv2_versus.start(board);
-					menu.close();
-				} });
+				[row_chosen] { row_chosen(Fv2Home::A_VERSUS, -1); } });
 			p.items.push_back({ "SURVIVAL MODE", tr::M_SURVIVAL_HELP, {}, {},
-				[mode_start] { mode_start(Fv2Modes::SURVIVAL); } });
+				[row_chosen] { row_chosen(Fv2Home::A_MODE_ROW, Fv2Modes::SURVIVAL); } });
 			p.items.push_back({ "RANDOM MODE", tr::M_RANDOM_HELP, {}, {},
-				[mode_start] { mode_start(Fv2Modes::RANDOM); } });
+				[row_chosen] { row_chosen(Fv2Home::A_MODE_ROW, Fv2Modes::RANDOM); } });
 		}
 		p.items.push_back({ tr::P_DISPLAY, tr::M_DISPLAY_HELP, {}, {}, [&] { menu.push(display_page()); } });
 		p.items.push_back({ tr::P_SOUND, tr::M_SOUND_HELP, {}, {}, [&] { menu.push(sound_page()); } });
@@ -4973,9 +4986,9 @@ int main(int argc, char **argv)
 	};
 	bool sound_paused = false;
 	auto sync_menu_sound = [&] {
-		// And behind the veil as well: what the way out of a versus walks through is the end of a game nobody
-		// was playing, and it is not to be heard any more than it is to be seen (fv2_versus.h).
-		const bool pause = (menu.is_open() || fv2_versus.veil) && !online.playing();   // (a match goes on, its sound too)
+		// And behind the veil as well: what the way home walks through is the end of a game nobody was
+		// playing, and it is not to be heard any more than it is to be seen (fv2_home.h).
+		const bool pause = (menu.is_open() || fv2_home.veil()) && !online.playing();   // (a match goes on, its sound too)
 		if (!audio || pause == sound_paused) return;
 		sound_paused = pause;
 		if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
@@ -6071,6 +6084,19 @@ int main(int argc, char **argv)
 				order_mark = mark;
 			}
 			game.hold_roster();   // the hidden fighters, put in as soon as the boot has unpacked the program
+			// THE WAY HOME, stepped before the modes, because the frame it ends is the frame a row takes: a row
+			// chosen while a game was running asked for this walk and its press of Start is handed here, at the
+			// title screen the walk reaches (fv2_home.h). The panel's two lines arrive here too -- CHANGE YOUR
+			// VIPER as another versus, with the arena kept, and EXIT as the mode simply over.
+			if (fv2_home.on() && fv2_home.step(board)) {
+				switch (fv2_home.then()) {
+				case Fv2Home::A_VERSUS:       fv2_versus.start(board); break;
+				case Fv2Home::A_VERSUS_AGAIN: fv2_versus.again(board); break;
+				case Fv2Home::A_MODE_ROW:     fv2_modes.start(fv2_home.row(), board); break;
+				case Fv2Home::A_NOTHING:      fv2_versus.done(board); break;
+				default:                      break;
+				}
+			}
 			// Survival and Random: written the moment a game is running, put back when it is over (fv2_modes.h).
 			// Not in an online match -- they write a byte of the running game, and both sides play the same game.
 			fv2_modes.step(board, online.phase() == Online::Phase::off);
