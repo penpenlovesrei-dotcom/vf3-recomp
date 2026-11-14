@@ -1,0 +1,22 @@
+# Fighting Vipers 2: a one-player game LOST ON PURPOSE, to measure the end-of-game screens.
+#
+# What it is for: the way out of a versus walks THROUGH those screens and has to know when they are past
+# (src/host/fv2_versus.h, L_CLEARING). The two comments in that file disagree about what the task register
+# does from the K.O. onwards, and the scene index is the only thing the clearing phase waits for -- so this
+# run reads the whole tail of a game with VF3_FV2_TRACE=1 and settles both.
+#
+# A player who never moves is the shortest honest road to it: the CPU wins the match, CONTINUE counts down to
+# nothing, and GAME OVER, the ranking and the attract loop follow by themselves. No input is needed after the
+# fighter is picked, which is also what makes the run repeatable.
+#
+# The frames of the opening are fv2-fight.txt's, which were checked against what the game shows.
+#   VF3_HIDDEN=1 VF3_FV2_TRACE=1 VF3_SCRIPT=tools/scripts/fv2-end-of-game.txt
+1900 press p1.coin
+1930 press p1.coin
+1960 press p1.start
+2220 press p1.punch
+2280 mark picked
+# and nothing from here on: the CPU does the rest
+4000 mark fighting
+14000 mark tail
++10 quit

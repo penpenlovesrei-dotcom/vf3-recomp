@@ -6144,6 +6144,39 @@ int main(int argc, char **argv)
 			// Versus: the same rule and the same reason -- every lever it pulls is a byte of the running game,
 			// and the two sides of an online match play the same game (fv2_versus.h).
 			fv2_versus.step(board, online.phase() == Online::Phase::off);
+			// VF3_FV2_TRACE=1: the game's own state machine, printed WHENEVER IT CHANGES and not once a frame.
+			// Everything the versus and its way out are built on is in one line -- the mode and sub-state, what
+			// has been asked for, the scene index, the screen counter, the task register, and the three
+			// questions this port asks of them. A transition log and not a dump: ten thousand identical lines
+			// hide the one frame that matters, and every rule in fv2_versus.h and model3.cpp was settled by
+			// reading a sequence like this one.
+			if (board.profile == &m3::FV2_REV_A && getenv("VF3_FV2_TRACE")) {
+				static int was[6] = { -1, -1, -1, -1, -1, -1 };
+				const int now[6] = { board.fv2_mode(), board.fv2_submode(), board.fv2_scene_index(),
+				                     board.fv2_in_attract() ? 1 : 0, board.fv2_on_title() ? 1 : 0,
+				                     board.fv2_players() };
+				bool moved = false;
+				for (int i = 0; i < 6; i++) if (now[i] != was[i]) moved = true;
+				if (moved) {
+					for (int i = 0; i < 6; i++) was[i] = now[i];
+					fprintf(stderr, "fv2 %6llu  mode %2d sub %2d (asked %2d)  scene %3d  timer %6d  task %08X"
+					                "  attract %d  title %d  players %d  match %s\n",
+					        (unsigned long long)game_frame, now[0], now[1], board.fv2_submode_request(),
+					        now[2], board.fv2_screen_timer(), unsigned(board.fv2_task_state()), now[3], now[4],
+					        now[5], board.fv2_match_over() ? "decided" : "-");
+				}
+			}
+			// VF3_FV2_GO_HOME=<frame>: the way out of a match asked for at that game frame, once, so a
+			// scripted ONE-player run can measure it (fv2_versus.h says why it cannot be reached by playing).
+			// VF3_FV2_GO_HOME_TITLE=1 for EXIT's road instead of CHANGE YOUR VIPER's.
+			if (board.profile == &m3::FV2_REV_A) {
+				static const char *const go = getenv("VF3_FV2_GO_HOME");
+				static bool went = false;
+				if (go && !went && game_frame >= uint64_t(atoll(go))) {
+					went = true;
+					fv2_versus.measure_way_out(board, !getenv("VF3_FV2_GO_HOME_TITLE"));
+				}
+			}
 			// and the select screen kept parked while the page of arenas is up: the one hold that page wants
 			// renewed, the request being read and acted on by the game's dispatcher every tick.
 			if (versus_stages.shown) board.fv2_park_stage_select();

@@ -213,6 +213,26 @@ public:
 	// winner's pose asks to move on again, and the panel is back on the very next step. Which is the console
 	// build's rule said in this package's own terms: there, the panel simply refuses to be backed out of.
 	void panel_dismissed() { over_done = false; }
+
+	// ---- THE WAY OUT ASKED FOR BY A MEASURING RUN (VF3_FV2_GO_HOME=<frame>, main.cpp) ----
+	//
+	// Not a line of the menu and not reachable by playing: the panel wants a DECIDED TWO-PLAYER match, which
+	// a scripted run cannot stage -- player 2 is a person. And the walk that panel opens is the one piece of
+	// this file that no amount of reading settles, which is how it shipped with a black screen in it.
+	//
+	// So the harness asks for the walk at a frame of its own choosing, out of a ONE-player game whose
+	// end-of-game screens are the very ones it has to get through. Pointed at the one-player equivalent of
+	// the panel's own moment -- VIC_DSP with the match decided, which the trace puts at frame 7182 of
+	// tools/scripts/fv2-end-of-game.txt -- the only thing it does not reproduce is the players byte reading 3
+	// instead of 1, and nothing in either phase asks that byte anything.
+	void measure_way_out(m3::Model3 &b, bool to_select)
+	{
+		if (leaving != L_OFF) return;
+		at = IN;
+		fprintf(stderr, "Fighting Vipers 2: the way out asked for by a measuring run (%s)\n",
+		        to_select ? "the select screen" : "the title screen");
+		leave_match(b, to_select ? L_TO_SELECT : L_TO_TITLE);
+	}
 	// The mode let go of from outside -- the row chosen again, something online starting, the port closing.
 	void let_go(m3::Model3 &b, const char *why)
 	{
@@ -356,7 +376,8 @@ private:
 	enum leave_dest { L_TO_TITLE, L_TO_SELECT };
 	leave_phase leaving = L_OFF;
 	leave_dest leave_for = L_TO_TITLE;
-	int leave_frames = 0, leave_cut = -1, leave_scene = -1;
+	static constexpr int FV2_TIMER_EDGE = 8;   // (model3.h's own edge: an eighth of a second, firmly positive)
+	int leave_frames = 0, leave_cut = -1;
 	int leave_vs_finish = -1;   // VS FINISH as the player had it, lent for the length of the way out
 
 	void leave_match(m3::Model3 &b, leave_dest what)
@@ -371,7 +392,6 @@ private:
 		leave_for = what;
 		leave_frames = 0;
 		leave_cut = -1;
-		leave_scene = -1;
 		veil = true;
 		// The panel's road: the match is already decided, so there is nothing to end and GAME OVER is asked for
 		// with the game's own write, once.
@@ -406,43 +426,58 @@ private:
 			arrive(b);
 			return;
 		}
+		const int m = b.fv2_mode();
+		if (getenv("VF3_LEAVE_TRACE") || leave_frames % 60 == 0)
+			fprintf(stderr, "Fighting Vipers 2: the way out, %s, %d frames -- mode %d sub %d, screen %d,"
+			                " title %d, the match says %s\n", leaving == L_ENDING ? "ending" : "clearing",
+			        leave_frames, m, b.fv2_submode(), b.fv2_screen_timer(), b.fv2_on_title() ? 1 : 0,
+			        b.fv2_match_over() ? "decided" : "not decided");
 		if (leaving == L_ENDING) {
-			if (leave_frames % 60 == 0 || getenv("VF3_LEAVE_TRACE"))
-				fprintf(stderr, "Fighting Vipers 2: the way out is %d frames old -- mode %d sub %d, the match"
-				                " says %s\n", leave_frames, b.fv2_mode(), b.fv2_submode(),
-				        b.fv2_match_over() ? "decided" : "not decided");
-			// THE MATCH IS OVER WHEN THE GAME SAYS SO, and it says it in TWO ways. The attract loop coming back
-			// is one. The other is a mode of its own: CONTINUE (8, 9), RANKING (16, 17), OVER (18, 19), RESULT
-			// (22, 23) -- the end-of-game screens, which the game walks to with its tasks still running, so
-			// "no game running" goes on saying a game is on.
-			const int m = b.fv2_mode();
-			const bool end_screen = m == 8 || m == 9 || m == 16 || m == 17 || m == 18 || m == 19 || m == 22 || m == 23;
-			if (b.fv2_in_attract() || end_screen) {
-				fprintf(stderr, "Fighting Vipers 2: the match is over in %d frames, the end screens next\n",
-				        leave_frames);
-				leave_scene = b.fv2_scene_index();
-				leave_frames = 0;
-				leaving = L_CLEARING;
-			}
+			// OUT OF GAME, AND THE MODE IS WHAT SAYS SO.
+			//
+			// It used to be "no game running", and THAT WAS THE BLACK SCREEN Frederic got from CHANGE YOUR
+			// VIPER. The task register at 0x00700000 READS ZERO FROM THE K.O. ONWARDS -- measured over a whole
+			// one-player game, tools/scripts/fv2-end-of-game.txt: at frame 6731 the deciding K.O. landed and
+			// the register was already 0 with the mode still 7 and GAME OVER a thousand frames away. So this
+			// phase ended on its own FIRST frame, before the game had left the fight at all, and everything
+			// after it ran in the wrong order behind a veil nobody could see past.
+			//
+			// The mode does not lie: 6 and 7 are GAME, and the game is out of the match when it is neither.
+			// The end-of-game screens are modes of their own -- CONTINUE 8 and 9, RANKING 16 and 17, OVER 18
+			// and 19, RESULT 22 and 23 -- and the attract loop is 2 and 3, so every road out of a fight shows
+			// up here as a mode that is not 6 or 7.
+			if (m == 6 || m == 7) return;
+			fprintf(stderr, "Fighting Vipers 2: the match is over in %d frames (mode %d), the end screens"
+			                " next\n", leave_frames, m);
+			leave_frames = 0;
+			leaving = L_CLEARING;
 			return;
 		}
-		// L_CLEARING
-		if (leave_for == L_TO_TITLE && b.fv2_on_title()) {
-			fprintf(stderr, "Fighting Vipers 2: the title screen reached in %d frames\n", leave_frames);
-			leaving = L_OFF;
-			arrive(b);
-			return;
-		}
-		// Firmly positive, because an already expired screen reads negative and shortening it would lengthen
-		// it; four times our own edge, so our own writing is never written over again. And every frame it is
-		// still positive rather than once: each of those screens arms its own timer as it begins, so one write
-		// only shortens the first of them.
-		if (b.fv2_screen_timer() > 4 * 8) b.fv2_expire_screen();
-		if (b.fv2_scene_index() != leave_scene) {
-			fprintf(stderr, "Fighting Vipers 2: the end of the game is past in %d frames\n", leave_frames);
-			leaving = L_OFF;
-			arrive(b);
-		}
+		// L_CLEARING, AND THE TITLE SCREEN IS THE END OF IT FOR BOTH ROADS.
+		//
+		// IT USED TO BE THE SCENE INDEX CHANGING, and that number is the ARENA'S. Measured over the same run:
+		// it was 9 from the K.O. at 6731 all the way to 8276 -- unchanged through CONTINUE, through GAME OVER
+		// and into the attract loop's first screens -- and it moved only at 8468, when the title came up. To 1
+		// that time, and to 21 on two other passes of the same run, because what it holds is whichever demo
+		// the attract loop happened to load next. So the phase waited a thousand frames for a byte that says
+		// nothing at all about the end of a game, and on another pass it might have waited out the minute.
+		//
+		// THE TITLE SCREEN SAYS IT, and says it the same way every time: mode 2 or 3 at ADV_TITLE, which that
+		// run shows at 1193, 8468 and 13285 and nowhere else. The attract loop reaches it BY ITSELF, in about
+		// 196 frames from ADV_INT, and every screen on the way keeps its own counter -- so shortening that
+		// counter every frame is what turns the 196 into a handful, and it is the only lever this phase ever
+		// needed. Firmly positive, because an already expired screen reads negative and shortening it would
+		// lengthen it; four times our own edge, so our own writing is never written over again. And every
+		// frame rather than once, because each of those screens arms its own timer as it begins.
+		//
+		// It also means CHANGE YOUR VIPER arrives where a press of Start MEANS something, which is the other
+		// half of the same bug: the old road handed the game a Start wherever the scene index happened to
+		// move, and a Start on a ranking screen starts nothing.
+		if (b.fv2_screen_timer() > 4 * FV2_TIMER_EDGE) b.fv2_expire_screen();
+		if (!b.fv2_on_title()) return;
+		fprintf(stderr, "Fighting Vipers 2: the title screen reached in %d frames\n", leave_frames);
+		leaving = L_OFF;
+		arrive(b);
 	}
 
 	// Where the way out leads. The title screen is the game's own lever and it WORKS here where it does nothing
