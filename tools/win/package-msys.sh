@@ -35,7 +35,7 @@ echo "---- building ----"
 mkdir -p "$D"
 make CXX=g++ TMP="$SCRATCH" TEMP="$SCRATCH" TMPDIR="$SCRATCH" \
 	OBJ=build/win-msys/obj BIN=build/win-msys/bin \
-	LDLIBS="-lz -mwindows -Wl,--stack,16777216" \
+	LDLIBS="-lz -lws2_32 -liphlpapi -lwinhttp -mwindows -Wl,--stack,16777216" \
 	build/win-msys/bin/vf3 -j"$(nproc 2>/dev/null || echo 8)"
 
 echo "---- assembling ----"
