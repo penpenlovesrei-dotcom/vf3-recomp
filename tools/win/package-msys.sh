@@ -70,6 +70,10 @@ copy_deps
 
 cp -R assets/ui assets/fonts "$P/assets/"
 cp assets/icon/icon.png "$P/assets/icon/"
+# The loading screen, drawn while the game loads and boots (main.cpp): art of this port
+# that is not in the repository, so the package carries it when the tree has it and does
+# without it when it has not -- the program opens its window either way.
+if [ -f assets/loading.png ]; then cp assets/loading.png "$P/assets/"; fi
 cp assets/icon/VF3.ico "$P/assets/icon/"   # (a shortcut can wear it: the program has no icon of its own)
 cp "tools/win/$([ "${FV2:-0}" = 1 ] && echo README-fv2.txt || echo README-msys.txt)" "$P/README.txt"
 tools/release/licenses.sh "$P/LICENSES.txt" --windows 2>/dev/null || \

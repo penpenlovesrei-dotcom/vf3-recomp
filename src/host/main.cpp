@@ -1887,6 +1887,158 @@ int main(int argc, char **argv)
 		if (!first_launch(data, keep_data, roms_folder, zip, first_link)) return hidden ? 1 : 0;
 		if (arg_link.empty() && !first_link.empty()) arg_link = first_link;
 	}
+#ifdef _WIN32
+	SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
+#endif
+	// A PAD IS HEARD BY A WINDOW THAT HASN'T THE FOCUS. SDL holds back every joystick event while the window is not
+	// the one in front, and Windows gives the focus to a game started from a shell or a shortcut only when it feels
+	// like it: the window comes up, the pad is open and named in the log, and not one button reaches the game --
+	// nothing in the menu, nothing in a fight, Set up buttons reading nothing -- until the player happens to click
+	// the window. Nothing in the log says why, because as far as the program can tell no button was ever pressed.
+	// This is a game played at one machine, so the pad is heard whatever window the desktop has in front. Set before
+	// the gamepad subsystem starts, which is where SDL reads it.
+	SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+	if (!SDL_Init(SDL_INIT_VIDEO)) return fail(tr::line(tr::FAIL_VIDEO, { { "why", SDL_GetError() } }));
+	if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) fprintf(stderr, "no gamepads: %s\n", SDL_GetError());
+	// VF3_TEST_VJOY (tests): a virtual stick SDL doesn't know (10 buttons, a hat, 2 axes), pressed as it says (below)
+	SDL_Joystick *test_vjoy = nullptr;
+	auto attach_vjoy = [&] {
+		SDL_VirtualJoystickDesc d;
+		SDL_INIT_INTERFACE(&d);
+		d.type = SDL_JOYSTICK_TYPE_UNKNOWN;
+		d.vendor_id = 0x1234;
+		d.product_id = 0x5678;
+		d.naxes = 2;
+		d.nbuttons = 10;
+		d.nhats = 1;
+		d.name = "VF3 Test Stick";
+		const SDL_JoystickID id = SDL_AttachVirtualJoystick(&d);
+		test_vjoy = id ? SDL_OpenJoystick(id) : nullptr;
+		fprintf(stderr, "(test) a virtual stick: %s, %s\n", id ? joystick_guid(id).c_str() : SDL_GetError(),
+		        id && SDL_IsGamepad(id) ? "a gamepad to SDL" : "not a gamepad to SDL");
+	};
+	if (const char *v = getenv("VF3_TEST_VJOY"); v && !strchr(v, 'p')) attach_vjoy();   // (p@N: plugged in at pass N instead)
+	load_pad_mappings(data, program_folder(), cfg.pad_mappings);
+	give_unknown_sticks();
+	if (sound && !SDL_InitSubSystem(SDL_INIT_AUDIO)) fprintf(stderr, "no sound: %s\n", SDL_GetError());
+	int win_w = 1366, win_h = 768;
+	const bool fixed_window = getenv("VF3_WINDOW") && sscanf(getenv("VF3_WINDOW"), "%dx%d", &win_w, &win_h) == 2;
+	bool win_placed = false;   // (the window put where it was last left: issue #21)
+	int win_x = 0, win_y = 0;
+	if (!fixed_window) {
+		SDL_Rect usable;
+		if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable) && usable.w > 0 && usable.h > 0) {
+			const float k = std::min({ 1.0f, usable.w * 0.9f / win_w, usable.h * 0.9f / win_h });
+			win_w = int(win_w * k); win_h = int(win_h * k);
+		}
+		// The window as last left (settings.ini's window_w ...): there if it's still all on a connected screen's usable
+		// area; else at that size (no larger than the screen) in the middle of the screen it was most on, or the primary
+		if (cfg.window_w > 0) {
+			int n = 0;
+			SDL_DisplayID *ds = SDL_GetDisplays(&n);
+			const SDL_Rect r{ cfg.window_x, cfg.window_y, cfg.window_w, cfg.window_h };
+			SDL_Rect best{ 0, 0, 0, 0 };
+			long long best_area = -1;
+			for (int i = 0; ds && i < n; i++) {
+				SDL_Rect u, in;
+				if (!SDL_GetDisplayUsableBounds(ds[i], &u) || u.w <= 0 || u.h <= 0) continue;
+				const long long a = SDL_GetRectIntersection(&r, &u, &in) ? (long long)in.w * in.h : 0;
+				if (r.x >= u.x && r.y >= u.y && r.x + r.w <= u.x + u.w && r.y + r.h <= u.y + u.h) { best = u; best_area = LLONG_MAX; break; }
+				if (a > best_area || (best_area <= 0 && ds[i] == SDL_GetPrimaryDisplay())) { best = u; best_area = a; }
+			}
+			SDL_free(ds);
+			if (best.w > 0) {
+				win_w = std::min(cfg.window_w, best.w);
+				win_h = std::min(cfg.window_h, best.h);
+				if (best_area == LLONG_MAX) { win_x = cfg.window_x; win_y = cfg.window_y; }
+				else { win_x = best.x + (best.w - win_w) / 2; win_y = best.y + (best.h - win_h) / 2; }
+				win_placed = true;
+				fprintf(stderr, "the window as last left: %d x %d at %d, %d%s%s\n", win_w, win_h, win_x, win_y,
+				        best_area == LLONG_MAX ? "" : " (centred: not all on a screen now)", cfg.window_max ? ", maximised" : "");
+			}
+		}
+	}
+#ifdef _WIN32
+	static constexpr bool FS_BORDERLESS_DEFAULT = true;
+#else
+	static constexpr bool FS_BORDERLESS_DEFAULT = false;   // (a Mac's green button and Spaces, the Deck's gamescope)
+#endif
+	auto fs_borderless = [&] { return !cfg.fs_exclusive && (FS_BORDERLESS_DEFAULT || cfg.fs_window); };
+	SDL_PropertiesID wp = SDL_CreateProperties();
+	SDL_SetStringProperty(wp, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "Fighting Vipers 2");   // (the game is not loaded yet: its own name below)
+	SDL_SetNumberProperty(wp, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, win_w);
+	SDL_SetNumberProperty(wp, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, win_h);
+	if (win_placed) {
+		SDL_SetNumberProperty(wp, SDL_PROP_WINDOW_CREATE_X_NUMBER, win_x);
+		SDL_SetNumberProperty(wp, SDL_PROP_WINDOW_CREATE_Y_NUMBER, win_y);
+	}
+	SDL_SetNumberProperty(wp, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+		(cfg.fullscreen && !fs_borderless() ? SDL_WINDOW_FULLSCREEN : 0) | (win_placed && cfg.window_max ? SDL_WINDOW_MAXIMIZED : 0) | SDL_WINDOW_HIDDEN);
+	SDL_Window *win = SDL_CreateWindowWithProperties(wp);
+	SDL_DestroyProperties(wp);
+	if (!win) return fail(tr::line(tr::FAIL_WINDOW, { { "why", SDL_GetError() } }));
+	SDL_HideCursor();
+	// the window's icon (the Mac app and the Windows exe carry their own)
+	if (SDL_Surface *icon = SDL_LoadPNG((find_assets() + "/icon/icon.png").c_str())) {
+		SDL_SetWindowIcon(win, icon);
+		SDL_DestroySurface(icon);
+	}
+
+	// ---- THE LOADING SCREEN, which is the port's own and owes the game nothing ----
+	//
+	// Drawn on the WINDOW'S SURFACE, not through a renderer: the renderer cannot exist yet, choosing it
+	// probing the GPU with the game's own texture memory. A surface needs none. The picture is the
+	// Dreamcast's loading art the curtain already uses, scaled to fit with black around it.
+	//
+	// `splash` is called again from the boot below, which runs the game unseen for hundreds of frames: a
+	// window that neither draws nor reads its events for forty seconds is one Windows paints over with
+	// "not responding". Each call pumps the events and puts the picture back.
+	SDL_Surface *splash_art = hidden ? nullptr : SDL_LoadPNG((find_assets() + "/loading.png").c_str());
+	// CLOSING THE WINDOW WHILE IT LOADS CLOSES THE GAME. It has to: the loading screen is the first window
+	// this port ever showed before the game was ready, and a window that swallows the cross is one the player
+	// ends through the task manager -- which, landing in the second where the GPU renderer is starting, leaves
+	// gpu-start.crashed behind and costs them the GPU for every run after that (ten pictures a second instead
+	// of three hundred). Frederic, the 2026-10-29: "le jeu tourne a 12fps".
+	bool quit_while_loading = false;
+	auto splash = [&] {
+		if (!splash_art) return;
+		SDL_Event e;
+		while (SDL_PollEvent(&e))
+			if (e.type == SDL_EVENT_QUIT || e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) quit_while_loading = true;
+		SDL_Surface *face = SDL_GetWindowSurface(win);
+		if (!face) return;
+		// IT SAYS WHAT IT IS DRAWING ON, and again whenever that changes. The picture is 3630 by 2048 and
+		// the window is asked for in 16:9, so it should cover all but a hair of it; bars of any width mean
+		// the surface is not the shape the window is showing, and a surface that changes size under us
+		// means the first one was taken before the window had settled.
+		static int said_w = -1, said_h = -1;
+		if (face->w != said_w || face->h != said_h) {
+			said_w = face->w; said_h = face->h;
+			int pw = 0, ph = 0;
+			SDL_GetWindowSizeInPixels(win, &pw, &ph);
+			fprintf(stderr, "the loading screen draws on a %d by %d surface (the window is %d by %d in pixels)\n",
+				face->w, face->h, pw, ph);
+		}
+		SDL_FillSurfaceRect(face, nullptr, SDL_MapSurfaceRGB(face, 0, 0, 0));
+		const float k = std::min(float(face->w) / float(splash_art->w), float(face->h) / float(splash_art->h));
+		SDL_Rect to = { int((face->w - splash_art->w * k) * 0.5f), int((face->h - splash_art->h * k) * 0.5f),
+			int(splash_art->w * k), int(splash_art->h * k) };
+		SDL_BlitSurfaceScaled(splash_art, nullptr, face, &to, SDL_SCALEMODE_LINEAR);
+		SDL_UpdateWindowSurface(win);
+	};
+	if (splash_art) {
+		SDL_ShowWindow(win);
+		SDL_RaiseWindow(win);
+		// THE WINDOW IS WAITED FOR BEFORE THE FIRST STROKE. Showing a window is a request to the system,
+		// not a fact: the size and the shape it ends up with -- a screen with its own scale, a title bar,
+		// a desktop that snaps it -- are known a moment later. A surface taken before that is the wrong
+		// size, and what is drawn on it is stretched into the real window with whatever was behind it
+		// showing where it falls short.
+		SDL_SyncWindow(win);
+		splash();
+		fprintf(stderr, "the loading screen is up, the picture %d by %d\n", splash_art->w, splash_art->h);
+	}
+
 	static Game game;   // (large: not on the stack)
 	// The program: the one last played (Game > Version) if the zips hold it, else the first they hold (Revision D's
 	// before Team Battle's)
@@ -1921,6 +2073,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "(test) the match found chime: the game's coin sound, %.2f s\n", double(pcm.size() / 2) / coin_sound::RATE);
 	}
 	m3::Model3 &board = game.board;
+	SDL_SetWindowTitle(win, board.profile->name);   // (made before the game was loaded: named now)
 	const uint64_t BOOT_FRAMES = uint64_t(board.profile->boot_frames);   // the boot, up to the SEGA logo (the PC way: unseen)
 	// Online play (online.h): in a match the board holds the host's NVRAM, and this player's own is kept here
 	static Online online(board);
@@ -2023,6 +2176,8 @@ int main(int argc, char **argv)
 			game.run_frame(false, false);
 			game.audio.clear();
 			game_frame++;
+			// the loading screen stays up and stays answering: this loop is most of the wait
+			if (game_frame % 60 == 0) { splash(); if (quit_while_loading) return; }
 			if (logo && !logo_seen && board.ram[logo ^ 3] == 16) { logo_seen = true; until = game_frame + 12; }
 		}
 		game.tiles_on = true;
@@ -2037,103 +2192,11 @@ int main(int argc, char **argv)
 				std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
 	};
 	boot();
+	if (quit_while_loading) {
+		fprintf(stderr, "closed while it was loading: nothing was started\n");
+		return 0;
+	}
 
-#ifdef _WIN32
-	SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
-#endif
-	// A PAD IS HEARD BY A WINDOW THAT HASN'T THE FOCUS. SDL holds back every joystick event while the window is not
-	// the one in front, and Windows gives the focus to a game started from a shell or a shortcut only when it feels
-	// like it: the window comes up, the pad is open and named in the log, and not one button reaches the game --
-	// nothing in the menu, nothing in a fight, Set up buttons reading nothing -- until the player happens to click
-	// the window. Nothing in the log says why, because as far as the program can tell no button was ever pressed.
-	// This is a game played at one machine, so the pad is heard whatever window the desktop has in front. Set before
-	// the gamepad subsystem starts, which is where SDL reads it.
-	SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-	if (!SDL_Init(SDL_INIT_VIDEO)) return fail(tr::line(tr::FAIL_VIDEO, { { "why", SDL_GetError() } }));
-	if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) fprintf(stderr, "no gamepads: %s\n", SDL_GetError());
-	// VF3_TEST_VJOY (tests): a virtual stick SDL doesn't know (10 buttons, a hat, 2 axes), pressed as it says (below)
-	SDL_Joystick *test_vjoy = nullptr;
-	auto attach_vjoy = [&] {
-		SDL_VirtualJoystickDesc d;
-		SDL_INIT_INTERFACE(&d);
-		d.type = SDL_JOYSTICK_TYPE_UNKNOWN;
-		d.vendor_id = 0x1234;
-		d.product_id = 0x5678;
-		d.naxes = 2;
-		d.nbuttons = 10;
-		d.nhats = 1;
-		d.name = "VF3 Test Stick";
-		const SDL_JoystickID id = SDL_AttachVirtualJoystick(&d);
-		test_vjoy = id ? SDL_OpenJoystick(id) : nullptr;
-		fprintf(stderr, "(test) a virtual stick: %s, %s\n", id ? joystick_guid(id).c_str() : SDL_GetError(),
-		        id && SDL_IsGamepad(id) ? "a gamepad to SDL" : "not a gamepad to SDL");
-	};
-	if (const char *v = getenv("VF3_TEST_VJOY"); v && !strchr(v, 'p')) attach_vjoy();   // (p@N: plugged in at pass N instead)
-	load_pad_mappings(data, program_folder(), cfg.pad_mappings);
-	give_unknown_sticks();
-	if (sound && !SDL_InitSubSystem(SDL_INIT_AUDIO)) fprintf(stderr, "no sound: %s\n", SDL_GetError());
-	int win_w = 1366, win_h = 768;
-	const bool fixed_window = getenv("VF3_WINDOW") && sscanf(getenv("VF3_WINDOW"), "%dx%d", &win_w, &win_h) == 2;
-	bool win_placed = false;   // (the window put where it was last left: issue #21)
-	int win_x = 0, win_y = 0;
-	if (!fixed_window) {
-		SDL_Rect usable;
-		if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable) && usable.w > 0 && usable.h > 0) {
-			const float k = std::min({ 1.0f, usable.w * 0.9f / win_w, usable.h * 0.9f / win_h });
-			win_w = int(win_w * k); win_h = int(win_h * k);
-		}
-		// The window as last left (settings.ini's window_w ...): there if it's still all on a connected screen's usable
-		// area; else at that size (no larger than the screen) in the middle of the screen it was most on, or the primary
-		if (cfg.window_w > 0) {
-			int n = 0;
-			SDL_DisplayID *ds = SDL_GetDisplays(&n);
-			const SDL_Rect r{ cfg.window_x, cfg.window_y, cfg.window_w, cfg.window_h };
-			SDL_Rect best{ 0, 0, 0, 0 };
-			long long best_area = -1;
-			for (int i = 0; ds && i < n; i++) {
-				SDL_Rect u, in;
-				if (!SDL_GetDisplayUsableBounds(ds[i], &u) || u.w <= 0 || u.h <= 0) continue;
-				const long long a = SDL_GetRectIntersection(&r, &u, &in) ? (long long)in.w * in.h : 0;
-				if (r.x >= u.x && r.y >= u.y && r.x + r.w <= u.x + u.w && r.y + r.h <= u.y + u.h) { best = u; best_area = LLONG_MAX; break; }
-				if (a > best_area || (best_area <= 0 && ds[i] == SDL_GetPrimaryDisplay())) { best = u; best_area = a; }
-			}
-			SDL_free(ds);
-			if (best.w > 0) {
-				win_w = std::min(cfg.window_w, best.w);
-				win_h = std::min(cfg.window_h, best.h);
-				if (best_area == LLONG_MAX) { win_x = cfg.window_x; win_y = cfg.window_y; }
-				else { win_x = best.x + (best.w - win_w) / 2; win_y = best.y + (best.h - win_h) / 2; }
-				win_placed = true;
-				fprintf(stderr, "the window as last left: %d x %d at %d, %d%s%s\n", win_w, win_h, win_x, win_y,
-				        best_area == LLONG_MAX ? "" : " (centred: not all on a screen now)", cfg.window_max ? ", maximised" : "");
-			}
-		}
-	}
-#ifdef _WIN32
-	static constexpr bool FS_BORDERLESS_DEFAULT = true;
-#else
-	static constexpr bool FS_BORDERLESS_DEFAULT = false;   // (a Mac's green button and Spaces, the Deck's gamescope)
-#endif
-	auto fs_borderless = [&] { return !cfg.fs_exclusive && (FS_BORDERLESS_DEFAULT || cfg.fs_window); };
-	SDL_PropertiesID wp = SDL_CreateProperties();
-	SDL_SetStringProperty(wp, SDL_PROP_WINDOW_CREATE_TITLE_STRING, board.profile->name);
-	SDL_SetNumberProperty(wp, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, win_w);
-	SDL_SetNumberProperty(wp, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, win_h);
-	if (win_placed) {
-		SDL_SetNumberProperty(wp, SDL_PROP_WINDOW_CREATE_X_NUMBER, win_x);
-		SDL_SetNumberProperty(wp, SDL_PROP_WINDOW_CREATE_Y_NUMBER, win_y);
-	}
-	SDL_SetNumberProperty(wp, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
-		(cfg.fullscreen && !fs_borderless() ? SDL_WINDOW_FULLSCREEN : 0) | (win_placed && cfg.window_max ? SDL_WINDOW_MAXIMIZED : 0) | SDL_WINDOW_HIDDEN);
-	SDL_Window *win = SDL_CreateWindowWithProperties(wp);
-	SDL_DestroyProperties(wp);
-	if (!win) return fail(tr::line(tr::FAIL_WINDOW, { { "why", SDL_GetError() } }));
-	SDL_HideCursor();
-	// the window's icon (the Mac app and the Windows exe carry their own)
-	if (SDL_Surface *icon = SDL_LoadPNG((find_assets() + "/icon/icon.png").c_str())) {
-		SDL_SetWindowIcon(win, icon);
-		SDL_DestroySurface(icon);
-	}
 	// The 3D on the GPU (Display > 3D renderer: Auto or GPU, or VF3_3D=cpu|gpu|auto): SDL's "gpu" renderer
 	// (Vulkan, Direct3D 12 or Metal), whose device the 3D shares, its pictures the renderer's textures. Else, or if
 	// it can't start here, SDL's usual one and the CPU's 3D.
@@ -2162,6 +2225,8 @@ int main(int argc, char **argv)
 	};
 	auto cpu_notice = [&] { return tr::line(cpu_why_cut ? tr::CPU_NOTICE_CUT : tr::CPU_NOTICE, { { "why", cpu_why_line }, { "todo", cpu_todo } }); };
 	if (const char *e = getenv("VF3_3D")) r3d_mode = !strcmp(e, "gpu") ? R3D_GPU : !strcmp(e, "auto") ? R3D_AUTO : R3D_CPU;
+	// THE SURFACE IS GIVEN BACK before the renderer takes the window: the two cannot both own it.
+	if (splash_art) { SDL_DestroyWindowSurface(win); SDL_DestroySurface(splash_art); splash_art = nullptr; }
 	SDL_Renderer *ren = nullptr;
 	auto failed_before = [&](const char *d) { return (" " + cfg.gpu3d_failed + " ").find(std::string(" ") + d + " ") != std::string::npos; };
 	// (the GPU start's marker kept through the first 15 s of play, its shaders, first pictures and checks too, a driver
