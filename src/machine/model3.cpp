@@ -1727,10 +1727,45 @@ constexpr uint32_t FV2_MODE_MAIN = 0x0058FD98;       // the mode, and the sub-st
 constexpr uint32_t FV2_MODE_SUB = 0x0058FD99;
 }
 
-bool Model3::fv2_in_attract()
+// A player's *1P COLOR on the select screen: byte 185 of his fighter record (docs/fv2-colours.md). The record
+// is there from the moment the screen opens, and the byte is what UP and DOWN toggle -- both of them, the
+// screen having nothing above or below the row to move to.
+int Model3::fv2_colour(int player) const
 {
-	if (set != "fvipers2" || ram.size() <= FV2_TASK_ENTRY1 + 4) return true;
-	return word(ram, FV2_TASK_ENTRY1) == 0;
+	if (set != "fvipers2" || player < 0 || player > 1) return -1;
+	constexpr uint32_t REC[2] = { 0x00700500, 0x00707500 };
+	const uint32_t at = REC[player] + 185;
+	if (ram.size() <= at) return -1;
+	return ram[at ^ 3];
+}
+
+// A player's cursor on the select row (docs/fv2-roster.md): the two bytes the roster patch's own bound
+// checks are written against, player 1's first.
+int Model3::fv2_cursor(int player) const
+{
+	if (set != "fvipers2" || player < 0 || player > 1) return -1;
+	constexpr uint32_t CURSOR = 0x00279668;
+	if (ram.size() <= CURSOR + 1) return -1;
+	return ram[(CURSOR + uint32_t(player)) ^ 3];
+}
+
+int Model3::fv2_task_state() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_TASK_ENTRY1 + 3) return -1;
+	return int(*reinterpret_cast<const uint32_t *>(&ram[FV2_TASK_ENTRY1]));   // (word() wants it writable)
+}
+
+// The two words the select screen's own code writes when a cursor lands on a fighter: the block's entry
+// point and the bit that says there is work to do. Measured on the Japan Revision A program, one block a
+// player (docs/fv2-honey.md).
+void Model3::fv2_redo_fighter_model(int player)
+{
+	if (set != "fvipers2" || player < 0 || player > 1) return;
+	constexpr uint32_t BLOCK[2] = { 0x0070EC00, 0x0070ED00 };
+	constexpr uint32_t ENTRY[2] = { 0x0005756C, 0x000575A0 };
+	if (ram.size() <= BLOCK[player] + 8) return;
+	word(ram, BLOCK[player] + 4) = ENTRY[player];
+	word(ram, BLOCK[player]) |= 1;   // (already set while the select screen is up; set anyway, for anywhere else)
 }
 
 int Model3::fv2_survival()

@@ -240,7 +240,22 @@ public:
 	//   0x0058145E  RANDOM_CHARA, Sega's own name for it on their MODE_INFO page, beside the Survival flag. Set,
 	//               the select screen says RANDOM MODE. Written once is enough and it has no attract-loop trap,
 	//               both measured; it is put back at the end all the same.
-	bool fv2_in_attract();          // true: no game running (and for any other game)
+	// The entry1 task's state as a word: 0 all through the attract loop, 5 on the select screen, 0x2A in a
+	// fight. -1 for any other game.
+	int fv2_task_state() const;
+	bool fv2_in_attract() const { return fv2_task_state() <= 0; }   // true: no game running (and for any other game)
+	// The select screen's preview built again, for the player whose cursor has not moved: the game builds a
+	// fighter's model when the cursor lands on him and nothing watches it afterwards, so a colour chosen
+	// between two landings is not seen until this asks for the model again (docs/fv2-honey.md).
+	void fv2_redo_fighter_model(int player);
+	// A player's *1P COLOR, the costume number the select screen toggles: 0 or 1, -1 for any other game. It is
+	// byte 185 of his fighter record (0x00700500, the other player's 0x7000 further on), the entry the colour
+	// list is indexed by -- docs/fv2-colours.md. Read rather than counted, because the only thing that knows
+	// how many times the player has changed costume is the game.
+	int fv2_colour(int player) const;
+	// A player's cursor on the select row, 0 to 13 with the hidden fighters in: 12 is KUHN. -1 for any other
+	// game (docs/fv2-roster.md).
+	int fv2_cursor(int player) const;
 	int fv2_survival();             // 1 on, 0 off, -1 not this game
 	void fv2_set_survival(bool on);   // (the flag and the operator setting together: the game wants both)
 	int fv2_random_chara();         // 1 on, 0 off, -1 not this game
