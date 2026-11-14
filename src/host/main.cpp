@@ -129,6 +129,8 @@
 #include "fv2_modes.h"
 #include "../video/hud_names.h"
 #include "../video/dural_cell.h"
+#include "../video/tex3d_hd.h"
+#include "../video/fv2_kuhn_name.h"
 #include "flags.h"
 #include "../machine/model3.h"
 #include "../machine/romset.h"
@@ -1610,8 +1612,82 @@ struct Game
 		const video::Scene &cur() const { return scene[newest]; }
 		const video::Scene &prev() const { return scene[newest ^ 1]; }
 	} view;
+	// ---- KUHN'S FOUR COLOURS (the two Sega drew, and the two this package adds) ----
+	//
+	// Positions 2 and 3 of a four-long cycle, turned by the same press of Up the game turns its own two with.
+	// What those two positions add is the colour, and it comes IN THREE HALVES, because Kuhn does:
+	//
+	//   * while the armour holds, his whole body is that armour, and the armour is ONE FLAT SQUARE OF TEXTURE;
+	//   * once the armour is knocked off, the model under it has ten textures of its own;
+	//   * and his name on the select screen is neither -- it is tiles the game lays itself, so it is drawn over
+	//     instead (src/video/fv2_kuhn_name.h).
+	//
+	// The first two are textures, so both come out of one folder of the 3D texture pack (src/video/tex3d_hd.h):
+	// the ten images of the model under the armour, and the armour's own square -- RGB(49,49,66) for his colour 0
+	// and RGB(115,90,8) for his colour 1, measured on this port's own dump. That square is the whole of his
+	// colour, and it is a flat aplat, not a polygon colour. A flat texture is refused by default, because its
+	// content names every flat square of that size and colour anywhere on the screen, so the pack is told to
+	// accept them once a set of his is there -- the trade tex3d_hd.cpp's find() describes, taken here on purpose.
+	//
+	// NOT A SETTING. Positions 0 and 1 are Sega's own chrome and gold, and they are what the game does without
+	// anyone's leave; the folders are read because they are there. Where they are not, the wheel still turns and
+	// nothing is drawn differently.
+	//
+	// THE PREVIEW HAS TO BE ASKED FOR. Nothing in this game watches the cursor: the fighter's model is built when
+	// the cursor lands on him and never again, so a colour chosen between two landings would not be seen until
+	// the player moved off and back. fv2_redo_fighter_model asks for it again. The textures themselves need no
+	// asking -- they are recognised when they are drawn.
+	int kuhn_cycle = 0;           // 0-3 while the select screen is up
+	bool kuhn_on_select = false, kuhn_up_was = false, kuhn_said = false;
+	video::KuhnName kuhn_art;
+	// The two sets, named by their folders under the pack folder. Position 2 is the game's colour 0 and position
+	// 3 its colour 1, and the sets were made that way round: the blue is a recolouring of his chrome, the black
+	// of his gold.
+	static constexpr const char *KUHN_SKIN[2] = { "CHARACTERS/Kuhn/blue", "CHARACTERS/Kuhn/black" };
+	void kuhn_wear(int cycle)
+	{
+		for (int i = 0; i < 2; i++)
+			video::hd3d().use_variant(KUHN_SKIN[i], cycle >= 2 && (cycle & 1) == i);
+	}
+	void kuhn_tick(bool up_now)
+	{
+		if (board.profile != &m3::FV2_REV_A) return;
+		const bool on_select = board.fv2_task_state() == 5;
+		if (on_select && !kuhn_on_select) {   // the screen just opened: back to the first colour
+			kuhn_cycle = 0;
+			kuhn_up_was = false;
+			kuhn_wear(0);
+		}
+		if (on_select) {
+			if (up_now && !kuhn_up_was) {
+				kuhn_cycle = (kuhn_cycle + 1) & 3;
+				kuhn_wear(kuhn_cycle);
+				for (int p = 0; p < 2; p++) board.fv2_redo_fighter_model(p);
+				if (kuhn_cycle >= 2 && !video::hd3d().variant_found(KUHN_SKIN[kuhn_cycle & 1]) && !kuhn_said) {
+					kuhn_said = true;
+					fprintf(stderr, "Kuhn: his two extra colours are folders of the 3D texture pack (%s and %s), "
+					                "and this run has neither: his own two are all he has\n", KUHN_SKIN[0], KUHN_SKIN[1]);
+				}
+				fprintf(stderr, "Kuhn: colour %d of 4%s\n", kuhn_cycle + 1,
+				        kuhn_cycle >= 2 ? (kuhn_cycle == 2 ? ", the blue" : ", the black") : "");
+			}
+			kuhn_up_was = up_now;
+		}
+		// The game over and the attract loop back: Sega's own two come back with it. Not for tidiness -- the
+		// attract plays demo fights, and a Kuhn in one of them is Sega's Kuhn, not the colour somebody picked two
+		// games ago. The select screen opening resets the wheel as well, so this only matters for between.
+		if (kuhn_cycle && board.fv2_task_state() == 0) {
+			kuhn_cycle = 0;
+			kuhn_wear(0);
+		}
+		kuhn_on_select = on_select;
+	}
 	void publish()
 	{
+		// Kuhn's name in the colour the wheel is on, over the one Sega drew (fv2_kuhn_name.h). After the
+		// layers are finished and before they are published, so nothing that measures them -- the scroll, the
+		// stage test, the sides' colours -- ever sees it.
+		video::kuhn_name(board, above, kuhn_cycle, kuhn_art);
 		view.newest ^= 1;
 		view.scene[view.newest] = scene[newest];
 		view.have_prev = have_prev;
@@ -2086,6 +2162,34 @@ int main(int argc, char **argv)
 	// The hidden fighters as the player left them, before the boot writes them in: the setting is read here
 	// and nowhere else, so a run that is told off never patches anything at all (Game > Hidden fighters).
 	game.full_roster = cfg.full_roster;
+	// Kuhn's two extra colours: two folders of the 3D texture pack, and the two name pictures beside them
+	// (Game::kuhn_tick, src/video/tex3d_hd.h, src/video/fv2_kuhn_name.h). Read because they are there -- there
+	// is no setting in front of them -- and asked for BY NAME, so load() reads those two folders and no other:
+	// a pack folder may hold anything else the player keeps there, and pages of texture memory are not to be
+	// spent on folders nobody asked for.
+	//
+	// HIS GAME ONLY. A pack loaded is Raster::resolve_hd installed for every polygon of every picture, and that
+	// is exactly what Virtua Fighter 3 is not to feel: it shares this program and settings.ini with him.
+	if (board.profile == &m3::FV2_REV_A) {
+		std::error_code ec;
+		std::string pack = data + "/texture_replacement";
+		if (!std::filesystem::is_directory(pack, ec)) pack = data + "/texture_remplacement";
+		for (const char *skin : Game::KUHN_SKIN) video::hd3d().want_variant(skin);
+		std::string report;
+		if (!video::hd3d().load(pack, report, false))
+			fprintf(stderr, "Kuhn's colours: nothing read from %s: his own two are all he has\n", pack.c_str());
+		else
+			fprintf(stderr, "%s\n", report.c_str());
+		// His armour IS a flat square of texture, and a flat one is refused by default because its content names
+		// every flat square of that size and colour anywhere on the screen (tex3d_hd.cpp, find). With a set of
+		// his loaded the refusal is lifted, which is the trade: these folders hold his two squares and nothing
+		// else flat, so what else could be caught is another 64 x 64 of exactly his grey or his gold.
+		if (video::hd3d().variant_found(Game::KUHN_SKIN[0]) || video::hd3d().variant_found(Game::KUHN_SKIN[1])) {
+			video::hd3d().allow_flat_textures(true);
+			fprintf(stderr, "Kuhn's colours: the flat textures are accepted, his armour being one\n");
+		}
+		video::kuhn_name_load(pack, game.kuhn_art);
+	}
 	// Fighting Vipers 2's SURVIVAL and RANDOM (fv2_modes.h): what the two rows of the main page ask for,
 	// and the machine that writes the game's own bytes once a game is running and puts them back at the end.
 	Fv2Modes fv2_modes;
@@ -2812,6 +2916,11 @@ int main(int argc, char **argv)
 		else if (g3.on && g3_texture() && !game.view.tex.empty()) {
 			const auto tg = std::chrono::steady_clock::now();
 			raster.prepare(*s);
+			// THE TEXTURE PACK'S PLACE FOR EACH POLYGON, HERE TOO. The GPU renderer reads it out of `raster` exactly
+			// as the CPU rasteriser does, and the CPU one works it out inside its own render(): without this line the
+			// GPU draws the game's own textures while the CPU draws the pack's. That is not merely a colour missing on
+			// the GPU -- the start-up check compares the two pictures, so they would disagree by every replaced texel.
+			raster.resolve_hd(game.view.tex.data());
 			const auto tp = std::chrono::steady_clock::now();
 			pace.prep_ms += std::chrono::duration<double, std::milli>(tp - tg).count();
 			picture_fixed_ms = pace.interp_ms + pace.prep_ms - fixed_before;
@@ -5485,6 +5594,8 @@ int main(int argc, char **argv)
 				mix(c.punch, script_ctl.punch, live.punch); mix(c.kick, script_ctl.kick, live.kick);
 				mix(c.guard, script_ctl.guard, live.guard); mix(c.escape, script_ctl.escape, live.escape);
 				fv2_modes.controls(c);   // (Survival / Random: the press of Start the row hands the game)
+				// Kuhn's colour wheel, turned by the same presses of Up the game turns its own two with (Game::kuhn_tick)
+				game.kuhn_tick(c.up[0] || c.up[1]);
 				stage_pick.trigger = cfg.dural_stage;
 				for (int p = 0; p < 2; p++) {   // (Cheats > Dural's stage: the picker's inputs; offline, the byte set if need be)
 					dural_stage::Picker::Said said;

@@ -10,6 +10,7 @@
 // are widened to the full width (widescreen).
 #pragma once
 #include "r3d_scene.h"
+#include "tex3d_hd.h"
 #include <cstdint>
 #include <vector>
 
@@ -80,6 +81,12 @@ public:
 	Batch batches[4 * 2 * 3];   // per priority, pass (high priority second) and layer
 	Priority prio[4];
 	void prepare(const Scene &scene);
+	// The texture pack (tex3d_hd.h): one place per draw, the replacement for the texture that draw's mesh asks
+	// for, or `hd` false where the native one stands. Empty when the pack is off, which is what both
+	// rasterisers test. Worked out once a picture and read by the CPU rasteriser below and by the GPU renderer
+	// (src/gpu/r3d_gpu.cpp), so the two put the same texels on the screen.
+	std::vector<TexPlace> hd;
+	void resolve_hd(const uint16_t *tex_ram);
 	float game_xscale() const { return xscale; }
 	float game_yscale() const { return scale; }
 

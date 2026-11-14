@@ -59,6 +59,10 @@ private:
 	SDL_GPUTransferBuffer *tb = nullptr;
 	uint32_t tb_size = 0;
 	bool texram_full = true;
+	// The texture pack's pages, after the board's two in the same buffer (src/video/tex3d_hd.h): how many
+	// there are, and whether they have been uploaded (once: nothing writes to them while the game runs).
+	int hd_pages = 0;
+	bool hd_up = false;
 	struct GV { float clip[4], view[3], normal[3], misc[4], lodbase; uint32_t draw, quad; };
 	std::vector<GV> verts;
 	struct GQuad { float corner[4][4], a[4][12]; };   // (as the shader's quads: x, y, 1/w; the attributes over w)

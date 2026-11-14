@@ -1727,10 +1727,23 @@ constexpr uint32_t FV2_MODE_MAIN = 0x0058FD98;       // the mode, and the sub-st
 constexpr uint32_t FV2_MODE_SUB = 0x0058FD99;
 }
 
-bool Model3::fv2_in_attract()
+int Model3::fv2_task_state() const
 {
-	if (set != "fvipers2" || ram.size() <= FV2_TASK_ENTRY1 + 4) return true;
-	return word(ram, FV2_TASK_ENTRY1) == 0;
+	if (set != "fvipers2" || ram.size() <= FV2_TASK_ENTRY1 + 3) return -1;
+	return int(*reinterpret_cast<const uint32_t *>(&ram[FV2_TASK_ENTRY1]));   // (word() wants it writable)
+}
+
+// The two words the select screen's own code writes when a cursor lands on a fighter: the block's entry
+// point and the bit that says there is work to do. Measured on the Japan Revision A program, one block a
+// player (docs/fv2-honey.md).
+void Model3::fv2_redo_fighter_model(int player)
+{
+	if (set != "fvipers2" || player < 0 || player > 1) return;
+	constexpr uint32_t BLOCK[2] = { 0x0070EC00, 0x0070ED00 };
+	constexpr uint32_t ENTRY[2] = { 0x0005756C, 0x000575A0 };
+	if (ram.size() <= BLOCK[player] + 8) return;
+	word(ram, BLOCK[player] + 4) = ENTRY[player];
+	word(ram, BLOCK[player]) |= 1;   // (already set while the select screen is up; set anyway, for anywhere else)
 }
 
 int Model3::fv2_survival()
