@@ -4951,6 +4951,17 @@ int main(int argc, char **argv)
 			auto row_chosen = [&](int what, int row) {
 				if (game.emu_thread.joinable()) game.job_wait();
 				menu.close();
+				// AND THE PAGE OF ARENAS WITH IT, if it was up. Escape reaches this port's menu straight over
+				// that page, and under it the game is PARKED in Sega's empty STAGE_SEL -- a parked game never
+				// reaches the match the walk home has to end, so the walk would spin out its minute and arrive
+				// having done nothing. The page goes, the park is let go of with the sub-state SELECT would
+				// have asked for itself, and the game walks on into the fight the walk then ends.
+				if (versus_stages.shown) {
+					versus_stages.hide();
+					versus_pick = -1;
+					versus_lock_ns = 0;
+					board.fv2_leave_stage_select();
+				}
 				fv2_home.give_up(board, "another mode chosen");
 				fv2_modes.let_go_all(board, "another mode chosen");
 				fv2_versus.let_go(board, "another mode chosen");
