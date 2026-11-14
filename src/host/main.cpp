@@ -5039,13 +5039,32 @@ int main(int argc, char **argv)
 		return p;
 	};
 	bool sound_paused = false;
+	int sound_veiled = -1;
 	auto sync_menu_sound = [&] {
-		// And behind the veil as well: what the way out of a versus walks through is the end of a game nobody
-		// was playing, and it is not to be heard any more than it is to be seen (fv2_versus.h).
-		const bool pause = (menu.is_open() || fv2_versus.veil) && !online.playing();   // (a match goes on, its sound too)
-		if (!audio || pause == sound_paused) return;
-		sound_paused = pause;
-		if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
+		if (!audio) return;
+		// THE MENU STOPS THE GAME, so its sound is the device's own pause: nothing is being made and nothing
+		// is to be heard, and a paused device is not asked for a byte it hasn't got.
+		const bool pause = menu.is_open() && !online.playing();   // (a match goes on, its sound too)
+		if (pause != sound_paused) {
+			sound_paused = pause;
+			if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
+		}
+		// AND THE VEIL IS NOT A PAUSE, WHICH IS THE WHOLE POINT OF IT: the game RUNS behind it, walking
+		// itself through the end-of-game screens (fv2_versus.h, THE WAY OUT), and every frame it runs queues
+		// its sound. A paused device drains none of it, and the pacing below stops the game dead when the
+		// queue is full -- 0 frames a second with the pictures still going, so the veil never comes down
+		// either. THAT WAS THE BLACK SCREEN Frederic got from CHANGE YOUR VIPER, and it is in his own log:
+		// the way out announces the end screens, and the next line of the log reads "0.0 frames/s, 59.6
+		// pictures/s ... sound queued 54776 b" where a running game queues five thousand.
+		//
+		// So it is TURNED DOWN and not switched off: the stream keeps being drained, the queue keeps its
+		// normal size, the frames keep coming, and there is nothing to hear. (The gain is the host's own and
+		// not the player's volume, which is mixed in game.sound.gain; a hidden run holds it at nought.)
+		const bool quiet = fv2_versus.veil && !online.playing();
+		if (int(quiet) != sound_veiled) {
+			sound_veiled = int(quiet);
+			SDL_SetAudioStreamGain(audio, quiet || hidden ? 0.0f : 1.0f);
+		}
 	};
 	auto menu_title = [&] { return std::string(online.watching() ? tr::TITLE_WATCHING : online.playing() ? tr::TITLE_ONLINE_MATCH : tr::TITLE_PAUSED); };
 	menus_relabelled = [&] {   // (Game > Language changed: the title, the main page and Game made again in it, Language selected)
@@ -5956,7 +5975,10 @@ int main(int argc, char **argv)
 			if (!ff && due > burst && due > low) { frame_clock -= due - std::max(burst, low); due = std::max(burst, low); }
 			pass_burst = burst;
 			if (ff) { due = 8; frame_clock = double(frames_run + due); }
-			else if (sound_full) { due = 0; frame_clock = std::min(frame_clock, double(frames_run) + 1); }
+			// (and never behind the veil: the game is walking itself out of a finished match there and nothing of
+			// it is heard, so a full queue is no reason to hold it -- holding it is what left the way out standing
+			// still behind a black screen for ever)
+			else if (sound_full && !fv2_versus.veil) { due = 0; frame_clock = std::min(frame_clock, double(frames_run) + 1); }
 			frames_run += due;
 		}
 		// Cheats > Dural's stage: what the pick does, said
