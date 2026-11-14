@@ -9,6 +9,8 @@
 // ---- words used everywhere ----
 T(ON, "On")                                  // a setting's value
 T(OFF, "Off")
+T(YES, "Yes")
+T(NO, "No")
 T(OFF_LOWER, "off")                          // (inside a value: "2x (off at this render scale)")
 T(AUTO, "Auto")
 T(AUTO_N, "Auto ({n})")                      // Auto, and what it is now (the input delay: a number of frames)
@@ -42,9 +44,13 @@ T(M_RESUME_MATCH_HELP, "Back to the match (it goes on while the menu's open).")
 T(P_DISPLAY, "Display")                      // (P_: a page's name: its row on the page before, and the line over its rows)
 T(M_SURVIVAL_HELP, "Survival, the game's own: one opponent after another, on the life you have left. The row asks for it and hands the game a press of Start; what it sets is put back when the game is over. The cabinet keeps it behind the operator's buttons.")
 T(M_RANDOM_HELP, "Random, the game's own: the select screen goes into RANDOM MODE. The row asks for it and hands the game a press of Start; what it sets is put back when the game is over. The cabinet keeps it behind the operator's buttons.")
-T(M_VERSUS_HELP, "Versus, the board's own: player 2 steps into player 1's game on the select screen, which the game calls INTRUDE. The row asks for it and hands the game a press of Start, then one for player 2 thirty frames after the select screen appears. The two players choose the arena, and the end of the match offers another instead of GAME OVER.")   // the main page's Versus row (Fighting Vipers 2 only)
+T(M_VERSUS_HELP, "Versus, the board's own: player 2 steps into player 1's game on the select screen, which the game calls INTRUDE. The row opens the match's own page -- the round's length, how many rounds, the hidden fighters -- and Start on that page begins it.")   // the main page's Versus row (Fighting Vipers 2 only)
 T(M_VS_NOTE, "The match is decided. Another with the same fighters, another arena, the select screen again, or back to the title screen.")   // under the end-of-match panel's four lines
 T(M_ARCADE_MODE_HELP, "Arcade, the game as its cabinet starts it: one player up the roster, and no byte of its own. The row lets the other three go and hands the game a press of Start, so the game that begins is in none of them.")   // the main page's Arcade row (Fighting Vipers 2 only)
+T(V_NOTE, "The match's own settings, then Start. They are the game's own bytes, the live copy its test menu writes.")   // the Versus page (Fighting Vipers 2 only)
+T(V_START_HELP, "Starts the versus: the menu closes, the game is handed a real press of Start, and one for player 2 thirty frames after the select screen appears. The two players then choose the arena.")
+T(V_TIME_HELP, "The round's length in seconds, which is the test menu's ROUND TIME VS: 20 to 60 by fives, as the cabinet offers it. It takes in the next match and goes back to the operator's own value when the port is started again.")
+T(V_ROUNDS_HELP, "Rounds in a match: 1, 3 or 5. It writes the test menu's MATCH COUNT VS, which is the rounds needed to WIN one, so 3 is first to 2 and 5 is first to 3. A single round is below the cabinet's own floor of 2: that one is this port asking for something the test menu does not offer.")
 T(M_DISPLAY_HELP, "Picture, quality, screen filter and colours, free camera.")
 T(P_SOUND, "Sound")
 T(M_SOUND_HELP, "The overall, music and effects volumes.")
@@ -208,7 +214,7 @@ T(G_TB_MODE_HELP, "1 vs 1: one fighter each, as in Virtua Fighter 3. 3 vs 3: thr
 T(G_1V1, "1 vs 1")
 T(G_3V3, "3 vs 3")
 T(G_ROSTER, "Hidden fighters")                      // (Game, Fighting Vipers 2 only)
-T(G_ROSTER_HELP, "Del Sol, Kuhn and B.M. on the character select, the cursor's row opened from ten faces to thirteen. Off: the select screen as the cabinet left it. Either way it takes at once, in the game behind this menu.")
+T(G_ROSTER_HELP, "Del Sol, Kuhn and B.M. on the character select, the cursor's row opened from ten faces to thirteen. No: the select screen as the cabinet left it. Either way it takes at once, in the game behind this menu.")
 T(G_LOG, "Log file")
 T(G_LOG_HELP, "log.txt in the data folder: what the game did, a few kilobytes a session, kept for bug reports (send it with one). Off, nothing's written. From the next start.")
 

@@ -4412,22 +4412,10 @@ int main(int argc, char **argv)
 			p.items.push_back({ tr::G_TB_MODE, tr::G_TB_MODE_HELP,
 				[&] { return std::string(cfg.tb_one ? tr::G_1V1 : tr::G_3V3); },
 				[&](int) { tb_mode_flip(); }, [&] { tb_mode_flip(); } });
-		// Fighting Vipers 2's hidden fighters, which this port holds open from the first start: this is where
-		// they go off again, and on. The patch is written into the game's own RAM, so no frame may be in flight
-		// while it goes in (the menu has the game paused, the thread can still be finishing one), and the native
-		// code is made again from RAM right after -- one word disagreeing turns the whole recompiler off.
-		auto roster_flip = [&] {
-			if (game.emu_thread.joinable()) game.job_wait();
-			cfg.full_roster = !cfg.full_roster;
-			cfg_dirty = true;
-			game.full_roster = cfg.full_roster;
-			game.write_roster(cfg.full_roster);
-			fprintf(stderr, "Game > Hidden fighters: %s\n", cfg.full_roster ? "on" : "off");
-		};
-		if (board.profile == &m3::FV2_REV_A)   // (Revision A's three addresses: the other set is left alone)
-			p.items.push_back({ tr::G_ROSTER, tr::G_ROSTER_HELP,
-				[&] { return on_off(cfg.full_roster); },
-				[roster_flip](int) { roster_flip(); }, roster_flip });
+		// (Fighting Vipers 2's hidden fighters were a row HERE until the 2026-11-14. They are a row of the
+		// Versus page now, where the match they change is chosen -- Frederic's, and the page is reachable
+		// without starting anything, so turning them off for an arcade game means opening Versus and backing
+		// out of it again. One row in one place: two would be two states of one patch.)
 		p.items.push_back({ tr::G_LOG, tr::G_LOG_HELP,
 			[&] { return on_off(cfg.log); }, [&](int) { cfg.log = !cfg.log; cfg_dirty = true; }, [&] { cfg.log = !cfg.log; cfg_dirty = true; } });
 		p.items.push_back(back_item());
@@ -4914,6 +4902,77 @@ int main(int argc, char **argv)
 		});
 	};
 	auto online_row = [&] { return board.profile->settings.at ? 5 : 4; };   // (the main page's Online row: Arcade settings before it when known)
+	// Fighting Vipers 2's VERSUS, and what a match is before it begins: the Versus row opens this instead of
+	// starting the mode outright, which is Frederic's of the 2026-11-14. Three settings and the line that
+	// starts it.
+	//
+	// TWO OF THE THREE ARE THE GAME'S OWN BYTES -- the test menu's ROUND TIME VS and MATCH COUNT VS, in the
+	// LIVE copy the game reads as a match begins, with the test menu's own ranges and its own steps
+	// (model3.cpp carries what was measured about each). So they take in the match this page starts and they
+	// go back to the operator's own values at the next boot, which is what the console build's OPTIONS page
+	// does too. The third is this port's roster patch, which used to be a row of the Game page.
+	//
+	// AND THEY ARE WRITTEN AS THEY ARE STEPPED, not gathered up and written by Start. They are bytes of the
+	// running game: a page that held them would have to put them back if the player walked out of it, which
+	// means keeping a second copy of the game's own state, and that is the one thing this port's levers never
+	// do -- every one of them reads the game first and writes what the game reads.
+	auto versus_mode_page = [&] {
+		menu_page p{ "VERSUS MODE", tr::V_NOTE, {} };
+		p.items.push_back({ "START", tr::V_START_HELP, {}, {},
+			[&] {
+				if (game.emu_thread.joinable()) game.job_wait();
+				fv2_modes.let_go_all(board, "Versus chosen");
+				fv2_versus.start(board);
+				menu.close();
+			} });
+		// THE ROUND'S LENGTH: 20 to 60 by fives, the cabinet's own range and the cabinet's own step. A byte
+		// outside it is not ours to step -- it shows as a dash, which is the Arcade settings page's own rule
+		// for a value it does not recognise.
+		p.items.push_back({ "TIME", tr::V_TIME_HELP,
+			[&] { const int v = board.fv2_round_time_vs(); return v < 20 || v > 60 ? std::string("-") : std::to_string(v); },
+			[&](int d) {
+				const int v = board.fv2_round_time_vs();
+				if (v < 20 || v > 60) return;
+				if (game.emu_thread.joinable()) game.job_wait();   // (a byte of the running game: no frame in flight)
+				board.fv2_set_round_time_vs(std::clamp(v + 5 * d, 20, 60));
+			} });
+		// THE ROUNDS AS A PLAYER COUNTS THEM -- 1, 3, 5 -- over the byte the GAME counts in, which is the
+		// rounds needed to WIN: 1, 2, 3. So the number shown is always two of the game's own less one, and a
+		// byte of 4 or 5 left there by the test menu reads as the 7 or the 9 it honestly is.
+		//
+		// AND THE 1 IS BELOW THE CABINET'S OWN FLOOR, which is 2. A single-round match is this port asking
+		// for something Sega's test menu does not offer; if the game will not have it, nothing about the
+		// other two changes.
+		static const int WIN[3] = { 1, 2, 3 };
+		p.items.push_back({ "ROUNDS", tr::V_ROUNDS_HELP,
+			[&] { const int v = board.fv2_rounds_vs(); return v < 1 || v > 5 ? std::string("-") : std::to_string(2 * v - 1); },
+			[&](int d) {
+				const int v = board.fv2_rounds_vs();
+				if (v < 1 || v > 5) return;
+				int i = 0;                                        // where the byte sits among the three
+				for (int k = 0; k < 3; k++) if (WIN[k] <= v) i = k;   // (4 and 5 sit at the last of them)
+				i = std::clamp(i + d, 0, 2);
+				if (game.emu_thread.joinable()) game.job_wait();
+				board.fv2_set_rounds_vs(WIN[i]);
+			} });
+		// The hidden fighters, which this port holds open from the first start: this is where they go off
+		// again, and on. The patch is written into the game's own RAM, so no frame may be in flight while it
+		// goes in (the menu has the game paused, the thread can still be finishing one), and the native code
+		// is made again from RAM right after -- one word disagreeing turns the whole recompiler off.
+		auto roster_flip = [&] {
+			if (game.emu_thread.joinable()) game.job_wait();
+			cfg.full_roster = !cfg.full_roster;
+			cfg_dirty = true;
+			game.full_roster = cfg.full_roster;
+			game.write_roster(cfg.full_roster);
+			fprintf(stderr, "Versus > HIDDEN CHARACTERS: %s\n", cfg.full_roster ? "yes" : "no");
+		};
+		p.items.push_back({ "HIDDEN CHARACTERS", tr::G_ROSTER_HELP,
+			[&] { return std::string(cfg.full_roster ? tr::YES : tr::NO); },
+			[roster_flip](int) { roster_flip(); }, roster_flip });
+		p.items.push_back(back_item());
+		return p;
+	};
 	auto main_page = [&] {
 		menu_page p{ "", "", {} };
 		if (online.playing() || nvram_away) {   // (the match goes on under the menu; or it's starting, on its board)
@@ -4952,16 +5011,12 @@ int main(int argc, char **argv)
 					fv2_modes.arcade(board);
 					menu.close();
 				} });
-			// VERSUS next, because it is the one two players came for. Same shape as the two below it -- the menu
-			// closes and the game is handed a real press of Start -- and then one for player 2, thirty frames after
-			// the select screen appears, which is the whole of the entry (fv2_versus.h).
+			// VERSUS next, because it is the one two players came for. ITS ROW OPENS A PAGE where the other
+			// three start a game, because a versus has a shape before it starts that the others do not -- how
+			// long a round is, how many of them, and who is on the select screen. Start is a line of that page
+			// (versus_mode_page, above).
 			p.items.push_back({ "VERSUS MODE", tr::M_VERSUS_HELP, {}, {},
-				[&] {
-					if (game.emu_thread.joinable()) game.job_wait();
-					fv2_modes.let_go_all(board, "Versus chosen");
-					fv2_versus.start(board);
-					menu.close();
-				} });
+				[&] { menu.push(versus_mode_page()); } });
 			p.items.push_back({ "SURVIVAL MODE", tr::M_SURVIVAL_HELP, {}, {},
 				[mode_start] { mode_start(Fv2Modes::SURVIVAL); } });
 			p.items.push_back({ "RANDOM MODE", tr::M_RANDOM_HELP, {}, {},

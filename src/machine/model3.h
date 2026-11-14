@@ -303,6 +303,14 @@ public:
 	int fv2_players() const;           // 1 one player, 3 two: the match's branch point asks it first
 	int fv2_vs_finish() const;         // the setting a decided versus is read against, in the working copy
 	bool fv2_set_vs_finish(int v);     // lent for the length of a way out; the player's own copy is untouched
+	// Two of its neighbours in the same GAME ASSIGNMENTS block, which the Versus page offers before the match:
+	// MATCH COUNT VS (the test menu's own name for the rounds needed to WIN, 2 to 5) and ROUND TIME VS (the
+	// round's length in seconds, 20 to 60 by 5). The LIVE copy, the one the game reads as a match begins, so a
+	// change takes at once and goes back to the backup RAM's value at the next boot. -1 where there is none.
+	int fv2_rounds_vs() const;
+	bool fv2_set_rounds_vs(int v);
+	int fv2_round_time_vs() const;
+	bool fv2_set_round_time_vs(int v);
 	bool fv2_match_over() const;       // the bit NEXT_PROG_SEL branches on: the match, not merely the round
 	void fv2_hold_match_over();        // and it put back every frame, the game writing its own count over it
 	int fv2_end_match();               // the game's own two conditions, in a round being fought and nowhere else

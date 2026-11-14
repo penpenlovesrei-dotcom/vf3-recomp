@@ -1878,6 +1878,21 @@ constexpr uint32_t FV2_SCENE_INDEX = 0x0058FD9F;
 constexpr uint32_t FV2_TASK_ENTRY2 = 0x00700100;       // player 2's task register, NOT 0x00707000
 constexpr uint32_t FV2_PLAYERS = 0x0058145A;           // 1 one player, 3 two: the branch point's first question
 constexpr uint32_t FV2_VS_FINISH = 0x00120558;         // the operator setting the end of a versus is read against
+// AND TWO MORE OF THE SAME BLOCK, which the Versus page offers before the match starts (fv2_versus.h's caller).
+// GAME ASSIGNMENTS live TWICE: a copy in backup RAM at 0x1E000, which the game reads as it boots and which this
+// port's Arcade settings page edits -- a change there restarts the game -- and the LIVE copy at 0x00120540 on,
+// which is where the game reads them while it runs. These two are the live copy, so a change takes in the match
+// about to start and nothing restarts; it also means they go back to the backup RAM's values at the next boot,
+// which is the console build's own behaviour and not a shortcoming of these two writes.
+//
+// Both are the test menu's own fields, with its own names, ranges and steps, carried over from the table this
+// port's console build measured for its OPTIONS page (src/host/fv2_options.h on that branch):
+//   MATCH COUNT VS   0x0012054D   one byte, 2 to 5, factory 3    -- rounds needed to WIN a match, which is the
+//                                                                  field Virtua Fighter 3's test menu spells out
+//                                                                  as "Rounds to win"
+//   ROUND TIME VS    0x00120556   one byte, 20 to 60 by 5, factory 45   -- the round's length, in seconds
+constexpr uint32_t FV2_MATCH_COUNT_VS = 0x0012054D;
+constexpr uint32_t FV2_ROUND_TIME_VS = 0x00120556;
 constexpr uint32_t FV2_FIGHTER_PTR[2] = { 0x0007511C, 0x00075120 };
 constexpr uint32_t FV2_LIFE_IN_BLOCK = 0x66, FV2_LIFE_MAX_IN_BLOCK = 0x68;
 constexpr uint16_t FV2_LIFE_PLAUSIBLE = 2000;          // a starting life above this is not a fighter's block
@@ -2028,6 +2043,35 @@ bool Model3::fv2_set_vs_finish(int v)
 {
 	if (set != "fvipers2" || ram.size() <= FV2_VS_FINISH) return false;
 	ram[FV2_VS_FINISH ^ 3] = uint8_t(v);
+	return true;
+}
+
+// Its two neighbours in the same block (the constants above carry what was measured about each). Read first and
+// written as they are: a byte the game reads when the match begins, nothing more. -1 where there is no such
+// byte to read, which is every program but this one.
+int Model3::fv2_rounds_vs() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_MATCH_COUNT_VS) return -1;
+	return ram[FV2_MATCH_COUNT_VS ^ 3];
+}
+
+bool Model3::fv2_set_rounds_vs(int v)
+{
+	if (set != "fvipers2" || ram.size() <= FV2_MATCH_COUNT_VS) return false;
+	ram[FV2_MATCH_COUNT_VS ^ 3] = uint8_t(v);
+	return true;
+}
+
+int Model3::fv2_round_time_vs() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ROUND_TIME_VS) return -1;
+	return ram[FV2_ROUND_TIME_VS ^ 3];
+}
+
+bool Model3::fv2_set_round_time_vs(int v)
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ROUND_TIME_VS) return false;
+	ram[FV2_ROUND_TIME_VS ^ 3] = uint8_t(v);
 	return true;
 }
 
