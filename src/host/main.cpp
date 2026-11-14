@@ -2041,6 +2041,14 @@ int main(int argc, char **argv)
 #ifdef _WIN32
 	SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
 #endif
+	// A PAD IS HEARD BY A WINDOW THAT HASN'T THE FOCUS. SDL holds back every joystick event while the window is not
+	// the one in front, and Windows gives the focus to a game started from a shell or a shortcut only when it feels
+	// like it: the window comes up, the pad is open and named in the log, and not one button reaches the game --
+	// nothing in the menu, nothing in a fight, Set up buttons reading nothing -- until the player happens to click
+	// the window. Nothing in the log says why, because as far as the program can tell no button was ever pressed.
+	// This is a game played at one machine, so the pad is heard whatever window the desktop has in front. Set before
+	// the gamepad subsystem starts, which is where SDL reads it.
+	SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 	if (!SDL_Init(SDL_INIT_VIDEO)) return fail(tr::line(tr::FAIL_VIDEO, { { "why", SDL_GetError() } }));
 	if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) fprintf(stderr, "no gamepads: %s\n", SDL_GetError());
 	// VF3_TEST_VJOY (tests): a virtual stick SDL doesn't know (10 buttons, a hat, 2 axes), pressed as it says (below)
