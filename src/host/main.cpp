@@ -126,6 +126,7 @@
 #include "links.h"
 #include "text.h"
 #include "chime.h"
+#include "fv2_modes.h"
 #include "../video/hud_names.h"
 #include "../video/dural_cell.h"
 #include "flags.h"
@@ -2082,6 +2083,9 @@ int main(int argc, char **argv)
 	// The hidden fighters as the player left them, before the boot writes them in: the setting is read here
 	// and nowhere else, so a run that is told off never patches anything at all (Game > Hidden fighters).
 	game.full_roster = cfg.full_roster;
+	// Fighting Vipers 2's SURVIVAL and RANDOM (fv2_modes.h): what the two rows of the main page ask for,
+	// and the machine that writes the game's own bytes once a game is running and puts them back at the end.
+	Fv2Modes fv2_modes;
 	const uint64_t BOOT_FRAMES = uint64_t(board.profile->boot_frames);   // the boot, up to the SEGA logo (the PC way: unseen)
 	// Online play (online.h): in a match the board holds the host's NVRAM, and this player's own is kept here
 	static Online online(board);
@@ -4413,6 +4417,25 @@ int main(int argc, char **argv)
 			return p;
 		}
 		p.items.push_back({ tr::M_RESUME, tr::M_RESUME_HELP, {}, {}, [&] { menu.close(); } });
+		// Fighting Vipers 2's own two modes, which its cabinet keeps behind the operator's buttons. They are
+		// the game's, not this port's: a row asks for one and hands the game a press of Start (fv2_modes.h).
+		// Their names are the game's own, as it prints them, so they are not translated. Revision A only (the
+		// addresses are that build's), and not while anything online is on.
+		if (board.profile == &m3::FV2_REV_A && online.phase() == Online::Phase::off) {
+			// A row starts a game in that mode: the menu closes and the game is handed a real press of Start, as
+			// choosing a mode on a console does. It is not a setting, so it carries no yes and no no -- the mode
+			// is over when that game is (fv2_modes.h). It may write the game's RAM, so the thread is let finish
+			// its frame first.
+			auto mode_start = [&](int m) {
+				if (game.emu_thread.joinable()) game.job_wait();
+				fv2_modes.start(m, board);
+				menu.close();
+			};
+			p.items.push_back({ "SURVIVAL MODE", tr::M_SURVIVAL_HELP, {}, {},
+				[mode_start] { mode_start(Fv2Modes::SURVIVAL); } });
+			p.items.push_back({ "RANDOM MODE", tr::M_RANDOM_HELP, {}, {},
+				[mode_start] { mode_start(Fv2Modes::RANDOM); } });
+		}
 		p.items.push_back({ tr::P_DISPLAY, tr::M_DISPLAY_HELP, {}, {}, [&] { menu.push(display_page()); } });
 		p.items.push_back({ tr::P_SOUND, tr::M_SOUND_HELP, {}, {}, [&] { menu.push(sound_page()); } });
 		p.items.push_back({ tr::P_GAME, tr::M_GAME_HELP, {}, {}, [&] { menu.push(game_page()); } });
@@ -5286,6 +5309,7 @@ int main(int argc, char **argv)
 				mix(c.left, script_ctl.left, live.left); mix(c.right, script_ctl.right, live.right);
 				mix(c.punch, script_ctl.punch, live.punch); mix(c.kick, script_ctl.kick, live.kick);
 				mix(c.guard, script_ctl.guard, live.guard); mix(c.escape, script_ctl.escape, live.escape);
+				fv2_modes.controls(c);   // (Survival / Random: the press of Start the row hands the game)
 				stage_pick.trigger = cfg.dural_stage;
 				for (int p = 0; p < 2; p++) {   // (Cheats > Dural's stage: the picker's inputs; offline, the byte set if need be)
 					dural_stage::Picker::Said said;
@@ -5426,6 +5450,9 @@ int main(int argc, char **argv)
 				order_mark = mark;
 			}
 			game.hold_roster();   // the hidden fighters, put in as soon as the boot has unpacked the program
+			// Survival and Random: written the moment a game is running, put back when it is over (fv2_modes.h).
+			// Not in an online match -- they write a byte of the running game, and both sides play the same game.
+			fv2_modes.step(board, online.phase() == Online::Phase::off);
 			// a boot the player watches: the same check, once it is over
 			if (!game.rebuilt_after_boot && game_frame >= BOOT_FRAMES) { game.rebuilt_after_boot = true; game.rebuild_from_ram_if_stale(); }
 			pace.frames++;

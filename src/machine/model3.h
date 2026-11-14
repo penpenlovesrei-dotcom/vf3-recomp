@@ -228,6 +228,23 @@ public:
 	// Off (on == false) is the same walk the other way round: what this port wrote is what is read, and
 	// Sega's own three instructions go back, which closes the row again (Game > Hidden fighters).
 	int unlock_roster(bool on = true);
+	// ---- Fighting Vipers 2's SURVIVAL and RANDOM (Japan Revision A) ----
+	// A word of RAM to read and three bytes to write, measured for this port's console way and carried here
+	// with what they mean. Gated on that one set, as the roster patch is: the other build was never measured.
+	//   0x00700000  the entry1 task's state, a word: 0 all through the attract loop, 5 on the select screen,
+	//               0x2A in a fight. Read as "0 or not": is a game running.
+	//   0x0058145F  SURVIVAL FLAG, with 0x00120550 the operator setting that has to agree with it, both 0 on a
+	//               stock board. Written during the attract loop the flag stops the game starting at all, so it
+	//               is written only once a game runs -- and then every frame, nothing saying the game does not
+	//               clear it -- and put back at the end: left on, it blocks the next game.
+	//   0x0058145E  RANDOM_CHARA, Sega's own name for it on their MODE_INFO page, beside the Survival flag. Set,
+	//               the select screen says RANDOM MODE. Written once is enough and it has no attract-loop trap,
+	//               both measured; it is put back at the end all the same.
+	bool fv2_in_attract();          // true: no game running (and for any other game)
+	int fv2_survival();             // 1 on, 0 off, -1 not this game
+	void fv2_set_survival(bool on);   // (the flag and the operator setting together: the game wants both)
+	int fv2_random_chara();         // 1 on, 0 off, -1 not this game
+	void fv2_set_random_chara(bool on);
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 

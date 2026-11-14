@@ -1710,4 +1710,49 @@ int Model3::unlock_roster(bool on)
 	return wrote;
 }
 
+// ---- Fighting Vipers 2's SURVIVAL and RANDOM ----
+//
+// The cabinet keeps both behind the operator's buttons, and neither is a manoeuvre to reproduce: each is a
+// byte the game itself reads. The addresses are Revision A's, measured for this port's console way; what is
+// above each one in model3.h is what was measured, not what was assumed.
+//
+// A byte of guest address a is ram[a ^ 3]: RAM here keeps the PowerPC's 32-bit words in the host's order.
+namespace {
+constexpr uint32_t FV2_TASK_ENTRY1 = 0x00700000;      // 0 in the attract loop, 5 on the select, 0x2A in a fight
+constexpr uint32_t FV2_SURVIVAL_FLAG = 0x0058145F;
+constexpr uint32_t FV2_SURVIVAL_SETTING = 0x00120550;   // (the operator setting beside it: the flag alone does nothing)
+constexpr uint32_t FV2_RANDOM_CHARA = 0x0058145E;
+}
+
+bool Model3::fv2_in_attract()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_TASK_ENTRY1 + 4) return true;
+	return word(ram, FV2_TASK_ENTRY1) == 0;
+}
+
+int Model3::fv2_survival()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SURVIVAL_FLAG) return -1;
+	return ram[FV2_SURVIVAL_FLAG ^ 3] ? 1 : 0;
+}
+
+void Model3::fv2_set_survival(bool on)
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SURVIVAL_FLAG) return;
+	ram[FV2_SURVIVAL_FLAG ^ 3] = on ? 1 : 0;
+	ram[FV2_SURVIVAL_SETTING ^ 3] = on ? 1 : 0;
+}
+
+int Model3::fv2_random_chara()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_RANDOM_CHARA) return -1;
+	return ram[FV2_RANDOM_CHARA ^ 3] ? 1 : 0;
+}
+
+void Model3::fv2_set_random_chara(bool on)
+{
+	if (set != "fvipers2" || ram.size() <= FV2_RANDOM_CHARA) return;
+	ram[FV2_RANDOM_CHARA ^ 3] = on ? 1 : 0;
+}
+
 } // namespace m3
