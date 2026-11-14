@@ -673,6 +673,7 @@ struct settings
 	std::string gpu3d_failed;   // SDL_GPU's drivers whose 3D failed here ("direct3d12 vulkan"): the next start tries the next
 	bool fullscreen = false, arcade = false, show_fps = false, smooth = true;
 	bool hud = true;    // Display > HUD: the 2D over a fight (energy bars, timer, names...) drawn; off: the 3D and the backdrop only
+	bool wide_hud = true;   // Display > Picture > Widescreen HUD: in a fight, the HUD's bands spread to the edges of a picture wider than 4:3
 	bool vsync = true;  // Display > V-Sync: each picture presented at a refresh (off: at once, maybe torn)
 	int frame_limit = -1;    // Display > Frame limit: the pictures a second at most, 30 60 120 144; 0 none, -1 the screen's refresh rate (a first start's;
 	                         // a settings.ini from before it was kept there, or from when 120 was the default and unsaved, stays at 120: load)
@@ -788,6 +789,7 @@ struct settings
 		flag("team_battle_1v1", tb_one);
 		flag("log", log);
 		flag("full_roster", full_roster);
+		flag("wide_hud", wide_hud);
 		if (auto it = kv.find("language"); it != kv.end()) {   // (one this build doesn't know: auto)
 			tr::choice c;
 			language = tr::choice_from(it->second, c) ? it->second : "auto";
@@ -856,6 +858,7 @@ struct settings
 		fprintf(f, "team_battle_1v1 = %d\n", int(tb_one));
 		if (!log) fprintf(f, "log = 0\n");
 		if (!full_roster) fprintf(f, "full_roster = 0\n");   // (on is the default: only the off is written)
+		if (!wide_hud) fprintf(f, "wide_hud = 0\n");         // (the same: on from the first start)
 		fprintf(f, "language = %s\n", language.c_str());
 		if (fs_window) fprintf(f, "fullscreen_window = 1\n");
 		if (fs_exclusive) fprintf(f, "fullscreen_exclusive = 1\n");
@@ -2533,6 +2536,49 @@ int main(int argc, char **argv)
 	}
 	SDL_Texture *tex3d = nullptr, *tex_below = nullptr, *tex_above = nullptr;
 	bool g3_shown = false;   // the picture on show is the GPU's
+	// ---- FIGHTING VIPERS 2'S HUD IN A WIDE PICTURE (Display > Picture > Widescreen HUD) ----
+	//
+	// The game draws its 2D for a 4:3 screen, so in a wider picture the life bars and the names stay huddled
+	// in the middle while the fight fills the window. In a fight, then, the HUD's two bands are drawn in three
+	// slices each: the outer two pushed out to the window's edges and the middle -- the timer's field -- left
+	// exactly where it is. Everything else is one blit, as it always was.
+	//
+	// Carried from this port's console way, where every placement below was photographed and corrected one at
+	// a time. The two cuts, in the layer's own columns (0 and 0 means "do not move"), and what each of the
+	// three pieces ACTUALLY covers -- its first and last column with something on it. The cut is a gap and the
+	// ink is not in the middle of it, so a block placed by its slice would not be placed by what is seen.
+	struct HudCut {
+		int left = 0, right = 0;
+		int l0 = -1, l1 = -1, c0 = -1, c1 = -1, r0 = -1, r1 = -1;
+	};
+	HudCut hud_top, hud_foot;
+	// THE ROUND'S ANNOUNCEMENT BELONGS TO THE PICTURE, NOT TO THE 4:3 FRAME. Spread to the window's edges, the
+	// HUD left ROUND X the size it is on a 4:3 screen, sitting in the middle of a picture half as wide again.
+	// So it is drawn across the picture the player is looking at, at the picture's own scale, on its own
+	// middle. Only in the states that announce a round (GAME's 4 to 10), which is where that art lives.
+	bool hud_wide_mid = false;
+	// AND THE SAME FOR THE FOOT WHEN THE MATCH IS THE BONUS STAGE, where BONUS STAGE takes the place of
+	// STAGE n: it is an announcement and not a block hanging off an edge, so it grows about its middle rather
+	// than being cut in three. The game says when it is the bonus stage in a byte of its own.
+	bool hud_wide_foot = false;
+	// HOW DEEP THE TOP BAND GOES, and it is measured, not rounded. At 100 it cut a drawing in half: under the
+	// right-hand bar there is a mark that comes and goes during a fight, and an audit of a fight has it at rows
+	// 93..108. 120 takes the whole of it and still stops well short of the ROUND X announcement, which the same
+	// audit puts at rows 125..254.
+	static constexpr int HUD_TOP_ROWS = 120;      // the band the bars, the names and that mark live in
+	static constexpr int HUD_FOOT_ROWS = 60;      // the band the stage and the time live in
+	// How near an edge a block has to begin to count as hanging off it. Twenty-four columns, about a twentieth
+	// of the picture, and the number is measured: the player icons begin at column 0, but the foot's STAGE 1
+	// begins at 16 and its time ends at 476, so at eight the foot never moved at all.
+	static constexpr int HUD_EDGE = 24;
+	// THE TIMER'S FIELD, measured and FIXED. The cut cannot be a gap looked for in the picture frame by frame:
+	// the timer's own two digits have a gap between them exactly as wide as the gaps that frame the field, so
+	// at "0 1" the cut fell BETWEEN THE DIGITS and the clock read as two numbers on opposite sides of the
+	// screen. What tells them apart is that the field does not move: over ninety frames of a fight the band
+	// reads 0..28, 35..216, 222..269, 275..456, 463..491 and the middle run never budges, whatever the clock
+	// says. So the field is written down once -- the two gaps 217..221 and 270..274 are the cuts -- and what
+	// the timer draws inside it is no longer anyone's business.
+	static constexpr int HUD_MID_L = 217, HUD_MID_R = 275;
 	uint32_t side_colour[2] = { 0xFF000000u, 0xFF000000u };   // widescreen's bars beside the 2D (left, right)
 	bool sky_wide = false;
 	float bg_shift_x = 0, bg_shift_y = 0;   // the layers below the 3D moved back towards the frame before (draw_below)
@@ -2815,6 +2861,79 @@ int main(int argc, char **argv)
 				rows++;
 				covered += c;
 				edge_rows += (row[0] >> 24) != 0 || (row[video::W - 1] >> 24) != 0;
+			}
+			// The two cuts, read in the layer, band by band (see HudCut above for what they are for).
+			{
+				auto cuts = [&](int y0, int y1) {
+					HudCut c;
+					bool on[video::W];
+					for (int x = 0; x < video::W; x++) {
+						bool any = false;
+						for (int y = y0; y < y1 && !any; y++) any = (game.view.above[size_t(y) * video::W + x] >> 24) != 0;
+						on[x] = any;
+					}
+					// Something has to hang off each edge, or there is nothing to push out: that is what
+					// leaves the select screen, a fade and the STAGE / VS banner exactly where they are.
+					bool at_edge = false, at_far = false;
+					for (int x = 0; x < HUD_EDGE; x++) at_edge = at_edge || on[x];
+					for (int x = video::W - HUD_EDGE; x < video::W; x++) at_far = at_far || on[x];
+					if (!at_edge || !at_far) return HudCut();
+					// AND THE TWO CUTS HAVE TO BE EMPTY. Anything crossing them is one drawing spanning the
+					// field, and cutting a drawing in three is exactly the fault this is here to prevent.
+					for (int x = HUD_MID_L; x < HUD_MID_L + 5; x++) if (on[x]) return HudCut();
+					for (int x = HUD_MID_R - 5; x < HUD_MID_R; x++) if (on[x]) return HudCut();
+					c.left = HUD_MID_L;
+					c.right = HUD_MID_R;
+					// What each piece covers, which is what gets placed
+					auto ink = [&](int x0, int x1, int &a, int &b) {
+						a = b = -1;
+						for (int x = x0; x < x1; x++) if (on[x]) { if (a < 0) a = x; b = x; }
+					};
+					ink(0, c.left, c.l0, c.l1);
+					ink(c.left, c.right, c.c0, c.c1);
+					ink(c.right, video::W, c.r0, c.r1);
+					if (c.l0 < 0 || c.r0 < 0) return HudCut();   // nothing to move on one side
+					return c;
+				};
+				// FIGHTING VIPERS 2 ONLY, and not because the rule is particular to it: nothing above names a
+				// game, and Virtua Fighter 3 hangs its HUD off the edges too. It is that Virtua Fighter 3 is this
+				// port's reference and its picture is not changed unasked.
+				// AND ONLY DURING A FIGHT. The select screen reaches both edges too, and its top band is empty
+				// exactly where the timer's field is, so it was being cut and spread as well -- its row of
+				// portraits came out with a piece of itself repeated against the right edge. The HUD belongs to
+				// GAME, Sega's modes 6 and 7, and to no other screen.
+				const int gmode = board.fv2_mode();
+				const bool mine = cfg.wide_hud && board.profile == &m3::FV2_REV_A && (gmode == 6 || gmode == 7);
+				hud_top = mine ? cuts(0, HUD_TOP_ROWS) : HudCut();
+				hud_foot = mine ? cuts(video::H - HUD_FOOT_ROWS, video::H) : HudCut();
+				// THE CLOCK BLINKS AT TEN SECONDS, AND THE BAND MUST NOT BLINK WITH IT. The top band is spread by
+				// standing the two blocks evenly between the window's edge and WHAT IS DRAWN in the timer's field;
+				// with nothing drawn there, the band below falls back to hard against the edges. Under ten seconds
+				// the game flashes the digits, so the two blocks jumped between the two placements several times a
+				// second. Measured over a match played out to the clock: the field's run 222..269 is there every
+				// frame of the fight from 3108 to 5351, and from 5352 it comes and goes -- six frames on, six off,
+				// then four and four as the clock speeds up. Nothing else in the band moves at all. So the field's
+				// ink is REMEMBERED while the band is up: a flash takes the digits away, not the place they stand
+				// in. It is forgotten as soon as there is no band to spread, which is the end of the fight, so
+				// nothing is carried from one match into the next.
+				static int kept_c0 = -1, kept_c1 = -1;
+				if (!mine || !hud_top.left) kept_c0 = kept_c1 = -1;
+				else if (hud_top.c0 >= 0) { kept_c0 = hud_top.c0; kept_c1 = hud_top.c1; }
+				else if (kept_c0 >= 0) { hud_top.c0 = kept_c0; hud_top.c1 = kept_c1; }
+				// The round's announcement is drawn across the picture only while a round is announced (GAME's
+				// sub-states 4 to 10), which is where that art lives and nowhere else.
+				const int gsub = board.fv2_submode();
+				hud_wide_mid = mine && gsub >= 4 && gsub <= 10;
+				// VF3_HUD_WIDE_FOOT=1 draws the foot wide on any stage, which is how the drawing was checked
+				// without playing the ladder as far as the bonus stage (a run with no hands takes it slowly).
+				static const bool foot_always = getenv("VF3_HUD_WIDE_FOOT") != nullptr;
+				const bool bonus_now = mine && (foot_always || board.fv2_bonus_stage() == 1);
+				hud_wide_foot = bonus_now;
+				// AND THE BAND BETWEEN THE TWO AS WELL. BONUS STAGE is a blinking text, and a blink is not where
+				// it is: the word is not in the foot's sixty rows but in the band above them -- the one ROUND X
+				// lives in. On the bonus stage that band is drawn wide throughout, so the word is placed the way
+				// ROUND X is wherever in it it sits.
+				if (bonus_now) hud_wide_mid = true;
 			}
 			const bool seen = game.view.full_3d && !game.view.no_stage_screen && rows > 0 &&
 			                  edge_rows * game.stage_edge_divisor < video::H && covered * 100 < long(rows) * video::W * 50;
@@ -3222,7 +3341,56 @@ int main(int argc, char **argv)
 		// rounds won, the round calls' text, and the flags beside the names; the 3D and the backdrop under it are, and
 		// the game runs as ever: only this picture leaves it out)
 		const bool hud = (cfg.hud || !game.view.fight_screen) && !fc_drawn;
-		if (hud) SDL_RenderTexture(ren, tex_above, nullptr, &mid);
+		// The 2D over the 3D. In a picture wider than 4:3 the HUD's two bands are drawn in three slices each,
+		// the outer two pushed out to the window's edges and the middle left exactly where it was (HudCut
+		// above). Only when a cut was found in this very picture: everything else is one blit, as it was.
+		if (hud) {
+			const float ks = mid.w / video::W;
+			const float dl = mid.x - all.x, dr = (all.x + all.w) - (mid.x + mid.w);
+			auto slice = [&](int x0, int x1, int y0, int y1, float dx) {
+				if (x1 <= x0 || y1 <= y0) return;
+				const SDL_FRect src = { float(x0), float(y0), float(x1 - x0), float(y1 - y0) };
+				const SDL_FRect dst = { mid.x + x0 * ks + dx, mid.y + y0 * ks, (x1 - x0) * ks, (y1 - y0) * ks };
+				SDL_RenderTexture(ren, tex_above, &src, &dst);
+			};
+			// The rows between the two bands, drawn across the WHOLE picture and at its scale rather than the
+			// 4:3 frame's: the round's announcement (hud_wide_mid above). Its middle stays where it is, so the
+			// art grows about its own centre; what is transparent in those rows stays transparent, which is
+			// everything but the announcement itself.
+			auto band_wide = [&](int y0, int y1) {
+				const float k2 = all.w / float(video::W);   // the window's own pixels to the layer's
+				const SDL_FRect src = { 0, float(y0), float(video::W), float(y1 - y0) };
+				const float h2 = float(y1 - y0) * k2;
+				const float cy = mid.y + float(y0 + y1) * 0.5f * ks;
+				const SDL_FRect dst = { all.x, cy - h2 * 0.5f, all.w, h2 };
+				SDL_RenderTexture(ren, tex_above, &src, &dst);
+			};
+			// EVEN SPACE EITHER SIDE, for the band that has something standing still in the middle: the two
+			// blocks of the top HUD go at an equal distance between the screen's edge and the timer. Hard
+			// against the window's edge they left the whole of the widening on one side of each block, which
+			// reads as two things that fell off. The foot has nothing in its middle to measure against, so it
+			// still goes hard against the edges.
+			auto band = [&](const HudCut &c, int y0, int y1, bool even) {
+				if (!c.left) { slice(0, video::W, y0, y1, 0); return; }
+				float dxl = -dl, dxr = dr;
+				if (even && c.c0 >= 0 && c.l0 >= 0 && c.r0 >= 0) {
+					const float stand_l = mid.x + c.c0 * ks, stand_r = mid.x + (c.c1 + 1) * ks;
+					const float wl = (c.l1 + 1 - c.l0) * ks, wr = (c.r1 + 1 - c.r0) * ks;
+					dxl = all.x + (stand_l - all.x - wl) * 0.5f - (mid.x + c.l0 * ks);
+					dxr = stand_r + ((all.x + all.w) - stand_r - wr) * 0.5f - (mid.x + c.r0 * ks);
+				}
+				slice(0, c.left, y0, y1, dxl);
+				slice(c.left, c.right, y0, y1, 0);
+				slice(c.right, video::W, y0, y1, dxr);
+			};
+			if (dl > 0.5f && (hud_top.left || hud_foot.left)) {
+				band(hud_top, 0, HUD_TOP_ROWS, true);
+				if (hud_wide_mid) band_wide(HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS);
+				else slice(0, video::W, HUD_TOP_ROWS, video::H - HUD_FOOT_ROWS, 0);
+				if (hud_wide_foot) band_wide(video::H - HUD_FOOT_ROWS, video::H);
+				else band(hud_foot, video::H - HUD_FOOT_ROWS, video::H, false);
+			} else SDL_RenderTexture(ren, tex_above, nullptr, &mid);
+		}
 		if (!fc_drawn) draw_dural_wide(all, mid);
 		if (hud) draw_hud_flags(mid);
 		if (crt) {
@@ -3600,6 +3768,13 @@ int main(int argc, char **argv)
 		p.items.push_back({ tr::D_HUD, tr::D_HUD_HELP,
 			[&] { return on_off(cfg.hud); },
 			[&](int) { cfg.hud = !cfg.hud; cfg_dirty = true; } });
+		// Fighting Vipers 2's HUD spread to the edges of a picture wider than 4:3 (the drawing is in compose,
+		// HudCut above). Revision A only: the bands' depths and the timer's field were measured on its layer.
+		if (board.profile == &m3::FV2_REV_A)
+			p.items.push_back({ tr::D_WIDE_HUD, tr::D_WIDE_HUD_HELP,
+				[&] { return on_off(cfg.wide_hud); },
+				[&](int) { cfg.wide_hud = !cfg.wide_hud; cfg_dirty = true; },
+				[&] { cfg.wide_hud = !cfg.wide_hud; cfg_dirty = true; } });
 		p.items.push_back({ tr::D_SHOW_FPS, tr::D_SHOW_FPS_HELP,
 			[&] { return on_off(cfg.show_fps); },
 			[&](int) { cfg.show_fps = !cfg.show_fps; cfg_dirty = true; if (!cfg.show_fps) menu.set_fps(""); } });

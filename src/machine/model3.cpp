@@ -1722,6 +1722,9 @@ constexpr uint32_t FV2_TASK_ENTRY1 = 0x00700000;      // 0 in the attract loop, 
 constexpr uint32_t FV2_SURVIVAL_FLAG = 0x0058145F;
 constexpr uint32_t FV2_SURVIVAL_SETTING = 0x00120550;   // (the operator setting beside it: the flag alone does nothing)
 constexpr uint32_t FV2_RANDOM_CHARA = 0x0058145E;
+constexpr uint32_t FV2_BONUS_STAGE = 0x00581461;     // MODE_INFO's BONUS_STG_FLAG, beside the two above
+constexpr uint32_t FV2_MODE_MAIN = 0x0058FD98;       // the mode, and the sub-state beside it (Sega's MODE_MAIN / MODE_SUB)
+constexpr uint32_t FV2_MODE_SUB = 0x0058FD99;
 }
 
 bool Model3::fv2_in_attract()
@@ -1753,6 +1756,24 @@ void Model3::fv2_set_random_chara(bool on)
 {
 	if (set != "fvipers2" || ram.size() <= FV2_RANDOM_CHARA) return;
 	ram[FV2_RANDOM_CHARA ^ 3] = on ? 1 : 0;
+}
+
+int Model3::fv2_mode()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_MODE_SUB) return -1;
+	return ram[FV2_MODE_MAIN ^ 3];
+}
+
+int Model3::fv2_submode()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_MODE_SUB) return -1;
+	return ram[FV2_MODE_SUB ^ 3];
+}
+
+int Model3::fv2_bonus_stage()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_BONUS_STAGE) return -1;
+	return ram[FV2_BONUS_STAGE ^ 3] ? 1 : 0;
 }
 
 } // namespace m3

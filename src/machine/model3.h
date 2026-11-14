@@ -245,6 +245,15 @@ public:
 	void fv2_set_survival(bool on);   // (the flag and the operator setting together: the game wants both)
 	int fv2_random_chara();         // 1 on, 0 off, -1 not this game
 	void fv2_set_random_chara(bool on);
+	// ---- what the widescreen HUD asks of the game (main.cpp) ----
+	// The game's own state machine, Sega's names, left in RAM as eighty strings in one run: MODE_MAIN at
+	// 0x0058FD98 and MODE_SUB beside it. A fight is mode 6 (GAME_INT) or 7 (GAME_DSP) -- and the HUD belongs
+	// to those two and to no other screen -- while its sub-states 4 to 10 are the round's announcement, the
+	// rows ROUND X is drawn in. 0x00581461 is MODE_INFO's BONUS_STG_FLAG, beside the Survival flag: the
+	// bonus stage says so in a byte of its own, and its foot carries BONUS STAGE instead of STAGE n.
+	int fv2_mode();          // 2 ADV_INT 3 ADV_DSP 4 SEL_INT 5 SEL_DSP 6 GAME_INT 7 GAME_DSP ...; -1 not this game
+	int fv2_submode();       // (only GAME, SEL and ADV mean anything by it)
+	int fv2_bonus_stage();   // 1 while the match is the bonus stage, 0 otherwise, -1 not this game
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 

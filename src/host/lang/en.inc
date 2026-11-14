@@ -113,6 +113,8 @@ T(D_SHOW_FPS, "Show FPS")
 T(D_SHOW_FPS_HELP, "Shows the frame rate in the top right corner.")
 T(D_HUD, "HUD")                              // Display > HUD: the game's 2D over a fight (energy bars, timer, names) drawn or not
 T(D_HUD_HELP, "Off hides the game's display over a fight: the energy bars, the timer, the names, the rounds won and the round calls. The fighters and the stage are still drawn, and the game plays exactly the same.")
+T(D_WIDE_HUD, "Widescreen HUD")                    // Display > Picture > Widescreen HUD: in a fight, the HUD's bands spread to the edges of a wide picture
+T(D_WIDE_HUD_HELP, "In a picture wider than 4:3, Fighting Vipers 2's display is spread to the edges of the window: the energy bars and the names move out to the sides, the timer stays in its place in the middle, and a round call is drawn across the whole picture. Off leaves it all in the middle of the picture, as it is on a 4:3 screen. A 4:3 picture is never touched, and no other game is.")
 T(D_FREECAM, "Free camera")   // Display > Free camera: On / Off (not saved)
 T(D_FREECAM_HELP, "Fly a camera around the fight: WASD + mouse (E/Space up, Q/Ctrl down, Shift faster, R back to the game's camera), or the sticks (LT/RT down/up, Y back). F4, or Back + R3 on a pad. Only the picture changes: the game plays exactly the same. Off at each start. It takes effect when the menu closes.")
 T(D_FREECAM_NOT_ONLINE, "Not while playing online")   // (Free camera's value in a match of the player's own)
