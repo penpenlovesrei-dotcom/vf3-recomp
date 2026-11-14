@@ -42,6 +42,8 @@ T(M_RESUME_MATCH_HELP, "Back to the match (it goes on while the menu's open).")
 T(P_DISPLAY, "Display")                      // (P_: a page's name: its row on the page before, and the line over its rows)
 T(M_SURVIVAL_HELP, "Survival, the game's own: one opponent after another, on the life you have left. The row asks for it and hands the game a press of Start; what it sets is put back when the game is over. The cabinet keeps it behind the operator's buttons.")
 T(M_RANDOM_HELP, "Random, the game's own: the select screen goes into RANDOM MODE. The row asks for it and hands the game a press of Start; what it sets is put back when the game is over. The cabinet keeps it behind the operator's buttons.")
+T(M_VERSUS_HELP, "Versus, the board's own: player 2 steps into player 1's game on the select screen, which the game calls INTRUDE. The row asks for it and hands the game a press of Start, then one for player 2 thirty frames after the select screen appears. The two players choose the arena, and the end of the match offers another instead of GAME OVER.")   // the main page's Versus row (Fighting Vipers 2 only)
+T(M_VS_NOTE, "The match is decided. Another with the same fighters, another arena, the select screen again, or back to the title screen.")   // under the end-of-match panel's four lines
 T(M_DISPLAY_HELP, "Picture, quality, screen filter and colours, free camera.")
 T(P_SOUND, "Sound")
 T(M_SOUND_HELP, "The overall, music and effects volumes.")

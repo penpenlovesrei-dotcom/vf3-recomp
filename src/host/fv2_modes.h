@@ -47,6 +47,12 @@ public:
 		        idle ? ", and the game handed a press of Start" : " (a game is already running: it takes at once)");
 	}
 
+	// Both let go of, whatever they were doing: the Versus row does it for the same reason a row of this
+	// page does, two modes asked for at once not being a thing the player asked for (fv2_versus.h).
+	void let_go_all(m3::Model3 &b, const char *why)
+	{
+		for (int m = 0; m < COUNT; m++) if (at[m] != OFF) let_go(b, m, why);
+	}
 	// Every game frame, once the frame has run. `allowed` is false in an online match.
 	void step(m3::Model3 &b, bool allowed)
 	{

@@ -127,6 +127,8 @@
 #include "text.h"
 #include "chime.h"
 #include "fv2_modes.h"
+#include "fv2_versus.h"
+#include "fv2_stages.h"
 #include "../video/hud_names.h"
 #include "../video/dural_cell.h"
 #include "../video/tex3d_hd.h"
@@ -2380,6 +2382,17 @@ int main(int argc, char **argv)
 	// Fighting Vipers 2's SURVIVAL and RANDOM (fv2_modes.h): what the two rows of the main page ask for,
 	// and the machine that writes the game's own bytes once a game is running and puts them back at the end.
 	Fv2Modes fv2_modes;
+	// AND VERSUS ABOVE THOSE TWO (fv2_versus.h): the two-player match the board already has, the page of
+	// fourteen arenas it opens on the way (fv2_stages.h), and the panel that stands at the end of it where
+	// GAME OVER stood. The panel is a page of this port's own menu, which is where the mode was chosen and
+	// which stops the game while it is up; the page of arenas is a surface of its own, because the game has
+	// to go on running under it.
+	Fv2Versus fv2_versus;
+	fv2_stages versus_stages;
+	bool versus_panel_up = false;      // the panel is the menu's top page just now
+	int versus_panel_want = -1;        // the line chosen, acted on once the menu has closed
+	int versus_pick = -1;              // the arena chosen, acted on once the page's hold is over
+	uint64_t versus_lock_ns = 0;       // when it was answered (the page keeps the blink, the host the clock)
 	const uint64_t BOOT_FRAMES = uint64_t(board.profile->boot_frames);   // the boot, up to the SEGA logo (the PC way: unseen)
 	// Online play (online.h): in a match the board holds the host's NVRAM, and this player's own is kept here
 	static Online online(board);
@@ -3693,6 +3706,14 @@ int main(int argc, char **argv)
 			SDL_SetRenderTarget(ren, nullptr);
 			crt_paint.draw(ren, crt, nullptr, cfg.crt_colours, cfg.brightness, cfg.gamma);
 		}
+		// Fighting Vipers 2's VERSUS: the page of arenas over the picture the game made, and the veil over the
+		// way out of a match (fv2_stages.h, fv2_versus.h). After the CRT pass, both being this port's own
+		// surfaces and not part of the picture the board drew.
+		if (fv2_versus.veil) {
+			SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+			SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+			SDL_RenderFillRect(ren, &all);
+		} else versus_stages.render(ren, all, mid);
 		if (filter) draw_filter(all);
 	};
 	auto read_window = [&](const std::string &path, const SDL_Rect *area = nullptr) {
@@ -4915,9 +4936,20 @@ int main(int argc, char **argv)
 			// its frame first.
 			auto mode_start = [&](int m) {
 				if (game.emu_thread.joinable()) game.job_wait();
+				fv2_versus.let_go(board, "another mode chosen");   // (one mode at a time, as between these two)
 				fv2_modes.start(m, board);
 				menu.close();
 			};
+			// VERSUS first, because it is the one two players came for. Same shape as the two below it -- the menu
+			// closes and the game is handed a real press of Start -- and then one for player 2, thirty frames after
+			// the select screen appears, which is the whole of the entry (fv2_versus.h).
+			p.items.push_back({ "VERSUS MODE", tr::M_VERSUS_HELP, {}, {},
+				[&] {
+					if (game.emu_thread.joinable()) game.job_wait();
+					fv2_modes.let_go_all(board, "Versus chosen");
+					fv2_versus.start(board);
+					menu.close();
+				} });
 			p.items.push_back({ "SURVIVAL MODE", tr::M_SURVIVAL_HELP, {}, {},
 				[mode_start] { mode_start(Fv2Modes::SURVIVAL); } });
 			p.items.push_back({ "RANDOM MODE", tr::M_RANDOM_HELP, {}, {},
@@ -4941,7 +4973,9 @@ int main(int argc, char **argv)
 	};
 	bool sound_paused = false;
 	auto sync_menu_sound = [&] {
-		const bool pause = menu.is_open() && !online.playing();   // (a match goes on, its sound too)
+		// And behind the veil as well: what the way out of a versus walks through is the end of a game nobody
+		// was playing, and it is not to be heard any more than it is to be seen (fv2_versus.h).
+		const bool pause = (menu.is_open() || fv2_versus.veil) && !online.playing();   // (a match goes on, its sound too)
 		if (!audio || pause == sound_paused) return;
 		sound_paused = pause;
 		if (sound_paused) SDL_PauseAudioStreamDevice(audio); else SDL_ResumeAudioStreamDevice(audio);
@@ -4957,6 +4991,17 @@ int main(int argc, char **argv)
 		menu.select_row(game_row);
 		menu.push(game_page());
 		menu.select_row(row);
+	};
+	// Fighting Vipers 2's END-OF-MATCH PANEL: the four lines the console build offers in place of GAME OVER,
+	// as a page of this port's own menu. RESUME is not among them -- there is no fight to go back to, the
+	// match being decided -- and backing out puts the panel straight back up (Fv2Versus::panel_dismissed).
+	// The lines are the Dreamcast's own words and are left in them, as SURVIVAL MODE and RANDOM MODE are.
+	auto versus_page = [&] {
+		menu_page p{ "MATCH OVER", tr::M_VS_NOTE, {} };
+		for (int l = 0; l < Fv2Versus::L_COUNT; l++)
+			p.items.push_back({ Fv2Versus::line_name(l), "", {}, {},
+			                    [&, l] { versus_panel_want = l; menu.close(); } });
+		return p;
 	};
 	auto open_menu = [&] {
 		if (game.emu_thread.joinable()) game.job_wait();
@@ -5083,6 +5128,7 @@ int main(int argc, char **argv)
 		make_2d(tex_above, video::W);
 		if (glass) { SDL_DestroyTexture(glass); glass = nullptr; glass_w = glass_h = 0; }
 		menu.textures_lost();
+		if (versus_stages.tried) versus_stages.textures_lost(ren, find_assets());   // (the stage page's, if it has any)
 		new_frame = true;   // (the next picture sends the 2D again)
 	};
 	// Started from a terminal, the window can open behind it or without the keyboard (the keys go to the terminal):
@@ -5502,6 +5548,34 @@ int main(int argc, char **argv)
 		if (window_rescale) { window_rescale = false; apply_window_scale(); menu.refresh(); }   // (the last pass's events asked)
 		if (window_moved) { window_moved = false; remember_window(); }
 		SDL_Event e;
+		// WHAT THE VERSUS ASKS FOR, answered here because this is where the menu and the surfaces are: the
+		// mode's own machine says WHAT it wants and never opens anything itself (fv2_versus.h).
+		if (fv2_versus.wants == Fv2Versus::W_STAGE) {
+			fv2_versus.wants = Fv2Versus::W_NONE;
+			if (!versus_stages.tried) versus_stages.load(ren, find_assets(), stderr);
+			if (versus_stages.ready) { versus_stages.show(); versus_pick = -1; versus_lock_ns = 0; }
+			else {
+				// No pictures, no page -- and the game is parked on this very tick, so it has to be let go of
+				// again rather than left standing in Sega's empty sub-state for ever.
+				if (game.emu_thread.joinable()) game.job_wait();
+				fv2_versus.stage_cancelled(board);
+			}
+		} else if (fv2_versus.wants == Fv2Versus::W_PANEL) {
+			fv2_versus.wants = Fv2Versus::W_NONE;
+			if (game.emu_thread.joinable()) game.job_wait();
+			if (menu.ready()) {
+				versus_panel_up = true;
+				versus_panel_want = -1;
+				// PUSHED OVER THE PORT'S OWN MAIN PAGE, not opened in its place. Backing out of the panel has to
+				// lead somewhere: there is no fight to go back to, but there are the port's own settings and its
+				// way out of the program, and a panel opened as the top page would have made those unreachable --
+				// closing it only brings it straight back (fv2_versus.h). So Escape goes back to the main page,
+				// and closing THAT is what puts the panel up again.
+				menu.open(main_page());
+				menu.push(versus_page());
+				sync_menu_sound();
+			} else fv2_versus.panel_chosen(board, Fv2Versus::L_REMATCH);   // (no menu to show it in: another match)
+		}
 		while (SDL_PollEvent(&e)) {
 			if (e.type == SDL_EVENT_QUIT) running = false;
 			// (a Mac's open-URL event, as SDL gives it: a link from the web, the game running or just started by it)
@@ -5541,6 +5615,18 @@ int main(int argc, char **argv)
 				if (!hidden && SDL_GetKeyboardFocus() != win) SDL_RaiseWindow(win);   // (the move to a new Space can lose it)
 			}
 			if (menu.handle_event(e)) continue;
+			// THE STAGE PAGE'S OWN KEYS, before the game's: it stands over a game that is still running, parked
+			// in Sega's empty sub-state, and it takes the keyboard and the pads for as long as it is up
+			// (fv2_stages.h). Escape is left alone -- it belongs to this port's own menu.
+			if (versus_stages.shown) {
+				const int chose = versus_stages.handle_event(e, cfg.ctl);
+				if (chose != -1) { versus_pick = chose; versus_stages.lock(); versus_lock_ns = SDL_GetTicksNS(); }
+				const bool mine = e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP
+				                  || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN || e.type == SDL_EVENT_GAMEPAD_BUTTON_UP
+				                  || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION;
+				const bool escape = e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE;
+				if (mine && !escape) continue;
+			}
 			if (fc.on && e.type == SDL_EVENT_MOUSE_MOTION && fc_grabbed) { fc_mouse[0] += e.motion.xrel; fc_mouse[1] += e.motion.yrel; }
 			if (fc.on && e.type == SDL_EVENT_MOUSE_WHEEL) fc_wheel += e.wheel.y;
 			// Fullscreen also with F and Alt+Enter, as VF1's and VF2's (after the menu's own events: typing in its
@@ -5684,7 +5770,46 @@ int main(int argc, char **argv)
 			fc_mouse[0] = fc_mouse[1] = 0;
 			fc_wheel = 0;
 		}
-		const bool stopped = !online.playing() && (paused || menu.is_open() || online.starting());
+		// THE PANEL ANSWERED, taken once the menu has closed, so the game is given back on the same pass the
+		// line is acted on. Nothing was chosen means the player backed out, and there is nowhere to back out
+		// to: the panel goes straight back up (fv2_versus.h).
+		if (versus_panel_up && !menu.is_open()) {
+			versus_panel_up = false;
+			if (game.emu_thread.joinable()) game.job_wait();
+			if (versus_panel_want >= 0) fv2_versus.panel_chosen(board, versus_panel_want);
+			else fv2_versus.panel_dismissed();
+			versus_panel_want = -1;
+			menu.set_title(menu_title());
+			sync_menu_sound();
+		}
+		// THE STAGE PAGE'S HOLD: the chosen picture blinks while the sound is heard, and only then is the
+		// answer handed over -- the page used to vanish on the frame it was answered, so the sound that says
+		// "chosen" began under the next screen (fv2_stages.h says how long, and why that long).
+		if (versus_stages.shown && versus_stages.locked) {
+			versus_stages.lock_t = double(SDL_GetTicksNS() - versus_lock_ns) / 1e9;
+			if (versus_stages.lock_t >= fv2_stages::HOLD_S) {
+				versus_stages.hide();
+				if (game.emu_thread.joinable()) game.job_wait();
+				if (versus_pick == fv2_stages::CANCELLED) fv2_versus.stage_cancelled(board);
+				else fv2_versus.stage_chosen(board, versus_pick + 1);
+				versus_pick = -1;
+			}
+		}
+		// AND THE THREE SOUNDS, WHICH ARE THE GAME'S OWN, sent to its sound board as the console build sends
+		// them: 0x26 moves, 0x23 decides, 0x27 backs out. The page says WHAT happened and this says what that
+		// sounds like, so neither has to know the other's job. Drained once a pass and not where the events
+		// are dispatched: that block `continue`s on every key, so a note handed over inside it would not
+		// leave until the event after.
+		if (versus_stages.want_sound) {
+			const uint8_t fx = versus_stages.want_sound == fv2_stages::SND_MOVE ? 0x26
+			                   : versus_stages.want_sound == fv2_stages::SND_VALIDATE ? 0x23 : 0x27;
+			for (uint8_t b : { uint8_t(0xA0), uint8_t(0x2E), fx }) board.midi.push_back(b);
+			versus_stages.want_sound = fv2_stages::SND_NONE;
+		}
+		// And the stage page opened from the end-of-match panel stops it too: the game is standing one frame
+		// before the branch point that decides what a settled versus becomes (Fv2Versus::hold_game).
+		const bool stopped = !online.playing() && (paused || menu.is_open() || online.starting()
+		                                           || (versus_stages.shown && fv2_versus.hold_game()));
 		const bool ff = !stopped && !online.playing() && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB];
 		int due = 0;
 		int pass_burst = 2;   // (the frames a pass may run, this pass: more when pictures take over a frame's time, below)
@@ -5785,6 +5910,8 @@ int main(int argc, char **argv)
 				m3::Controls live;
 				hk = read_inputs(live, pads, pstate, cfg.ctl);
 				if (fc.on) live = m3::Controls();   // (the free camera: the keys and pads fly it, none reach the game)
+				// (the stage page: it takes them, and the game is parked under it -- its own select cursor must not move)
+				if (versus_stages.shown) live = m3::Controls();
 				act = InputScript::Actions();
 				if (scripted) act = script.step(script_ctl, game_frame);
 				m3::Controls &c = board.controls;
@@ -5797,6 +5924,7 @@ int main(int argc, char **argv)
 				mix(c.punch, script_ctl.punch, live.punch); mix(c.kick, script_ctl.kick, live.kick);
 				mix(c.guard, script_ctl.guard, live.guard); mix(c.escape, script_ctl.escape, live.escape);
 				fv2_modes.controls(c);   // (Survival / Random: the press of Start the row hands the game)
+				fv2_versus.controls(c);  // (Versus: the same, and then one for player 2 on the select screen)
 				// Kuhn's colour wheel, turned by the same presses the game turns its own two with (Game::kuhn_tick):
 				// Up forwards, Down backwards, because the game's own toggle answers to both.
 				game.kuhn_tick(c.up[0] || c.up[1], c.down[0] || c.down[1]);
@@ -5946,6 +6074,12 @@ int main(int argc, char **argv)
 			// Survival and Random: written the moment a game is running, put back when it is over (fv2_modes.h).
 			// Not in an online match -- they write a byte of the running game, and both sides play the same game.
 			fv2_modes.step(board, online.phase() == Online::Phase::off);
+			// Versus: the same rule and the same reason -- every lever it pulls is a byte of the running game,
+			// and the two sides of an online match play the same game (fv2_versus.h).
+			fv2_versus.step(board, online.phase() == Online::Phase::off);
+			// and the select screen kept parked while the page of arenas is up: the one hold that page wants
+			// renewed, the request being read and acted on by the game's dispatcher every tick.
+			if (versus_stages.shown) board.fv2_park_stage_select();
 			// a boot the player watches: the same check, once it is over
 			if (!game.rebuilt_after_boot && game_frame >= BOOT_FRAMES) { game.rebuilt_after_boot = true; game.rebuild_from_ram_if_stale(); }
 			pace.frames++;

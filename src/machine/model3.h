@@ -271,9 +271,55 @@ public:
 	// to those two and to no other screen -- while its sub-states 4 to 10 are the round's announcement, the
 	// rows ROUND X is drawn in. 0x00581461 is MODE_INFO's BONUS_STG_FLAG, beside the Survival flag: the
 	// bonus stage says so in a byte of its own, and its foot carries BONUS STAGE instead of STAGE n.
-	int fv2_mode();          // 2 ADV_INT 3 ADV_DSP 4 SEL_INT 5 SEL_DSP 6 GAME_INT 7 GAME_DSP ...; -1 not this game
-	int fv2_submode();       // (only GAME, SEL and ADV mean anything by it)
+	int fv2_mode() const;    // 2 ADV_INT 3 ADV_DSP 4 SEL_INT 5 SEL_DSP 6 GAME_INT 7 GAME_DSP ...; -1 not this game
+	int fv2_submode() const; // (only GAME, SEL and ADV mean anything by it)
 	int fv2_bonus_stage();   // 1 while the match is the bonus stage, 0 otherwise, -1 not this game
+	// ---- WHAT A TWO-PLAYER VERSUS ASKS OF THE GAME (src/host/fv2_versus.h) ----
+	//
+	// The versus is a mode the BOARD has: player 2 pressing Start on the select screen steps into player 1's
+	// game, which the game calls INTRUDE. So nothing below invents a mode -- it is the handful of the game's
+	// own bytes that have to be read, asked for or held to reach that mode from a menu, to choose the arena it
+	// fights in, and to stand where GAME OVER stands at the end of it. Every address and every rule was
+	// measured on this port's console build and is carried over with its measurement (model3.cpp).
+	int fv2_submode_request() const;   // what the game is asking for, one tick before it is where it asked to be
+	void fv2_hold_submode();           // the sub-state it is in asked for again: held where it stands
+	void fv2_cut_submode();            // or the next one asked for: this one cut short
+	bool fv2_on_title() const;         // the game's own title screen, as against "no game running"
+	// The game parked in Sega's own empty STAGE_SEL while the stage page is up, which is the opposite of a
+	// freeze: the game goes on drawing the select screen and the board goes on playing, because it never
+	// stopped. Refuses anywhere but the select screen -- sub-state 2 means ROUND_MASK_DSP in a fight.
+	bool fv2_park_stage_select();
+	bool fv2_leave_stage_select();     // and let go: DECIDE_INT, the one SELECT would have gone to itself
+	// The arena, by the stage draw's own table of 27 bytes rather than by a patch on its code: leave one entry
+	// free and the draw returns it. A write to DATA, which is what keeps the recompiler on -- a patched
+	// instruction drops the PowerPC to the interpreter. HELD, the draw marking its own choice used as it takes
+	// it, and given back exactly as it was found.
+	static constexpr uint32_t FV2_STAGE_DRAW = 0x004836FF;
+	static constexpr int FV2_STAGE_DRAW_N = 27;
+	uint8_t fv2_draw_was[FV2_STAGE_DRAW_N] = {};
+	bool fv2_draw_held = false;
+	int fv2_hold_stage(int scene);
+	int fv2_release_stage();
+	int fv2_players() const;           // 1 one player, 3 two: the match's branch point asks it first
+	int fv2_vs_finish() const;         // the setting a decided versus is read against, in the working copy
+	bool fv2_set_vs_finish(int v);     // lent for the length of a way out; the player's own copy is untouched
+	bool fv2_match_over() const;       // the bit NEXT_PROG_SEL branches on: the match, not merely the round
+	void fv2_hold_match_over();        // and it put back every frame, the game writing its own count over it
+	int fv2_end_match();               // the game's own two conditions, in a round being fought and nowhere else
+	void fv2_request_game_over();      // what NEXT_PROG_SEL's own two-player road writes, where it writes it
+	// Another match with the same fighters in the same arena, by the road the game takes between two rounds.
+	// The two task values must have been read WHILE THE ROUND WAS BEING FOUGHT: the winner inherits the game,
+	// so the loser's register is already stopped by the time a panel is up.
+	int fv2_rematch(uint32_t entry1_live, uint32_t entry2_live);
+	int fv2_task2_state() const;       // player 2's task register, the companion of fv2_task_state
+	int fv2_screen_timer() const;      // signed: an expired screen reads negative
+	void fv2_expire_screen();          // CONTINUE and GAME OVER are modes of their own: their counter is the lever
+	int fv2_scene_index() const;       // the arena now loaded; a change says the end-of-game screens are past
+	void fv2_attract_to_title();       // the attract sequencer walked off the end of its own list
+	uint32_t fv2_fighter(int player) const;   // 0 when there is no block to speak of
+	int fv2_life(int player) const;
+	int fv2_life_max(int player) const;
+	bool fv2_set_life(int player, int v);
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 

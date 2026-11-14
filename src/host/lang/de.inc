@@ -37,6 +37,8 @@ T(M_RESUME_MATCH_HELP, "Zurück zum Match (es läuft weiter, solange das Menü o
 T(P_DISPLAY, "Anzeige")
 T(M_SURVIVAL_HELP, "Survival, der Modus des Spiels selbst: ein Gegner nach dem anderen, mit der Energie, die bleibt. Die Zeile fragt danach und gibt dem Spiel einen echten Druck auf Start; was sie setzt, wird am Ende der Partie zurückgenommen. Der Automat hält ihn hinter den Tasten des Betreibers.")
 T(M_RANDOM_HELP, "Random, der Modus des Spiels selbst: die Charakterauswahl geht in RANDOM MODE. Die Zeile fragt danach und gibt dem Spiel einen echten Druck auf Start; was sie setzt, wird am Ende der Partie zurückgenommen. Der Automat hält ihn hinter den Tasten des Betreibers.")
+T(M_VERSUS_HELP, "Versus, der Modus des Automaten selbst: Spieler 2 steigt im Auswahlbildschirm in das Spiel von Spieler 1 ein, was das Spiel INTRUDE nennt. Die Zeile fordert ihn an und gibt dem Spiel einen echten Start-Druck, dann einen für Spieler 2, dreißig Bilder nach dem Erscheinen des Auswahlbildschirms. Beide Spieler wählen die Arena, und am Ende des Kampfes wird ein weiterer angeboten statt GAME OVER.")
+T(M_VS_NOTE, "Der Kampf ist entschieden. Noch einer mit denselben Kämpfern, eine andere Arena, zurück zum Auswahlbildschirm oder zum Titelbildschirm.")
 T(M_DISPLAY_HELP, "Bild, Qualität, Bildfilter und Farben, freie Kamera.")
 T(P_SOUND, "Ton")
 T(M_SOUND_HELP, "Gesamt-, Musik- und Effektlautstärke.")

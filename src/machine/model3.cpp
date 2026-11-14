@@ -1837,13 +1837,13 @@ void Model3::fv2_set_random_chara(bool on)
 	ram[FV2_RANDOM_CHARA ^ 3] = on ? 1 : 0;
 }
 
-int Model3::fv2_mode()
+int Model3::fv2_mode() const
 {
 	if (set != "fvipers2" || ram.size() <= FV2_MODE_SUB) return -1;
 	return ram[FV2_MODE_MAIN ^ 3];
 }
 
-int Model3::fv2_submode()
+int Model3::fv2_submode() const
 {
 	if (set != "fvipers2" || ram.size() <= FV2_MODE_SUB) return -1;
 	return ram[FV2_MODE_SUB ^ 3];
@@ -1853,6 +1853,388 @@ int Model3::fv2_bonus_stage()
 {
 	if (set != "fvipers2" || ram.size() <= FV2_BONUS_STAGE) return -1;
 	return ram[FV2_BONUS_STAGE ^ 3] ? 1 : 0;
+}
+
+// ---- WHAT A TWO-PLAYER VERSUS ASKS OF THE GAME ----
+//
+// Every address and every rule below was measured on the console build of this port and is carried over
+// word for word, with the measurement that established it. Nothing here is new work on the game: the
+// versus is a mode the BOARD already has, and this is the handful of its own bytes that have to be read
+// or asked for to reach it from a menu (src/host/fv2_versus.h).
+constexpr uint32_t FV2_MODE_REQUEST = 0x0058FD9A;      // what the dispatcher at 0x0000ABC4 copies into the mode
+constexpr uint32_t FV2_SUBMODE_REQUEST = 0x0058FD9B;   // and the sub-state beside it, copied at 0x0000BA74
+constexpr uint8_t FV2_MODE_ADV_DSP = 3, FV2_MODE_GAME_INT = 6, FV2_MODE_OVER_INT = 18;
+constexpr uint8_t FV2_ADV_TITLE_INT = 4, FV2_ADV_TITLE_DSP = 5;
+constexpr uint8_t FV2_SEL_STAGE_SEL_INT = 2, FV2_SEL_DECIDE_INT = 4;
+constexpr uint32_t FV2_ADV_INFO_STATUS = 0x005813F0;   // the match's own word
+constexpr uint32_t FV2_MATCH_OVER = 0x40000000;        // set when the match, not merely the round, is decided
+constexpr uint32_t FV2_ROUNDS_LOST_1P = 0x00581455;
+constexpr uint32_t FV2_ROUNDS_LOST_2P = 0x0058FDBA;
+constexpr uint32_t FV2_ROUND_NUMBER = 0x00581456;
+constexpr uint32_t FV2_GAME_TIMER = 0x00581404;        // Sega's *GAME TIMER: what FIGHT_DSP counts down
+constexpr uint32_t FV2_SCREEN_TIMER = 0x0058FD56;      // what the screen now up has left, SIGNED
+constexpr uint16_t FV2_SCREEN_TIMER_EDGE = 8;          // an eighth of a second, and firmly positive
+constexpr uint32_t FV2_SCENE_INDEX = 0x0058FD9F;
+constexpr uint32_t FV2_TASK_ENTRY2 = 0x00700100;       // player 2's task register, NOT 0x00707000
+constexpr uint32_t FV2_PLAYERS = 0x0058145A;           // 1 one player, 3 two: the branch point's first question
+constexpr uint32_t FV2_VS_FINISH = 0x00120558;         // the operator setting the end of a versus is read against
+constexpr uint32_t FV2_FIGHTER_PTR[2] = { 0x0007511C, 0x00075120 };
+constexpr uint32_t FV2_LIFE_IN_BLOCK = 0x66, FV2_LIFE_MAX_IN_BLOCK = 0x68;
+constexpr uint16_t FV2_LIFE_PLAUSIBLE = 2000;          // a starting life above this is not a fighter's block
+
+// What the game is ASKING FOR, as opposed to where it is (fv2_submode). The two differ for exactly one tick,
+// and that tick is what the stage page and the end-of-match panel are both opened on: SELECT writes
+// DECIDE_INT into the request and Sega's dispatcher acts on it the NEXT tick, so reading the request catches
+// the game before DECIDE_INT has run even once. Reading MODE_SUB instead catches it a tick late, and letting
+// the sub-state run and then pushing the game back runs it twice.
+int Model3::fv2_submode_request() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return -1;
+	return ram[FV2_SUBMODE_REQUEST ^ 3];
+}
+
+// The sub-state the game is in asked for AGAIN, which is how it is held where it stands: the dispatcher
+// copies the request into the sub-state every tick, so the same value every tick is the same sub-state every
+// tick. The end-of-match panel holds VIC_DSP this way, so that NEXT_PROG_SEL -- which is what sends a decided
+// versus to GAME OVER, or hands the winner a ladder -- is not left waiting to run the instant the panel goes.
+void Model3::fv2_hold_submode()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return;
+	const int sub = fv2_submode();
+	if (sub < 0 || sub > 255) return;
+	ram[FV2_SUBMODE_REQUEST ^ 3] = uint8_t(sub);
+}
+
+// The sub-state cut short: the next one asked for, and the mode left alone.
+void Model3::fv2_cut_submode()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return;
+	const int sub = fv2_submode();
+	if (sub < 0 || sub >= 255) return;
+	ram[FV2_SUBMODE_REQUEST ^ 3] = uint8_t(sub + 1);
+}
+
+// The game's own title screen is up: the mode is ADV and the sub-state one of its two title states. This is
+// NOT the question fv2_in_attract answers -- "is a game running" is true of the warning, the SEGA logo, the
+// title, the presentations, the demos and the rankings alike.
+bool Model3::fv2_on_title() const
+{
+	const int mode = fv2_mode();
+	if (mode != 2 && mode != 3) return false;
+	const int sub = fv2_submode();
+	return sub == FV2_ADV_TITLE_INT || sub == FV2_ADV_TITLE_DSP;
+}
+
+// THE GAME PARKED IN ITS OWN EMPTY STAGE_SEL, which is the opposite of a freeze.
+//
+// SEL's six sub-states are SEL_START, SELECT, STAGE_SEL_INT, STAGE_SEL_DSP, DECIDE_INT, DECIDE_DSP, and the
+// arcade board jumps straight from SELECT to DECIDE_INT: its two STAGE_SEL states are an EMPTY STUB, one `b`
+// to the dispatcher's exit (0x0000BBB4 -> 0x0000BAD8). Sega kept the name and emptied the body, so there is a
+// sub-state that runs the game's whole frame -- its drawing tasks, its music, its sound board -- and advances
+// nothing. The stage page is drawn over the game parked there, so the select screen the game made goes on
+// being drawn and the board goes on playing: frozen instead, that screen drained away, the two fighters
+// vanished and nothing could be heard moving through the page.
+//
+// HELD, the request renewed every frame, which is the one case where holding a request is right: the point is
+// that the game never walks on.
+//
+// AND IT REFUSES ANYWHERE BUT THE SELECT SCREEN. The sub-state is read against the MODE it belongs to: 2
+// means Sega's empty STAGE_SEL_INT in SEL, and ROUND_MASK_DSP in GAME. Parking a fight would write
+// ROUND_MASK_DSP into it, every frame.
+bool Model3::fv2_park_stage_select()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return false;
+	const int mode = fv2_mode();
+	if (mode != 4 && mode != 5) return false;   // SEL_INT, SEL_DSP: nowhere else does 2 mean STAGE_SEL
+	ram[FV2_SUBMODE_REQUEST ^ 3] = FV2_SEL_STAGE_SEL_INT;
+	return true;
+}
+
+// And let go: DECIDE_INT asked for, once, which is the sub-state SELECT would have gone to on its own.
+bool Model3::fv2_leave_stage_select()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SUBMODE_REQUEST) return false;
+	const int mode = fv2_mode();
+	if (mode != 4 && mode != 5) return false;
+	ram[FV2_SUBMODE_REQUEST ^ 3] = FV2_SEL_DECIDE_INT;
+	return true;
+}
+
+// WHICH ARENA THE FIGHT HAPPENS IN, and it is the DRAW'S OWN TABLE, not a patch on its code.
+//
+// 0x0007111C is the stage draw, twenty instructions long: a random number, modulo 27, then the first FREE
+// entry of a 27-byte table at 0x004836FF from there on, the entry taken being marked used. 0x00071098 builds
+// that table and decides which arenas may come up at all -- read back out of three RAM dumps, it is
+// 01 00 00 00 01 00 00 00 00 00 00 00 00 then fourteen 01: index 0 locked, 1 to 3 free, 4 conditional, 5 to
+// 12 free, 13 to 26 locked.
+//
+// SO THE LEVER IS THE TABLE: leave one index free and the draw returns it, whatever the random number was. A
+// write to DATA, which matters here more than it does in an emulator -- this is a RECOMPILATION, and one word
+// of CODE disagreeing with what the native code was made from turns the recompiler off and drops the PowerPC
+// to the interpreter (measured: 48.8 frames a second against 57.5). The first version of this patched the
+// draw's first two instructions to `li r3,<scene> ; blr` and paid exactly that.
+//
+// HELD, because the draw marks its own choice used as it takes it. Returns 1 when it had to write, 0 when it
+// did not, -1 for a game this isn't known for or a scene the draw cannot return.
+int Model3::fv2_hold_stage(int scene)
+{
+	if (set != "fvipers2" || scene < 1 || scene > 26) return -1;
+	if (ram.size() <= FV2_STAGE_DRAW + FV2_STAGE_DRAW_N) return -1;
+	if (!fv2_draw_held) {
+		for (int i = 0; i < FV2_STAGE_DRAW_N; i++) fv2_draw_was[i] = ram[(FV2_STAGE_DRAW + uint32_t(i)) ^ 3];
+		fv2_draw_held = true;
+	}
+	int wrote = 0;
+	for (int i = 0; i < FV2_STAGE_DRAW_N; i++) {
+		uint8_t &b = ram[(FV2_STAGE_DRAW + uint32_t(i)) ^ 3];
+		const uint8_t want = uint8_t(i == scene ? 0 : 1);
+		if (b != want) { b = want; wrote = 1; }
+	}
+	return wrote;
+}
+
+// The draw given back exactly as it was found. Not rebuilt from the rule above: index 4 carries a condition
+// this port does not evaluate, and a table written from a rule we only half know is a table that is wrong the
+// day the rule matters.
+int Model3::fv2_release_stage()
+{
+	if (set != "fvipers2" || !fv2_draw_held) return 0;
+	if (ram.size() <= FV2_STAGE_DRAW + FV2_STAGE_DRAW_N) return -1;
+	for (int i = 0; i < FV2_STAGE_DRAW_N; i++)
+		ram[(FV2_STAGE_DRAW + uint32_t(i)) ^ 3] = fv2_draw_was[i];
+	fv2_draw_held = false;
+	return 1;
+}
+
+// How many are playing: the game's own byte, 1 for one player and 3 for two. It is the first thing the
+// match's branch point asks (0x0000DB60), and 0x0000C2EC picks the round's length on it. Measured 3 through a
+// versus and through a training.
+int Model3::fv2_players() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_PLAYERS) return -1;
+	return ram[FV2_PLAYERS ^ 3];
+}
+
+// VS FINISH, the operator setting a decided two-player match is read against, in the WORKING copy -- the one
+// the running game reads. What the player chose in the cabinet's own settings is kept in the backup and is not
+// touched here, so what is lent for the length of a way out is given back without changing anything of theirs.
+int Model3::fv2_vs_finish() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_VS_FINISH) return -1;
+	return ram[FV2_VS_FINISH ^ 3];
+}
+
+bool Model3::fv2_set_vs_finish(int v)
+{
+	if (set != "fvipers2" || ram.size() <= FV2_VS_FINISH) return false;
+	ram[FV2_VS_FINISH ^ 3] = uint8_t(v);
+	return true;
+}
+
+// THE MATCH, AND NOT MERELY THE ROUND, IS DECIDED: one bit of the match's own word.
+//
+// fv2_game_NEXT_PROG_SEL (0x0000DB48, game sub-state 19) is the branch point of the whole match flow:
+//     if (!(ADV_INFO_STATUS & 0x40000000)) { ++ROUND_NO; S-MODE_REQUEST = 6; return; }   /* another round */
+// so that bit is the difference between another round of this match and this match being over.
+bool Model3::fv2_match_over() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ADV_INFO_STATUS + 4) return false;
+	uint32_t v = 0;
+	for (int i = 0; i < 4; i++) v = v << 8 | ram[(FV2_ADV_INFO_STATUS + uint32_t(i)) ^ 3];
+	return (v & FV2_MATCH_OVER) != 0;
+}
+
+// The same bit put back, every frame, until the game leaves GAME. The bit does not keep: between the round's
+// end and the branch point the game writes ADV_INFO_STATUS itself, and what it writes there is its own count
+// of the rounds won, which says the match is not decided. Measured on the console build: the match was asked
+// to end at frame 3000 and the game fought another round at 3010 and four more after it.
+void Model3::fv2_hold_match_over()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ADV_INFO_STATUS + 4) return;
+	uint8_t &high = ram[FV2_ADV_INFO_STATUS ^ 3];
+	high = uint8_t(high | (FV2_MATCH_OVER >> 24));
+}
+
+// ---- A MATCH ENDED BY THE GAME'S OWN BRANCH POINTS, not by making a player lose ----
+//
+// Two words, and both are conditions the game's own handlers test every frame:
+//
+//   fv2_game_FIGHT_DSP (0x0000C5C4, sub-state 12) runs the round, and its exit is one line --
+//       if (... || --GAME_TIMER > 0) { return; }   ADV_INFO_STATUS |= 0x80000000;   S-MODE_REQUEST++;
+//   so GAME_TIMER at 1 means the next frame takes it to 0, the handler marks the time-out itself and asks for
+//   JUDGE. Measured: 0x00581404 reads 5 4 3 2 1 and on the frame it reaches 0 the sub-state becomes JUDGE and
+//   ADV_INFO_STATUS becomes 0x80000000, all three together.
+//
+//   and NEXT_PROG_SEL's bit above is what makes that the end of the MATCH rather than of the round.
+//
+// Nobody's life is touched, and every value written is one the game reads on purpose. -1 for a moment that is
+// not a round being fought: the two words mean nothing anywhere else, which is why the end-of-match panel's
+// own way out does not call this at all.
+int Model3::fv2_end_match()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_ADV_INFO_STATUS + 4) return -1;
+	const int mode = fv2_mode(), sub = fv2_submode();
+	if ((mode != 6 && mode != 7) || (sub != 11 && sub != 12)) return -1;
+	uint8_t &high = ram[FV2_ADV_INFO_STATUS ^ 3];        // the bit is in the top byte; the rest is left alone
+	high = uint8_t(high | (FV2_MATCH_OVER >> 24));
+	for (int i = 0; i < 4; i++) ram[(FV2_GAME_TIMER + uint32_t(i)) ^ 3] = i == 3 ? 1 : 0;
+	return 1;
+}
+
+// GAME OVER asked for with the game's own write. NEXT_PROG_SEL's two-player road ends in three instructions --
+// li r0,18 ; stb r0,[0x0058FD9A] -- and that road is UNREACHABLE once the winner's pose is over: the byte it
+// branches on, 0x0058145A, falls from 3 to 1 in the very frame the branch runs, the board's INTRUDE rule
+// handing the winner the game. Lending the 3 back was tried and does not take, the handover being in the same
+// tick and after the lend. So this writes what that road writes, where it writes it -- Sega's own three
+// instructions, not a lever invented here.
+void Model3::fv2_request_game_over()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_MODE_REQUEST) return;
+	ram[FV2_MODE_REQUEST ^ 3] = FV2_MODE_OVER_INT;
+}
+
+// ---- THE SAME TWO FIGHTERS, THE SAME ARENA, ANOTHER MATCH ----
+//
+// And no loading at all, because nothing is unloaded: the game already knows how to start a fight again
+// without the select screen, since it does it between every round. Its NEXT_PROG_SEL branch asks for one of
+// two things -- another round, or the match is over -- so writing the first where the second was, and putting
+// the counters back, gives a round 1 with the same characters and the same stage.
+//
+// Five writes, and only the first commands anything; the other four undo the match just fought. They all go in
+// BEFORE the game runs again, the dispatcher copying the request into the mode on the next frame.
+//
+// AND THE LOSER'S TASK IS HANDED BACK. The versus is not a mode of its own on this board: it is player 2
+// stepping into player 1's arcade game, which the game calls INTRUDE, and its rule is that the WINNER INHERITS
+// THE GAME -- so the loser's task register falls to 0 and that player's pad goes dead. Whichever of the two
+// reads 0 is the one that was stopped; the live one is left exactly as it is, and a task whose fighting value
+// was never seen is left alone rather than guessed at. Which is why the caller has to have read them WHILE THE
+// ROUND WAS BEING FOUGHT: read here, the loser's is already the stopped one.
+//
+// Returns 1 when it wrote, 0 when there was nothing it could trust (no plausible life block: not a fight, or
+// not the block we think), -1 for a game this isn't known for.
+int Model3::fv2_rematch(uint32_t entry1_live, uint32_t entry2_live)
+{
+	if (set != "fvipers2" || ram.size() <= FV2_TASK_ENTRY2 + 3) return -1;
+	auto refill = [&](int who) {
+		const int m = fv2_life_max(who);
+		return m > 0 && fv2_set_life(who, m);
+	};
+	const bool one = refill(1), two = refill(2);
+	if (!one && !two) return 0;
+	ram[FV2_MODE_REQUEST ^ 3] = FV2_MODE_GAME_INT;   // the only one that commands
+	ram[FV2_ROUNDS_LOST_1P ^ 3] = 0;
+	ram[FV2_ROUNDS_LOST_2P ^ 3] = 0;
+	ram[FV2_ROUND_NUMBER ^ 3] = 1;                   // round 1, not the sixth
+	// Nothing is written for the characters, the stage or the sub-state: between two rounds the game sets its
+	// own sub-state, and imposing one would be a second intervention where one is being tried.
+	auto give_back = [&](uint32_t at, uint32_t live) {
+		if (!live) return;                                            // never seen fighting: leave it alone
+		if (*reinterpret_cast<const uint32_t *>(&ram[at])) return;    // still alive: the winner keeps his
+		*reinterpret_cast<uint32_t *>(&ram[at]) = live;
+	};
+	give_back(FV2_TASK_ENTRY1, entry1_live);
+	give_back(FV2_TASK_ENTRY2, entry2_live);
+	return 1;
+}
+
+// Player 2's task register, the companion of fv2_task_state: watched while a fight runs, so that what has to
+// be put back is known before it is stopped (fv2_rematch above).
+int Model3::fv2_task2_state() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_TASK_ENTRY2 + 3) return -1;
+	return int(*reinterpret_cast<const uint32_t *>(&ram[FV2_TASK_ENTRY2]));
+}
+
+// How long the screen now up has left, and it is SIGNED: an already expired screen reads negative, and read
+// unsigned once it reported 65535 and lengthened a screen that was meant to be shortened.
+int Model3::fv2_screen_timer() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SCREEN_TIMER + 1) return 0;
+	return int16_t(ram[FV2_SCREEN_TIMER ^ 3] << 8 | ram[(FV2_SCREEN_TIMER + 1) ^ 3]);
+}
+
+// The screen now up cut short -- to an eighth of a second, not to zero. Eight is still firmly positive, so the
+// game crosses zero itself by the road it takes anyway; at zero it would not. CONTINUE and GAME OVER are MODES
+// of their own, not sub-states, so the sub-state request does not reach them and their own counter is the only
+// lever there is.
+void Model3::fv2_expire_screen()
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SCREEN_TIMER + 1) return;
+	ram[FV2_SCREEN_TIMER ^ 3] = uint8_t(FV2_SCREEN_TIMER_EDGE >> 8);
+	ram[(FV2_SCREEN_TIMER + 1) ^ 3] = uint8_t(FV2_SCREEN_TIMER_EDGE);
+}
+
+// The arena now loaded. A change in it is what says the end-of-game screens have gone past: entry1's task has
+// read zero since the K.O. and does not tell CONTINUE and GAME OVER apart.
+int Model3::fv2_scene_index() const
+{
+	if (set != "fvipers2" || ram.size() <= FV2_SCENE_INDEX) return -1;
+	return ram[FV2_SCENE_INDEX ^ 3];
+}
+
+// The attract sequencer's own road to the title screen: its list pushed to its last real entry and its timer
+// set long expired, written ONCE, and the game then walks off the end of the list itself -- which is the only
+// way it takes the branch that installs the title screen off-list. Writing 15 does not work: the sequencer
+// tests the entry after the current one against the list's terminator and runs away.
+//
+// WHY THIS AND NOT THE MODE REQUEST. Asked for the title screen mid-demonstration, the mode machine shows it
+// at once -- but the 3D the demonstration was drawing is still there. A title screen the game reached by itself
+// carries no 3D at all; one reached by the request carried 397 models over 10 viewports with the full-screen 3D
+// still on, and the demonstrations after it then drew from a scene nobody tidied. The request changes what is
+// displayed; it does not stop what was drawing.
+//
+// It works from the attract loop and only there: the sequencer does not run during a game.
+void Model3::fv2_attract_to_title()
+{
+	constexpr uint32_t FV2_ADV_LIST_AT = 0x00580DFC;     // where the attract sequencer is in its list
+	constexpr uint32_t FV2_ADV_TIMER = 0x00580DD2;       // how long the entry it is on still has
+	constexpr uint8_t FV2_ADV_LAST_ENTRY = 14;
+	if (set != "fvipers2" || ram.size() <= FV2_ADV_LIST_AT + 1) return;
+	ram[FV2_ADV_LIST_AT ^ 3] = FV2_ADV_LAST_ENTRY;
+	ram[FV2_ADV_TIMER ^ 3] = 0x7F;                       // (a halfword, big-endian: 0x7FFF)
+	ram[(FV2_ADV_TIMER + 1) ^ 3] = 0xFF;
+}
+
+// ---- THE TWO FIGHTERS' LIVES, which is all a rematch needs of them ----
+//
+// The block the game is using for a fighter, by its own pointer. 0 when there is none -- outside a fight the
+// pointer holds whatever it held, so every reader below checks the starting life as well, and that is the
+// guard that actually catches a block which is not a fighter's.
+uint32_t Model3::fv2_fighter(int player) const
+{
+	if (set != "fvipers2") return 0;
+	const uint32_t at = FV2_FIGHTER_PTR[player == 2 ? 1 : 0];
+	if (ram.size() <= at + 3) return 0;
+	const uint32_t block = *reinterpret_cast<const uint32_t *>(&ram[at]);
+	return block + FV2_LIFE_MAX_IN_BLOCK + 1 < ram.size() ? block : 0;
+}
+
+int Model3::fv2_life_max(int player) const
+{
+	const uint32_t b = fv2_fighter(player);
+	if (!b) return -1;
+	const uint32_t at = b + FV2_LIFE_MAX_IN_BLOCK;
+	const int m = ram[at ^ 3] << 8 | ram[(at + 1) ^ 3];
+	return m > 0 && m <= FV2_LIFE_PLAUSIBLE ? m : -1;   // not a fight, or not the block we think
+}
+
+int Model3::fv2_life(int player) const
+{
+	const uint32_t b = fv2_fighter(player);
+	if (!b || fv2_life_max(player) < 0) return -1;
+	const uint32_t at = b + FV2_LIFE_IN_BLOCK;
+	return ram[at ^ 3] << 8 | ram[(at + 1) ^ 3];
+}
+
+bool Model3::fv2_set_life(int player, int v)
+{
+	const int m = fv2_life_max(player);
+	if (m < 0) return false;
+	const uint32_t at = fv2_fighter(player) + FV2_LIFE_IN_BLOCK;
+	const int w = v < 0 ? 0 : v > m ? m : v;
+	ram[at ^ 3] = uint8_t(w >> 8);
+	ram[(at + 1) ^ 3] = uint8_t(w);
+	return true;
 }
 
 } // namespace m3

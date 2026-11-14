@@ -37,6 +37,8 @@ T(M_RESUME_MATCH_HELP, "Retour au match (il continue pendant que le menu est ouv
 T(P_DISPLAY, "Affichage")
 T(M_SURVIVAL_HELP, "Survival, le mode du jeu lui-même\xC2\xA0: un adversaire après l'autre, avec la vie qui reste. La ligne le demande et donne au jeu une vraie pression de Start\xC2\xA0; ce qu'elle pose est remis en place à la fin de la partie. La borne le garde derrière les boutons de l'exploitant.")
 T(M_RANDOM_HELP, "Random, le mode du jeu lui-même\xC2\xA0: l'écran de sélection passe en RANDOM MODE. La ligne le demande et donne au jeu une vraie pression de Start\xC2\xA0; ce qu'elle pose est remis en place à la fin de la partie. La borne le garde derrière les boutons de l'exploitant.")
+T(M_VERSUS_HELP, "Versus, le mode de la borne elle-même\xC2\xA0: le joueur 2 entre dans la partie du joueur 1 sur l'écran de sélection, ce que le jeu appelle INTRUDE. La ligne le demande et donne au jeu une vraie pression de Start, puis une pour le joueur 2 trente images après l'apparition de l'écran de sélection. Les deux joueurs choisissent le décor, et la fin du combat en propose un autre au lieu du GAME OVER.")
+T(M_VS_NOTE, "Le combat est joué. Un autre avec les mêmes personnages, un autre décor, l'écran de sélection, ou retour à l'écran titre.")
 T(M_DISPLAY_HELP, "Image, qualité, filtre d'écran et couleurs, caméra libre.")
 T(P_SOUND, "Son")
 T(M_SOUND_HELP, "Volume général, de la musique et des effets.")
