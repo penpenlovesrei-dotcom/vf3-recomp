@@ -70,6 +70,7 @@ copy_deps
 
 cp -R assets/ui assets/fonts "$P/assets/"
 cp assets/icon/icon.png "$P/assets/icon/"
+cp assets/icon/VF3.ico "$P/assets/icon/"   # (a shortcut can wear it: the program has no icon of its own)
 cp "tools/win/$([ "${FV2:-0}" = 1 ] && echo README-fv2.txt || echo README-msys.txt)" "$P/README.txt"
 tools/release/licenses.sh "$P/LICENSES.txt" --windows 2>/dev/null || \
 	echo "(LICENSES.txt needs tools/release/licenses.sh and its dependency tarballs; see tools/release/README.txt)" > "$P/LICENSES.txt"
