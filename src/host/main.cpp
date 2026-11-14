@@ -4256,12 +4256,7 @@ int main(int argc, char **argv)
 							 [&] { menu.push(player_page(1)); } });
 		pg.items.push_back({ tr::CTL_SWAP, tr::CTL_SWAP_HELP, {}, {},
 							 [&] {
-								 // A side with no pad swaps as "auto", never as "none": with one pad between them, a swap moved the pad to the
-								 // other player AND shut the first one off for good -- its pad dead in the game, Set up buttons
-								 // answering that it has none, and the settings keeping it that way at the next start. The pad
-								 // still goes where the swap says (a GUID chosen is taken before any "auto"), and a second pad
-								 // plugged in later finds the empty side waiting for it.
-								 auto choice = [&](int p) { return pads[p] ? guid_of(SDL_GetGamepadID(pads[p])) : std::string("auto"); };
+								 auto choice = [&](int p) { return pads[p] ? guid_of(SDL_GetGamepadID(pads[p])) : std::string("none"); };
 								 std::string a = choice(0), b = choice(1);
 								 if (a == b) { pads_swapped = !pads_swapped; std::swap(pads[0], pads[1]); return; }
 								 cfg.ctl[0].pad_choice = b;
