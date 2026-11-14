@@ -41,10 +41,17 @@ class Fv2Versus
 public:
 	// The panel's four lines. They are the console build's own four, less RESUME: there is no fight to go back
 	// to at the end of a match, and a line that promises one is a line that lies.
-	enum { L_REMATCH, L_STAGE, L_VIPERS, L_MENU, L_COUNT };
+	//
+	// AND THE LAST ONE IS CALLED EXIT, NOT MAIN MENU, which is Frederic's of the 2026-11-14. The console
+	// build's MAIN MENU lands on the console's own list of modes -- ARCADE, V.S., RANDOM and the rest -- and
+	// that surface is deliberately not part of this package: the console menu is an extra of the package and
+	// not a part of it. So the line has nowhere of that name to go, while what it DOES reach is the game's own
+	// title screen, by the attract sequencer's own road, which works here because by then the attract loop is
+	// running again and there IS a list to walk off. A line is named for where it arrives.
+	enum { L_REMATCH, L_STAGE, L_VIPERS, L_EXIT, L_COUNT };
 	static const char *line_name(int l)
 	{
-		static const char *const N[L_COUNT] = { "REMATCH", "CHANGE STAGE", "CHANGE YOUR VIPER", "MAIN MENU" };
+		static const char *const N[L_COUNT] = { "REMATCH", "CHANGE STAGE", "CHANGE YOUR VIPER", "EXIT" };
 		return l >= 0 && l < L_COUNT ? N[l] : "?";
 	}
 
@@ -191,7 +198,9 @@ public:
 		case L_VIPERS:
 			leave_match(b, L_TO_SELECT);
 			break;
-		case L_MENU:
+		case L_EXIT:
+			// The game's own title screen, and the mode let go of with it (arrive): out of the versus, back where
+			// a coin and a press of Start start another one.
 			leave_match(b, L_TO_TITLE);
 			break;
 		default:
