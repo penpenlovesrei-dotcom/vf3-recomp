@@ -3233,7 +3233,7 @@ int main(int argc, char **argv)
 	game_menu &menu = *menu_owner;
 	if (!menu.init(win, ren, find_assets()))
 		fprintf(stderr, "no menu: its files (assets/ui) weren't found\n");
-	menu.set_footer(std::string("Virtua Fighter 3 Recomp ") + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
+	menu.set_footer(std::string(board.profile->name) + " Recomp " + VF3_VERSION + (*VF3_DATE ? std::string(" \u00b7 ") + VF3_DATE : std::string()));
 	bool running = true, paused = false;
 	// P pressed with a frame's first half run (smooth motion: half, below): the pause taken once that frame is done, so a
 	// paused game is always between two frames (the free camera builds the frame on show again from the board then)
@@ -3791,7 +3791,7 @@ int main(int argc, char **argv)
 				menu.push(q);
 			};
 			p.items.push_back({ tr::G_VERSION, tr::G_VERSION_HELP,
-				[&] { return std::string(board.profile == &m3::VF3_TB ? "Team Battle" : "Virtua Fighter 3"); },   // (the games' names)
+				[&] { return std::string(board.profile == &m3::VF3_TB ? "Team Battle" : board.profile->name); },   // (the games' names)
 				[ask](int) { ask(); }, ask });
 		}
 		else if (board.profile == &m3::VF3_REV_D) {   // (Team Battle not found beside it: a way to add it)
@@ -4277,6 +4277,7 @@ int main(int argc, char **argv)
 		const bool one = board.profile == &m3::VF3_TB && cfg.tb_one;
 		const bool stage = cfg.online.stage_select;
 		online.identity = { board.profile->set, vf3net::online_version(VF3_VERSION) + (dural ? vf3net::DURAL_FLAG : "") + (one ? "+1v1" : "") + (stage ? "+stage" : ""), vf3net::content_hash(board), "" };   // (the online version, not the release's)
+		online.game_name = board.profile->name;   // (the heading: the game being played)
 		online.own_dural = online.adapter.dural = dural;
 		online.own_stage = online.adapter.stage_select_on = stage;
 		// (Random and rooms across settings: the pool, the host's settings; and the flags of an older build's version

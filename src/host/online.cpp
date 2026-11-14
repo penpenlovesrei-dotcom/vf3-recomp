@@ -3125,7 +3125,7 @@ void browser_page(Online &o, OnlineSettings &s, game_menu &menu, std::function<v
 		} else { b.sel_key.clear(); b.sel_item = sel; }
 		if (b.first == 0) b.fresh = 0;
 		const int players = o.players_online(s);
-		std::string r = "<div class=\"scr\"><div class=\"bhead\"><div class=\"btitle\">" + E(tr::ONLINE) + "</div><div class=\"bgame\">" + E(o.identity.game == "vf3tb" ? tr::GAME_VF3TB : tr::GAME_VF3) + "</div>"
+		std::string r = "<div class=\"scr\"><div class=\"bhead\"><div class=\"btitle\">" + E(tr::ONLINE) + "</div><div class=\"bgame\">" + E(o.identity.game == "vf3tb" ? std::string(tr::GAME_VF3TB) : o.identity.game == "vf3" || o.game_name.empty() ? std::string(tr::GAME_VF3) : o.game_name) + "</div>"
 		                "<div " + menu_row(B_CHIP, sel, "chip bchip") + ">";
 		if (s.name.empty()) r += "<div class=\"me\">" + E(tr::SET_YOUR_NAME) + "</div>";
 		else r += "<div class=\"who\">" + E(tr::PLAYING_AS) + "</div>" + flag(o.my_country()) + "<div class=\"me\">" + E(s.name) + "</div>";
