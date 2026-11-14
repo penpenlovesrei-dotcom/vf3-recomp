@@ -1620,6 +1620,108 @@ struct Game
 		const video::Scene &cur() const { return scene[newest]; }
 		const video::Scene &prev() const { return scene[newest ^ 1]; }
 	} view;
+	// ---- HONEY'S FOUR COSTUMES (the two Sega ships, and the two without the skirt) ----
+	//
+	// The costume players have told each other about for twenty-odd years turns out to be in Sega's own code.
+	// The cloth task switches on the fighter's id through a table of twelve handlers, and hers is the only one
+	// of the twelve that reads a counter: it zeroes three halfwords of her cloth model when her LOWER armour
+	// has actually been knocked off AND the current run of straight wins is past 29 -- thirty in a row, both
+	// players in the machine. Two instructions decide it, and turning them always-true is the whole of it:
+	//
+	//     00057A24   beq +0x40      the armour test   ->  nop
+	//     00057A30   cmpwi r0,29    the win counter   ->  cmpwi r0,-1
+	//
+	// Patching only the first does nothing at all -- the counter test then fails -- so the pair go in together
+	// or not at all (Model3::honey_costume, which reads both words before it writes either).
+	//
+	// THE SAME WHEEL AS KUHN'S BELOW, and for the same reason: her colour needs no help, the game's own toggle
+	// already reaching positions 2 and 3 as its colours 0 and 1. What these two positions add is the skirt
+	// gone. And the wheel FOLLOWS THE GAME rather than counting presses -- the long comment under Kuhn says why
+	// in full: Up and Down both flip the game's toggle, a held stick repeats, and anything that counts edges
+	// drifts into one costume's body under another's number.
+	//
+	// ONE PROGRAM, SO ONE SKIRT. The patch is two words of the game's code, not a texture of hers, so both
+	// Honeys in a match wear what the wheel last chose. That is the same trade Kuhn's textures make.
+	//
+	// NOT A SETTING. Positions 0 and 1 are Sega's own two, so nothing is taken from anyone by the wheel always
+	// being there -- and a line in a menu is a line a player never finds.
+	int honey_cycle = 0;          // 0-3 while the select screen is up
+	int honey_colour_was = -1;    // the game's own *1P COLOR as the last frame left it (-1: not looked at yet)
+	int honey_cursor_was = -1;    // and the cursor it belonged to
+	int honey_dir = 1;            // which way the wheel turns: the last direction a player asked for
+	bool honey_skirt_off = false; // what the program is wearing now, so the two words move only on a change
+	static constexpr int HONEY_CURSOR = 8;   // her place on the select row (fighter 6)
+	bool honey_on_select = false, honey_up_was = false, honey_down_was = false;
+	void honey_wear(int cycle)
+	{
+		const bool off = cycle >= 2;
+		if (off == honey_skirt_off) return;   // (nothing changed: the words stay as they are, and no native code is remade)
+		if (board.honey_costume(off) <= 0) return;
+		honey_skirt_off = off;
+		// The two words are the program the recompiler made its native code from, so that code is no longer what
+		// the program says. Before the boot is over there is nothing made yet and nothing to redo.
+		if (rebuilt_after_boot) rebuild_from_ram_if_stale();
+	}
+	// Whose *1P COLOR the wheel follows: the player whose cursor is on her, player 1 first.
+	int honey_whose() const
+	{
+		for (int p = 0; p < 2; p++)
+			if (board.fv2_cursor(p) == HONEY_CURSOR) return p;
+		return 0;
+	}
+	void honey_tick(bool up_now, bool down_now)
+	{
+		if (board.profile != &m3::FV2_REV_A) return;
+		const bool on_select = board.fv2_task_state() == 5;
+		if (on_select && !honey_on_select) {   // the screen just opened: back to the first costume
+			honey_cycle = 0;
+			honey_colour_was = -1;
+			honey_cursor_was = -1;
+			honey_up_was = honey_down_was = false;
+			honey_dir = 1;
+			honey_wear(0);
+		}
+		if (on_select) {
+			if (up_now && !honey_up_was) honey_dir = 1;
+			else if (down_now && !honey_down_was) honey_dir = -1;
+			honey_up_was = up_now;
+			honey_down_was = down_now;
+			// The cursor is watched with the byte, for the reason Kuhn's comment gives: *1P COLOR is a field of
+			// whoever the cursor is on, so walking the row makes it take each fighter's own costume number in turn.
+			// A step counts only while the cursor stays where it is, and leaving her puts the skirt back.
+			const int who = honey_whose();
+			const int cur = board.fv2_cursor(who);
+			const int now = board.fv2_colour(who);
+			const bool on_honey = cur == HONEY_CURSOR;
+			if (cur != honey_cursor_was || !on_honey) {
+				honey_cursor_was = cur;
+				honey_colour_was = now;
+				const int want = (on_honey && (now == 0 || now == 1)) ? now : 0;
+				if (want != honey_cycle) {
+					honey_cycle = want;
+					honey_wear(honey_cycle);
+				}
+			} else if (now == 0 || now == 1) {
+				if (now != honey_colour_was) {
+					honey_cycle = (honey_cycle + honey_dir) & 3;
+					honey_wear(honey_cycle);
+					// The preview has to be asked for: nothing in this game watches the cursor, her model is built
+					// when the cursor lands on her, and her cloth handler runs exactly then.
+					for (int p = 0; p < 2; p++) board.fv2_redo_fighter_model(p);
+					fprintf(stderr, "Honey: costume %d of 4%s (the game's own %d)\n", honey_cycle + 1,
+					        honey_cycle >= 2 ? ", no skirt" : "", now);
+				}
+				honey_colour_was = now;
+			}
+		}
+		// The game over and the attract loop back: Sega's own two come back with it, the attract playing demo
+		// fights in which a Honey is Sega's Honey.
+		if (honey_cycle && board.fv2_task_state() == 0) {
+			honey_cycle = 0;
+			honey_wear(0);
+		}
+		honey_on_select = on_select;
+	}
 	// ---- KUHN'S FOUR COLOURS (the two Sega drew, and the two this package adds) ----
 	//
 	// Positions 2 and 3 of a four-long cycle, turned by the same presses the game turns its own two with.
@@ -5698,6 +5800,9 @@ int main(int argc, char **argv)
 				// Kuhn's colour wheel, turned by the same presses the game turns its own two with (Game::kuhn_tick):
 				// Up forwards, Down backwards, because the game's own toggle answers to both.
 				game.kuhn_tick(c.up[0] || c.up[1], c.down[0] || c.down[1]);
+				// Honey's costume wheel, the same presses and the same rule (Game::honey_tick): positions 2 and 3
+				// are her two Sega gated behind thirty straight wins.
+				game.honey_tick(c.up[0] || c.up[1], c.down[0] || c.down[1]);
 				stage_pick.trigger = cfg.dural_stage;
 				for (int p = 0; p < 2; p++) {   // (Cheats > Dural's stage: the picker's inputs; offline, the byte set if need be)
 					dural_stage::Picker::Said said;

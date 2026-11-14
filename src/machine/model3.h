@@ -244,6 +244,11 @@ public:
 	// fight. -1 for any other game.
 	int fv2_task_state() const;
 	bool fv2_in_attract() const { return fv2_task_state() <= 0; }   // true: no game running (and for any other game)
+	// Honey's other costume, the one Sega gated behind thirty straight wins: two instructions in her own
+	// cloth handler, turned always-true, in the same shape as the roster patch -- read before every write, and
+	// the caller keeps calling. It goes both ways, the costume being chosen per match. 1 if it wrote just now,
+	// 0 if there was nothing to do, -1 for a game this isn't known for.
+	int honey_costume(bool on);
 	// The select screen's preview built again, for the player whose cursor has not moved: the game builds a
 	// fighter's model when the cursor lands on him and nothing watches it afterwards, so a colour chosen
 	// between two landings is not seen until this asks for the model again (docs/fv2-honey.md).

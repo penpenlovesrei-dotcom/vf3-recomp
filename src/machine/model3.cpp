@@ -1755,6 +1755,50 @@ int Model3::fv2_task_state() const
 	return int(*reinterpret_cast<const uint32_t *>(&ram[FV2_TASK_ENTRY1]));   // (word() wants it writable)
 }
 
+// Honey's other costume: the one players have passed around for twenty years, and which turns out to be in
+// Sega's code, in her own cloth handler and nobody else's (docs/fv2-honey.md).
+//
+// The cloth task switches on the fighter's id through a table of twelve handlers. Honey's is the only one of
+// the twelve that reads a counter, and it zeroes three halfwords of her cloth model's working copy when two
+// things hold at the instant her model is set up:
+//
+//   - her LOWER armour has actually been knocked off -- armor_flag & 8, which is the piece gone, not merely
+//     damaged past its limit;
+//   - the word at 0x00581438 is greater than 29. That word is the current winner's run of straight wins, and
+//     it only advances while 0x0058145A is 3 -- a byte built as 1 for player 1 having entered plus 2 for
+//     player 2, so three means both players are in the machine. Which is 乱入対戦, the intruded match.
+//
+// Two instructions decide it, and they are what this turns always-true:
+//
+//   00057A24   beq +0x40        the armour test   ->  nop
+//   00057A30   cmpwi r0,29      the win counter   ->  cmpwi r0,-1
+//
+// Both were read in this port's own RAM before being used: 0x41820040 and 0x2C80001D, exactly as measured.
+// Patching only the first does nothing at all -- that was measured too, 0 pixels different over a whole run,
+// because the counter test then fails -- so the pair go in together or not at all.
+//
+// In RAM, like the roster patch, and for the same reason: this game's program is a gzip the boot stub unpacks,
+// so there is nothing to patch until it has. Hence the read before each write.
+// It goes both ways, because the costume is chosen per match: the two extra costumes are the cycle's positions
+// 2 and 3, and positions 0 and 1 must get Sega's own instructions back.
+int Model3::honey_costume(bool on)
+{
+	if (set != "fvipers2") return -1;
+	constexpr uint32_t ARMOUR_TEST = 0x00057A24, WIN_TEST = 0x00057A30;
+	constexpr uint32_t AS_SEGA_WROTE_IT[2] = { 0x41820040, 0x2C80001D };   // beq +0x40 ; cmpwi r0,29
+	constexpr uint32_t ALWAYS[2] = { 0x60000000, 0x2C80FFFF };             // nop       ; cmpwi r0,-1
+	const uint32_t *from = on ? AS_SEGA_WROTE_IT : ALWAYS;
+	const uint32_t *to = on ? ALWAYS : AS_SEGA_WROTE_IT;
+	// Both words, or neither: the pair is one lever. And the read first, as everywhere here -- anything but
+	// what is expected means the program is not unpacked yet, or is not what this thinks it is.
+	if (word(ram, ARMOUR_TEST) != from[0] || word(ram, WIN_TEST) != from[1]) return 0;
+	word(ram, ARMOUR_TEST) = to[0];
+	word(ram, WIN_TEST) = to[1];
+	cpu.ram_written(ARMOUR_TEST);   // (the recompiler's native code was made from what was there)
+	cpu.ram_written(WIN_TEST);
+	return 1;
+}
+
 // The two words the select screen's own code writes when a cursor lands on a fighter: the block's entry
 // point and the bit that says there is work to do. Measured on the Japan Revision A program, one block a
 // player (docs/fv2-honey.md).
