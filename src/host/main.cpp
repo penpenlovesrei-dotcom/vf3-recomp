@@ -132,6 +132,7 @@
 #include "../video/tex3d_hd.h"
 #include "../video/fv2_kuhn_name.h"
 #include "../video/fv2_bm_name.h"
+#include "../video/fv2_hud_name.h"
 #include "flags.h"
 #include "../machine/model3.h"
 #include "../machine/romset.h"
@@ -1474,6 +1475,7 @@ struct Game
 	video::DuralPicture dural_pic;   // (decoded from the ROM when first needed)
 	video::DuralWide dural_wide;     // (her cell whole, for widescreen's right side)
 	video::BMName bm_art;            // B.M.'s name on the select, which Sega left blank (fv2_bm_name.h)
+	video::Fv2HudNames hud_art;      // and the three names on the energy bar the game has none for (fv2_hud_name.h)
 	void start_frame()
 	{
 		const uint64_t t = SDL_GetTicksNS();
@@ -1747,6 +1749,10 @@ struct Game
 		// And B.M.'s name, where the game draws none at all: cell 13 is the one portrait Sega left unlabelled,
 		// the lookup there handing him MAHLER's (fv2_bm_name.h). Same place in the picture, same moment.
 		video::bm_name(board, above, 1, bm_art);
+		// And on the energy bar, the three costumes the game draws no name for: B.M.'s second colour, which
+		// gets his gold plate, and Kuhn's blue and black, which get one of Sega's two (fv2_hud_name.h). The
+		// wheel's place is passed in because no byte of the game holds it.
+		video::fv2_hud_name(board, above, kuhn_cycle, hud_art);
 		view.newest ^= 1;
 		view.scene[view.newest] = scene[newest];
 		view.have_prev = have_prev;
@@ -2251,6 +2257,7 @@ int main(int argc, char **argv)
 		// B.M.'s name, two pictures beside the program rather than in the pack: his is not a texture of the
 		// board at all, it is the name Sega never drew, so there is nothing to replace and nothing to hash.
 		video::bm_name_load(find_assets(), game.bm_art);
+		video::fv2_hud_name_load(find_assets(), pack, game.hud_art);
 	}
 	// Fighting Vipers 2's SURVIVAL and RANDOM (fv2_modes.h): what the two rows of the main page ask for,
 	// and the machine that writes the game's own bytes once a game is running and puts them back at the end.
