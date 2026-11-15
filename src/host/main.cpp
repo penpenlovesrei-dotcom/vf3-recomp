@@ -1255,7 +1255,9 @@ struct Game
 	// again from RAM as it stands, it agrees and runs natively. A game that patched nothing has nothing to do
 	// here -- Virtua Fighter 3 never comes past the first line.
 	bool rebuilt_after_boot = false;   // (the check below is made once, when the boot is over)
-	void rebuild_from_ram_if_stale()
+	// `when` only names the moment in the log: this is called from the boot, as soon as the program has
+	// stopped moving, and once more when the boot is over (the roster patch goes in between the two).
+	void rebuild_from_ram_if_stale(const char *when = "after the boot")
 	{
 		if (!recompiled || rec.mismatch_count() == 0) return;
 		const size_t n = rec.mismatch_count();
@@ -1263,11 +1265,11 @@ struct Game
 		ppcrec::Stats st;
 		if (rec.build(board.cpu, img, board.profile->map, board.profile->map_count, &st) && rec.mismatch_count() == 0) {
 			built_image = std::move(img);
-			fprintf(stderr, "recompiled from RAM after the boot (%zu words the game had patched): %zu instructions in %.0f ms\n",
-			        n, st.instructions, st.ms);
+			fprintf(stderr, "recompiled from RAM %s (%zu words the game had patched): %zu instructions in %.0f ms\n",
+			        when, n, st.instructions, st.ms);
 		} else {
-			fprintf(stderr, "the game patched %zu words of its own program and the rebuild didn't settle it: "
-			        "the interpreter runs everything\n", n);
+			fprintf(stderr, "the game patched %zu words of its own program and the rebuild didn't settle it %s: "
+			        "the interpreter runs everything\n", n, when);
 		}
 	}
 	// Fighting Vipers 2's hidden fighters, held open. The patch is in RAM, so it waits for the boot to unpack the
@@ -2558,6 +2560,30 @@ int main(int argc, char **argv)
 		size_t mm_was = game.recompiled ? game.rec.mismatch_count() : 0;
 		uint64_t native_frames = 0;
 		int flips_said = 0;
+		// AND THE REBUILD THAT TURNS THE NATIVE CODE BACK ON, which used to wait for the LAST frame of the boot.
+		//
+		// What the lines above measured, on Frederic's machine: the inflate finishes at frame 65 and the native
+		// code comes on; at frame 80 the game writes THREE words -- 001000, 001100 and 001200, which are the
+		// PowerPC 603e's three TLB-miss vectors (instruction, data load, data store) -- and one word is enough
+		// to turn the whole recompiler off. IT NEVER CAME BACK: 15 of 960 frames ran on native code and the
+		// other 945 were interpreted. Three words were costing fifteen seconds of every start, and the rebuild
+		// that settles them in 100 ms was sitting eight hundred frames away.
+		//
+		// So it is done here. NOT at the first mismatch: a game may write a handful of words over a few frames,
+		// and rebuilding into the middle of that would only mismatch again. It waits for the count to HOLD
+		// STILL -- unchanged for REBUILD_STEADY frames -- and only after the program has been whole at least
+		// once (settled), because until the inflate is done every word differs and there is nothing to build
+		// from. At most REBUILD_MOST of them, so a program that patches itself all through its boot pays a
+		// bounded number of rebuilds rather than one per steady window.
+		//
+		// The frames are the boot's own, which run as fast as the machine goes, so REBUILD_STEADY is not half a
+		// second of anyone's time -- at the interpreted rate it is about half of one.
+		constexpr uint64_t REBUILD_STEADY = 30;
+		constexpr int REBUILD_MOST = 4;
+		bool settled = false;        // the program has been whole once: there is something to rebuild from
+		size_t steady_at = 0;        // the mismatch count as it was
+		uint64_t steady_since = 0;   // and the frame it took that value
+		int rebuilt_in_boot = 0;
 		auto mismatch_where = [&] {
 			std::string at;
 			for (uint32_t a : game.rec.mismatch_addresses(8)) {
@@ -2584,6 +2610,21 @@ int main(int argc, char **argv)
 					        mismatch_where().c_str());
 				}
 				mm_was = mm;
+				if (mm == 0) {
+					settled = true;
+				} else if (settled && rebuilt_in_boot < REBUILD_MOST) {
+					if (mm != steady_at) {
+						steady_at = mm;
+						steady_since = game_frame;
+					} else if (game_frame - steady_since >= REBUILD_STEADY) {
+						rebuilt_in_boot++;
+						char when[64];
+						snprintf(when, sizeof when, "at frame %llu of the boot", (unsigned long long)game_frame);
+						game.rebuild_from_ram_if_stale(when);
+						steady_at = 0;       // (settled it: nothing differs. Didn't: counted again from here)
+						steady_since = game_frame;
+					}
+				}
 			}
 			// the loading screen stays up and stays answering: this loop is most of the wait
 			if (game_frame % 60 == 0) { splash(); if (quit_while_loading) return; }
