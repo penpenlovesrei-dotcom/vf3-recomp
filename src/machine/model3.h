@@ -328,6 +328,11 @@ public:
 	int fv2_life(int player) const;
 	int fv2_life_max(int player) const;
 	bool fv2_set_life(int player, int v);
+	// THE ROUND'S CLOCK STOPPED BY THE GAME'S OWN SWITCH: bit 0 of CONFIG_CB_DISP (0x0011F04C), which
+	// fv2_game_FIGHT_DSP tests before it decrements the timer at all. Held, because that block is a working
+	// copy the game loads from its backup. model3.cpp carries the instructions it was read from. TRAINING's
+	// first lever (fv2_versus.h).
+	int fv2_freeze_timer(bool on);
 	std::vector<uint8_t> security;   // 128 KB, host-order words
 	std::vector<std::pair<size_t, std::vector<uint8_t>>> free_play_text;   // what hide_free_play_text replaced
 

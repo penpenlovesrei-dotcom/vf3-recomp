@@ -129,6 +129,7 @@
 #include "fv2_modes.h"
 #include "fv2_versus.h"
 #include "fv2_stages.h"
+#include "fv2_training.h"   // TRAINING's column of inputs (it includes the glyph sheet it writes with)
 #include "../video/hud_names.h"
 #include "../video/dural_cell.h"
 #include "../video/tex3d_hd.h"
@@ -1488,11 +1489,28 @@ struct Game
 		board.run_frame_start();
 		part_ms[0] += ms_since(t);
 	}
+	// TRAINING: THE TWO LINES THE ANNOUNCER SAYS BEFORE A FIGHT, DROPPED. Cutting the seven states of the
+	// announcement takes their PICTURES away and not their sounds -- the handlers still run their own frame
+	// each, and what they say to the sound board is said (fv2_versus.h, THE ANNOUNCEMENT). Bank 0x2B is the
+	// one whose index changes with the state, 0x0E at READY and 0x0F at FIGHT; A0 <bank> <index> is the shape
+	// the owner established by sending them and listening. Held only across those frames and never during the
+	// fight, where the same bank carries what the blows say.
+	bool mute_fight_voice = false;
 	void finish_frame(bool sound_on, bool picture)
 	{
 		uint64_t t = SDL_GetTicksNS();
 		board.run_frame_end();
 		part_ms[0] += ms_since(t);
+		// HERE AND NOT AT EITHER CONSUMER: the frame's commands are read in two places below (a match's own
+		// thread, and this one), and a drop written twice is a drop that will one day be made once.
+		if (mute_fight_voice) {
+			for (size_t i = 0; i + 2 < board.midi.size();) {
+				if (board.midi[i] == 0xA0 && board.midi[i + 1] == 0x2B)
+					board.midi.erase(board.midi.begin() + long(i), board.midi.begin() + long(i) + 3);
+				else
+					i++;
+			}
+		}
 		t = SDL_GetTicksNS();
 		if (!sound_thread.joinable()) sound_start();
 		if (free_stream) {   // (a match's: the frame's bytes queued for the sound board, which runs on its own)
@@ -2389,6 +2407,10 @@ int main(int argc, char **argv)
 	// to go on running under it.
 	Fv2Versus fv2_versus;
 	fv2_stages versus_stages;
+	// TRAINING's column of inputs and the sheet it writes its damage figures with (fv2_training.h,
+	// fv2_text.h). Both are read from assets/fv2/ the first time the row is chosen.
+	fv2_text fv2_font;
+	fv2_training fv2_train;
 	bool versus_panel_up = false;      // the panel is the menu's top page just now
 	int versus_panel_want = -1;        // the line chosen, acted on once the menu has closed
 	int versus_pick = -1;              // the arena chosen, acted on once the page's hold is over
@@ -3709,6 +3731,10 @@ int main(int argc, char **argv)
 		// Fighting Vipers 2's VERSUS: the page of arenas over the picture the game made, and the veil over the
 		// way out of a match (fv2_stages.h, fv2_versus.h). After the CRT pass, both being this port's own
 		// surfaces and not part of the picture the board drew.
+		// AND TRAINING's column of inputs, over the fight and under both of those: only while a round is
+		// being fought, a column left up through the judgement and the replay being one that reads itself.
+		if (fv2_versus.training_on && fv2_versus.train_fighting && fv2_train.ready)
+			fv2_train.render(ren, all, mid);
 		if (fv2_versus.veil) {
 			SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
 			SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
@@ -5021,6 +5047,20 @@ int main(int argc, char **argv)
 				[mode_start] { mode_start(Fv2Modes::SURVIVAL); } });
 			p.items.push_back({ "RANDOM MODE", tr::M_RANDOM_HELP, {}, {},
 				[mode_start] { mode_start(Fv2Modes::RANDOM); } });
+			// AND TRAINING LAST, which is a mode the board does not have at all: the other four are Sega's,
+			// turned on with Sega's own bytes, and this one is built out of them (fv2_versus.h, TRAINING). Its
+			// pictures are read here, the first time the row is chosen, because a column that cannot be drawn
+			// must not stop the mode: the fight is the mode, the column is how it is read back.
+			p.items.push_back({ "TRAINING", tr::M_TRAINING_HELP, {}, {},
+				[&] {
+					if (game.emu_thread.joinable()) game.job_wait();
+					fv2_modes.let_go_all(board, "Training chosen");
+					if (!fv2_font.tried) fv2_font.load(ren, find_assets(), stderr);
+					if (!fv2_train.tried) fv2_train.load(ren, find_assets(), &fv2_font, stderr);
+					fv2_train.clear();
+					fv2_versus.start_training(board);
+					menu.close();
+				} });
 		}
 		p.items.push_back({ tr::P_DISPLAY, tr::M_DISPLAY_HELP, {}, {}, [&] { menu.push(display_page()); } });
 		p.items.push_back({ tr::P_SOUND, tr::M_SOUND_HELP, {}, {}, [&] { menu.push(sound_page()); } });
@@ -5215,6 +5255,8 @@ int main(int argc, char **argv)
 		if (glass) { SDL_DestroyTexture(glass); glass = nullptr; glass_w = glass_h = 0; }
 		menu.textures_lost();
 		if (versus_stages.tried) versus_stages.textures_lost(ren, find_assets());   // (the stage page's, if it has any)
+		if (fv2_font.tried) fv2_font.textures_lost(ren, find_assets());             // (TRAINING's sheet and its column)
+		if (fv2_train.tried) fv2_train.textures_lost(ren, find_assets());
 		new_frame = true;   // (the next picture sends the 2D again)
 	};
 	// Started from a terminal, the window can open behind it or without the keyboard (the keys go to the terminal):
@@ -6014,6 +6056,23 @@ int main(int argc, char **argv)
 				mix(c.guard, script_ctl.guard, live.guard); mix(c.escape, script_ctl.escape, live.escape);
 				fv2_modes.controls(c);   // (Survival / Random: the press of Start the row hands the game)
 				fv2_versus.controls(c);  // (Versus: the same, and then one for player 2 on the select screen)
+				// TRAINING'S COLUMN, FED WITH THE PLAYER'S OWN CONTROLS and not with the game's memory, which
+				// is the point of it: it has to show what was DONE, including what the game ignored -- a move
+				// that did not come out because a direction was one frame short still shows. Player 1's, and
+				// the damage it reads is what player 2 has just had taken off him.
+				if (fv2_versus.training_on && fv2_versus.train_fighting && fv2_train.ready) {
+					fv2_train.feed(c.up[0], c.down[0], c.left[0], c.right[0], c.punch[0], c.kick[0], c.guard[0]);
+					if (fv2_versus.train_took[1] > 0) fv2_train.damage(fv2_versus.train_took[1]);
+					fv2_versus.train_took[0] = fv2_versus.train_took[1] = 0;
+				} else if (!fv2_versus.training_on && !fv2_train.lines.empty()) fv2_train.clear();
+				// TRAINING: ONE PLAYER CHOOSES BOTH FIGHTERS, and the whole of how is fv2_versus.h's
+				// (route_training). What belongs here is only that the controls exist here -- this is the one
+				// place this port composes them -- and the ORDER: it comes AFTER the column, never before.
+				// Routed first, it has already emptied player 1's controls by the time the column reads them,
+				// and the column then shows nothing of what is being pressed.
+				fv2_versus.route_training(board, c);
+				// and the announcer's two lines dropped across the frames the announcement is cut in
+				game.mute_fight_voice = fv2_versus.training_on && fv2_versus.train_hush > 0;
 				// Kuhn's colour wheel, turned by the same presses the game turns its own two with (Game::kuhn_tick):
 				// Up forwards, Down backwards, because the game's own toggle answers to both.
 				game.kuhn_tick(c.up[0] || c.up[1], c.down[0] || c.down[1]);

@@ -1896,6 +1896,13 @@ constexpr uint32_t FV2_ROUND_TIME_VS = 0x00120556;
 constexpr uint32_t FV2_FIGHTER_PTR[2] = { 0x0007511C, 0x00075120 };
 constexpr uint32_t FV2_LIFE_IN_BLOCK = 0x66, FV2_LIFE_MAX_IN_BLOCK = 0x68;
 constexpr uint16_t FV2_LIFE_PLAUSIBLE = 2000;          // a starting life above this is not a fighter's block
+// The game's OWN "no round clock" switch, and it is not a value to hold: fv2_game_FIGHT_DSP reads
+//     lis r3,0x0012 ; lwz r3,-4020(r3) ; rlwinm. r0,r3,31,0,0 ; bne <skip the whole countdown>
+// so bit 0 of the word at 0x0011F04C -- Sega's CONFIG_CB_DISP, in the CONFIG block beside *PLAY KUHN --
+// makes the handler not decrement the timer at all. Read out of the code the 2026-10-25 with
+// tools/fv2/disasm_ppc.py, on this port's console build. Holding the timer's VALUE instead would raise the
+// question of whether the game reads that word or writes it; this one is a condition, so there is none.
+constexpr uint32_t FV2_CB_DISP = 0x0011F04C;
 
 // What the game is ASKING FOR, as opposed to where it is (fv2_submode). The two differ for exactly one tick,
 // and that tick is what the stage page and the end-of-match panel are both opened on: SELECT writes
@@ -2279,6 +2286,19 @@ bool Model3::fv2_set_life(int player, int v)
 	ram[at ^ 3] = uint8_t(w >> 8);
 	ram[(at + 1) ^ 3] = uint8_t(w);
 	return true;
+}
+
+// The round's clock stopped by the game's own switch rather than by holding its value: bit 0 of
+// CONFIG_CB_DISP, which fv2_game_FIGHT_DSP tests before it decrements anything. Held, because the game
+// loads that block from its backup and this is a working copy. Returns 1 when it had to write.
+int Model3::fv2_freeze_timer(bool on)
+{
+	if (set != "fvipers2" || ram.size() <= FV2_CB_DISP + 3) return -1;
+	uint8_t &low = ram[(FV2_CB_DISP + 3) ^ 3];    // bit 0 of the word is the lowest bit of its last byte
+	const uint8_t want = uint8_t(on ? (low | 1) : (low & ~1));
+	if (low == want) return 0;
+	low = want;
+	return 1;
 }
 
 } // namespace m3

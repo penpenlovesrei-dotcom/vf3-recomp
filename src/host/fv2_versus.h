@@ -28,6 +28,9 @@
 //                  screens shortened by their own timer, behind a veil, because what they are is the end of a
 //                  game nobody was playing.
 //
+// AND TRAINING IS A FIFTH THING ON TOP OF THOSE FOUR, on its own row under Random. It is the console
+// build's mode, brought over whole (see TRAINING below).
+//
 // AND IT IS NOT A SETTING. A row is not a yes and a no: it starts a game in that mode, as choosing a mode on
 // a console does. The menu closes, the game is handed a real press of Start, and the mode is over when that
 // game is -- which is the shape Survival and Random already have (fv2_modes.h).
@@ -86,10 +89,113 @@ public:
 		task_live[0] = task_live[1] = 0;
 		leaving = L_OFF;
 		veil = false;
+		// AND A PLAIN VERSUS IS NOT A TRAINING, which is the one thing this reset owes the mode above it:
+		// start_training calls this and turns it on AFTERWARDS, so choosing VERSUS after a training session
+		// leaves the mode off here rather than carrying a stopped clock into a fight nobody asked to train in.
+		training_on = false;
+		leave_training = false;
+		train_arm();
 		const bool idle = b.fv2_in_attract();
 		if (idle) inject_start = 8;
 		fprintf(stderr, "Fighting Vipers 2: VERSUS chosen%s\n",
 		        idle ? ", and the game handed a press of Start" : " (a game is already running: player 2 steps in)");
+	}
+
+	// ---- TRAINING, AND IT IS A MODE THIS BOARD DOES NOT HAVE ----
+	//
+	// Sega's twenty-four settings hold no training and the arcade notes say so, so this is not a switch to find
+	// but a thing the port builds -- out of the game's own bytes and nothing else. It is A TWO-PLAYER VERSUS
+	// WITH FOUR THINGS ON TOP, and the entry is the Versus row's own road, word for word, which was already
+	// proved. All four are the console build's, measured there in October, and they are brought over whole:
+	//
+	//   THE ARENA         MARBLE ARENA, scene 3, Frederic's choice, held by the stage draw's own table like any
+	//                     other versus's arena. The carousel is NOT opened: choosing the arena is the Versus
+	//                     row's point, and a training that asked for it before every session would be a page
+	//                     to dismiss. (The console build also carries a lever on the game's ROUTE TABLE for
+	//                     this, and it is not needed here: held at scene 3 a VERSUS already fights there --
+	//                     measured, where a solo route does not, which is what the route table was for.)
+	//   THE CLOCK         stopped by THE GAME'S OWN SWITCH: bit 0 of CONFIG_CB_DISP, which FIGHT_DSP tests
+	//                     before it decrements anything (Model3::fv2_freeze_timer, which carries the four
+	//                     instructions it was read out of). Held and not written once, because that block is a
+	//                     working copy the game loads from its backup. Holding the timer's VALUE instead would
+	//                     leave open whether the game reads that word or writes it; a condition has no such
+	//                     question.
+	//   THE TWO LIVES     held, with a DELAY and a FLOOR, and both numbers exist for a reason that was paid
+	//                     for. Given back every frame, the life never went DOWN -- the hit was erased on the
+	//                     frame it landed, so the damage could not be read, and a training whose damage cannot
+	//                     be read is useless. So the delay is how long without new damage before the life
+	//                     fills, and the floor is how low it may fall: without it, waiting out a long series
+	//                     would mean accepting the K.O., which ends the round, which is exactly what a
+	//                     training must not do.
+	//   THE ANNOUNCEMENT  cut. GAME's sub-states 4 to 10 are ROUND, SET and READY: they load nothing, and each
+	//                     is asked to move on the frame it begins, so every INT still runs its own frame and
+	//                     only the waiting goes -- a training fight begins ten frames after the load instead
+	//                     of three hundred. THE FIRST FOUR ARE NOT TOUCHED: those are the arena arriving, and
+	//                     cutting them gives a black screen with nothing on it but the HUD, measured three
+	//                     ways. Cutting the seven took their PICTURES and not their SOUND -- the handlers
+	//                     still run their frame and what they say to the sound board is said -- so the two
+	//                     lines the announcer speaks are dropped across those frames as well (train_hush, and
+	//                     main.cpp is where they are dropped).
+	//
+	// AND ONE PLAYER CHOOSES BOTH FIGHTERS, which is route_training: the mode opens a two-player versus, so
+	// the select screen comes up with two cursors and there is one pair of hands.
+	//
+	// THE DUMMY'S BEHAVIOUR IS NOT HERE. Nothing stands in for it and nothing pretends to: player 2 is a
+	// second pad, and with nobody on it he stands still, which is a dummy of a kind but not a chosen one.
+	static constexpr int MARBLE_ARENA = 3;
+	bool training_on = false;        // the mode itself, as opposed to the arena it arms
+	bool train_fighting = false;     // a round is being fought: what the column of inputs is drawn over
+	int train_took[2] = { 0, 0 };    // points taken off each player this frame; the host reads them and clears them
+	int train_hush = 0;              // frames in which the announcer's two lines are dropped (main.cpp)
+
+	void start_training(m3::Model3 &b)
+	{
+		start(b);                  // the entry is the Versus row's, and it says so in the log
+		training_on = true;
+		train_arm();
+		scene = MARBLE_ARENA;      // held by step(), every frame, like any other versus's arena
+		stage_held = true;
+		sel_wants_page = false;    // (and no carousel: see THE ARENA above)
+		fprintf(stderr, "Fighting Vipers 2: TRAINING on top of it -- scene %d, the clock stopped, the lives"
+		                " held, the announcement cut\n", MARBLE_ARENA);
+	}
+
+	// ---- TRAINING: ONE PLAYER CHOOSES BOTH FIGHTERS ----
+	//
+	// On the select screen player 1's controls go to his own cursor until he has pressed punch, and to PLAYER
+	// 2'S from then on, so the same hands pick the opponent. Nothing of the game is touched: the controls are
+	// composed in the host's frame loop and this is handed them there, AFTER the column has read them --
+	// routed first, it empties player 1's controls before the column sees them and the column shows nothing of
+	// what is being pressed (main.cpp says so where it calls this).
+	//
+	// Two things had to be learnt by getting them wrong, and both are latches here rather than rules in the
+	// host's loop, which is where they were in the console build at first:
+	//
+	//   the button has to be SEEN RELEASED first. The press that chose the row is still down when the select
+	//   screen arrives several frames later, and taken for a choice it made player 1's pad pick player 2's
+	//   fighter first -- "the pad in P1 picks P2 first", the 2026-10-25;
+	//
+	//   and the press that DID choose has to be let go before it is routed on, or one press chooses both: the
+	//   directions travel at once, the punch waits for its release.
+	void route_training(m3::Model3 &b, m3::Controls &c)
+	{
+		const int m = b.fv2_mode();
+		if (!training_on || (m != 4 && m != 5)) return;   // the select screen's job, and no other screen's
+		const bool punch = c.punch[0];
+		auto move = [](bool *a) { a[1] = a[1] || a[0]; a[0] = false; };
+		if (!train_pick_arm) {
+			if (!punch) train_pick_arm = true;
+			else c.punch[0] = false;
+		} else if (!train_p1_chose) {
+			// (this press is his own choice: it stays his, and the routing begins after it)
+			if (punch) { train_p1_chose = true; train_punch_held = true; }
+		} else {
+			move(c.up); move(c.down); move(c.left); move(c.right);
+			move(c.kick); move(c.guard);
+			if (train_punch_held && !punch) train_punch_held = false;
+			if (train_punch_held) c.punch[0] = false;
+			else move(c.punch);
+		}
 	}
 
 	// ---- one game frame, after the frame has run; `allowed` is false in an online match ----
@@ -112,6 +218,7 @@ public:
 		}
 
 		step_leaving(b);
+		step_training(b);   // the clock, the two lives, and what the column is to read
 		note_tasks(b);
 		step_select(b);
 		step_over(b);
@@ -259,6 +366,87 @@ private:
 	bool stage_from_panel = false;  // the page was opened by the panel's CHANGE STAGE, not by the select screen
 	uint32_t task_live[2] = { 0, 0 };
 
+	// ---- TRAINING's own state, and one frame of it ----
+	static constexpr int TRAIN_DELAY = 48;    // eight tenths of a second without new damage before the fill
+	static constexpr int TRAIN_FLOOR = 25;    // per cent of the starting health, below which the life is held
+	int train_was[2] = { -1, -1 };       // the life as we last left it: our own writing is never damage
+	int train_quiet[2] = { 0, 0 };       // frames since this player last took a hit
+	bool train_p1_chose = false;         // player 1 has picked his own fighter: from here his pad drives 2P's cursor
+	bool train_punch_held = false;       // ... and that press has to be let go before it is routed on
+	bool train_pick_arm = false;         // ... and the press that opened the screen is not a choice at all
+	bool train_froze = false;            // whether the round's clock is stopped BY US, and so to be given back
+	bool leave_training = false;         // whether the way out now running leads back into a training
+
+	void train_arm()
+	{
+		for (int i = 0; i < 2; i++) { train_was[i] = -1; train_quiet[i] = 0; train_took[i] = 0; }
+		train_p1_chose = train_punch_held = train_pick_arm = false;
+		train_hush = 0;
+	}
+
+	void step_training(m3::Model3 &b)
+	{
+		train_fighting = false;
+		if (!training_on) {
+			train_hush = 0;
+			train_p1_chose = false;
+			train_punch_held = false;
+			train_pick_arm = false;
+			if (train_froze) { b.fv2_freeze_timer(false); train_froze = false; }
+			return;
+		}
+		const int m = b.fv2_mode(), su = b.fv2_submode();
+		if (m != 4 && m != 5) {
+			// off the select screen none of the three latches means anything, and the next trip through it
+			// starts again with the button to be released first
+			train_p1_chose = false;
+			train_punch_held = false;
+			train_pick_arm = false;
+		}
+		// THE PHASES BEFORE THE FIGHT, CUT -- AND THESE ARE NOT THE LOAD. GAME's twenty sub-states are
+		// ROUND_MASK_INT, _IN, _DSP, _OUT (0..3), then ROUND_INT, ROUND_DSP, SET_INT, SET_INT_POSE, SET_DSP,
+		// READY_INT, READY_DSP (4..10), then FIGHT_INT and FIGHT_DSP. The first four are the arena arriving:
+		// ROUND_MASK_DSP does nothing but WAIT for the work outstanding at 0x002750B8 to fall to zero, so its
+		// length IS the load's length and cutting it starts the fight on an arena that has not arrived -- the
+		// black screen with nothing on it but the HUD, got three times on the console build. The seven that
+		// follow load nothing: they are ROUND X, the pose and READY, and they are what goes.
+		if ((m == 6 || m == 7) && su >= 4 && su <= 10) b.fv2_cut_submode();
+		// and the window the announcer is dropped in, opened by those same states (see THE ANNOUNCEMENT)
+		if ((m == 6 || m == 7) && su >= 4 && su <= 10) train_hush = 12;
+		else if (train_hush > 0) train_hush--;
+		const bool fighting = (m == 6 || m == 7) && (su == 11 || su == 12);
+		train_fighting = fighting;
+		// The clock, held by the game's own switch. Held rather than written once because that CONFIG block is
+		// a working copy the game loads from its backup.
+		b.fv2_freeze_timer(fighting);
+		train_froze = fighting;
+		if (!fighting) {
+			for (int i = 0; i < 2; i++) { train_was[i] = -1; train_quiet[i] = 0; }
+			return;
+		}
+		for (int who = 1; who <= 2; who++) {
+			const int k = who - 1;
+			const int max = b.fv2_life_max(who), now = b.fv2_life(who);
+			if (max <= 0 || now < 0) { train_was[k] = -1; continue; }
+			const int floor = max * TRAIN_FLOOR / 100;
+			if (train_was[k] < 0) { train_was[k] = now; train_quiet[k] = 0; }
+			// DAMAGE IS WHAT THE GAME TOOK OFF SINCE WE LAST LEFT IT, never what we put there ourselves: every
+			// write below sets train_was to what it wrote, so the next frame compares against ours.
+			const int hit = train_was[k] - now;
+			if (hit > 0) {
+				train_took[k] += hit;
+				train_quiet[k] = 0;
+			} else if (++train_quiet[k] > 60 * 60) {
+				train_quiet[k] = 60 * 60;
+			}
+			int want = now;
+			if (now < floor) want = floor;                       // never low enough to be knocked out
+			else if (train_quiet[k] >= TRAIN_DELAY) want = max;   // quiet long enough: the life comes back
+			if (want != now) b.fv2_set_life(who, want);
+			train_was[k] = want;
+		}
+	}
+
 	// ---- the trip through the select screen ----
 	//
 	//   AWAY   not on SEL at all (modes 4 and 5 are SEL_INT and SEL_DSP);
@@ -387,6 +575,17 @@ private:
 		// for GAME OVER. If it is off, the winner is handed the ladder and the game goes on. It is given back at
 		// the far side, and only the working copy is touched, so what the player set in the cabinet's own
 		// settings is not changed.
+		// LEAVING A MATCH TURNS THE TRAINING OFF, and not merely suspends its holding: the way out finishes
+		// the match, and a training that went on filling the lives every frame would lock the player in -- the
+		// two held each other, measured on the console build.
+		//
+		// EXCEPT WHERE THE WAY OUT LEADS BACK INTO A FIGHT, which is Frederic's of the 2026-10-28: CHANGE YOUR
+		// VIPER in a training was taking the training with it -- the clock ran, the lives fell, the column was
+		// gone -- and a player who asked to change his fighter did not ask to leave the mode. So that road
+		// REMEMBERS, and arrive() starts another training rather than a plain versus. EXIT still turns it off:
+		// the menu is where a mode is chosen, and choosing one is how it comes back.
+		leave_training = training_on && what == L_TO_SELECT;
+		training_on = false;
 		borrow_vs_finish(b);
 		leaving = L_ENDING;
 		leave_for = what;
@@ -506,7 +705,14 @@ private:
 		at = ASKED;
 		wait = 0;
 		inject_start = 8;
-		fprintf(stderr, "Fighting Vipers 2: back to the select screen, two players\n");
+		// and the training put back where the way out was asked for from inside one (see leave_match)
+		if (leave_training) {
+			leave_training = false;
+			training_on = true;
+			train_arm();
+		}
+		fprintf(stderr, "Fighting Vipers 2: back to the select screen, two players%s\n",
+		        training_on ? ", training again" : "");
 	}
 
 	void release_stage(m3::Model3 &b)
@@ -520,6 +726,15 @@ private:
 	{
 		release_stage(b);
 		return_vs_finish(b);
+		// THE MODE GOES OUT WITH THE GAME, and the clock is given back with it. Leaving a match already turned
+		// it off (leave_match); a training that ends by ITSELF -- the game over, the attract loop back -- used
+		// to leave it on, and the next game would have been one too. The switch is the game's own byte and a
+		// switch left set is a round with no clock in a game nobody asked to train in.
+		training_on = false;
+		leave_training = false;
+		train_fighting = false;
+		train_hush = 0;
+		if (train_froze) { b.fv2_freeze_timer(false); train_froze = false; }
 		scene = 0;
 		stage_from_panel = false;
 		over_done = false;
