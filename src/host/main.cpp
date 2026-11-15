@@ -2532,14 +2532,67 @@ int main(int argc, char **argv)
 		const uint32_t logo = board.profile->sega_logo;
 		uint64_t until = logo ? BOOT_FRAMES * 2 : BOOT_FRAMES;
 		bool logo_seen = false;
+		// WHY A BOOT RUNS ON THE INTERPRETER, SAID WHILE IT DOES.
+		//
+		// ONE compiled word RAM no longer agrees with turns the WHOLE recompiler off -- ppc_rec.h's enabled(),
+		// which is `built && mismatched == 0` -- and Fighting Vipers 2's program is a GZIP ITS OWN BOOT STUB
+		// INFLATES INTO RAM, so every word of it is written while this loop runs.
+		//
+		// Measured on Frederic's machine, the same 960 frames of boot:
+		//
+		//   Virtua Fighter 3     1.75 s     67,560,120 instructions through the interpreter
+		//   Fighting Vipers 2   17.01 s  2,726,246,690           "            "       "
+		//
+		// Forty times the interpreted instructions, ten times the wait, and it is the port's doing and not the
+		// board's -- the same emulation does Virtua Fighter 3's boot at nine times real time. The rebuild that
+		// settles the mismatch is held back until the boot is OVER (rebuilt_after_boot, just below), and the
+		// question this answers is whether it could be done the moment the program stops moving instead, which
+		// would make this loop about as short as Virtua Fighter 3's. The port's own log said as much after the
+		// boot without anyone reading it that way: "6 words the game had patched".
+		//
+		// So: the count at the first frame, the frames where it lets go and takes hold again (at most eight, or
+		// the inflate alone would write a line a word), how many frames of the boot ran on native code, and
+		// what still differs at the end and where. A counter read a frame and a dozen lines in all, which is
+		// why it stays in rather than being taken out once read: a boot that is slow again later is exactly the
+		// thing nobody can diagnose after the fact. Frederic's of the 2026-11-15.
+		size_t mm_was = game.recompiled ? game.rec.mismatch_count() : 0;
+		uint64_t native_frames = 0;
+		int flips_said = 0;
+		auto mismatch_where = [&] {
+			std::string at;
+			for (uint32_t a : game.rec.mismatch_addresses(8)) {
+				char b[16];
+				snprintf(b, sizeof b, " %06X", a);
+				at += b;
+			}
+			return at;
+		};
+		fprintf(stderr, "the boot's native code: %s at the first frame, %zu compiled words differ from RAM%s\n",
+		        game.recompiled ? (game.rec.enabled() ? "ON" : "off") : "never built", mm_was,
+		        game.recompiled ? mismatch_where().c_str() : "");
 		while (game_frame < until) {
 			game.run_frame(false, false);
 			game.audio.clear();
 			game_frame++;
+			if (game.recompiled) {
+				const size_t mm = game.rec.mismatch_count();
+				if (game.rec.enabled()) native_frames++;
+				if ((mm == 0) != (mm_was == 0) && flips_said < 8) {
+					flips_said++;
+					fprintf(stderr, "the boot's native code: %s at frame %llu (%zu words differ%s)\n",
+					        mm == 0 ? "ON" : "off again", (unsigned long long)game_frame, mm,
+					        mismatch_where().c_str());
+				}
+				mm_was = mm;
+			}
 			// the loading screen stays up and stays answering: this loop is most of the wait
 			if (game_frame % 60 == 0) { splash(); if (quit_while_loading) return; }
 			if (logo && !logo_seen && board.ram[logo ^ 3] == 16) { logo_seen = true; until = game_frame + 12; }
 		}
+		if (game.recompiled)
+			fprintf(stderr, "the boot's native code: %llu of %llu frames ran on it, %zu words differ at the end%s\n",
+			        (unsigned long long)native_frames, (unsigned long long)game_frame,
+			        game.rec.mismatch_count(), mismatch_where().c_str());
 		game.tiles_on = true;
 		if (!scripted) vf3net::set_versus_count(board, vf3net::random_versus_count());   // (the profile's versus_count: the first match between two players' stage)
 		else if (const char *vc = getenv("VF3_VERSUS_COUNT")) vf3net::set_versus_count(board, uint32_t(atoi(vc)));   // (tests: that stage)
