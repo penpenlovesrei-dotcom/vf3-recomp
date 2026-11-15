@@ -170,28 +170,54 @@ public:
 	std::vector<uint8_t> backup;     // 128 KB backup RAM, host-order words
 
 	// The test menu's COIN ASSIGNMENTS > COIN/CREDIT SETTING, in backup RAM (found by setting each in the test menu,
-	// leaving it, and comparing; Revision D's at 0x1E033, 0x1E037 and 0x1E03B: the profile's coin): the setting's
-	// number (1-27) at `setting`; for #1-#26 the same at `credits` and 0 at `free_play`; #27, FREE PLAY, sets
-	// `free_play` to 1 and leaves `credits`. No checksum. A board that has never run has 0 there until the game writes
-	// its settings (by frame 120): -1, not written yet.
+	// leaving it, and comparing; Revision D's at 0x1E033, 0x1E037 and 0x1E03B, Fighting Vipers 2's one byte at
+	// 0x17: the profile's coin): the setting's number (1-27) at `setting`; where a program has the other two,
+	// #1-#26 put the same at `credits` and 0 at `free_play`, and #27, FREE PLAY, sets `free_play` to 1 and leaves
+	// `credits`. A program whose `credits` and `free_play` are 0 keeps the whole of it in the one byte. No
+	// checksum. A board that has never run has 0 there until the game writes its settings (by frame 120): -1,
+	// not written yet.
+	//
+	// WHERE EACH GAME KEEPS IT. Both number the setting the same way, 1 to 27, 27 being FREE PLAY.
+	//
+	// Virtua Fighter 3: 0x1E033, with the number repeated at 0x1E037 and a flag at 0x1E03B.
+	//
+	// Fighting Vipers 2: 0x17, near the start of the backup RAM, and ONE byte is the whole of it. Found the same
+	// way as Virtua Fighter 3's -- by setting FREE PLAY in the game's own test menu, driven from an input script,
+	// and comparing the backup RAM before and after. That moved seven bytes: four of them four apart (0x0B, 0x0F,
+	// 0x13, 0x17, which are the four lines of that page) and three more that look like bookkeeping. The one that
+	// matters was then picked out by putting the other six back and leaving only 0x17 at 27: the game still came
+	// up in FREE PLAY, and its picture was byte-identical to the run with all seven changed. So there is no
+	// checksum to keep and no neighbour to agree with.
+	//
+	// (This is the console build's measurement, brought over whole with the three places that read it. The
+	// console build is this port's other branch, where it was made and used first.)
 	static constexpr int COIN_FACTORY = 1, COIN_FREE_PLAY = 27;
 	int coin_setting() const
 	{
 		const Profile::Coin &k = profile->coin;
-		const int v = k.setting && backup.size() > k.free_play ? backup[k.setting] : 0;   // (0: not known for this program)
+		const int v = k.setting && backup.size() > k.setting ? backup[k.setting] : 0;   // (0: not known for this program)
 		return v >= 1 && v <= COIN_FREE_PLAY ? v : -1;
 	}
 	bool set_coin_setting(int v)   // (true if it changed)
 	{
 		if (coin_setting() < 0 || v < 1 || v > COIN_FREE_PLAY) return false;
 		const Profile::Coin &k = profile->coin;
+		if (!k.credits && !k.free_play) {   // Fighting Vipers 2: the one byte, and that is all of it
+			const uint8_t was = backup[k.setting];
+			backup[k.setting] = uint8_t(v);
+			return was != backup[k.setting];
+		}
 		const uint8_t was[3] = { backup[k.setting], backup[k.credits], backup[k.free_play] };
 		backup[k.setting] = uint8_t(v);
 		if (v == COIN_FREE_PLAY) backup[k.free_play] = 1;
 		else backup[k.credits] = uint8_t(v), backup[k.free_play] = 0;
 		return was[0] != backup[k.setting] || was[1] != backup[k.credits] || was[2] != backup[k.free_play];
 	}
-	bool free_play() const { return coin_setting() == COIN_FREE_PLAY && backup[profile->coin.free_play] == 1; }
+	bool free_play() const
+	{
+		if (coin_setting() != COIN_FREE_PLAY) return false;
+		return !profile->coin.free_play || backup[profile->coin.free_play] == 1;   // (no flag: the one byte said it)
+	}
 	// Blanks the FREE PLAY notices (the PC way: always free play, nothing to say), in the fixed CROM the boot copies
 	// the program from (so from the next boot). Checked against the known data around them first; returns how many
 	// it changed (2; 0: not the data known). show_free_play_text puts them back.

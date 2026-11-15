@@ -39,8 +39,14 @@ The same program runs Virtua Fighter 3 (MAME's "vf3", Revision D) if you put tha
 instead. With both in the folder it starts Virtua Fighter 3, so keep only the one you want, or
 pass the zip you mean on the command line.
 
-You do not need a coin: the game's own COIN setting is put on FREE PLAY and the boot runs
-unseen, so Start starts. Game > Play style: Arcade gives the boot and the coin slot back.
+You do not need a coin. The game's own COIN/CREDIT SETTING is put on FREE PLAY before the board
+boots, from the very first start -- a board that has never run writes its factory settings in its
+first frames, and FREE PLAY goes in after those -- and the boot runs unseen, so Start starts.
+
+The game says FREE PLAY on its own screens, because it is on free play and that is what the
+arcade board says when it is. Game > Play style: Arcade gives the coin slot, the boot and the
+operator's own coin setting back; your own setting is kept in settings.ini while free play
+stands in for it.
 
 
 The modes

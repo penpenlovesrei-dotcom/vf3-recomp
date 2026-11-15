@@ -2461,15 +2461,29 @@ int main(int argc, char **argv)
 	// Boot: the PC way runs it unseen up to the SEGA logo
 	auto skip_boot = [&] { return g_pc_mode && !show_boot && !scripted; };
 	uint64_t game_frame = 0;   // frames since the boot (the script's frame numbers)
-	// The PC way: the FREE PLAY notices hidden (always free play: nothing to say); the arcade way: shown. Both
-	// the notices and the coin settings are at addresses found in Virtua Fighter 3's own test menu, so for
-	// another game there is nothing to hide and nothing to say about it (model3.h).
-	const bool play_style_known = board.set == "vf3";
+	// The PC way: free play, and its FREE PLAY notices hidden where this port knows where they are (always free
+	// play: nothing to say); the arcade way: the coin slot and the notices back.
+	//
+	// THE QUESTION IS WHETHER THE COIN BYTE IS KNOWN, not what the game is called. It used to ask for the name
+	// "vf3", and that is why Fighting Vipers 2 took coins: its byte HAS been measured -- 0x17, by the console
+	// build, driving the game's own test menu (model3.h) -- and it is written down in its profile, and this line
+	// walked past it. Frederic's of the 2026-11-15, asking whether the game could come up free from the first
+	// start. It could; it was one comparison.
+	//
+	// The NOTICES are a separate thing and are Virtua Fighter 3's alone: they are blanked in the fixed CROM at
+	// addresses found in that program, and Fighting Vipers 2's were never looked for. So that game plays free and
+	// says so on its own screens, which is no worse than true. The log says it once rather than calling it a
+	// fault at every boot.
+	const bool play_style_known = board.profile->coin.setting != 0;
 	auto apply_play_style = [&] {
 		if (!play_style_known) return;
 		if (game.emu_thread.joinable()) game.job_wait();   // (not while a frame runs alongside)
 		if (!g_pc_mode) board.show_free_play_text();
-		else if (board.hide_free_play_text() != 2) fprintf(stderr, "not the data known: the FREE PLAY notices stay\n");
+		else if (!board.profile->free_play_text.free_play) {
+			static bool said = false;
+			if (!said) { said = true; fprintf(stderr, "the PC way: this game's FREE PLAY notices were never looked for, so it says FREE PLAY on its own screens\n"); }
+		} else if (board.hide_free_play_text() != 2)
+			fprintf(stderr, "not the data known: the FREE PLAY notices stay\n");
 		// Play as Dural's patches (her portrait, the dojo's model checked: the arcade froze there with her), for it only
 		const bool dural = cfg.dural && board.profile->dural && !nvram_away;
 		if (dural && board.set_dural(true, true) == 0) fprintf(stderr, "not the program known: no Dural on the select\n");   // (offline: her boss stages varied too)
