@@ -4947,7 +4947,25 @@ int main(int argc, char **argv)
 			if (cfg.online.stage_select != online.own_stage) { online_ready = false; online_identity(); }   // (Settings' stage select: at once)
 		});
 	};
-	auto online_row = [&] { return board.profile->settings.at ? 5 : 4; };   // (the main page's Online row: Arcade settings before it when known)
+	// THE MAIN PAGE'S ONLINE ROW: where the cursor goes when something online opens that page by itself -- a
+	// link followed, --join on the command line, a match just ended -- so that backing out of the Online page
+	// leaves the player on the row that got them there. The page WRITES DOWN where it put the row as it
+	// builds it, because where that is depends on the game.
+	//
+	// It used to be counted from the top instead: the fifth row, or the sixth where a game has Arcade
+	// settings. THAT COUNT WAS ALREADY WRONG FOR THIS GAME -- Fighting Vipers 2's five mode rows stand above
+	// it and push it to the eleventh -- and it would have been wrong again at the next row added anywhere
+	// above. A row written down by the hand that puts it there cannot drift.
+	int online_at = -1;
+	auto online_row = [&] { return online_at < 0 ? 0 : online_at; };
+	// And the row itself, made here because the main page builds it in one of two places (main_page below).
+	// Where a game has no online play of this port's at all, the row is still shown and says so: a menu that
+	// drops the row leaves the player wondering whether they missed it.
+	auto online_item = [&](std::string name) -> menu_item {
+		if (board.profile->online)
+			return { name, tr::M_ONLINE_HELP, {}, {}, [&] { menu.push(online_page()); } };
+		return { name, tr::fill(tr::M_ONLINE_NOT_READY, { { "game", board.profile->name } }), {}, {}, {} };
+	};
 	// Fighting Vipers 2's VERSUS, and what a match is before it begins: the Versus row opens this instead of
 	// starting the mode outright, which is Frederic's of the 2026-11-14. Three settings and the line that
 	// starts it.
@@ -5035,7 +5053,8 @@ int main(int argc, char **argv)
 		// not this port's: a row asks for one and hands the game a press of Start (fv2_modes.h, fv2_versus.h).
 		// Their names are the game's own, as it prints them, so they are not translated. Revision A only (the
 		// addresses are that build's), and not while anything online is on.
-		if (board.profile == &m3::FV2_REV_A && online.phase() == Online::Phase::off) {
+		const bool fv2_mode_rows = board.profile == &m3::FV2_REV_A && online.phase() == Online::Phase::off;
+		if (fv2_mode_rows) {
 			// A row starts a game in that mode: the menu closes and the game is handed a real press of Start, as
 			// choosing a mode on a console does. It is not a setting, so it carries no yes and no no -- the mode
 			// is over when that game is (fv2_modes.h). It may write the game's RAM, so the thread is let finish
@@ -5071,6 +5090,19 @@ int main(int argc, char **argv)
 				[mode_start] { mode_start(Fv2Modes::RANDOM); } });
 			p.items.push_back({ "SURVIVAL", tr::M_SURVIVAL_HELP, {}, {},
 				[mode_start] { mode_start(Fv2Modes::SURVIVAL); } });
+			// AND ONLINE VERSUS AMONG THEM, Frederic's of the 2026-11-15, where it used to sit far down the
+			// page between the Arcade settings and Controls. It belongs here: it is not a setting of the
+			// program, it is one more way to START A FIGHT, and it is the same fight as the Versus row three
+			// lines up -- two players, one match -- with the second player somewhere else. Hence the name, and
+			// the help under it is the one it always had.
+			//
+			// Only its PLACE moves. The page it opens, what it does, and everything online under it are
+			// untouched; and this row is not a mode of the game either, so it stands outside mode_start as
+			// Versus does. It is here and not after TRAINING because the four above it are a fight the board
+			// knows how to hold and training is the one built on top of them: online versus is a fight, so it
+			// goes with the fights.
+			online_at = int(p.items.size());
+			p.items.push_back(online_item("ONLINE VERSUS"));
 			// AND TRAINING LAST, which is a mode the board does not have at all: the other four are Sega's,
 			// turned on with Sega's own bytes, and this one is built out of them (fv2_versus.h, TRAINING). Its
 			// pictures are read here, the first time the row is chosen, because a column that cannot be drawn
@@ -5092,12 +5124,14 @@ int main(int argc, char **argv)
 		if (board.profile->settings.at)   // (where the program keeps them known)
 			p.items.push_back({ tr::M_ARCADE, tr::M_ARCADE_HELP, {}, {},
 								[&] { if (arcade_before.empty()) arcade_before = arcade_bytes(); menu.push(arcade_page()); } });
-		if (board.profile->online)
-			p.items.push_back({ tr::P_ONLINE, tr::M_ONLINE_HELP, {}, {}, [&] { menu.push(online_page()); } });
-		else
-			p.items.push_back({ tr::P_ONLINE, tr::fill(tr::M_ONLINE_NOT_READY, { { "game", board.profile->name } }), {}, {}, {} });
+		// Online's old place, which every other game keeps -- and this one too whenever the mode rows above
+		// are not there (anything online already on, where the rows are held back).
+		if (!fv2_mode_rows) {
+			online_at = int(p.items.size());
+			p.items.push_back(online_item(tr::P_ONLINE));
+		}
 		p.items.push_back({ tr::P_CONTROLS, tr::M_CONTROLS_HELP, {}, {}, [&] { menu.push(controls_page()); } });
-		if (board.profile->dural)   // (issue #12; after Online and Controls, as VF1's and VF2's main page: online_row's place kept)
+		if (board.profile->dural)   // (issue #12; after Online and Controls, as VF1's and VF2's main page)
 			p.items.push_back({ tr::P_CHEATS, cfg.dural ? tr::M_CHEATS_ON_HELP : tr::M_CHEATS_HELP, {}, {}, [&] { menu.push(cheats_page()); } });
 		p.items.push_back({ tr::M_QUIT, tr::M_QUIT_HELP, {}, {}, [&] { running = false; } });
 		return p;
