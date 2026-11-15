@@ -74,6 +74,15 @@ cp assets/icon/icon.png "$P/assets/icon/"
 # that is not in the repository, so the package carries it when the tree has it and does
 # without it when it has not -- the program opens its window either way.
 if [ -f assets/loading.png ]; then cp assets/loading.png "$P/assets/"; fi
+# THE SAME GOES FOR FIGHTING VIPERS 2'S OWN ART, and for the same reason: assets/fv2 holds the
+# select screen's portraits, the fourteen stage pictures, the training column's eleven drawings
+# and the font it writes with, none of it in the repository. The program reads every one of them
+# from beside itself and does without any that is missing, so the package carries the folder when
+# the tree has it. Without it you get Sega's own portraits and a stage page with no pictures.
+if [ -d assets/fv2 ]; then cp -R assets/fv2 "$P/assets/"; fi
+# And Kuhn's two extra colours, which are a 3D texture pack read from beside the program (not from
+# assets): the two folders it asks for by name, and nothing else of whatever else lives there.
+if [ -d texture_replacement ]; then cp -R texture_replacement "$P/"; fi
 cp assets/icon/VF3.ico "$P/assets/icon/"   # (a shortcut can wear it: the program has no icon of its own)
 cp "tools/win/$([ "${FV2:-0}" = 1 ] && echo README-fv2.txt || echo README-msys.txt)" "$P/README.txt"
 tools/release/licenses.sh "$P/LICENSES.txt" --windows 2>/dev/null || \
