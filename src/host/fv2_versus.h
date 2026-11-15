@@ -60,7 +60,7 @@ public:
 
 	// What the host has to put on screen. It reads this, opens the page or the panel, and clears it; nothing
 	// here opens anything, because the host owns the surfaces.
-	enum { W_NONE, W_STAGE, W_PANEL };
+	enum { W_NONE, W_STAGE, W_PANEL, W_TRAIN };
 	int wants = W_NONE;
 	bool veil = false;   // the way out is running: the host hides the game and silences it (see THE WAY OUT)
 
@@ -235,6 +235,42 @@ public:
 		}
 	}
 
+	// ---- START DURING A TRAINING IS THE PAUSE, AND NOT THE GAME'S ----
+	//
+	// Frederic's of the 2026-11-15: a training needs a way out that is not the end of a match, because a
+	// training has no end of a match -- the lives are held, so the round never settles and the panel that
+	// stands where GAME OVER stands is never reached. Start is the button a console puts that page behind, and
+	// it is the button the console build of this port puts its own pause menu behind.
+	//
+	// THE PRESS IS SWALLOWED FOR THE WHOLE ROUND and not only on the frame the page opens. A two-player match
+	// has both players in already, so there is nothing for Start to do in a fight -- and a press that reached
+	// the game on the frames after the page opened would be a press the game read while the port was acting on
+	// it. Both pads, because either player may ask.
+	//
+	// Called from where the host composes the frame's controls, and it returns true on the EDGE: the page is
+	// opened once a press, not once a frame of a press held down.
+	bool train_pause_start(m3::Controls &c)
+	{
+		if (!training_on || !train_fighting) { train_start_was = false; return false; }
+		const bool now = c.start[0] || c.start[1];
+		c.start[0] = c.start[1] = false;
+		const bool edge = now && !train_start_was;
+		train_start_was = now;
+		if (!edge || leaving != L_OFF || wants != W_NONE) return false;
+		wants = W_TRAIN;
+		fprintf(stderr, "Fighting Vipers 2: Start in a training -- the page, the round held under it\n");
+		return true;
+	}
+
+	// EXIT from that page, and it is NOT the panel's road. The panel's match is already decided and its way out
+	// asks for GAME OVER with the game's own write; a training's round is being FOUGHT, and the road for that
+	// one is the game's own end of a round -- see leave_match's second argument.
+	void train_pause_exit(m3::Model3 &b)
+	{
+		fprintf(stderr, "Fighting Vipers 2's training: EXIT chosen, the round still being fought\n");
+		leave_match(b, L_TO_TITLE, false);
+	}
+
 	// The frame's inputs, after the player's and the script's.
 	void controls(m3::Controls &c)
 	{
@@ -376,6 +412,7 @@ private:
 	bool train_pick_arm = false;         // ... and the press that opened the screen is not a choice at all
 	bool train_froze = false;            // whether the round's clock is stopped BY US, and so to be given back
 	bool leave_training = false;         // whether the way out now running leads back into a training
+	bool train_start_was = false;        // Start as it read last frame: the page opens on the press, not on the hold
 
 	void train_arm()
 	{
@@ -566,9 +603,12 @@ private:
 	leave_dest leave_for = L_TO_TITLE;
 	static constexpr int FV2_TIMER_EDGE = 8;   // (model3.h's own edge: an eighth of a second, firmly positive)
 	int leave_frames = 0, leave_cut = -1;
+	bool leave_decided = true;   // the panel's road (nothing to end) or a round being fought
+	int leave_cut_over = -1;     // GAME OVER asked for on the round's road: once, and only once
+	int leave_end = -1;          // what the game's own end of a round said, the one time it is written
 	int leave_vs_finish = -1;   // VS FINISH as the player had it, lent for the length of the way out
 
-	void leave_match(m3::Model3 &b, leave_dest what)
+	void leave_match(m3::Model3 &b, leave_dest what, bool decided = true)
 	{
 		// AND THE DOOR OUT OF A TWO-PLAYER MATCH IS OPENED FIRST, because the game only reads it when the match
 		// ends: when both players are in, the end of a match asks whether VS FINISH is on and, if it is, asks
@@ -589,14 +629,27 @@ private:
 		borrow_vs_finish(b);
 		leaving = L_ENDING;
 		leave_for = what;
+		leave_decided = decided;
 		leave_frames = 0;
 		leave_cut = -1;
+		leave_cut_over = -1;
+		leave_end = -1;
 		veil = true;
-		// The panel's road: the match is already decided, so there is nothing to end and GAME OVER is asked for
-		// with the game's own write, once.
-		b.fv2_request_game_over();
-		fprintf(stderr, "Fighting Vipers 2: the match was already decided -- GAME OVER asked for, the game's"
-		                " own way out of a settled versus\n");
+		// AND THE ROAD IS CHOSEN HERE, because the two are not the same thing at all.
+		//
+		// THE PANEL'S ROAD: the match is already decided, there is nothing to end, and the branch point that
+		// would have ended it is out of reach (Model3::fv2_request_game_over says why). So GAME OVER is asked
+		// for with the game's own write, once, and the dispatcher takes the game out of GAME on the next tick.
+		//
+		// THE ROUND'S ROAD is the other one, and it is what Start in a training needs: the round is being
+		// FOUGHT, so there IS something to end, and the game ends it itself once it is told the two words its
+		// own handlers read. That is step_leaving's business below, every frame, because one of those words
+		// does not keep.
+		if (leave_decided) {
+			b.fv2_request_game_over();
+			fprintf(stderr, "Fighting Vipers 2: the match was already decided -- GAME OVER asked for, the game's"
+			                " own way out of a settled versus\n");
+		}
 	}
 
 	void borrow_vs_finish(m3::Model3 &b)
@@ -632,6 +685,52 @@ private:
 			        leave_frames, m, b.fv2_submode(), b.fv2_screen_timer(), b.fv2_on_title() ? 1 : 0,
 			        b.fv2_match_over() ? "decided" : "not decided");
 		if (leaving == L_ENDING) {
+			// AND A ROUND BEING FOUGHT IS ENDED BY THE GAME ITSELF, which is the road Start in a training takes
+			// (leave_match). Three things, all of them the game's own and all measured on the console build:
+			//
+			//   fv2_end_match, ONCE: the round's own clock put at 1, so FIGHT_DSP ends the round on the frame it
+			//   reaches 0 and marks the time-out itself -- nobody is knocked out and nobody's life is touched --
+			//   and the bit NEXT_PROG_SEL branches on set, so that handler decides the match is over instead of
+			//   opening another round.
+			//
+			//   THE MATCH HELD DECIDED, every frame while the game is still in GAME, because that bit DOES NOT
+			//   KEEP: between the round's end and the branch point the game writes that word itself, and what it
+			//   writes there is its own count of the rounds won. A hidden run caught the game fighting five more
+			//   rounds for exactly that reason.
+			//
+			//   AND GAME OVER ASKED FOR ONCE THE FIGHT ITSELF IS OVER -- any sub-state but FIGHT_INT and
+			//   FIGHT_DSP -- because the round ended on the CLOCK, so the players-out byte stayed 0, and
+			//   NEXT_PROG_SEL's own arithmetic then hands the last one standing the next opponent. Left to
+			//   itself the ladder would simply go on, which is what it did from ARCADE on the console build:
+			//   the way out waited for an attract loop that never came while the game fought on.
+			//
+			// The judgement and the winner's pose are each cut short once, by asking for the next sub-state,
+			// which is what the game's own handlers do between themselves. NEXT_PROG_SEL (19) is left alone: it
+			// is the branch point all of this was written for, and cutting it would cut the decision itself.
+			//
+			// AND THE FREEZE HAS TO GO WITH IT, which is the trap this road had in the console build: the clock
+			// put at 1 is counted down by FIGHT_DSP, and FIGHT_DSP does not count AT ALL while the training's
+			// freeze bit is set. The match could not end, so there was nothing to leave. leave_match turns the
+			// mode off and step_training gives the bit back in the same frame as the write below.
+			if (!leave_decided && (m == 6 || m == 7)) {
+				if (leave_end < 0) {
+					leave_end = b.fv2_end_match();
+					fprintf(stderr, "Fighting Vipers 2: the round ended by the game's own two words, which say"
+					                " %d (1 written, -1 not a round being fought)\n", leave_end);
+				}
+				b.fv2_hold_match_over();
+				const int su = b.fv2_submode();
+				if (leave_cut_over < 0 && b.fv2_match_over() && (su < 11 || su > 12)) {
+					leave_cut_over = 1;
+					b.fv2_request_game_over();
+					fprintf(stderr, "Fighting Vipers 2: the match is decided -- GAME OVER asked for, or the"
+					                " ladder would have gone on\n");
+				}
+				if (su >= 13 && su <= 18 && su != leave_cut) {
+					leave_cut = su;
+					b.fv2_cut_submode();
+				}
+			}
 			// OUT OF GAME, AND THE MODE IS WHAT SAYS SO.
 			//
 			// It used to be "no game running", and THAT WAS THE BLACK SCREEN Frederic got from CHANGE YOUR

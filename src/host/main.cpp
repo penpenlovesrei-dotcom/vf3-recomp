@@ -2413,6 +2413,11 @@ int main(int argc, char **argv)
 	fv2_training fv2_train;
 	bool versus_panel_up = false;      // the panel is the menu's top page just now
 	int versus_panel_want = -1;        // the line chosen, acted on once the menu has closed
+	// AND THE TRAINING'S OWN PAGE, which Start puts up over a round being fought. It is kept apart from the
+	// panel's two above on purpose: the panel's match is decided and its EXIT asks for GAME OVER, while this
+	// one's round is still being FOUGHT and leaves by the game's own end of a round (fv2_versus.h).
+	bool versus_train_up = false;
+	int versus_train_want = -1;        // 0 is EXIT; -1 is RESUME, which is simply the page closing
 	int versus_pick = -1;              // the arena chosen, acted on once the page's hold is over
 	uint64_t versus_lock_ns = 0;       // when it was answered (the page keeps the blink, the host the clock)
 	const uint64_t BOOT_FRAMES = uint64_t(board.profile->boot_frames);   // the boot, up to the SEGA logo (the PC way: unseen)
@@ -3705,7 +3710,22 @@ int main(int argc, char **argv)
 				if (!c.left) { slice(0, video::W, y0, y1, 0); return; }
 				float dxl = -dl, dxr = dr;
 				if (even && c.c0 >= 0 && c.l0 >= 0 && c.r0 >= 0) {
-					const float stand_l = mid.x + c.c0 * ks, stand_r = mid.x + (c.c1 + 1) * ks;
+					// AND WHAT THE TWO BLOCKS STAND AGAINST IS THE FIELD, NOT THE INK IN IT. They used to be
+					// stood against the drawn digits, and A DIGIT IS NOT ALWAYS THE SAME WIDTH: Frederic's of
+					// the 2026-11-15 -- with a 1 in the units the whole top-right block slid a little to the
+					// left. Of course it did. The 1's ink stops short of where a 4's does, so the gap between
+					// it and the window's edge grew, and the block was stood evenly in a bigger gap.
+					//
+					// It is the same fault as the blink, which was caught first and patched where it showed:
+					// there the ink went away entirely and the ink was REMEMBERED to cover it. The cause was
+					// one layer further down, and this is it -- the ink was never the right thing to measure
+					// from. THE FIELD IS, and the field is written down once and never moves, which is the
+					// whole reason the cut is a constant and not something looked for (HUD_MID_L, HUD_MID_R).
+					// So the clock may read anything at all, and nothing but the clock changes.
+					//
+					// The remembered ink above stays, and is now only asked WHETHER there is any: with the
+					// field empty -- no fight, no clock -- the band still falls back hard against the edges.
+					const float stand_l = mid.x + c.left * ks, stand_r = mid.x + c.right * ks;
 					const float wl = (c.l1 + 1 - c.l0) * ks, wr = (c.r1 + 1 - c.r0) * ks;
 					dxl = all.x + (stand_l - all.x - wl) * 0.5f - (mid.x + c.l0 * ks);
 					dxr = stand_r + ((all.x + all.w) - stand_r - wr) * 0.5f - (mid.x + c.r0 * ks);
@@ -4943,7 +4963,7 @@ int main(int argc, char **argv)
 	// means keeping a second copy of the game's own state, and that is the one thing this port's levers never
 	// do -- every one of them reads the game first and writes what the game reads.
 	auto versus_mode_page = [&] {
-		menu_page p{ "VERSUS MODE", tr::V_NOTE, {} };
+		menu_page p{ "VERSUS", tr::V_NOTE, {} };
 		p.items.push_back({ "START", tr::V_START_HELP, {}, {},
 			[&] {
 				if (game.emu_thread.joinable()) game.job_wait();
@@ -5030,7 +5050,7 @@ int main(int argc, char **argv)
 			// byte of its own at all. It is the row that undoes the other three -- a menu that can put the game
 			// into three modes and not back out of them is a menu with a way in and no way out -- and it is the
 			// console's own first entry, where Frederic asked for it (fv2_modes.h).
-			p.items.push_back({ "ARCADE MODE", tr::M_ARCADE_MODE_HELP, {}, {},
+			p.items.push_back({ "ARCADE", tr::M_ARCADE_MODE_HELP, {}, {},
 				[&] {
 					if (game.emu_thread.joinable()) game.job_wait();
 					fv2_versus.let_go(board, "Arcade chosen");
@@ -5041,12 +5061,16 @@ int main(int argc, char **argv)
 			// three start a game, because a versus has a shape before it starts that the others do not -- how
 			// long a round is, how many of them, and who is on the select screen. Start is a line of that page
 			// (versus_mode_page, above).
-			p.items.push_back({ "VERSUS MODE", tr::M_VERSUS_HELP, {}, {},
+			p.items.push_back({ "VERSUS", tr::M_VERSUS_HELP, {}, {},
 				[&] { menu.push(versus_mode_page()); } });
-			p.items.push_back({ "SURVIVAL MODE", tr::M_SURVIVAL_HELP, {}, {},
-				[mode_start] { mode_start(Fv2Modes::SURVIVAL); } });
-			p.items.push_back({ "RANDOM MODE", tr::M_RANDOM_HELP, {}, {},
+			// RANDOM BEFORE SURVIVAL, Frederic's of the 2026-11-15. The word MODE is gone from all five rows
+			// with it: the page is a list of modes, so the word was on every line and said nothing on any of
+			// them. The names the GAME writes on its own screens are untouched -- it says RANDOM MODE on the
+			// select screen itself, and the log still names the modes as the game does.
+			p.items.push_back({ "RANDOM", tr::M_RANDOM_HELP, {}, {},
 				[mode_start] { mode_start(Fv2Modes::RANDOM); } });
+			p.items.push_back({ "SURVIVAL", tr::M_SURVIVAL_HELP, {}, {},
+				[mode_start] { mode_start(Fv2Modes::SURVIVAL); } });
 			// AND TRAINING LAST, which is a mode the board does not have at all: the other four are Sega's,
 			// turned on with Sega's own bytes, and this one is built out of them (fv2_versus.h, TRAINING). Its
 			// pictures are read here, the first time the row is chosen, because a column that cannot be drawn
@@ -5122,6 +5146,17 @@ int main(int argc, char **argv)
 	// as a page of this port's own menu. RESUME is not among them -- there is no fight to go back to, the
 	// match being decided -- and backing out puts the panel straight back up (Fv2Versus::panel_dismissed).
 	// The lines are the Dreamcast's own words and are left in them, as SURVIVAL MODE and RANDOM MODE are.
+	// FIGHTING VIPERS 2'S TRAINING PAGE, put up by START while a round is being fought. A training has no end
+	// of a match -- the lives are held, so the round never settles and the panel above is never reached -- so
+	// without this there is no way out of the mode but the program's own. Frederic asked for the one line that
+	// matters; RESUME is the other, because a page you cannot leave is a trap, and it is the console build's
+	// own first pause line.
+	auto training_page = [&] {
+		menu_page p{ "TRAINING", tr::M_TRAINING_NOTE, {} };
+		p.items.push_back({ "RESUME", "", {}, {}, [&] { versus_train_want = -1; menu.close(); } });
+		p.items.push_back({ "EXIT", "", {}, {}, [&] { versus_train_want = 0; menu.close(); } });
+		return p;
+	};
 	auto versus_page = [&] {
 		menu_page p{ "MATCH OVER", tr::M_VS_NOTE, {} };
 		for (int l = 0; l < Fv2Versus::L_COUNT; l++)
@@ -5688,6 +5723,18 @@ int main(int argc, char **argv)
 				if (game.emu_thread.joinable()) game.job_wait();
 				fv2_versus.stage_cancelled(board);
 			}
+		} else if (fv2_versus.wants == Fv2Versus::W_TRAIN) {
+			fv2_versus.wants = Fv2Versus::W_NONE;
+			if (game.emu_thread.joinable()) game.job_wait();
+			if (menu.ready()) {
+				versus_train_up = true;
+				versus_train_want = -1;
+				// OPENED AS THE TOP PAGE and not pushed over the main one, which is where it parts from the
+				// panel: this is a PAUSE. There IS a fight to go back to, so backing out of it has to put the
+				// player back in the round, and that is what closing the menu does.
+				menu.open(training_page());
+				sync_menu_sound();
+			}
 		} else if (fv2_versus.wants == Fv2Versus::W_PANEL) {
 			fv2_versus.wants = Fv2Versus::W_NONE;
 			if (game.emu_thread.joinable()) game.job_wait();
@@ -5901,6 +5948,13 @@ int main(int argc, char **argv)
 		// THE PANEL ANSWERED, taken once the menu has closed, so the game is given back on the same pass the
 		// line is acted on. Nothing was chosen means the player backed out, and there is nowhere to back out
 		// to: the panel goes straight back up (fv2_versus.h).
+		// The training page answered: EXIT leaves the round, and anything else is the round resumed.
+		if (versus_train_up && !menu.is_open()) {
+			versus_train_up = false;
+			if (game.emu_thread.joinable()) game.job_wait();
+			if (versus_train_want == 0) fv2_versus.train_pause_exit(board);
+			versus_train_want = -1;
+		}
 		if (versus_panel_up && !menu.is_open()) {
 			versus_panel_up = false;
 			if (game.emu_thread.joinable()) game.job_wait();
@@ -6071,6 +6125,10 @@ int main(int argc, char **argv)
 				// Routed first, it has already emptied player 1's controls by the time the column reads them,
 				// and the column then shows nothing of what is being pressed.
 				fv2_versus.route_training(board, c);
+				// AND START IS THE TRAINING'S PAUSE, not the game's: the press is swallowed for the whole round
+				// and the page is asked for on its edge (fv2_versus.h says why both). Here, because this is the
+				// one place the frame's controls are composed.
+				fv2_versus.train_pause_start(c);
 				// and the announcer's two lines dropped across the frames the announcement is cut in
 				game.mute_fight_voice = fv2_versus.training_on && fv2_versus.train_hush > 0;
 				// Kuhn's colour wheel, turned by the same presses the game turns its own two with (Game::kuhn_tick):
